@@ -36,18 +36,25 @@ public class AuthService
     {
         try
         {
-            if (!await _context.Users.AnyAsync())
+            var adminUser = await _context.Users.FirstOrDefaultAsync(u => u.Username == "admin");
+            
+            if (adminUser == null)
             {
-                var adminRole = new Role
+                var adminRole = await _context.Roles.FirstOrDefaultAsync(r => r.Name == "Administrator");
+                
+                if (adminRole == null)
                 {
-                    Name = "Administrator",
-                    Description = "Full system access",
-                    IsActive = true
-                };
-                _context.Roles.Add(adminRole);
-                await _context.SaveChangesAsync();
+                    adminRole = new Role
+                    {
+                        Name = "Administrator",
+                        Description = "Full system access",
+                        IsActive = true
+                    };
+                    _context.Roles.Add(adminRole);
+                    await _context.SaveChangesAsync();
+                }
 
-                var adminUser = new User
+                adminUser = new User
                 {
                     Username = "admin",
                     PasswordHash = BCrypt.Net.BCrypt.HashPassword("Admin@123"),
@@ -58,6 +65,13 @@ public class AuthService
                 };
                 _context.Users.Add(adminUser);
                 await _context.SaveChangesAsync();
+                Console.WriteLine("Admin user created successfully");
+            }
+            else if (string.IsNullOrEmpty(adminUser.PasswordHash) || !adminUser.PasswordHash.StartsWith("$2"))
+            {
+                adminUser.PasswordHash = BCrypt.Net.BCrypt.HashPassword("Admin@123");
+                await _context.SaveChangesAsync();
+                Console.WriteLine("Admin password reset");
             }
         }
         catch (Exception ex)
