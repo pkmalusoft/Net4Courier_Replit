@@ -89,7 +89,7 @@ cd src/Net4Courier.Web && dotnet run --urls http://0.0.0.0:5000
 13. [x] Authentication/Login UI (custom AuthenticationStateProvider, redirect to login)
 14. [x] PostgreSQL table partitioning (PartitioningService created, SQL templates ready)
 15. [x] Finance modules - Invoices and Receipts CRUD (with customer autocomplete, AWB billing, receipt allocation)
-16. [ ] Reporting (QuestPDF for Linux compatibility)
+16. [x] Reporting with QuestPDF (AWB labels, Invoice PDFs, Receipt PDFs)
 
 ## PostgreSQL Partitioning Notes
 - InscanMasters table supports partitioning by TransactionDate

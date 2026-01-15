@@ -5,6 +5,9 @@ using Net4Courier.Infrastructure.Data;
 using Net4Courier.Infrastructure.Services;
 using Net4Courier.Web.Components;
 using Net4Courier.Web.Services;
+using QuestPDF.Infrastructure;
+
+QuestPDF.Settings.License = LicenseType.Community;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -42,6 +45,7 @@ builder.Services.AddDbContext<ApplicationDbContext>(options =>
 builder.Services.AddScoped<AuthService>();
 builder.Services.AddScoped<AppAuthStateProvider>();
 builder.Services.AddScoped<AuthenticationStateProvider>(sp => sp.GetRequiredService<AppAuthStateProvider>());
+builder.Services.AddScoped<ReportingService>();
 builder.Services.AddAuthorizationCore();
 builder.Services.AddCascadingAuthenticationState();
 
@@ -57,6 +61,30 @@ app.UseStaticFiles();
 app.UseAntiforgery();
 
 app.MapGet("/health", () => Results.Ok("Healthy"));
+
+app.MapGet("/api/report/awb/{id:long}", async (long id, ApplicationDbContext db, ReportingService reportService) =>
+{
+    var awb = await db.InscanMasters.FindAsync(id);
+    if (awb == null) return Results.NotFound();
+    var pdf = reportService.GenerateAWBLabel(awb);
+    return Results.File(pdf, "application/pdf", $"AWB-{awb.AWBNo}.pdf");
+});
+
+app.MapGet("/api/report/invoice/{id:long}", async (long id, ApplicationDbContext db, ReportingService reportService) =>
+{
+    var invoice = await db.Invoices.Include(i => i.Details).FirstOrDefaultAsync(i => i.Id == id);
+    if (invoice == null) return Results.NotFound();
+    var pdf = reportService.GenerateInvoicePdf(invoice);
+    return Results.File(pdf, "application/pdf", $"Invoice-{invoice.InvoiceNo}.pdf");
+});
+
+app.MapGet("/api/report/receipt/{id:long}", async (long id, ApplicationDbContext db, ReportingService reportService) =>
+{
+    var receipt = await db.Receipts.Include(r => r.Allocations).FirstOrDefaultAsync(r => r.Id == id);
+    if (receipt == null) return Results.NotFound();
+    var pdf = reportService.GenerateReceiptPdf(receipt);
+    return Results.File(pdf, "application/pdf", $"Receipt-{receipt.ReceiptNo}.pdf");
+});
 
 using (var scope = app.Services.CreateScope())
 {
