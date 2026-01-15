@@ -79,14 +79,17 @@ cd src/Net4Courier.Web && dotnet run --urls http://0.0.0.0:5000
 3. [x] MudBlazor dashboard layout
 4. [x] Company management CRUD
 5. [x] Branch management CRUD
-6. [ ] User management UI
-7. [ ] Role management UI
-8. [ ] Financial Year management
-9. [ ] Authentication/Login UI
-10. [ ] PostgreSQL table partitioning by fiscal year
-11. [ ] Operations modules (AWB Entry, Tracking)
-12. [ ] Finance modules (Invoices, Receipts)
-13. [ ] Reporting (QuestPDF for Linux compatibility)
+6. [x] User management UI (with role assignment, branch selection, BCrypt password hashing)
+7. [x] Role management UI (with granular permissions matrix for 14 modules)
+8. [x] Financial Year management (with company association, current year enforcement)
+9. [x] Party/Customer management (normalized addresses, multiple address support)
+10. [x] AWB Entry form (full shipment details, auto-generated AWB numbers)
+11. [x] AWB List (with advanced filtering by date, status, search)
+12. [x] AWB Tracking (timeline history with status updates)
+13. [ ] Authentication/Login UI
+14. [ ] PostgreSQL table partitioning by fiscal year
+15. [ ] Finance modules (Invoices, Receipts)
+16. [ ] Reporting (QuestPDF for Linux compatibility)
 
 ## User Preferences
 - MudBlazor for all UI components
