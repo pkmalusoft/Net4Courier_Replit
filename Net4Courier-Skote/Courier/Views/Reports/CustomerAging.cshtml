@@ -1,0 +1,266 @@
+﻿@model Net4Courier.Models.CustomerLedgerReportParam
+
+@{
+   ViewBag.Title = "Reports";
+    ViewBag.pTitle = "Customer Aging";
+    ViewBag.pageTitle = "Account Receivable";
+    Layout = "~/Views/Shared/_Layout.cshtml";
+}
+
+<script type="text/javascript">
+
+    //$(function () {
+    //    $('#AsonDate').datetimepicker({ format: 'DD-MM-YYYY' });
+
+    //});
+    $(document).ready(function () {
+         var startdate = '@Session["FyearFrom"].ToString()';
+        var enddate = '@Session["FyearTo"].ToString()';
+        var sd = new Date(startdate.split('-')[1] + '-' + startdate.split('-')[0] + '-' + startdate.split('-')[2]);
+        var ed = new Date(enddate.split('-')[1] + '-' + enddate.split('-')[0] + '-' + enddate.split('-')[2]);
+
+   
+        $("#chkAll").click(function () {
+            if ($("#chkAll").is(':checked')) {
+                $('#CustomerName').attr('readonly', 'readonly');
+                $('#CustomerName').val('');
+                $('#CustomerId').val(0);
+            }
+            else {
+                $('#CustomerName').removeAttr('readonly');
+            }
+        });
+
+        $("#chkSelected").click(function () {
+            if ($("#chkSelected").is(':checked')) {
+                $('#CustomerName').removeAttr('readonly');
+            }
+            else {
+                $('#CustomerName').attr('readonly', 'readonly');
+                $('#CustomerName').val('');
+                $('#CustomerId').val(0);
+            }
+        });
+        $("#AllCustomer").click(function () {
+            if ($("#AllCustomer").is(':checked')) {
+                $('#CustomerName').attr('readonly', 'readonly');
+                $('#CustomerName').val('');
+                $('#CustomerId').val(0);
+                $('#CustomerName').removeAttr('required');
+            }
+            else {
+                $('#CustomerName').removeAttr('readonly');
+                $('#CustomerName').attr('required', 'required');
+            }
+        });
+
+        $('#CustomerName').change(function () {
+            if ($('#CustomerName').val().trim() != '' && $('#CustomerId').attr('label') != $('#CustomerName').val().trim()) {
+                $('#CustomerName').val('');
+                $('#CustomerId').val(0);
+            }
+            else if($('#CustomerName').val().trim() == '') {
+                $('#CustomerId').val(0);
+            }
+        })
+        //$('#ReportType').change(function () {
+        //    if ($('#ReportType').val() == "Ledger") {
+        //        $('#divledger').removeClass('hide');
+        //        $('#divstatement').addClass('hide');
+        //        $('#AsonDate').removeAttr('required');
+        //        $('#FromDate').attr('required','true');
+        //        $('#ToDate').attr('required','true');
+        //        $("#CustomerName").removeAttr('readonly');
+        //        $('#CustomerName').attr('required','true')
+        //        $('#lblcustomername').addClass('required');
+        //    }
+        //    else if ($('#ReportType').val() == "Statement") {
+        //        $('#divledger').addClass('hide');
+        //        $('#divstatement').removeClass('hide');
+        //        $('#AsonDate').attr('required', 'true')
+        //        $('#FromDate').removeAttr('required');
+        //        $('#ToDate').removeAttr('required');
+        //        $("#CustomerName").removeAttr('readonly');
+        //        $("#CustomerName").removeAttr('required');
+        //        $('#lblcustomername').removeClass('required');
+        //    }
+        //    else {
+
+        //    }
+        //});
+        $("#CustomerName").autocomplete({
+            source: function (request, response) {
+                $.ajax({
+                    url: '/CustomerReceipt/GetCustomerNameByType',
+                    datatype: "json",
+                    data: {
+                        term: request.term,CustomerType:$('#CustomerType').val()
+                    },
+                    success: function (data) {
+                        response($.map(data, function (val, item) {
+                            return {
+                                label: val.CustomerName,
+                                value: val.CustomerName,
+                                ID: val.CustomerID,
+                                type: val.CustomerType
+                            }
+                        }))
+                    }
+                })
+            },
+            minLength: 1,
+            autoFocus: false,
+            focus: function (e, i) {
+                e.preventDefault();
+                $("#CustomerName").val(i.item.label);
+                $('#CustomerId').val(i.item.ID);
+                $('#CustomerId').attr('label', i.item.label);
+            },
+            select: function (e, i) {
+                e.preventDefault();
+                $("#CustomerName").val(i.item.label);
+                $('#CustomerId').val(i.item.ID);
+                $('#CustomerId').attr('label',i.item.label);
+                //$('#hdnCustomerType').val(i.item.type);
+                //if ($('#hdnCustomerType').val() == "CR") {
+                //    $("#Consignor1").css('color', 'blue');
+                //}
+                //else if ($('#hdnCustomerType').val() == "CS") {
+                //    $("#Consignor1").css('color', 'red');
+                //}
+                //else {
+                //    $("#Consignor1").css('color', 'black');
+                //}
+
+            },
+
+        });
+        $('#ReportType').trigger('change');
+        if ($('#CustomerId').val() != 0) {
+
+            $("#AllCustomer").prop('checked', 'false');
+            $("#AllCustomer").attr('value', false);
+            $("#AllCustomer").trigger('click');
+        }
+        else {
+            $("#AllCustomer").prop('checked', true);
+            $('#CustomerName').removeAttr('required');
+            $('#CustomerName').attr('readonly', 'readonly');
+            //$("#AllCustomer").trigger('click');
+        }
+    });
+</script>
+
+<style type="text/css">
+    
+    .innerCheckbox{
+        display: flex!important;
+        justify-content: space-evenly;
+        padding: 0!important;
+    }
+</style>
+
+@using (Html.BeginForm("CustomerAging", "Reports", FormMethod.Post, new { @id = "customerledger" }))
+{
+    @Html.AntiForgeryToken()
+
+    @Html.ValidationSummary(true, "", new { @class = "text-danger" })
+<div class="card">
+    <div class="card-body">
+        <div class="row">
+        <div class="col-md-3" id="divstatement">
+        <div class="row">
+           <div class="col-md-6">
+                    <div class="mb-2">
+                        <label class="col-form-label">As on Date</label>
+                        <div class="docs-datepicker">
+                            <div class="input-group">
+                                <input type="text" class="form-control docs-date" name="AsonDate" id="AsonDate" value="@Model.AsonDate.ToShortDateString()"
+                                       placeholder="Pick a From Date" autocomplete="off">
+                                <button type="button"
+                                        class="btn btn-secondary docs-datepicker-trigger"
+                                        disabled>
+                                    <i class="mdi mdi-calendar" aria-hidden="true"></i>
+                                </button>
+                            </div>
+                            <div class="docs-datepicker-container"></div>
+                        </div>
+                    </div>
+                </div>
+            <div class="col-md-6">
+            <div class="mb-2">
+                <label class="col-form-label  required">Type</label>
+                @Html.DropDownList("CustomerType", new List<SelectListItem>
+                {
+                    new SelectListItem{ Text="Customer", Value = "CR" },
+                    new SelectListItem{ Text="CO-Loader", Value = "CL" },
+                 }, "Select", new { @class = "form-select", @required = "true" })
+            </div>
+             </div>
+            @*<div class="col-md-2    ">
+                <label class="headinglabel required ">Customer Selection</label>
+                <div class="innerCheckbox flex">
+                    <div class="field checkboxdesign verticalcheckbox">
+                        <label class="headinglabel"><input type="radio" id="chkAll" checked name="roptions" />All</label>
+                    </div>
+                    <div class="field checkboxdesign justify-center verticalcheckbox">
+                        <label class="headinglabel"><input type="radio" id="chkSelected" name="roptions" />Single</label>
+                    </div>
+                </div>
+            </div>*@
+
+            <div class="col-md-12">
+            <div class="mb-2">
+                <div id="divachead">
+                    <div class="flexTitle">
+                        <label class="col-form-label required">Customer</label>
+                        <div class="checkboxdesign no-padding  text-right" style="float:right">
+                            @Html.CheckBox("AllCustomer", new { @name = "AllCustomer", @checked = "checked" }) &nbsp
+                            <label class="col-form-label" style="color:#07a7e3!important;padding-left: 0!important">All Customer</label>
+                        </div>
+                    </div>
+                    @Html.TextBoxFor(model => model.CustomerName, new { @class = "form-control", @autocomplete = "off", @readonly = "true" })
+                    @Html.HiddenFor(model => model.CustomerId)
+                </div>
+            </div>
+            </div>
+            <div class="col-md-12">
+             <div class="mb-2">
+                <label class="col-form-label required">Report Type</label>
+                @Html.DropDownList("ReportType", new List<SelectListItem>
+               {
+                   new SelectListItem{ Text="Summary", Value = "Summary"},
+                   new SelectListItem{ Text="Detail", Value = "Detail" }
+                }, "Select", new { @class = "form-select", @required = "true" })
+            </div>
+            </div>
+            <div class="col-md-9">
+            <div class="mb-2">
+                <label class="col-form-label  required">Output</label>
+                @Html.DropDownList("Output", new List<SelectListItem>
+                {
+                    new SelectListItem{ Text="PDF", Value = "PDF" },
+                    new SelectListItem{ Text="EXCEL", Value = "EXCEL" },
+                    new SelectListItem{ Text="WORD", Value = "WORD" },
+
+                 }, "Select", new { @class = "form-select", @value = "PDF", @required = "true" })
+
+            </div>
+             </div>
+           <div class="col-md-3 text-md-end">
+                        <div class="mb-2 mt-2">
+                            <button type="submit" class="btn btn-success waves-effect waves-light filter btn_top reload" id="btnreport">
+                                <i class="bx bx-revision mt-1" style="font-size: 21px;"></i>
+                            </button>
+                        </div>
+                    </div>
+        </div>
+        </div> 
+        <div class="col-md-9">
+            @{ Html.RenderAction("ReportFrame", "Accounts");}
+
+        </div>
+    </div> </div>
+
+</div>
+}

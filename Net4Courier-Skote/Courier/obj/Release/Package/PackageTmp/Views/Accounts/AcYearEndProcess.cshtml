@@ -1,0 +1,411 @@
+﻿@model Net4Courier.Models.YearEndProcessSearch
+
+@{
+    Layout = "~/Views/Shared/_Layout.cshtml";
+    var i = 0;
+    var isadd = true;
+    var ismodify = true;
+    var isdelete = true;
+    string path = Request.Url.AbsolutePath.ToLower();
+    ViewBag.Title = "Entry";
+    ViewBag.pTitle = "Year End Process";
+    ViewBag.pageTitle = "General Ledger";
+    if (Convert.ToInt32(Session["UserRoleID"]) > 1)
+    {
+        Net4Courier.Models.SourceMastersModel obj = new Net4Courier.Models.SourceMastersModel();
+        isadd = obj.GetAddpermission(Convert.ToInt32(Session["UserRoleID"]), path);
+        ismodify = obj.GetModifypermission(Convert.ToInt32(Session["UserRoleID"]), path);
+        isdelete = obj.GetDeletepermission(Convert.ToInt32(Session["UserRoleID"]), path);
+
+    }
+}
+
+<style>
+   /* #dataTables-example .form-control, input {
+        height: 30px !important;
+        border-radius: 10px !important;
+        border: 1px solid #ccc;
+        margin-bottom: 0;
+    }*/
+</style>
+ 
+
+<script type="text/javascript">
+
+    function orderrownumber() {
+        var itemcount = $('#dataTables-example > tbody > tr').length;
+        var rowindex = 1;
+        var i = 0;
+        var sumdebit = 0;
+        var sumcredit = 0;
+        for (i = 0; i < itemcount; i++) {
+            var IsDeleted = $('#hdndel_' + i).val();
+            if (IsDeleted != "true") {
+                $('#row_' + i).html(rowindex);
+                rowindex++;
+
+                var Amount = 0;
+                if (parseFloat($('#txtDebit_' + i).val()) > 0) {
+                    Amount = parseFloat($('#txtDebit_' + i).val());
+                    sumdebit = sumdebit + Amount;
+                }
+                else {
+                    AccNature = "Cr";
+                    Amount = parseFloat($('#txtCredit_' + i).val());
+                    sumcredit = sumcredit + Amount;
+                }
+            }
+            if (i == (itemcount - 1))
+                {
+                $('#Debit').val(parseFloat(sumdebit).toFixed(2));
+                $('#spantotaldebit').html(parseFloat(sumdebit).toFixed(2));
+                $('#spantotalcredit').html(parseFloat(sumcredit).toFixed(2));
+                $('#Credit').val(parseFloat(sumcredit).toFixed(2));
+            }
+        }
+
+    }
+
+    function checktotal() {
+        var itemcount = $('#dataTables-example > tbody > tr').length;
+        var rowindex = 1;
+        var i = 0;
+        var sumdebit = 0;
+        var sumcredit = 0;
+        for (i = 0; i < itemcount; i++) {
+            var IsDeleted = $('#hdndel_' + i).val();
+            if (IsDeleted != "true") {
+                rowindex++;
+
+                var Amount = 0;
+                if (parseFloat($('#txtDebit_' + i).val()) > 0) {
+                    Amount = parseFloat($('#txtDebit_' + i).val());
+                    sumdebit = sumdebit + Amount;
+                }
+                else {
+                    AccNature = "Cr";
+                    Amount = parseFloat($('#txtCredit_' + i).val());
+                    sumcredit = sumcredit + Amount;
+                }
+            }
+            if (i == (itemcount - 1)) {
+                $('#Debit').val(parseFloat(sumdebit).toFixed(2));
+                $('#spantotaldebit').html(parseFloat(sumdebit).toFixed(2));
+                $('#spantotalcredit').html(parseFloat(sumcredit).toFixed(2));
+
+                var balance = parseFloat(sumdebit) - parseFloat(subcredit);
+                $('#spanbalance').html(parseFloat(balance).toFixed(2));
+                $('#Credit').val(parseFloat(sumcredit).toFixed(2));
+            }
+        }
+
+    }
+  
+    function processcustomer(arr, index, maxrow) {
+        debugger;
+        var itemcount = 0;
+        var customerids = '';
+        if ((index) == maxrow) {
+            $.ajax({
+                //contentType: 'application/json;charset=utf-8',
+                type: "POST",
+                dataType: 'html',
+                url: "/Accounts/CustomerInvoiceAccountPosting",
+                data: {
+                    'CustomerType': $('#CustomerType').val()
+                },
+                success: function (response1) {
+                    $('#listContainer').html(response1);
+                    $('#loaderpopup').modal('hide');
+                    Swal.fire('Save Status', 'Year End Processed has been completed Successfully for Customer Accounts!', "success");
+
+                    //if (data.status == "ok") {
+
+                    
+                    //    $("#btnsearch").trigger('click');
+                    //    setTimeout(function () {
+                    //        DisabledAdd();
+                    //    }, 300)
+
+                    //}
+                    //else {
+                    //    Swal.fire('Save Status', data.message, "error");
+                    //}
+                }
+            });
+           
+          
+        }
+        else {
+            customerids = arr[index];
+       
+           
+                $.ajax({
+                    //contentType: 'application/json;charset=utf-8',
+                    type: "POST",
+                    dataType: 'json',
+                    url: "/Accounts/SaveYearEndProcessing",
+                    data: {
+                        'CustomerIDs': customerids,'CustomerType': $('#CustomerType').val()
+                    },
+                    success: function (data) {
+                        if (data.status == "ok") {
+                           
+                                customerids = '';
+                                processcustomer(arr, index+1, maxrow);
+                         
+                            
+                        }
+                        else {
+                            Swal.fire('Save Status', data.message, "error");
+                        }
+                    }
+                });
+            }
+            
+        
+       
+    }
+    function process() {
+        $('#confirmationpopup').modal('hide');
+
+        $('#loaderpopup').modal('show')
+        var customerids = '';
+        $('#h5processingstatus').html('Processing...');
+        if ($('#ProcessType').val() == "Y") {
+            $('#LoaderModalLabel').html("Income and Expendentiure");
+
+        }
+        else if ($('#ProcessType').val() == "A") {
+            $('#LoaderModalLabel').html("Assets and Liabilities");
+        }
+        else if ($('#ProcessType').val() == "C") {
+            $('#LoaderModalLabel').html("Customer Accounts");
+        }
+        else {
+
+            $('#LoaderModalLabel').html("Supplier Accounts");
+        }
+        if ($('#ProcessType').val() == "C") {
+            debugger;
+            var idtext = 'hdncustomerchecked_';
+            var maxrow = $('#details >tr').length;
+            var customerarr = [];
+            $('[id^=' + idtext + ']').each(function (index, item) {
+
+                if ($(item).prop('checked') == true) {
+                    customerarr.push($(item).attr('customerid'));
+
+                }
+                if (maxrow == (index + 1)) {
+                    processcustomer(customerarr, 0, customerarr.length);
+                }
+
+            });
+        }
+        else if ($('#ProcessType').val() == "S") {
+            debugger;
+            var idtext = 'hdncustomerchecked_';
+            var maxrow = $('#details >tr').length;
+            $('[id^=' + idtext + ']').each(function (index, item) {
+
+                if ($(item).prop('checked') == true) {
+
+                    if (customerids == '') {
+                        customerids = $(item).attr('customerid');
+                    }
+                    else {
+                        customerids = customerids + ',' + $(item).attr('customerid');
+                    }
+                }
+                if (maxrow == (index + 1)) {
+                    $.ajax({
+                        //contentType: 'application/json;charset=utf-8',
+                        type: "POST",
+                        dataType: 'json',
+                        url: "/Accounts/SaveYearEndProcessing",
+                        data: {
+                            'CustomerIDs': customerids,SupplierTypeId:$('#SupplierTypeID').val()
+                        },
+                        success: function (data) {
+                            if (data.status == "ok") {
+                                $('#loaderpopup').modal('hide')
+                                
+                            
+                                Swal.fire('Save Status', data.message, "success");
+                            
+                                setTimeout(function () {
+                                    $("#btnsearch").trigger('click');
+                                    DisabledAdd();
+                                }, 300)
+
+                            } else {
+                                Swal.fire('Save Status', data.message, "error");
+                            }
+                        }
+                    });
+
+                }
+
+            });
+        }
+        else {
+            $.ajax({
+                contentType: 'application/json;charset=utf-8',
+                type: "POST",
+                dataType: 'json',
+                url: "/Accounts/SaveYearEndProcessing",
+                //data: items,
+                success: function (data) {
+                    if (data.status == "ok") {
+                        $('#loaderpopup').modal('hide')
+                    
+                        Swal.fire('Save Status', data.message, "success");
+                        $("#btnsearch").trigger('click');
+                        setTimeout(function () {
+                            DisabledAdd();
+                        }, 300)
+
+                    } else {
+                        
+                        Swal.fire('Save Status', data.message, "error");
+                    }
+                }
+            });
+        }
+    
+    }
+    $(document).ready(function () {
+                
+        $("#btnsave").click(function () {
+            debugger;
+            $('#h5processconfirm').html($('#Comments').val());
+            $('#confirmationpopup').modal('show');
+                   
+        });
+
+        $("#btnsearch").click(function () {
+            debugger;
+            EnableAdd();
+
+        });
+        
+
+        $('#btncancel').click(function () {
+            location.reload();
+        });
+
+    
+    });
+
+    function setThreeNumberDecimal(obj) {
+        $(obj).val(parseFloat($(obj).val()).toFixed(2));
+    }
+</script>
+
+
+<div class="row no-margin">
+    @{ Html.RenderAction("AcYearEndProcessSearch", "Accounts");}
+</div>
+
+<section class="">
+    @if (TempData["SuccessMsg"] != null)
+    {
+        <script type="text/javascript">
+                  $(document).ready(function () {
+                      $.notify("@TempData["SuccessMsg"]", "success");
+                 });
+        </script>
+    }
+
+
+    <div class="card">
+        <div class="card-body">
+            @using (Html.BeginForm())
+            {
+                @Html.ValidationSummary(true)
+                @Html.HiddenFor(model => model.ProcessType)
+            <div id="listContainer">
+                @{ 
+                    if (@Model.ProcessType == "A")
+                    {
+
+                      {Html.RenderPartial("AcYearEndProcessItemList", Model);}
+
+                    }
+                    else if (@Model.ProcessType == "C" || @Model.ProcessType == "L")
+                    {
+                      {Html.RenderPartial("AcYearEndInvCustomer", Model);}
+
+                    }
+                    else if (@Model.ProcessType == "S" || Model.ProcessType == "F")
+                    {
+
+                      {Html.RenderPartial("AcYearEndInvSupplier", Model);}
+
+                    }
+                    else if (@Model.ProcessType == "Y")
+                    {
+                       {Html.RenderPartial("AcYearEndIncomeExpense", Model);}
+                    }
+                 }
+            </div>
+              
+               
+
+
+            }
+        </div>
+    </div>
+</section>
+<div class="modal fade" id="loaderpopup" role="dialog" aria-labelledby="exampleModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content" style="border-radius:5px">
+            <div class="modal-header">
+
+                <h3 class="modal-title" id="LoaderModalLabel">
+                    Year End Processing
+                </h3>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div class="row">
+                    <div class="col-md-12" style="text-align:center">
+                        <h5 id="h5processingstatus" >Processing...</h5>
+                        <img src="~/Content/img/loading-gif-free-download-6.gif" id="imgloader" class="" style="padding-left:15px;height:60px;width:60px;" />
+                    </div>
+                </div>
+            </div>
+            @*<div class="modal-footer" style="padding-top: 5px">
+                <button type="button" class="btn btn-primary" onclick="savefixation()">Save</button>
+                <button type="button" class="btn btn-danger" data-dismiss="modal">Close</button>
+            </div>*@
+        </div>
+    </div>
+</div>
+
+<div class="modal fade" id="confirmationpopup" role="dialog" aria-labelledby="exampleModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content" style="border-radius:5px">
+            <div class="modal-header">
+
+                <h4 class="modal-title" id="LoaderModalLabel">
+                    Year End Processing
+                </h4>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div class="row">
+                    <div class="col-md-12" style="text-align:center">
+                        <h5 id="h5processconfirm" >@Model.Comments </h5>
+                        <h5 style="color:red!important">Are you sure to Process?</h5>                        
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer" style="padding-top: 5px">
+                    <button type="button" class="btn btn-primary" onclick="process()">Process</button>
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+            </div>
+        </div>
+    </div>
+</div>

@@ -1,0 +1,329 @@
+﻿@model Net4Courier.Models.CustomerReceiptSearch
+@{
+    ViewBag.Title = "Allocation";
+    ViewBag.pTitle = "Payment";
+    ViewBag.pageTitle = "Account Payable";
+    Layout = "~/Views/Shared/_Layout.cshtml";
+    var isadd = true;
+    var ismodify = true;
+    var isdelete = true;
+    var isprint = true;
+    var _decimal = Session["Decimal"].ToString();
+    string path = "/CustomerReceipt/Index";
+    var rowindex = 0;
+    if (Convert.ToInt32(Session["UserRoleID"]) > 1)
+    {
+        Net4Courier.Models.SourceMastersModel obj = new Net4Courier.Models.SourceMastersModel();
+        isadd = obj.GetAddpermission(Convert.ToInt32(Session["UserRoleID"]), path);
+        isprint = obj.GetPrintpermission(Convert.ToInt32(Session["UserRoleID"]), path);
+        ismodify = obj.GetModifypermission(Convert.ToInt32(Session["UserRoleID"]), path);
+        isdelete = obj.GetDeletepermission(Convert.ToInt32(Session["UserRoleID"]), path);
+
+    }
+
+}
+
+<style>
+
+
+    .panel-body {
+        padding: 0px;
+    }
+
+    #tbl1 tr {
+        height: 35px;
+    }
+
+    .panel {
+        background-color: unset;
+        box-shadow: unset;
+    }
+
+    /*.tblbackground {
+            background-color: #fff;
+            box-shadow: 0 9px 23px rgba(0, 0, 0, 0.09), 0 5px 5px rgba(0, 0, 0, 0.06) !important;
+            border-radius: 10px;
+        }*/
+
+    .box-footer {
+        background-color: unset;
+    }
+
+    .searchtabs {
+        box-shadow: unset !important;
+        border-radius: unset !important;
+    }
+</style>
+
+
+<script type="text/javascript">
+    $(document).ready(function () {
+        var startdate = '@Session["FyearFrom"].ToString()';
+        var enddate = '@Session["FyearTo"].ToString()';
+        var sd = new Date(startdate.split('-')[1] + '-' + startdate.split('-')[0] + '-' + startdate.split('-')[2]);
+        var ed = new Date(enddate.split('-')[1] + '-' + enddate.split('-')[0] + '-' + enddate.split('-')[2]);
+
+
+     
+
+
+        var table = $('#datatable1').DataTable({ "aaSorting": [], "bPaginate": false });
+        var url = '/Accounts/GetSupplierName';
+        $("#SupplierName").autocomplete({
+            source: function (request, response) {
+                $.ajax({
+                    url: url,
+                    datatype: "json",
+                    data: {
+                        term: request.term, SupplierTypeId: $('#SupplierTypeId').val()
+                    },
+                    success: function (data) {
+                        response($.map(data, function (val, item) {
+                            return {
+                                label: val.SupplierName,
+                                value: val.SupplierName,
+                                ID: val.SupplierID,
+                            }
+                        }))
+                    }
+                })
+            },
+            minLength: 1,
+            autoFocus: false,
+            focus: function (e, i) {
+                $("#SupplierName").val(i.item.label);
+                $('#SupplierID').val(i.item.ID);
+            },
+            select: function (e, i) {
+                e.preventDefault();
+                $("#SupplierName").val(i.item.label);
+                $('#SupplierID').val(i.item.ID);
+            },
+        });
+
+     });
+</script>
+ 
+
+@using (Html.BeginForm())
+{
+    @Html.AntiForgeryToken()
+    <div class="card">
+        <div class="card-body">
+            <div class="row">
+                
+                <div class="col-md-5">
+                    <div class="row">
+                 <div class="col-md-4">
+                        <div class="mb-2">
+                            <label class="col-form-label  required">Type</label>
+                            @Html.DropDownList("EntryType", new List<SelectListItem>
+                            {
+                                new SelectListItem{ Text="Payments", Value = "Payment" },
+                            new SelectListItem{ Text="Opening", Value = "OP" },
+                            new SelectListItem{ Text="Debit Notes", Value = "DN" },
+                             }, "Select", new { @class = "form-select", @required = "true", @value1 = Model.EntryType })
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="mb-2">
+                            <label class="col-form-label">From Date</label>
+
+                            <div class="docs-datepicker">
+                                <div class="input-group">
+                                    <input type="text" class="form-control docs-date" name="FromDate" id="FromDate" value="@Model.FromDate.ToShortDateString()"
+                                           placeholder="Pick a From Date" autocomplete="off">
+                                    <button type="button"
+                                            class="btn btn-secondary docs-datepicker-trigger"
+                                            disabled>
+                                        <i class="mdi mdi-calendar" aria-hidden="true"></i>
+                                    </button>
+                                </div>
+                                <div class="docs-datepicker-container"></div>
+                            </div>
+                        </div>
+                    </div>
+                        <div class="col-md-4">
+                            <div class="mb-2">
+                                <label class="col-form-label">To Date</label>
+                                <div class="docs-datepicker">
+                                    <div class="input-group">
+                                        <input type="text" class="form-control docs-date" name="ToDate" id="ToDate" data-date-format="dd/MM/yyyy" data-date-autoclose="true" data-provide="datepicker" value="@Model.ToDate.ToShortDateString()"
+                                               placeholder="Pick a date" autocomplete="off">
+                                        <button type="button" class="btn btn-secondary docs-datepicker-trigger" disabled>
+                                            <i class="mdi mdi-calendar" aria-hidden="true"></i>
+                                        </button>
+                                    </div>
+                                    <div class="docs-datepicker-container"></div>
+                                </div>
+                            </div>
+                        </div>
+                </div>
+                </div>
+                <div class="col-md-4">
+                    <div class="row">
+                        <div class="col-md-4">
+                            <div class="mb-2">
+                                <label class="required col-form-label">Supplier Type</label>
+                                @Html.DropDownListFor(model => model.SupplierTypeId, new SelectList(ViewBag.SupplierType, "SupplierTypeID", "SupplierType1"), new { @class = "form-select" })
+                                @Html.ValidationMessageFor(model => model.SupplierTypeId)
+                            </div>
+                        </div>
+                        <div class="col-md-8">
+                            <div class="mb-2">
+
+                                <div class="flexTitle">
+                                    <label class="col-form-label">Supplier Name</label>
+                                    <div class="checkboxdesign no-padding  text-right" style="float:right">
+                                        @Html.CheckBox("AllocationPending", new { @name = "AllocationPending" }) &nbsp
+                                        <label class="col-form-label" style="color:#07a7e3!important;padding-left: 0!important">Allocation Pending</label>
+                                    </div>
+                                    <input type="text" class="form-select" id="SupplierName" name="SupplierName" value="@Model.SupplierName" placeholder="Select Supplier" />
+                                    <input type="hidden" class="form-select" id="SupplierID" name="SupplierID" value="@Model.SupplierID " />
+
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                        <div class="col-md-1">
+                            <div class="mb-2">
+                                <label for="Receipt No." class="col-form-label">Payment No.</label>
+                                @Html.TextBoxFor(mode => mode.ReceiptNo, new { @class = "form-control text-right ora_border" })
+                            </div>
+                        </div>
+                        <div class=" col-md-2">
+                            <div class="mb-2">
+                                <label for="Receipt No." class="col-form-label">Invoice No.</label>
+                                <div class="input-group gap-3" >
+                                    @Html.TextBoxFor(mode => mode.InvoiceNo, new { @class = "form-control text-right ora_border" })
+                                    <button type="submit" class="btn btn-success waves-effect waves-light filter" >
+                                        <i class="bx bx-search mt-1" style="font-size: 21px;"></i>
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                        
+                    </div>
+            </div>
+    </div>
+    <div class="row">
+        <div class="col-md-4">
+            <div class="card">
+                <div class="card-body">
+                    <table class="table table-responsive mb-0" id="datatable1">
+                        <thead class="table-light">
+                            <tr>
+                                <th>
+                                    Receipt No.
+                                </th>
+                                <th>
+                                    Receipt Date
+                                </th>
+
+
+
+                                <th>Amount</th>
+                                <th>Unallocated</th>
+
+                                <th width="15%"></th>
+                            </tr>
+                        </thead>
+
+                        <tbody>
+                            @foreach (var item in Model.Details)
+                            {
+                                <tr id="trrow_@rowindex">
+                                    <td>
+                                        @{
+                                            if (Model.EntryType == "Payment")
+                                            {
+                                                <a href="/SupplierPayment/Create?id=@item.RecPayID" target="_blank">@item.DocumentNo</a>
+                                            }
+                                            else if (Model.EntryType == "DN")
+                                            {
+                                                <a href="/DebitNote/Create?id=@item.RecPayID" target="_blank">@item.DocumentNo</a>
+                                            }
+                                            else if (Model.EntryType == "OP")
+                                            {
+                                                <a href="/SupplierOpening/Create?id=@item.RecPayID" target="_blank">@item.DocumentNo</a>
+                                            }
+
+                                        }
+                                        
+                                        @*@Html.DisplayFor(modelItem => item.DocumentNo) <br />*@
+                                        @Html.DisplayFor(modelItem => item.PaymentMode)
+                                    </td>
+                                    <td>
+                                        @Net4Courier.Models.CommonFunctions.GetShortDateFormat(item.RecPayDate)
+                                    </td>
+
+
+
+                                    <td style="text-align:right">
+                                        @Net4Courier.Models.CommonFunctions.GetFormatNumber(item.Amount, @_decimal)
+                                    </td>
+                                    <td style="text-align:right">
+                                        @Net4Courier.Models.CommonFunctions.GetFormatNumber(item.UnAllocatedAmount, @_decimal)
+                                        @{
+                                            if (item.DiscountAmount > 0)
+                                            {
+                                                <br /> <span style="color:red">Discount: @Net4Courier.Models.CommonFunctions.GetFormatNumber(item.DiscountAmount, @_decimal)</span>
+                                            }
+                                        }
+                                        @{
+
+                                            if (item.OtherReceipt > 0)
+                                            {
+
+                                                <br />
+
+                                                <span style="color:blue">Other: @Net4Courier.Models.CommonFunctions.GetFormatNumber(item.OtherReceipt, @_decimal)</span>
+                                            }
+
+                                        }
+
+                                    </td>
+                                    <td>
+
+
+                                        <a href="JavaScript:void(0)" onclick="paymentallocation(@rowindex,@item.RecPayID)" title="Click here to see the Allocation" class="text-success"><i class="mdi mdi-receipt font-size-18"></i></a>
+
+
+
+
+                                    </td>
+                                </tr>
+                                rowindex++;
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+            </div>
+        <div class="col-md-8" id="allocationcontainer">
+             
+
+                  
+                </div>
+            </div>
+       
+
+}
+
+
+
+
+
+
+
+ 
+
+@section scripts{
+
+
+    <script src="~/Scripts/JS/ReceiptPaymentAllocation.js"></script>
+    
+
+
+}

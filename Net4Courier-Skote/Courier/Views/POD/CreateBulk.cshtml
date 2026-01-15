@@ -1,0 +1,615 @@
+﻿@model Net4Courier.Models.PODSearch
+@{
+    
+    ViewBag.pTitle = "POD";
+    ViewBag.pageTitle = "PROOF OF DELIVERY";
+    Layout = "~/Views/Shared/_Layout.cshtml";
+    var _alphanum = Session["AWBAlphaNumeric"].ToString();
+}
+
+<style>
+    #details tr {
+        height: 25px;
+    }
+</style>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/jquery-datetimepicker/2.5.20/jquery.datetimepicker.min.css" />
+<script type="text/javascript">
+    $(function () {
+        $('#DRSDate').datetimepicker({ format: 'DD-MM-YYYY HH:mm' });
+    });
+
+</script>
+<script type="text/javascript">
+    var AWBItems = [];
+    var RemoveAWBItems = [];
+    function calculatetotal() {
+        debugger;
+        var maxrow = $('#detailsbody > tr').length;
+        var totalcod = 0;
+        var totalmc = 0;
+        for (i = 0; i < maxrow; i++) {
+            var deleted = $('#hdndeleted_' + i).val();
+            if (deleted == 'False') {
+                debugger;
+                var COD = $('#hdncod_' + i).val();
+                var MCReceived = $('#hdnmc_' + i).val();
+
+                if (COD == '')
+                    COD = 0;
+
+                if (MCReceived == '')
+                    MCReceived = 0;
+
+                totalcod = parseFloat(totalcod) + parseFloat(COD);
+                totalmc = parseFloat(totalmc) + parseFloat(MCReceived);
+
+            }
+            $('#spancodtotal').html(parseFloat(totalcod).toFixed(2));
+            $('#spanmctotal').html(parseFloat(totalmc).toFixed(2));
+
+        }
+    }
+    function deletetrans(obj, i) {
+        if (confirm("Are you sure to delete?")==true)
+        {
+            var awbno = $(obj).attr('awbno');
+            $.ajax({
+                    type: "POST",
+                    url: "/OutScan/DeleteAWBData1",
+                    datatype: "Json",
+                    data: {
+                        id: awbno},
+                    success: function (response) {
+                        if (response.status == "ok") {
+                            debugger;
+                            $.ajax({
+                                type: 'POST',
+                                url: '@Url.Action("ShowPODList", "POD")',
+                                datatype: "html",
+                                success: function (data) {
+                                    $("#listContainer").html(data);
+
+                                    //  $('#loaderpopup').modal('hide')
+                                    $('#btnAdd').removeAttr('disabled');
+                                    $("#txtawb").val('');
+                                    $("#txtawb").focus();
+                                    //$('#TotalAWB').val(max);
+                                }
+                            });
+                        }
+
+                    }
+                });
+            //$(obj).parent().parent().addClass('hide');
+            //var obj1 = $(obj).parent().parent().find('.hdndeleted');
+            //$(obj1).val(true);
+        }
+    }
+    function checkduplicate(awbno) {
+        debugger;
+        var idtext = 'hdnAWbNo_';
+        var maxrow = $('#detailsbody > tr').length;
+        if (maxrow > 0) {
+            var duplicate = false;
+            $('[id^=' + idtext + ']').each(function (index, item) {
+                var deleted = $('#hdndeleted_' + index).val();
+                if (deleted != "true") {
+                    var con = $('#hdnAWbNo_' + index).val();
+                    if (con.trim() == awbno.trim()) {
+                        duplicate = true;
+                        var message = 'Duplicate AWB No.!';
+                        $.notify('Duplicate AWB No.', 'error');
+                        $('#txtawb').val('');
+                        $('#txtawb').focus();
+                        //break;
+                    }
+
+                    if (duplicate == false && index == (parseInt(maxrow - 1))) {
+                        return true;
+                    }
+                }
+            });
+            if (duplicate == true) {
+                return false;
+            }
+        }
+        else {
+
+            return true;
+        }
+    }
+    $(document).ready(function () {
+        AWBItems = [];
+        $(".datetimepicker").each(function () {
+            $(this).datetimepicker({
+                format: 'd-m-y H:i'
+            });
+        });
+         var startdate = '@Session["FyearFrom"].ToString()';
+        var enddate = '@Session["FyearTo"].ToString()';
+        var sd = new Date(startdate.split('-')[1] + '-' + startdate.split('-')[0] + '-' + startdate.split('-')[2]);
+        var ed = new Date(enddate.split('-')[1] + '-' + enddate.split('-')[0] + '-' + enddate.split('-')[2]);
+
+
+            //$('#FromDate').datetimepicker({
+            //    maxDate: ed,
+            //    minDate: sd,
+            //    format: 'DD-MM-YYYY',
+            //});
+
+            //$('#ToDate').datetimepicker({
+            //    maxDate: ed,
+            //    minDate: sd,
+            //    format: 'DD-MM-YYYY',
+            //});
+
+        //$('#DeliveredDate').datetimepicker({
+        //    maxDate: ed,
+        //    minDate: sd,
+        //    format: 'DD-MM-YYYY hh:mm',
+        //});
+
+        $("#txtawb").change(function () {
+          if ('@_alphanum'== 'True') {
+                var txt = $('#txtawb').val().trim();
+                $('#txtawb').val(txt.replace(/[^\d,]/g, ''));
+            }
+
+            //$('#btAdd').attr('disabled', 'disabled');
+            $('#btnAdd').trigger('click');
+        });
+
+
+        $("#DRSNo").autocomplete({
+            source: function (request, response) {
+                $.ajax({
+                    url: '/POD/GetDRSNo',
+                    datatype: "json",
+                    data: {
+                        term: request.term, DeliveredBy: $('#DeliveredBy').val(), FromDate: $("#FromDate").val(), ToDate: $("#ToDate").val()
+                    },
+                    success: function (data) {
+                        response($.map(data, function (val, item) {
+                            return {
+                                label: val.DRSNo,
+                                value: val.DRSID,
+                                DRSDate: val.DRSDate
+
+                            }
+                        }))
+                    }
+                })
+            },
+            minLength: 0,
+            autoFocus: false,
+            focus: function (e, i) {
+                e.preventDefault();
+                $("#DRSNo").val(i.item.label);
+                $('#DRSID').val(i.item.value);
+                $('#DRSID').attr('label', i.item.label);
+                var myDate = new Date(i.item.DRSDate.match(/\d+/)[0] * 1);
+                var cmon = myDate.getMonth() + 1;
+                var collectdate = myDate.getDate() + "-" + cmon + "-" + myDate.getFullYear();
+                $('#OutScanDate').val(collectdate);
+                $('#DeliveredDate').val(collectdate);
+                //$('#DRSAmount').val(i.item.TotalAmount);
+            },
+            select: function (e, i) {
+                e.preventDefault();
+                $("#DRSNo").val(i.item.label);
+                $('#DRSID').val(i.item.value);
+                $('#DRSID').attr('label', i.item.label);
+                var myDate = new Date(i.item.DRSDate.match(/\d+/)[0] * 1);
+                var cmon = myDate.getMonth() + 1;
+                var collectdate = myDate.getDate() + "-" + cmon + "-" + myDate.getFullYear();// + ' ' + myDate.getHours() + ':' + myDate.getMinutes();
+                $('#OutScanDate').val(collectdate);
+                $('#DeliveredDate').val(collectdate);
+
+                ////$('#DeliveredBy').val(i.item.CheckedBy);
+                //$('#DRSAmount').val(i.item.TotalAmount);
+
+            },
+
+        });
+
+        $("#AWBNo").autocomplete({
+            source: function (request, response) {
+                $.ajax({
+                    url: '/POD/GetAWBNo',
+                    datatype: "json",
+                    data: {
+                        term: request.term,DeliveredBy: $('#DeliveredBy').val(), FromDate: $("#FromDate").val(), ToDate: $("#ToDate").val(), DRSID:$('#DRSID').val()
+                    },
+                    success: function (data) {
+                        response($.map(data, function (val, item) {
+                            return {
+                                label: val.HAWBNo,
+                                value: val.InScanID
+
+                            }
+                        }))
+                    }
+                })
+            },
+            minLength: 0,
+            autoFocus: false,
+            focus: function (e, i) {
+                $("#AWBNo").val(i.item.label);
+                $('#InScanID').val(i.item.value);
+
+                //var myDate = new Date(i.item.DRSDate.match(/\d+/)[0] * 1);
+                //var cmon = myDate.getMonth() + 1;
+                //var collectdate = myDate.getDate() + "-" + cmon + "-" + myDate.getFullYear();
+                //$('#DRSDate').val(collectdate);
+                ////$('#DeliveredBy').val(i.item.CheckedBy);
+                //$('#DRSAmount').val(i.item.TotalAmount);
+            },
+            select: function (e, i) {
+                e.preventDefault();
+                $("#AWBNo").val(i.item.label);
+                $('#InScanID').val(i.item.value);
+                //$('#DRSID').attr('label', i.item.label);
+                //var myDate = new Date(i.item.DRSDate.match(/\d+/)[0] * 1);
+                //var cmon = myDate.getMonth() + 1;
+                //var collectdate = myDate.getDate() + "-" + cmon + "-" + myDate.getFullYear();// + ' ' + myDate.getHours() + ':' + myDate.getMinutes();
+                //$('#DRSDate').val(collectdate);
+
+                ////$('#DeliveredBy').val(i.item.CheckedBy);
+                //$('#DRSAmount').val(i.item.TotalAmount);
+
+            },
+
+        });
+
+        $("#btnAdd").click(function () {
+            debugger;
+            var del = $("#DeliveredBy option:selected").val();
+            if ($("#AWBNo").val().trim() == '' && $('#DRSNo').val().trim()=='') {
+                $('#btnAdd').removeAttr('disabled');
+
+                Swal.fire("Data Validation!", "Select DRS NO. or AWB No.!", "error");
+                return false;
+            }
+             else if ($("#AWBNo").val().trim()!='' && checkduplicate($('#AWBNo').val().trim()) == false) {
+                $('#btnAdd').removeAttr('disabled');
+                //$.notify("Duplicate AWB No. not allowed!");
+                Swal.fire("Data Validation!", "Duplicate AWB No. not allowed!", "error");
+                return false;
+            }
+            else if (del == '')
+            {
+
+                Swal.fire("Data Validation!", "Select Delivered By!", "error");
+                $("#DeliveredBy").focus();
+                return false;
+            }
+            else {
+                $('#btAdd').attr('disabled', 'disabled');
+            }
+            var DRSID = 0;
+            if ($('#DRSID').val() != '')
+                DRSID = $('#DRSID').val();
+            if ($("#AWBNo").val().trim() != '' || DRSID!='') {
+
+                var AWBNo = $("#AWBNo").val();
+
+
+
+                $.ajax({
+                    type: "POST",
+                    url: "/POD/GetAWBData1",
+                    datatype: "Json",
+                    data: {
+                        AWBNo: AWBNo,DRSID: DRSID, DeliveredBy: $('#DeliveredBy').val() },
+                    success: function (response) {
+                        if (response.status == "ok") {
+                            debugger;
+                            $.ajax({
+                                type: 'POST',
+                                url: '@Url.Action("ShowPODList", "POD")',
+                                datatype: "html",
+                                success: function (data) {
+                                    $("#listContainer").html(data);
+
+                                    //  $('#loaderpopup').modal('hide')
+                                    $('#btnAdd').removeAttr('disabled');
+                                    $("#txtawb").val('');
+                                    $("#txtawb").focus();
+                                    //$('#TotalAWB').val(max);
+                                }
+                            });
+
+                            //var data = response.data;
+                            //AWBItems = [];
+                            //AWBItems.push(data);
+                            ////$("#detailsbody").html('');
+                            //$.each(AWBItems, function (index, item) {
+
+                            //    var i = $('#detailsbody > tr').length +1;
+                            //    // $('#details tr').length - 1;
+                            //    var datahtml = '<input type="hidden" class="hdndeleted" id="hdndeleted_' + i + '"  value="false" name="lst[' + i + '].deleted" /><input type="hidden" id="hdnShipmentDetailID_' + i + '"  value="' + item.ShipmentDetailID + '" name="lst[' + i + '].ShipmentDetailID" />';
+                            //    $("#detailsbody").append('<tr>' + '<td>' + i + '</td><td>' + datahtml + item.AWB + '<input type="hidden" id="hdnAWbNo_' + i + '" value=' + item.AWB + ' name="lst[' + i + '].AWB"><input type="hidden" value=' + item.InScanID + ' name="lst[' + i + '].InScanID"></td><td>' + item.consignor + '<input type = "hidden" value=' + item.consignor + ' name = "lst[' + i + '].consignor"></td><td>' + item.consignee + '<input type="hidden" value=' + item.consignee + ' name="lst[' + i + '].Consignee"></td>' + '<td>' + item.city + '<input type="hidden" value=' + item.city + ' name="lst[' + i + '].City"></td>'
+                            //        + '<td>' + item.phone + '<input type="hidden" value=' + item.phone + ' name="lst[' + i + '].Phone"></td>'
+                            //        + '<td>' + item.address + '<input type="hidden" value=' + item.address + ' name="lst[' + i + '].Address"></td>'
+                            //        + '<td>' + item.COD + '<input type="hidden" value=' + item.COD + ' name="lst[' + i + '].COD"></td>'
+                            //        + '<td>' + item.MaterialCost+ '<input type="hidden" value=' + item.MaterialCost + ' name="lst[' + i + '].MaterialCost"></td>'
+                            //        + '<td><a awbno="' + item.AWB + '" href="javascript:void(0);" onclick="deletetrans(this,' + i + ')" class="rem">Remove</a></td></tr>');
+
+                            //});
+
+
+                        }
+                        else {
+                            $('#btnAdd').removeAttr('disabled');
+                            $("#txtawb").val('');
+                            $("#txtawb").focus();
+                            alert(response.message);
+                        }
+                        //if (data.AWB) {
+
+                        //    var i = $('#details tr').length - 1;
+                        //    $("#details").append('<tr>' + '<td>' + data.AWB + '<input type="hidden" value=' + data.AWB + ' name="lst[' + i + '].AWB"><input type="hidden" value=' + data.InScanID + ' name="lst[' + i + '].InScanID"></td>' + '<td>' + data.consignee + '<input type="hidden" value=' + data.consignee + ' name="lst[' + i + '].Consignee"></td>' + '<td>' + data.city + '<input type="hidden" value=' + data.city + ' name="lst[' + i + '].City"></td>'
+                        //        + '<td>' + data.phone + '<input type="hidden" value=' + data.phone + ' name="lst[' + i + '].Phone"></td>'
+                        //        + '<td>' + data.address + '<input type="hidden" value=' + data.address + ' name="lst[' + i + '].Address"></td>'
+                        //        + '<td>' + data.COD + '<input type="hidden" value=' + data.COD + ' name="lst[' + i + '].COD"></td><td><a awbno="' + data.AWB + '" href="javascript:void(0);" class="rem">Remove</a></td></tr>');
+
+                        //}
+
+
+                    }
+                });
+                return false;
+            }
+
+        });
+
+        $('#DRSNo').keydown(function (e) {
+
+            if (e.keyCode == 13 || e.keyCode == 9) {
+                $('#btnAdd').focus();
+            }
+
+        })
+
+        $("#btnsave").click(function () {
+            debugger;
+            var drs = $("#DeliveredDate").val();
+            var del = $("#DeliveredBy option:selected").val();
+
+            var check = $("#CheckedBy option:selected").val();
+            var maxrow = $('#detailsbody > tr').length;
+
+            if (drs == "") {
+                $("#validations").show();
+                $("#DeliveredDate").focus();
+                return false;
+            }
+            else if (del == "") {
+                $("#validations").show();
+                $("#DeliveredBy").focus();
+                return false;
+            }
+
+
+           else if (maxrow == 0) {
+                $.notify('Add POD AWB Items to Save!');
+                return false;
+            }
+            //else if (AWBItems.length == 0)
+            //{
+            //    $("#validations").hide();
+            //    alert('Add OutScanning AWB Items save!');
+            //    return false;
+            //}
+            else {
+                $("#validations").hide();
+                return true;
+            }
+        });
+        document.addEventListener('keydown', function (event) {
+            if (event.code == 'KeyS' && (event.altKey)) { //ADD AWB
+                $('#btnsave').trigger('click');
+            }
+        });
+        function DisplayAWBItems() {
+            $.ajax({
+                type: "POST",
+                url: "/OutScan/GetDRSDetails",
+                datatype: "Json",
+                data: { id: $("#DRSID").val() },
+                success: function (data) {
+                    debugger;
+
+                    $.each(data, function (index, value) {
+                        AWBItems.push(value);
+                        var i = $('#details tr').length - 1;
+                        if (value.ShipmentDetailID == null)
+                            value.ShipmentDetailID = 0;
+                        var  awbitem='<input type="hidden" class="hdndeleted" id="hdndeleted_' + index + '"  value="false" name="lst[' + index + '].deleted" /><input type="hidden" id="hdnShipmentDetailID_' + index + '"  value="' + value.ShipmentDetailID + '" name="lst[' + index + '].ShipmentDetailID" />';
+                        $("#details").append('<tr>' + '<td>' + (parseInt(index) + parseInt(1)) + '</td><td>' + awbitem + value.AWB + '<input type="hidden" id="hdnAWbNo_' + index + '" value=' + value.AWB + ' name="lst[' + i + '].AWB"><input type="hidden" value=' + value.InScanID + ' name="lst[' + i + '].InScanID"></td>' + '<td>' + value.consignor + '<input type="hidden" value=' + value.consignor + ' name="lst[' + i + '].consignor"></td><td>' + value.consignee + '<input type="hidden" value=' + value.consignee + ' name="lst[' + i + '].Consignee"></td>' + '<td>' + value.city + '<input type="hidden" value=' + value.city + ' name="lst[' + i + '].City"></td>'
+                            + '<td>' + value.phone + '<input type="hidden" value=' + value.phone + ' name="lst[' + i + '].Phone"></td>'
+                            + '<td>' + value.address + '<input type="hidden" value=' + value.address + ' name="lst[' + i + '].Address"></td>'
+                            + '<td>' + value.COD + '<input type="hidden" value=' + value.COD + ' name="lst[' + i + '].COD"></td><td>' + value.MaterialCost + '<input type = "hidden" value = ' + value.MaterialCost + ' name = "lst[' + i + '].MaterialCost" ></td ><td><a awbno="' + value.AWB + '" href="javascript:void(0);" onclick="deletetrans(this,' + i + ')" class="rem">Remove</a></td></tr>');
+                    });
+
+                }
+
+            });
+        }
+
+        $('#DeliveredBy').focus();
+
+    });
+</script>
+
+@if (TempData["SuccessMsg"] != null)
+{
+    <script type="text/javascript">
+                  $(document).ready(function () {
+                      $.notify("@TempData["SuccessMsg"]", "success");
+                 });
+    </script>
+}
+@if (TempData["ErrorMsg"] != null)
+{
+    <script type="text/javascript">
+                  $(document).ready(function () {
+                      $.notify("@TempData["ErrorMsg"]", "error");
+                 });
+    </script>
+}
+
+@using (Html.BeginForm())
+{
+    @Html.ValidationSummary(true)
+    <div id="validations" style="color:red;margin-left:7px;display:none">* Please fill mandatory fields</div>
+    
+
+ 
+                <div class="card">
+                    <div class="card-body">
+                        <div class="row">
+                            @* <div class="col-md-6">
+                                    <label class="col-form-label required">From Date</label>
+                                    @Html.TextBoxFor(model => model.FromDate, new { @class = "form-control text-right" })
+                                </div>
+                                <div class="col-md-6">
+                                    <label class="col-form-label required">To Date</label>
+                                    @Html.TextBoxFor(model => model.ToDate, new { @class = "form-control text-right" })
+                                </div> *@
+                            <div class="col-md-12 text-right mt-2 mb-3">
+                                <input type="submit" value="Save" class="btn btn-success btnwidth" id="btnsave" />
+
+
+                                @*     <input type="submit" value="Save&Print" class="btn btn-primary btnwidth" data-toggle="tooltip" title="Click here" style="margin-left:5px;"  />*@
+
+                                <a href='@Url.Action("Index", "POD", new { id = 0 })' class="btn btn-secondary btnwidth" data-toggle="tooltip" data-placement="right" title="Click here" style="margin-left:5px;">Cancel</a>
+
+                            </div>
+                            <div class="col-md-3">
+                                <div class="row">
+                                    <div class="col-md-6">
+                                        <div class="mb-2">
+                                            <label class="col-form-label">From Date</label>
+                                            <div class="docs-datepicker">
+                                                <div class="input-group">
+                                                    <input type="text" class="form-control docs-date" name="FromDate" id="FromDate" data-date-format="dd/MM/yyyy" data-date-autoclose="true" data-provide="datepicker" value="@Model.FromDate.ToShortDateString()"
+                                                           placeholder="Pick a date" autocomplete="off">
+                                                    <button type="button" class="btn btn-secondary docs-datepicker-trigger" disabled>
+                                                        <i class="mdi mdi-calendar" aria-hidden="true"></i>
+                                                    </button>
+                                                </div>
+                                                <div class="docs-datepicker-container"></div>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <div class="col-md-6">
+                                        <div class="mb-2">
+                                            <label class="col-form-label">To Date</label>
+                                            <div class="docs-datepicker">
+                                                <div class="input-group">
+                                                    <input type="text" class="form-control docs-date" name="ToDate" id="ToDate" data-date-format="dd/MM/yyyy" data-date-autoclose="true" data-provide="datepicker" value="@Model.ToDate.ToShortDateString()"
+                                                           placeholder="Pick a date" autocomplete="off">
+                                                    <button type="button" class="btn btn-secondary docs-datepicker-trigger" disabled>
+                                                        <i class="mdi mdi-calendar" aria-hidden="true"></i>
+                                                    </button>
+                                                </div>
+                                                <div class="docs-datepicker-container"></div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                            </div>
+                            <div class="col-md-3">
+                                <div class="row">
+                                    <div class="col-md-6">
+                                        <label class="col-form-label required">Delivered By</label>
+                                        @Html.DropDownListFor(model => model.DeliveredBy, new SelectList(ViewBag.Deliverdby, "EmployeeID", "EmployeeName"), "Select", new { @class = "form-select" })
+                                    </div>
+
+                                    <div class="col-md-6">
+                                        <label class="col-form-label required">DRS No.</label>
+                                        @Html.HiddenFor(model => model.DRSID)
+                                        @Html.TextBoxFor(model => model.DRSNo, new { @class = "form-control" })
+                                        @Html.ValidationMessageFor(model => model.DRSNo)
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="col-md-2">
+                                <div class="mb-2">
+                                    <label class="col-form-label">DRS Date</label>
+                                    <div class="docs-datepicker">
+                                        <div class="input-group">
+                                            <input type="text" class="form-control docs-date" name="OutScanDate" id="OutScanDate" data-date-format="dd/MM/yyyy" data-date-autoclose="true" data-provide="datepicker" value="@Model.OutScanDate.ToShortDateString()"
+                                                   placeholder="Pick a date" autocomplete="off">
+                                            <button type="button" class="btn btn-secondary docs-datepicker-trigger" disabled>
+                                                <i class="mdi mdi-calendar" aria-hidden="true"></i>
+                                            </button>
+                                        </div>
+                                        <div class="docs-datepicker-container"></div>
+                                    </div>
+                                </div>
+                            </div>
+                            @* <div class="col-md-2">
+                                    <label class="col-form-label required">DRS Date</label>
+                                    @Html.TextBoxFor(model => model.OutScanDate, new { @class = "form-control text-right",@readonly="readonly" })
+                                </div>*@
+                            <div class="col-md-2">
+                                <div class="row">
+                                    <div class="col-md-10">
+                                        <label class="col-form-label required">AWB No.</label>
+                                        @Html.HiddenFor(model => model.InScanID)
+                                        @Html.TextBoxFor(model => model.AWBNo, new { @class = "form-control" })
+                                    </div>
+
+                                    <div class="col-md-2 ps-0 btn_top">
+                                        <button type="button" class="btn btn-success small_btn mt-2" id="btnAdd"><i class="fa fa-plus" aria-hidden="true"></i></button>
+                                    </div>
+                                </div>
+                            </div>
+                            @* <div class="col-md-2">
+                                    <label class="col-form-label required">Delivery Date</label>
+                                    @Html.TextBoxFor(model => model.DeliveredDate, new { @class = "form-control text-right" })
+                                </div> *@
+                            <div class="col-md-2">
+                                <div class="mb-2">
+                                    <label class="col-form-label">Delivery Date</label>
+                                    <div class="docs-datepicker">
+                                        <div class="input-group">
+                                            <input type="text" class="form-control docs-date datetimepicker" name="DeliveredDate" id="DeliveredDate" data-date-format="dd/MM/yyyy" data-date-autoclose="true" data-provide="datepicker" value="@Model.DeliveredDate.ToShortDateString()"
+                                                   placeholder="Pick a date" autocomplete="off">
+                                            <button type="button" class="btn btn-secondary docs-datepicker-trigger" disabled>
+                                                <i class="mdi mdi-calendar" aria-hidden="true"></i>
+                                            </button>
+                                        </div>
+                                        <div class="docs-datepicker-container"></div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+       
+
+ 
+                <div class="card">
+                    <div class="card-body" id="listContainer">
+                        @{Html.RenderPartial("ItemList", Model);}
+
+
+                    </div>
+                </div>
+          
+         
+     
+}
+
+@section scripts{
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery-datetimepicker/2.5.20/jquery.datetimepicker.full.min.js"></script>
+
+
+}
+

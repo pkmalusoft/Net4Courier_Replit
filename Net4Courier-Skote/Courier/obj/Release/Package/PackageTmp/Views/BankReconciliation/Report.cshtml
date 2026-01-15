@@ -1,0 +1,173 @@
+﻿@model Net4Courier.Models.AccountsReportParam
+@{
+    ViewBag.Title = "Report";
+    ViewBag.pTitle = "Bank Reconciliation";
+    ViewBag.pageTitle = "General Ledger";
+    Layout = "~/Views/Shared/_Layout.cshtml";
+}
+ 
+<script type="text/javascript">
+    function showreport(file) {
+        $('#iframe1').attr('src', file);
+    }
+    $(document).ready(function () {
+        
+        
+        $("#AcHeadName").autocomplete({
+            source: function (request, response) {
+                $.ajax({
+                    url: '/Accounts/AccountHead',
+                    datatype: "json",
+                    data: {
+                        term: request.term
+                    },
+                    success: function (data) {
+                        response($.map(data, function (val, item) {
+                            return {
+                                label: val.AcHead,
+                                value: val.AcHeadID,
+                                AcHeadID: val.AcHeadID
+                            }
+                        }))
+                    }
+                })
+            }, minLength: 1,
+            autoFocus: false,
+            focus: function (e, ui) {
+                e.preventDefault();
+                $("#AcHeadName").val(ui.item.label);
+                $('#AcHeadId').val(ui.item.value);
+            },
+            select: function (e, i) {
+                e.preventDefault();
+                $("#AcHeadName").val(i.item.label);
+                $('#AcHeadId').val(i.item.value);
+            }
+        });
+
+        $('#btnreport').click(function () {
+            $.ajax({
+                url: '/Accounts/AccountHead',
+                datatype: "json",
+                data: {
+                    term: $("#AcHeadName").val()
+                },
+                success: function (data) {
+                    response($.map(data, function (val, item) {
+                        return {
+                            label: val.AcHead,
+                            value: val.AcHeadID,
+                            AcHeadID: val.AcHeadID
+                        }
+                    }))
+                }
+            })
+        })
+
+        //setTimeout(function () {
+        //    var fromdate = $('#FromDate').attr('fromdate');
+        //    var sd1 = fromdate.split('/')[1] + '-' + fromdate.split('/')[0] + '-' + fromdate.split('/')[2];
+        //    $('#FromDate').val(sd1).trigger('change');
+        //}, 100)
+
+        //setTimeout(function () {
+        //    var todate = $('#ToDate').attr('todate');
+        //    var ed1 = todate.split('/')[1] + '-' + todate.split('/')[0] + '-' + todate.split('/')[2];
+        //    $('#ToDate').val(ed1).trigger('change');
+        //}, 100);
+
+    });
+</script>
+
+ 
+@using (Html.BeginForm("Report", "BankReconciliation", FormMethod.Post, new { @id = "ledger" }))
+{
+    @Html.AntiForgeryToken()
+
+    @Html.ValidationSummary(true, "", new { @class = "text-danger" })
+    <div class="card">
+        <div class="card-body">
+<div class="row no-margin">
+    <div class="col-md-3 report_pad">
+        <div class="row">
+            <div class="col-md-12">
+                <div class="mb-2">
+                <label class="col-form-label required ">As on Date</label>
+                <div class="input-group">
+                    <input type="text" class="form-control docs-date" name="ToDate" id="ToDate" value="@Model.ToDate.ToShortDateString()"
+                           placeholder="Pick a Date" autocomplete="off">
+                    <button type="button"
+                            class="btn btn-secondary docs-datepicker-trigger"
+                            disabled>
+                        <i class="mdi mdi-calendar" aria-hidden="true"></i>
+                    </button>
+                </div>
+                <div class="docs-datepicker-container"></div>
+            </div>
+            </div>
+           
+        </div>
+        <div class="row">
+            <div class="col-md-12">
+                <div class="mb-2">
+                    <div id="divachead">
+                        <div class="flexTitle">
+                            <label class="col-form-label required">Chart of Accounts</label>
+                            <div class="checkboxdesign no-padding  text-right" style="float:right">
+                                @Html.CheckBoxFor(model => model.CurrentPeriod, new { @name = "CurrentPeriod", }) &nbsp
+                                <label class="col-form-label" style="color:#07a7e3!important;padding-left: 0!important">Current Period</label>
+                            </div>
+                        </div>
+                        @Html.DropDownListFor(model => model.AcHeadId, new SelectList(ViewBag.BankList, "AcHeadID", "Achead"), "Select", new { @class = "form-control",@required="true" })
+                        
+                    </div>
+            </div>
+            </div>
+            <div class="col-md-12">
+                <div class="mb-2">
+                    <label class="col-form-label">Balance as per Bank Statement </label>
+                    @Html.TextBoxFor(model => model.BankAmount, new { @name = "BankAmount",@class="form-control" })
+                </div>
+            </div>
+            <div class="col-md-9">
+                 <div class="mb-2">
+                <label class="col-form-label  required">Output</label>
+                @Html.DropDownList("Output", new List<SelectListItem>
+                {
+                    new SelectListItem{ Text="PDF", Value = "PDF" },
+                    new SelectListItem{ Text="EXCEL", Value = "EXCEL" },
+                    new SelectListItem{ Text="WORD", Value = "WORD" },
+
+                 }, "Select", new { @class = "form-select", @value = "PDF", @required = "true" })
+            </div>
+              </div>
+        <div class="col-md-3">
+                            <div class="mb-2 mt-2 text-md-end">
+                                <button type="submit" class="btn btn-success waves-effect waves-light filter btn_top reload" id="btnreport">
+                                    <i class="bx bx-revision mt-1" style="font-size: 21px;"></i>
+                                </button>
+                            </div>
+                        </div>
+        </div>
+        @*<hr />
+        <div class="row">
+            <h5>Report Log</h5>
+            <ul>
+                @foreach(var item in Model.ReportLogs)
+                {
+                    <li class="waves-effect" onclick="showreport('@item.ReportPath')">@item.ReportDescription</li>
+                }
+            </ul>
+
+        </div>*@
+    </div>
+
+    <div class="col-md-9">
+        @{ Html.RenderAction("ReportFrame", "Accounts");}
+        @*<iframe src=@ViewBag.ReportOutput width="100%" height="600px"></iframe>*@
+    </div></div></div>
+
+</div>
+
+}
+

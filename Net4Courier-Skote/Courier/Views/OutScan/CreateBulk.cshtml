@@ -1,0 +1,563 @@
+﻿@model Net4Courier.Models.DRSVM
+@{
+    ViewBag.pTitle = "OutScan";
+    ViewBag.pageTitle = "Outbound";
+    Layout = "~/Views/Shared/_Layout.cshtml";
+    var _alphanum = Session["AWBAlphaNumeric"].ToString();
+}
+
+<style>
+    #details tr {
+        height: 25px;
+    }
+</style>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/jquery-datetimepicker/2.5.20/jquery.datetimepicker.min.css" />
+@*<script type="text/javascript">
+        $(function () {
+            $('#DRSDate').datetimepicker({ format: 'DD-MM-YYYY HH:mm' });
+        });
+
+    </script>*@
+<script type="text/javascript">
+    var AWBItems = [];
+    var RemoveAWBItems = [];
+    function calculatetotal() {
+        debugger;
+        var maxrow = $('#detailsbody > tr').length;
+        var totalcod = 0;
+        var totalmc = 0;
+        for (i = 0; i < maxrow; i++) {
+            var deleted = $('#hdndeleted_' + i).val();
+            if (deleted == 'False') {
+                debugger;
+                var COD = $('#hdncod_' + i).val();
+                var MCReceived = $('#hdnmc_' + i).val();
+
+                if (COD == '')
+                    COD = 0;
+
+                if (MCReceived == '')
+                    MCReceived = 0;
+
+                totalcod = parseFloat(totalcod) + parseFloat(COD);
+                totalmc = parseFloat(totalmc) + parseFloat(MCReceived);
+
+            }
+            $('#spancodtotal').html(parseFloat(totalcod).toFixed(2));
+            $('#spanmctotal').html(parseFloat(totalmc).toFixed(2));
+
+        }
+    }
+    function deletetrans(obj, i) {
+        if (confirm("Are you sure to delete?")==true)
+        {
+            var awbno = $(obj).attr('awbno');
+            $.ajax({
+                    type: "POST",
+                    url: "/OutScan/DeleteAWBData1",
+                    datatype: "Json",
+                    data: {
+                        id: awbno},
+                    success: function (response) {
+                        if (response.status == "ok") {
+                            debugger;
+                            $.ajax({
+                                type: 'POST',
+                                url: '@Url.Action("ShowOutScanList", "OutScan")',
+                                datatype: "html",
+                                success: function (data) {
+                                    $("#listContainer").html(data);
+
+                                    //  $('#loaderpopup').modal('hide')
+                                    $('#btnAdd').removeAttr('disabled');
+                                    $("#txtawb").val('');
+                                    $("#txtawb").focus();
+                                    //$('#TotalAWB').val(max);
+                                }
+                            });
+                        }
+
+                    }
+                });
+            //$(obj).parent().parent().addClass('hide');
+            //var obj1 = $(obj).parent().parent().find('.hdndeleted');
+            //$(obj1).val(true);
+        }
+    }
+    function checkduplicate(awbno) {
+        debugger;
+        var idtext = 'hdnAWbNo_';
+        var maxrow = $('#detailsbody > tr').length;
+        if (maxrow > 0) {
+            var duplicate = false;
+            $('[id^=' + idtext + ']').each(function (index, item) {
+                var deleted = $('#hdndeleted_' + index).val();
+                if (deleted != "true") {
+                    var con = $('#hdnAWbNo_' + index).val();
+                    if (con.trim() == awbno.trim()) {
+                        duplicate = true;
+                        var message = 'Duplicate AWB No.!';
+                        //$.notify('Duplicate AWB No.', 'error');
+                        $('#validations').html('Duplicate AWB No.');
+                        //Swal.fire("Data Validation!", 'Duplicate AWB No.', "error");
+                        $('#txtawb').val('');
+                        $('#txtawb').focus();
+                        //break;
+                    }
+
+                    if (duplicate == false && index == (parseInt(maxrow - 1))) {
+                        $('#validations').html('');
+                        return true;
+                    }
+                }
+            });
+            if (duplicate == true) {
+                return false;
+            }
+        }
+        else {
+
+            return true;
+        }
+    }
+    function addawb(awbid) {
+             $.ajax({
+                    type: "POST",
+                    url: "/OutScan/GetAWBData1",
+                    datatype: "Json",
+                    async:true,
+                    data: {
+                        id: awbid, DeliveredBy: $('#DeliveredBy').val() },
+                    success: function (response) {
+                        if (response.status == "ok") {
+
+                            $.ajax({
+                                type: 'POST',
+                                url: '@Url.Action("ShowOutScanList", "OutScan")',
+                                datatype: "html",
+                                success: function (data) {
+                                    $("#listContainer").html(data);
+                                }
+                            });
+                        }
+                        else {
+                            $("#validations").show();
+                            $('#validations').html(awbid + ' ' + response.message);                           
+                           
+                        }
+
+
+                    }
+                });
+
+    }
+    $(document).ready(function () {
+        AWBItems = [];
+        $(":text").css({ "border-radius": "5px" });
+        $("select").css({ "border-radius": "5px" });
+    var startdate = '@Session["FyearFrom"].ToString()';
+        var enddate = '@Session["FyearTo"].ToString()';
+        var sd = new Date(startdate.split('-')[1] + '-' + startdate.split('-')[0] + '-' + startdate.split('-')[2]);
+        var ed = new Date(enddate.split('-')[1] + '-' + enddate.split('-')[0] + '-' + enddate.split('-')[2]);
+
+
+        $("#txtawb").change(function () {
+          if ('@_alphanum'== 'True') {
+                var txt = $('#txtawb').val().trim();
+                $('#txtawb').val(txt.replace(/[^\d,]/g, ''));
+            }
+
+           // $('#btAdd').attr('disabled', 'disabled');
+            $('#btnAdd').trigger('click');
+        });
+
+        $('#Pending').change(function () {
+            if ($('#Pending').prop('checked') == true) {
+                $('#Delivered').prop('checked', false);
+            }
+
+        })
+
+        $('#Delivered').change(function () {
+            if ($('#Delivered').prop('checked') == true) {
+                $('#Pending').prop('checked', false);
+            }
+
+        })
+
+        @*$("#txtawb").blur(function () {
+            if ($('#txtawb').val() != '') {
+                if ('@_alphanum' == 'True') {
+                    var txt = $('#txtawb').val().trim();
+                    $('#txtawb').val(txt.replace(/[^\d,]/g, ''));
+                }
+
+                $('#btAdd').attr('disabled', 'disabled');
+                $('#btnAdd').trigger('click');
+            }
+        });*@
+
+        $("#txtawb").keydown(function (e) {
+            debugger;
+            if (e.keycode==13) {
+                $('#btnAdd').trigger('click');
+            }
+
+        });
+
+     $(document).on("change", "#importFile", function () {
+        var files = $("#importFile").get(0).files;
+
+        var formData = new FormData();
+        formData.append('importFile', files[0]);
+         formData.append('DeliveredBy', $('#DeliveredBy').val());
+         var del = $("#DeliveredBy option:selected").val();
+         if (del == '') {
+             //$.notify('Select Delivered By!');
+             //Swal.fire("Data Validation!", 'Select Delivery By', "error");
+             $('#validations').html('Select Delivered By!');
+             $("#DeliveredBy").focus();
+             return false;
+         }
+        if (files.length > 0) {
+            $('#btnUpload').attr('disabled', 'disabled');
+            $.ajax({
+                url: '/OutScan/ImportFile',
+                data: formData,
+                type: 'POST',
+                contentType: false,
+                processData: false,
+                success: function (response) {
+                    if (response.Status === 1) {
+                        var data = response.data;
+                        var max =data.length;
+                        $('#loaderpopup').modal('show');
+                        $.ajax({
+                              type: 'POST',
+                              url: '@Url.Action("ShowOutScanList", "OutScan")',
+                              datatype: "html",
+                            success: function (data) {
+                            $("#listContainer").html(data);
+                                //var max = $('#detailsbody > tr').length;
+
+                              //  $('#loaderpopup').modal('hide')
+                                $('#btnUpload').removeAttr('disabled');
+                                    //$('#TotalAWB').val(max);
+
+                                if (max == 0) {
+                                    Swal.fire("Data Validation!", 'Upload AWB are not valid!', "error");
+
+                                }
+                                else {
+                                    Swal.fire("Data Validation!", "AWB added for Outscan, AWB Count: " + max.toString(), "success");
+
+                                }
+                            }
+                      });
+
+                    } else {
+                        $('#loaderpopup').modal('hide')
+                        $('#btnUpload').removeAttr('disabled');
+
+                        Swal.fire("Data Validation!",response.message, "error");
+                    }
+                },
+                error: function (err) {
+                    $('#loaderpopup').modal('hide')
+                    console.log(err);
+                }
+
+            });
+        }
+        else {
+            $('#btnUpload').removeAttr('disabled');
+        }
+    });
+
+    $(document).on("click", "#btnUpload", function () {
+
+
+        $('#importFile').trigger('click');
+    });
+
+        $('#DeliveredBy').change(function () {
+            if ($('#DeliveredBy').val() != '') {
+                $.ajax({
+                    type: "GET",
+                    url: "/InScan/GetVehicle",
+                    datatype: "Json",
+                    data: { EmployeeId: $('#DeliveredBy').val() },
+                    success: function (response) {
+                        debugger;
+                        if (response.VehicleId != 0) {
+                            $('#VehicleID').val(response.VehicleId).trigger('change');
+                        } else {
+                            $('#VehicleID').val('').trigger('change');
+                        }
+                    }
+                });
+            }
+        })
+        $("#btnAdd").click(function () {
+            debugger;
+            var del = $("#DeliveredBy option:selected").val();
+            if ($("#txtawb").val().trim() == '') {
+                $('#btnAdd').removeAttr('disabled');
+                return false;
+            }
+            else if (checkduplicate($('#txtawb').val()) == false) {
+                $('#btnAdd').removeAttr('disabled');
+                return false;
+            }
+            else if (del == '')
+            {
+              //  Swal.fire("Data Validation!", 'Select Delivered By!', "error");
+                $("#validations").show();
+                $('#validations').html('Select Delivered By!');
+                //Swal.fire({
+                //    //  position: "top-right",
+                //    icon: "error",
+                //    title: 'Select Delivered By!',
+                //    showConfirmButton: false,
+                //    timer: 500
+                //});
+                $("#DeliveredBy").focus();
+                return false;
+            }
+            else {
+                $('#btAdd').attr('disabled', 'disabled');
+            }
+            if (($("#detailsbody").html().indexOf('No data available in table')) >= 0) {
+                $("#detailsbody").html('');
+            }
+            if ($("#txtawb").val().trim() != '') {
+
+                var id = $("#txtawb").val();
+                addawb(id);
+                $('#btnAdd').removeAttr('disabled');
+                $("#txtawb").val('');
+                $("#txtawb").focus();
+
+                return false;
+            }
+
+        });
+
+
+
+        $("#btnsave").click(function () {
+            debugger;
+            var drs = $("#DRSDate").val();
+            var del = $("#DeliveredBy option:selected").val();
+            var vec = $("#VehicleID option:selected").val();
+            var check = $("#CheckedBy option:selected").val();
+            var maxrow = $('#detailsbody > tr').length;
+
+            if (drs == "") {
+                $("#validations").show();
+                $("#DRSDate").focus();
+                return false;
+            }
+            else if (del == "") {
+                $("#validations").show();
+                $("#DeliveredBy").focus();
+                return false;
+            }
+            else if (check == "") {
+                $("#validations").show();
+                $("#CheckedBy").focus();
+                return false;
+            }
+            else if (vec == "") {
+                $("#validations").show();
+                $("#VehicleID").focus();
+                return false;
+            }
+           else if (maxrow == 0) {
+
+                Swal.fire("Data Validation!", 'Add OutScanning AWB Items to Save!', "error");
+                return false;
+            }
+            //else if (AWBItems.length == 0)
+            //{
+            //    $("#validations").hide();
+            //    alert('Add OutScanning AWB Items save!');
+            //    return false;
+            //}
+            else {
+                $("#validations").hide();
+                return true;
+            }
+        });
+
+        function DisplayAWBItems() {
+            $.ajax({
+                type: "POST",
+                url: "/OutScan/GetDRSDetails",
+                datatype: "Json",
+                data: { id: $("#DRSID").val() },
+                success: function (data) {
+                    debugger;
+
+                    $.each(data, function (index, value) {
+                        AWBItems.push(value);
+                        var i = $('#details tr').length - 1;
+                        if (value.ShipmentDetailID == null)
+                            value.ShipmentDetailID = 0;
+                        var  awbitem='<input type="hidden" class="hdndeleted" id="hdndeleted_' + index + '"  value="false" name="lst[' + index + '].deleted" /><input type="hidden" id="hdnShipmentDetailID_' + index + '"  value="' + value.ShipmentDetailID + '" name="lst[' + index + '].ShipmentDetailID" />';
+                        $("#details").append('<tr>' + '<td>' + (parseInt(index) + parseInt(1)) + '</td><td>' + awbitem + value.AWB + '<input type="hidden" id="hdnAWbNo_' + index + '" value=' + value.AWB + ' name="lst[' + i + '].AWB"><input type="hidden" value=' + value.InScanID + ' name="lst[' + i + '].InScanID"></td>' + '<td>' + value.consignor + '<input type="hidden" value=' + value.consignor + ' name="lst[' + i + '].consignor"></td><td>' + value.consignee + '<input type="hidden" value=' + value.consignee + ' name="lst[' + i + '].Consignee"></td>' + '<td>' + value.city + '<input type="hidden" value=' + value.city + ' name="lst[' + i + '].City"></td>'
+                            + '<td>' + value.phone + '<input type="hidden" value=' + value.phone + ' name="lst[' + i + '].Phone"></td>'
+                            + '<td>' + value.address + '<input type="hidden" value=' + value.address + ' name="lst[' + i + '].Address"></td>'
+                            + '<td>' + value.COD + '<input type="hidden" value=' + value.COD + ' name="lst[' + i + '].COD"></td><td>' + value.MaterialCost + '<input type = "hidden" value = ' + value.MaterialCost + ' name = "lst[' + i + '].MaterialCost" ></td ><td><a awbno="' + value.AWB + '" href="javascript:void(0);" onclick="deletetrans(this,' + i + ')" class="rem">Remove</a></td></tr>');
+                    });
+
+                }
+
+            });
+        }
+        if (@ViewBag.EditMode ==true) {
+            DisplayAWBItems();
+            $('#DRSDate').attr('readonly', 'readonly');
+            $('#CheckedBy').val($('#chkid').val()).trigger('change');
+            //$('#txtawb').attr('readonly', 'readonly');
+            $('#btnUpload').attr('disabled', 'disabled');
+
+        }
+        else {
+
+            var m_names = new Array("Jan", "Feb", "Mar",
+                "Apr", "May", "Jun", "Jul", "Aug", "Sep",
+                "Oct", "Nov", "Dec");
+
+            var d = new Date();
+            var curr_date = d.getDate();
+            var curr_month = d.getMonth() + 1;
+            var curr_year = d.getFullYear();
+            $('#detailsbody').html('');
+            var reqdate = curr_date + "-" + curr_month + "-" + curr_year + ' ' + d.getHours() + ':' + d.getMinutes();
+            $('#Delivered').prop('checked', true);
+            $('#DRSDate').val(reqdate);
+            $("#DRSDate").focus();
+        }
+
+        document.addEventListener('keydown', function (event) {
+            if (event.code == 'KeyC' && (event.altKey)) { //ADD AWB
+                window.location = '/OutScan/Index';
+                //$('#btnCreateNew').trigger('click');
+            }
+        });
+        document.addEventListener('keydown', function (event) {
+            if (event.code == 'KeyS' && (event.altKey)) { //ADD AWB
+                $('#btnsave').trigger('click');
+            }
+        });
+    });
+</script>
+
+
+
+<div class="card">
+    <div class="card-body">
+        @using (Html.BeginForm())
+        {
+            @Html.ValidationSummary(true)
+            <div id="validations" style="color:red;margin-left:7px;display:none">* Please fill mandatory fields</div>
+            <fieldset>
+
+                <div class="row no_margin">
+                    <div class="col-md-2">
+                        <div class="col-md-12">
+                            <div class="mb-2">
+                                <label class="headinglabel required">Sheet No.</label>
+                                @Html.HiddenFor(model => model.DRSID)
+                                @Html.TextBoxFor(model => model.DRSNo, new { @class = "form-control", @readonly = "readonly" })
+                                @Html.ValidationMessageFor(model => model.DRSNo)
+                            </div>
+                        </div>
+                            <div class="col-md-12">
+                                <div class="mb-2">
+                                    <label class="headinglabel required">OutScan Time</label>
+                                    @Html.TextBoxFor(model => model.DRSDate, new { @class = "form-control datetimepicker text-right" })
+                                </div>
+                            </div>
+
+                            <div class="col-md-12">
+                                <div class="mb-2">
+                                    <label class="headinglabel required">Delivered By</label>
+
+                                    @Html.DropDownListFor(model => model.DeliveredBy, new SelectList(ViewBag.Deliverdby, "EmployeeID", "EmployeeName"), "Select", new { @class = "form-select" })
+                                </div>
+                            </div>
+                            <div class="col-md-12">
+                                <div class="mb-2">
+                                    <label class="headinglabel required">Vehicle</label>
+                                    @Html.DropDownListFor(model => model.VehicleID, new SelectList(@ViewBag.Vehicles, "VehicleID", "VehicleName"), "Select", new { @class = "form-select" })
+                                    @*@Html.DropDownListFor(model => model.VehicleID, new SelectList(ViewBag.vehicle, "VehicleID", "VehicleNo"), "Select", new { @class = "form-control" })*@
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="mb-2">
+                                    @Html.CheckBox("Pending", new { @name = "Pending", @tabindex = 17 }) &nbsp;&nbsp;
+                                    <label class="headinglabel">Pending</label>
+                                    @Html.ValidationMessageFor(model => model.Pending)
+                                </div>
+                            </div>
+                                <div class="col-md-6">
+                                    @Html.CheckBox("Delivered", new { @name = "Delivered", @tabindex = 18 }) &nbsp;&nbsp;
+                                    <label class="headinglabel">Delivered</label>
+                                    @Html.ValidationMessageFor(model => model.Delivered)
+                                </div>
+
+                                <div class="col-md-12">
+                                    <div class="mb-2">
+                                        <label class="headinglabel required">AWB No.</label>
+                                        <div class="input-group">
+
+                                            <input type="text" id="txtawb" class="form-control" onFocus = "this.select()" />
+                                            <input class="form-control" type="file" style="display:none" name="importFile" id="importFile" />
+                                            <input type="button" id="btnfile" style="display:none" />
+                                            <a class="btn btn-primary small_btn btn-2 mt-0" id="btnUpload" title="Upload Excel" href="Javascript:void(0)"><i class=" fas fa-file"></i></a>
+                                        </div>
+                                    </div>
+                                    </div>
+                                    <div class="col-md-2" style="padding-top:30px">
+                                        
+                                    </div>
+
+
+                                    <div class="col-md-1 hide">
+                                        <button type="button" class="btn btn-primary small_btn " id="btnAdd"><i class="fa fa-plus-circle" aria-hidden="true"></i></button>
+                                    </div>
+                                    <div class="col-md-12 text-right" style="padding-top:28px;">
+                                        <input type="submit" value="Save" class="btn btn-success btnwidth" id="btnsave" />
+
+
+                                        @*     <input type="submit" value="Save&Print" class="btn btn-primary btnwidth" data-toggle="tooltip" title="Click here" style="margin-left:5px;"  />*@
+
+                                        <a href='@Url.Action("Index", "OutScan", new { id = 0 })' class="btn btn-secondary btnwidth" data-toggle="tooltip" data-placement="right" title="Click here" style="margin-left:5px;">Cancel</a>
+
+                                    </div>
+                                </div>
+                    <div class="col-md-10" id="listContainer" style="overflow-x:scroll">
+
+                        @{Html.RenderPartial("ItemList", Model);}
+
+
+                    </div>
+                </div>
+
+
+                <div class="row no-margin" style="padding-top:10px">
+
+                </div>
+            </fieldset>
+        }
+    </div>
+</div>
+
+@*@section scripts{
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery-datetimepicker/2.5.20/jquery.datetimepicker.full.min.js"></script>
+
+
+}*@

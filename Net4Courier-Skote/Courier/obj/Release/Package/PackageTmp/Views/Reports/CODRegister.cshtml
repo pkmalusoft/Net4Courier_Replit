@@ -1,0 +1,259 @@
+﻿@model Net4Courier.Models.CODReportParam
+@{
+    ViewBag.Title = "Reports";
+    ViewBag.pTitle = "COD Register";
+    ViewBag.pageTitle = "COD Register";
+    Layout = "~/Views/Shared/_Layout.cshtml";
+    var _decimal = Convert.ToInt32(@Session["Decimal"].ToString());
+}
+<script src="~/Content/NewCSS/plugins/jQuery/moment.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/bootstrap-datetimepicker/4.17.43/js/bootstrap-datetimepicker.min.js"></script>
+
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap-datetimepicker/4.17.43/css/bootstrap-datetimepicker.min.css" />
+<link href="/Content/Multiselect/bootstrap-multiselect.css" rel="stylesheet" />
+<script src="/Content/Multiselect/bootstrap-multiselect.js"></script>
+
+
+<style>
+    #movementid + .btn-group button, #movementid + .btn-group {
+        display: block;
+        width: 100%;
+    }
+
+    .datefilters {
+        border: 1px solid #ccc;
+        padding: 20px 10px;
+        border-radius: 5px;
+    }
+</style>
+<script>
+    //$(function () {
+    //    $('#FromDate').datetimepicker({ format: 'DD-MM-YYYY' });
+
+    //});
+
+    //$(function () {
+    //    $('#ToDate').datetimepicker({ format: 'DD-MM-YYYY' });
+
+    //});
+
+    $(document).ready(function () {
+         var startdate = '@Session["FyearFrom"].ToString()';
+        var enddate = '@Session["FyearTo"].ToString()';
+        var sd = new Date(startdate.split('-')[1] + '-' + startdate.split('-')[0] + '-' + startdate.split('-')[2]);
+        var ed = new Date(enddate.split('-')[1] + '-' + enddate.split('-')[0] + '-' + enddate.split('-')[2]);
+
+       
+        $.ajax({
+            type: "Get",
+            url: "/CustomerInvoice/GetCourierType",
+            datatype: "Json",
+            success: function (response) {
+
+                var data = response.data;
+                $('#movementid').empty();
+
+                $.each(data, function (index, value) {
+
+                    var o_st = $("#MovementId").val().split(",");
+                    var flag = 0;
+                    for (var j = 0; j < o_st.length; j++) {
+
+                        if (o_st[j] == value.MovementID) {
+                            flag = 1;
+                            break;
+                        }
+
+                    }
+
+                    if (flag == 1) {
+                        $('#movementid').append('<option value="' + value.MovementID + '" selected=true>' + value.MovementType + '</option>');
+                    }
+                    else {
+                        $('#movementid').append('<option value="' + value.MovementID + '">' + value.MovementType + '</option>');
+                    }
+
+                });
+
+
+
+                $('#movementid').multiselect({
+                    nonSelectedText: 'Select',
+                    enableClickableOptGroups: true,
+                    enableCollapsibleOptGroups: true,
+                    enableFiltering: false,
+                    includeSelectAllOption: true,
+                    selectAllValue: 'multiselect-all'
+                });
+
+            }
+        });
+
+        if ($('#ReportType').val() == 'Date' || $('#ReportType').val() == '' || $('#ReportType').val() == null) {
+            $('#chkRegister').prop('checked', 'checked')
+        } else {
+            $('#GroupBy').val($('#ReportType').val()).trigger('change');
+        }
+
+        if ($('#SortBy').val() == '' || $('#SortBy').val() == 'Date Wise' || $('#SortBy').val() == null) {
+            $("#chkDateWise").prop('checked', 'checked');
+            $('#SortBy').val('Date Wise');
+        }
+        else {
+            $("#chkAWBWise").prop('checked', 'checked');
+            $('#SortBy').val('AWB Wise');
+        }
+        $("#chkRegister").click(function () {
+            if ($("#chkRegister").is(':checked')) {
+                $("#ReportType").val('Date');
+                $("#GroupBy").val('');
+            }
+            else {
+                $("#GroupBy").val('');
+                $("#ReportType").val('');
+
+            }
+        });
+
+        $("#chkDateWise").click(function () {
+            if ($("#chkDateWise").is(':checked')) {
+                $("#chkAWBWise").removeAttr('checked');
+                $('#SortBy').val('Date Wise');
+            }
+            else {
+                $("#chkAWBWise").prop('checked', 'checked');
+                $('#SortBy').val('AWB Wise');
+            }
+        });
+
+        $("#chkAWBWise").click(function () {
+            if ($("#chkAWBWise").is(':checked')) {
+                $("#chkDateWise").removeAttr('checked');
+                $('#SortBy').val('AWB Wise');
+            }
+            else {
+                $("#chkDateWise").prop('checked', 'checked');
+                $('#SortBy').val('Date Wise');
+            }
+        });
+        $('#GroupBy').change(function () {
+            if ($('#GroupBy').val() == '') {
+                $("#chkRegister").prop('checked', 'checked');
+                $('#ReportType').val('Date');
+            }
+            else {
+                $("#chkRegister").removeAttr('checked');
+                $('#ReportType').val($('#GroupBy').val());
+            }
+
+        })
+
+        $("#btnreport").click(function () {
+            if (!$("#chkRegister").is(':checked')) {
+
+                if ($('#GroupBy').val() == '') {
+                    alert('Select Group By or !');
+                    return false;
+                }
+
+                debugger;
+
+            }
+
+        });
+
+    });
+</script>
+@using (Html.BeginForm("CODRegister", "Reports", FormMethod.Post, new { @id = "reportparam" }))
+{
+    @Html.AntiForgeryToken()
+
+    @Html.ValidationSummary(true, "", new { @class = "text-danger" })
+    <div class="card">
+    <div class="card-body">
+    <div class="row">
+        <div class="col-md-3 report_pad">
+            <div class="row mt-1">
+                <div class="col-md-6">
+                    <div class="mb-2">
+                        <label class="col-form-label">From Date</label>
+                        <div class="docs-datepicker">
+                            <div class="input-group">
+                                <input type="text" class="form-control docs-date" name="FromDate" id="FromDate" value="@Model.FromDate.ToShortDateString()"
+                                       placeholder="Pick a From Date" autocomplete="off">
+                                <button type="button"
+                                        class="btn btn-secondary docs-datepicker-trigger"
+                                        disabled>
+                                    <i class="mdi mdi-calendar" aria-hidden="true"></i>
+                                </button>
+                            </div>
+                            <div class="docs-datepicker-container"></div>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-6">
+                    <div class="mb-2">
+                        <label class="col-form-label">To Date</label>
+                        <div class="docs-datepicker">
+                            <div class="input-group">
+                                <input type="text" class="form-control docs-date" name="ToDate" id="ToDate" data-date-format="dd/MM/yyyy" data-date-autoclose="true" data-provide="datepicker" value="@Model.ToDate.ToShortDateString()"
+                                    placeholder="Pick a date" autocomplete="off">
+                                <button type="button" class="btn btn-secondary docs-datepicker-trigger" disabled>
+                                    <i class="mdi mdi-calendar" aria-hidden="true"></i>
+                                </button>
+                                </div>
+                            <div class="docs-datepicker-container"></div>
+                        </div>
+                    </div>
+                </div>
+        <div class="col-md-12">
+        <div class="mb-2">
+            @Html.HiddenFor(model => model.MovementId)
+            @Html.HiddenFor(model => model.SortBy)
+            <label class="col-form-label">Courier Type</label> <br />
+            <select id="movementid" name="SelectedValues" multiple="multiple" style="width:100%">
+                <option value=""></option>
+            </select>
+        </div>
+        </div>
+        <div class="col-md-12">
+        <div class="mb-2">
+            <label class="col-form-label  required">Report Type</label>
+            @Html.DropDownList("ReportType", new List<SelectListItem>
+            {
+                new SelectListItem{ Text="Detail", Value = "Detail" },
+                new SelectListItem{ Text="Summary", Value = "Summary" }
+             }, "Select", new { @class = "form-select", @value = "" })
+        </div>
+        </div>
+        <div class="col-md-9">
+        <div class="mb-2">
+            <label class="col-form-label  required">Output</label>
+            @Html.DropDownList("Output", new List<SelectListItem>
+            {
+                new SelectListItem{ Text="PDF", Value = "PDF" },
+                new SelectListItem{ Text="EXCEL", Value = "EXCEL" },
+                new SelectListItem{ Text="WORD", Value = "WORD" },
+
+             }, "Select", new { @class = "form-control", @value = "PDF", @required = "true" })
+        </div>
+        </div>
+        <div class="col-md-3">
+                    <div class="mb-2 mt-2 text-md-end">
+                        <button type="submit" class="btn btn-success waves-effect waves-light filter btn_top" id="btnreport">
+                            <i class="bx bx-search mt-1" style="font-size: 21px;"></i>
+                        </button>
+                    </div>
+                </div>
+    </div>
+</div>
+    <div class="col-md-9" id="divreportframe">
+        @{ Html.RenderAction("ReportFrame", "Reports");}
+    </div>
+</div></div>
+</div>
+   
+
+}
+
+

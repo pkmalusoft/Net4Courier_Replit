@@ -1,0 +1,341 @@
+﻿@model Net4Courier.Models.SupplierInvoiceVM
+
+@{
+    ViewBag.Title = "Create";
+    ViewBag.pTitle = "Forwarding Agent Invoice";
+    ViewBag.pageTitle = "Account Payable";
+    Layout = "~/Views/Shared/_Layout.cshtml";
+}
+@section styles{
+    <link href="~/assets/libs/select2/css/select2.min.css" rel="stylesheet" type="text/css" />
+
+}
+
+<script type="text/javascript">
+
+    function ValidateTotal() {
+        var idtext = 'txtnetvalue_';
+        var amt = 0;
+        var max = $('#details > tbody > tr').length - 7;
+        $('#lbltotalcharge').html(0);
+        $('[id^=' + idtext + ']').each(function (index, item) {
+
+            if ($(item).val() == "" || $(item).val() == null) {
+                $(item).val(0);
+            }
+            var itemval = $(item).val();
+            itemval = itemval.replace(',', '');
+
+            var invamount = parseFloat(itemval);
+            amt = parseFloat(amt) + parseFloat(invamount);
+            $('#InvoiceTotal').val(parseFloat(amt).toFixed(2));
+
+        });
+    }
+    $(document).ready(function () {
+        @*$(":text").css({ "border-radius": "5px" });
+        $("select").css({ "border-radius": "5px" });
+
+        var startdate = '@Session["FyearFrom"].ToString()';
+        var enddate = '@Session["FyearTo"].ToString()';
+        var sd = new Date(startdate.split('-')[1] + '-' + startdate.split('-')[0] + '-' + startdate.split('-')[2]);
+        var ed = new Date(enddate.split('-')[1] + '-' + enddate.split('-')[0] + '-' + enddate.split('-')[2]);
+        $('#FromDate').datetimepicker({
+            maxDate: ed,
+            minDate: sd,
+            format: 'DD-MM-YYYY'
+        });
+
+        $('#ToDate').datetimepicker({
+            maxDate: ed,
+            minDate: sd,
+            format: 'DD-MM-YYYY'
+        });
+
+        $('#InvoiceDate').datetimepicker({
+            maxDate: ed,
+            minDate: sd,
+            format: 'DD-MM-YYYY HH:mm'
+        });*@
+        $('#btnsave').click(function () {
+            //$('#btnsave').attr('disabled', 'disabled');
+            //$('#loaderpopup').modal('show');
+        })
+        $('#btnsearch').click(function () {
+
+            if ($('#SupplierID').val() == 0 || $('#SupplierID').val() == '' || $('#SupplierID').val() == null) {
+                $('#SupplierName').focus();
+                return false;
+            }
+            else if ($('#SelectedValues').val() == null) {
+                $('#SelectedValues').focus();
+                alert('Select Courier type!')
+                return false;
+            }
+            else if ($('#Remarks').val() == null || $('#Remarks').val()=='') {
+                $('#Remarks').focus();
+                alert('Enter Remarks!');
+                return false;
+            }
+            $('#loaderpopup').modal('show')
+            $.ajax({
+                type: 'POST',
+                url: '@Url.Action("SaveForwardingInvoice", "ForwardingAgentInvoice")',
+                datatype: "json",
+                data: {
+                    SupplierId: $('#SupplierID').val(), FromDate: $('#FromDate').val(), ToDate: $('#ToDate').val(), MovementId: $('#SelectedValues').val(), InvoiceNo: $('#InvoiceNo').val(), Remarks: $('#Remarks').val(), InvoiceDate: $('#InvoiceDate').val(), FuelPercentage :$('#FuelPercentage').val(),AdditionalCharges: $('#AdditionalCharges').val()
+                },
+                success: function (data) {
+                    debugger;
+                    console.log(data);
+                    $('#loaderpopup').modal('hide');
+
+                    //$("#listContainer").html(data);
+                    //$("#SupplierName").attr('SupplierId', $('#SupplierID').val());
+
+                    if (data.status == 'ok') {
+                        Swal.fire('Save Status', data.message, "success");
+                         location.href = '@Url.Action("Index","ForwardingAgentInvoice")';
+                    }
+                    else {
+                        Swal.fire('Save Status', data.message, "error");
+                        return false;
+                    }
+
+                },
+                error: function (response) {
+                    $('#loaderpopup').modal('hide');
+                }
+            });
+
+        });
+        $.ajax({
+            type: "Get",
+            url: "/CustomerInvoice/GetCourierType",
+            datatype: "Json",
+            success: function (response) {
+
+                var data = response.data;
+                $('#SelectedValues').empty();
+
+                $.each(data, function (index, value) {
+
+                    var o_st = $("#MovementId").val().split(",");
+
+                    var flag = 0;
+                    for (var j = 0; j < o_st.length; j++) {
+
+                        if (o_st[j] == value.MovementID) {
+                            flag = 1;
+                            break;
+                        }
+
+                    }
+
+                    if (flag == 1) {
+                        $('#SelectedValues').append('<option value="' + value.MovementID + '" selected=true>' + value.MovementType + '</option>');
+                    }
+                    else {
+                        $('#SelectedValues').append('<option value="' + value.MovementID + '">' + value.MovementType + '</option>');
+                    }
+
+                });
+
+
+                $('#SelectedValues').select2();
+                //$('#movementid').multiselect({
+                //  nonSelectedText:'Select',
+                //  enableClickableOptGroups: true,
+                //  enableCollapsibleOptGroups: true,
+                //  enableFiltering: false,
+                //  includeSelectAllOption: true,
+                //  enableCaseInsensitiveFiltering: false,
+                //  selectAllValue: 'multiselect-all'
+                //});
+
+
+            }
+        });
+
+
+        $("#SupplierName").autocomplete({
+            source: function (request, response) {
+                $.ajax({
+                    url: '/ForwardingAgentInvoice/GetSupplierName',
+                    datatype: "json",
+                    data: {
+                        term: request.term
+                    },
+                    success: function (data) {
+                        response($.map(data, function (val, item) {
+                            return {
+                                label: val.SupplierName,
+                                value: val.SupplierID
+                            }
+                        }))
+                    }
+                })
+            },
+            minLength: 1,
+            autoFocus: false,
+            focus: function (e, ui) {
+                e.preventDefault();
+                $("#SupplierName").val(ui.item.label);
+                $('#SupplierID').val(ui.item.value);
+            },
+            select: function (e, i) {
+                e.preventDefault();
+                $("#SupplierName").val(i.item.label);
+                $('#SupplierID').val(i.item.value);
+            }
+
+        });
+    });
+</script>
+<div class="card">
+    <div class="card-body">
+        @if (TempData["ErrorMsg"] != null)
+        {
+            <script type="text/javascript">
+                      $(document).ready(function () {
+                          $.notify("@TempData["ErrorMsg"]", "error");
+                });
+            </script>
+        }
+        
+            @using (Html.BeginForm("Create", "ForwardingAgentInvoice", FormMethod.Post, new { @id = "customerInvoice" }))
+            {
+                @Html.AntiForgeryToken()
+                @Html.ValidationSummary(true)
+
+                <div class="row no-margin ">
+                    <div class="col-md-4">
+                        <label class="headinglabel required ">Supplier</label>
+                        @Html.HiddenFor(model => model.SupplierInvoiceID)
+                        @Html.HiddenFor(model => model.SupplierID)
+                        @Html.TextBoxFor(model => model.SupplierName, new { @class = "form-control" })
+                        @Html.ValidationMessageFor(model => model.SupplierName)
+                    </div>
+                    <div class="col-md-1">
+                        @Html.HiddenFor(model => model.MovementId)
+                        <label class="headinglabel required ">From Date</label>
+                        @Html.TextBoxFor(model => model.FromDate, new { @class = "form-control text-right" })
+                    </div>
+
+                    <div class="col-md-1">
+                        <label class="headinglabel required">To Date</label>
+                        @Html.TextBoxFor(model => model.ToDate, new { @class = "form-control text-right" })
+                    </div>
+                    <div class="col-md-3">
+                        <label class="headinglabel required ">Courier Type</label>
+                        <select id="SelectedValues" name="SelectedValues" multiple="multiple" class="form-control">
+                            <option value=""></option>
+                        </select>
+                    </div>
+                    @*<div class="col-md-1 hide">
+                            <button class="btn btn-success" type="button" id="btnsearch" style="margin-top:30px;width: 60px!Important;min-width: 50px!important;"><i class="fa fa-refresh" aria-hidden="true"></i></button>
+                        </div>*@
+                    <div class="col-md-2" style="padding-top:30px">
+                        <input type="button" value="Generate" id="btnsearch" class="btn btn-primary btnwidth " />&nbsp;&nbsp;
+                        @Html.ActionLink("Cancel", "Index", null, new { @class = "btn btn-danger btnwidth float-right" })
+                    </div>
+                </div>
+                <div class="row no-margin" style="padding-top:10px">
+
+
+                    <div class="col-md-2">
+                        <label class="headinglabel required "> Invoice No.</label>
+                        @Html.TextBoxFor(model => model.InvoiceNo, new { @class = "form-control txttarget", @required = "true", @readonly = "true" })
+                        @Html.ValidationMessageFor(model => model.InvoiceNo)
+                    </div>
+                    <div class="col-md-2">
+                        <label class="headinglabel required "> Invoice Date</label>
+
+                        <div class="docs-datepicker">
+                            <div class="input-group">
+                                <input type="text" class="form-control docs-date" name="InvoiceDate" id="InvoiceDate" value="@Model.InvoiceDate.ToShortDateString()"
+                                       placeholder="Pick a Invoice Date" autocomplete="off">
+                                <button type="button"
+                                        class="btn btn-secondary docs-datepicker-trigger"
+                                        disabled>
+                                    <i class="mdi mdi-calendar" aria-hidden="true"></i>
+                                </button>
+                            </div>
+                            <div class="docs-datepicker-container"></div>
+                        </div>
+                        @Html.ValidationMessageFor(model => model.InvoiceDate)
+
+                    </div>                    
+                    <div class="col-md-2">
+                        <label class="headinglabel required ">Additional Charges</label>
+                        @Html.TextBoxFor(model => model.AdditionalCharges, new { @class = "form-control textright", @required = "true" })
+                        @Html.ValidationMessageFor(model => model.AdditionalCharges)
+
+                    </div>
+                    <div class="col-md-2">
+                        <label class="headinglabel required ">Fuel %</label>
+                        @Html.TextBoxFor(model => model.FuelPercentage, new { @class = "form-control textright", @required = "true" })
+                        @Html.ValidationMessageFor(model => model.FuelPercentage)
+
+                    </div>
+                    <div class="col-md-2">
+                        <label class="headinglabel required ">Remarks</label>
+                        @Html.TextBoxFor(model => model.Remarks, new { @class = "form-control txttarget", @required = "true" })
+                        @Html.ValidationMessageFor(model => model.Remarks)
+
+                    </div>
+
+                    <div class="col-md-2">
+                        <label class="headinglabel required ">Invoice Total</label>
+                        @Html.TextBoxFor(model => model.InvoiceTotal, new { @class = "form-control text-right", @required = "true", @readonly = "readonly" })
+                        @Html.ValidationMessageFor(model => model.InvoiceTotal)
+
+                    </div>
+
+                </div>
+
+
+
+            }
+
+        
+    </div>
+</div>
+
+
+<div class="modal fade" id="loaderpopup" role="dialog" aria-labelledby="exampleModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content" style="border-radius:5px">
+            <div class="modal-header">
+                @*<button type="button" class="close" data-dismiss="modal" aria-label="Close"><span aria-hidden="true">&times;</span></button>*@
+                <h4 class="modal-title" id="LoaderModalLabel">
+                    AWB Cost Calculating
+                </h4>
+            </div>
+            <div class="modal-body">
+                <div class="row">
+                    <div class="col-md-12" style="text-align:center">
+                        <h2>Processing...</h2>
+                        <img src="~/Content/img/loading-gif-free-download-6.gif" id="imgloader" class="" style="padding-left:15px;height:60px;width:60px;" />
+                    </div>
+
+                </div>
+                <div class="row">
+                    <div class="col-md-12" style="text-align:center" id="divProcessStatus">
+
+                    </div>
+                </div>
+            </div>
+            @*<div class="modal-footer" style="padding-top: 5px">
+                    <button type="button" class="btn btn-primary" onclick="savefixation()">Save</button>
+                    <button type="button" class="btn btn-danger" data-dismiss="modal">Close</button>
+                </div>*@
+        </div>
+    </div>
+</div>
+
+@section scripts{
+
+    <script src="~/assets/libs/select2/js/select2.min.js"></script>
+
+}

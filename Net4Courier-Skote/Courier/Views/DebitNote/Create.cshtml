@@ -1,0 +1,582 @@
+﻿@model Net4Courier.Models.DebitNoteVM
+
+@{
+
+
+    ViewBag.pTitle = "Debit Note";
+    ViewBag.pageTitle = "Account Payable";
+    Layout = "~/Views/Shared/_Layout.cshtml";
+    ViewBag.isadd = Model.Details.Count > 0 ? 1 : 0;
+
+    var _decimal = Convert.ToInt32(@Session["Decimal"].ToString());
+
+    string path = Request.Url.AbsolutePath.ToLower();
+
+    if (Convert.ToInt32(Session["UserRoleID"]) > 1)
+    {
+        Net4Courier.Models.SourceMastersModel obj = new Net4Courier.Models.SourceMastersModel();
+        //isadd = obj.GetAddpermission(Convert.ToInt32(Session["UserRoleID"]), path);
+
+    }
+}
+
+<style>
+    .form-control-sm{
+    border:1px solid #dedede;
+    }
+</style>
+<script type="text/javascript">
+    function DisplayAllocation() {
+              var ID = $('#SupplierID').val();
+            $.ajax({
+                type: "POST",
+                url: '/ReceiptPaymentAllocation/GetSupplierAllocated/' + ID,
+                data: {
+                    'ID': ID, 'amountreceived': 0, 'RecPayId': $('#DebitNoteId').val(), 'SupplierTypeId': $('#SupplierTypeId').val(),'EntryType':'DN' },
+                success: function (response) {
+                    debugger;
+                    var data = response.salesinvoice;
+                    var advance = response.advance;
+                    $('#hdnAdvance').val(advance);
+                    $('#tbl1').html('');
+                    if (data.length == 0) {
+                        $('#BalanceAmount').val(parseFloat(advance).toFixed(@_decimal));
+                    }
+                    //$scope.Orders = data;
+                    var amt = 0;
+                    for (var i = 0; i < data.length; i++) {
+                        var date = new Date(data[i].date);
+                        amt = parseFloat(amt) + parseFloat(data[i].Amount);
+                        var tempdate = new Date(date).getDate() + '/' + (new Date(date).getMonth() + 1) + '/' + new Date(date).getFullYear();
+                        var invoiceno = "'" + data[i].InvoiceNo + "'";
+                        html = '<tr>' +
+                            '<td>' + data[i].InvoiceNo + '<input type="hidden" id="hdnInvoiceType_' + i + '"  value="' + data[i].InvoiceType + '" />  <input id="hdnAcOPInvoiceDetailID_' + i + '" name="CustomerRcieptChildVM[' + i + '].AcOPInvoiceDetailID" value=' + data[i].AcOPInvoiceDetailID + ' type="hidden"><input id="hdnInvoiceId_' + i + '"  name="CustomerRcieptChildVM[' + i + '].InvoiceID" value=' + data[i].SalesInvoiceID + ' type="hidden"></td>' +
+                            '<td>' + data[i].DateTime + '<input id="hdnInvoiceDate_' + i  + '" value="' + data[i].date + '" type="hidden"></td>' +
+                            '<td class="text-right">' + parseFloat(data[i].InvoiceAmount).toFixed(@_decimal) + '<input id="" name="CustomerRcieptChildVM[' + i + '].AmountToBeRecieved" value=' + data[i].InvoiceAmount + ' type="hidden" class="AmountToBeRecieved"></td>' +
+                            '<td class="text-right">' + parseFloat(data[i].AmountReceived).toFixed(@_decimal) + '<input id="" name="CustomerRcieptChildVM[' + i + '].AmtPaidTillDate" value=' + data[i].AmountReceived + ' type="hidden"></td>' +
+                            '<td class="text-right">' + parseFloat(data[i].InvoiceAmount - data[i].AmountReceived).toFixed(@_decimal) + '<input id="txtbalance_' + i + '" name="CustomerRcieptChildVM[' + i + '].Balance" value=' + parseFloat(data[i].InvoiceAmount - data[i].AmountReceived).toFixed(@_decimal) + ' type="hidden"><input id="hdnInvoiceNo_' + i + '" name="CustomerRcieptChildVM[' + i + '].InvoiceNo" value=' + data[i].InvoiceNo + ' type="hidden"></td>';
+                            //'<td>' + data[i].Amount + '<input id="" name="customerRcieptVM[' + i + '].Amount" value=' + data[i].Amount + ' type="hidden"></td>' +
+                      if (data[i].Allocated == true) {
+                            html = html + '<td><div class="input-group"><input type="checkbox" onchange="allocate(this);" checked id="chkallocate_' + i + '" /><input type="text" onchange="CheckAmt(this)" style="margin-left:10px;width:78%"  id="txtamount_' + i + '" class="amt txtNum text-right AmountReceived" name="CustomerRcieptChildVM[' + i + '].Amount"  value="' + parseFloat(data[i].Balance).toFixed(@_decimal) + '" /></div></td>';
+                        }
+                        else {
+                            html = html + '<td><div class="input-group"><input type="checkbox" onchange="allocate(this);" id="chkallocate_' + i + '" /><input type="text" onchange="CheckAmt(this)" style="margin-left:10px;width:78%"  id="txtamount_' + i + '" class="amt txtNum text-right AmountReceived" name="CustomerRcieptChildVM[' + i + '].Amount"  value="' + parseFloat(data[i].Balance).toFixed(@_decimal) + '" /></div></td>';
+                        }
+
+
+                        html = html + '</tr>';
+
+                          $('#tbl1').append(html);
+                        //hideLoading();
+                    }
+                    ValidateTotal();
+
+                }
+            });
+
+    }
+    function setTwoNumberDecimal(obj) {
+       $(obj).val(parseFloat($(obj).val()).toFixed(@_decimal));
+    }
+    function CheckAmt(x) {
+        debugger;
+        var thisval = $(x).val();
+        $(x).attr('value', thisval);
+        if (thisval == null || thisval == "") {
+            $(x).val('0.00');
+        } else {
+            $(x).val(parseFloat(thisval).toFixed(3));
+        }
+        //paid amount change
+        var id = $(x).attr('id').split('_')[1];
+        var balance = parseFloat($('#txtbalance_' + id).val());
+        var paidamount = parseFloat($(x).val());
+        if ($('#txtadjust_' + id).val() == "") {
+            $('#txtadjust_' + id).val(0);
+        }
+        var adjustmentamount = parseFloat($('#txtadjust_' + id).val());
+        if (balance < (paidamount + adjustmentamount)) {
+            $(x).val(0);
+            $('#msg1').show();
+            $('#msg1').text('Received Amount should not exceed than the balance!');
+        }
+
+        ValidateTotal();
+
+
+
+    }
+    $(document).ready(function () {
+
+
+
+        $("#SupplierName").focus();
+
+
+        $("#InvoiceAmount").attr("disabled", "disabled");
+        $("#ReceivedAmount").attr("disabled", "disabled");
+
+
+          $('#btnsearch').click(function () {
+              var autoallocate = true;// $("#AutoAllocate").is(':checked');
+            var TotalAmount = 0;
+              var recpayid = $("#RecPayID").val();
+
+
+              if ($('#TransType').val() == "SJ") {
+                  if ($('#lblcredittotal').html() == '')
+                      TotalAmount = 0;
+                  else
+                      TotalAmount = parseFloat($('#lblcredittotal').attr('val'));
+              }
+              else {
+                  if ($('#lbldebittotal').html() == '')
+                      TotalAmount = 0;
+                  else
+                      TotalAmount = parseFloat($('#lbldebittotal').attr('val'));
+              }
+
+
+
+            if ($('#SupplierID').val() == 0) {
+                alert('Select Supplier!');
+                return;
+            }
+
+
+
+            var ID = $('#SupplierID').val();
+            $.ajax({
+                type: "POST",
+                url: '/ReceiptPaymentAllocation/GetTradeInvoiceOfSupplier/' + ID,
+                data: {
+                    'ID': ID, 'amountreceived': 0, 'RecPayId': $('#DebitNoteId').val(),'SupplierTypeId':$('#SupplierTypeId').val(),'EntryType':'DN' },
+                success: function (response) {
+                    debugger;
+                    var data = response.salesinvoice;
+                    var advance = response.advance;
+                    $('#hdnAdvance').val(advance);
+                    $('#tbl1').html('');
+                    if (data.length == 0) {
+                        $('#BalanceAmount').val(parseFloat(advance).toFixed(@_decimal));
+                    }
+                    //$scope.Orders = data;
+                    var amt = 0;
+                    for (var i = 0; i < data.length; i++) {
+                        var date = new Date(data[i].date);
+                        amt = parseFloat(amt) + parseFloat(data[i].Amount);
+                        var tempdate = new Date(date).getDate() + '/' + (new Date(date).getMonth() + 1) + '/' + new Date(date).getFullYear();
+                        var invoiceno = "'" + data[i].InvoiceNo + "'";
+                        html = '<tr>' +
+                            '<td>' + data[i].InvoiceNo + '<input type="hidden" id="hdnInvoiceType_' + i + '"  value="' + data[i].InvoiceType + '" />  <input id="hdnAcOPInvoiceDetailID_' + i + '" name="CustomerRcieptChildVM[' + i + '].AcOPInvoiceDetailID" value=' + data[i].AcOPInvoiceDetailID + ' type="hidden"><input id="hdnInvoiceId_' + i + '"  name="CustomerRcieptChildVM[' + i + '].InvoiceID" value=' + data[i].SalesInvoiceID + ' type="hidden"></td>' +
+                            '<td>' + data[i].DateTime + '<input id="hdnInvoiceDate_' + i  + '" value=' + data[i].date + ' type="hidden"></td>' +
+                            '<td class="text-right">' + parseFloat(data[i].InvoiceAmount).toFixed(@_decimal) + '<input id="" name="CustomerRcieptChildVM[' + i + '].AmountToBeRecieved" value=' + data[i].InvoiceAmount + ' type="hidden" class="AmountToBeRecieved"></td>' +
+                            '<td class="text-right">' + parseFloat(data[i].AmountReceived).toFixed(@_decimal) + '<input id="" name="CustomerRcieptChildVM[' + i + '].AmtPaidTillDate" value=' + data[i].AmountReceived + ' type="hidden"></td>' +
+                            '<td class="text-right">' + parseFloat(data[i].Balance).toFixed(@_decimal) + '<input id="txtbalance_' + i + '" name="CustomerRcieptChildVM[' + i + '].Balance" value=' + data[i].Balance + ' type="hidden"><input id="hdnInvoiceNo_' + i + '" name="CustomerRcieptChildVM[' + i + '].InvoiceNo" value=' + data[i].InvoiceNo + ' type="hidden"></td>';
+                            //'<td>' + data[i].Amount + '<input id="" name="customerRcieptVM[' + i + '].Amount" value=' + data[i].Amount + ' type="hidden"></td>' +
+                      if (data[i].Allocated == true) {
+                            html = html + '<td><div class="input-group"><input type="checkbox" onchange="allocate(this);" checked id="chkallocate_' + i + '" /><input type="text" onchange="CheckAmt(this)" style="margin-left:10px;width:78%"  id="txtamount_' + i + '" class="form-control-sm amt txtNum text-right AmountReceived" name="CustomerRcieptChildVM[' + i + '].Amount"  value="' + parseFloat(data[i].Amount).toFixed(@_decimal) + '" /></div></td>';
+                        }
+                        else {
+                          html = html + '<td><div class="input-group"><input type="checkbox" onchange="allocate(this);" id="chkallocate_' + i + '" /><input type="text" onchange="CheckAmt(this)" style="margin-left:10px;width:78%"  id="txtamount_' + i + '" class="form-control-sm amt txtNum text-right AmountReceived" name="CustomerRcieptChildVM[' + i + '].Amount"  value="' + parseFloat(data[i].Amount).toFixed(@_decimal) + '" /></div></td>';
+                        }
+
+
+                        html = html + '</tr>';
+
+                          $('#tbl1').append(html);
+                        //hideLoading();
+                    }
+                    ValidateTotal();
+
+                }
+            });
+
+        });
+        $('#TransType').change(function () {
+            if ($('#DebitNoteId').val() == 0) {
+                if ($('#TransType').val() == 'SJ') {
+                    $('#lblaccount').html('Chart of Account - Credit');
+                    $('#lblaccount1').html('Chart of Account - Debit');
+                    $('#lblamount').html('Credit Amount');
+                    $('#lblamount1').html('Debit Amount');
+                    $('#lblchkInvoice').html('For Invoice');
+                    $('#lblInvoice').html('Invoice No.');
+                    $('#lblInvoiceDate').html('Invoice Date');
+                    $('#lblInvoiceAmt').html('Invoice Amount')
+                    $('#lblReceivedAmt').html('OutStanding Amount');
+                    $('#AmountType').val(0).trigger('change');
+                    $('#AcDetailAmountType').val(1).trigger('change');
+                    $('#txtCreditAmount').attr('readonly','readonly');
+                    $('#txtDebitAmount').removeAttr('readonly');
+            
+                    $('#btnsearch').attr('disabled', 'disabled')
+                  
+                }
+                else if ($('#TransType').val() == 'DN') {
+                    $('#lblaccount').html('Chart of Account - Debit');
+                    $('#lblaccount1').html('Chart of Account - Credit');
+                    $('#lblamount').html('Debit Amount');
+                    $('#lblamount1').html('Credit Amount');
+                    $('#lblchkInvoice').html('For Recpt');
+                    $('#lblInvoice').html('Receipt No.');
+                    $('#lblInvoiceDate').html('Receipt Date');
+                    $('#lblInvoiceAmt').html('Receipt Amount')
+                    $('#lblReceivedAmt').html('Settled Amount');
+                    $('#AmountType').val(1).trigger('change');
+                    $('#txtDebitAmount').attr('readonly', 'readonly');
+                    $('#txtCreditAmount').removeAttr('readonly');
+                    $('#AcDetailAmountType').val(0).trigger('change');
+                    $('#btnsearch').removeAttr('disabled');
+                   
+                }
+            }
+            
+        })
+    
+        
+        
+      $("#ReferenceType").change(function () {
+            if ($("#ReferenceType").val()=="1" ) {
+                $('#InvoiceNo').removeAttr('disabled');
+                $('#InvoiceNo').attr('required', 'required');
+                $('#InvoiceNo').addClass('form-select');
+                $('#InvoiceNo').removeClass('form-control');
+                var ID = $('#CustomerID').val();
+                if (ID > 0 && $('#ReferenceType').val() >= "1" && $('#CreditNoteID').val()==0) {
+                    $.ajax({
+                        type: "POST",
+                        url: '/CreditNote/GetTradeInvoiceOfCustomer/' + ID,
+                        data: { 'ID': ID, 'amountreceived': 0, TransType: $('#TransType').val(),RefType: $('#ReferenceType').val() },
+                        success: function (data) {
+                            if (data.length == 0) {
+                                alert("There is no pending invoice!");
+                                $('#InvoiceNo').attr('disabled', 'disabled');
+                                $('#InvoiceNo').val('');
+                                $('#InvoiceDate').val('');
+                                $('#InvoiceID').val(0);
+                                $('#InvoiceNo').val('');
+                            }
+                            else {
+                                $('#InvoiceNo').removeAttr('disabled');
+                            }
+
+                        }
+                    });
+                }
+
+            }
+            else if ( $('#ReferenceType').val() == "1" && $('#CreditNoteID').val() == 0) {
+                $('#InvoiceNo').removeClass('form-select');
+                $('#InvoiceNo').addClass('form-control');
+                $('#InvoiceNo').attr('disabled', 'disabled');
+                $('#InvoiceNo').val('');
+                $('#InvoiceDate').val('');
+                $('#InvoiceID').val(0);
+                $('#InvoiceID').removeAttr('required');
+
+
+            }
+        });
+
+        $("#SupplierName").autocomplete({
+            source: function (request, response) {
+                $.ajax({
+                    url: '/SupplierPayment/GetSupplierName',
+                    datatype: "json",
+                    data: {
+                        term: request.term, SupplierTypeId: $("#SupplierTypeId").val()
+                    },
+                    success: function (data) {
+                        response($.map(data, function (val, item) {
+                            return {
+                                label: val.SupplierName,
+                                value: val.SupplierName,
+                                ID: val.SupplierID,
+                            }
+                        }))
+                    }
+                })
+            },
+            minLength: 1,
+            autoFocus: true,
+            select: function (e, i) {
+                e.preventDefault();
+                $("#SupplierName").val(i.item.label);
+                $('#SupplierID').val(i.item.ID);
+                $('#SupplierID').attr('label', i.item.label);
+                //$('#hdnCustomerType').val(i.item.type);
+                //if ($('#hdnCustomerType').val() == "CR") {
+                //    $("#Consignor1").css('color', 'blue');
+                //}
+                //else if ($('#hdnCustomerType').val() == "CS") {
+                //    $("#Consignor1").css('color', 'red');
+                //}
+                //else {
+                //    $("#Consignor1").css('color', 'black');
+                //}
+
+            },
+
+        });
+
+
+
+        setTwoNumberDecimal($("#InvoiceAmount"));
+        setTwoNumberDecimal($("#ReceivedAmount"));
+        setTwoNumberDecimal($("#Amount"));
+
+        if ($('#DebitNoteId').val() > 0) {
+            if ($('#TransType').val() == 'DN') {
+                DisplayAllocation();
+            }
+            else {
+                $('#TransType').val($('#TransType').attr('svalue')).trigger('change');
+                $('#btnsearch').attr('disabled', 'disabled');
+            }
+        }
+
+        $('#TransType').change(function () {
+            if ($('#DebitNoteId').val() == 0) {
+                $.ajax({
+                    type: "GET",
+                    url: '/DebitNote/GetDebitNoteNo/',
+                    data: { 'Type': $('#TransType').val(), 'SupplierTypeID': $('#SupplierTypeId').val() },
+                    success: function (data) {
+                        $('#DebitNoteNo').val(data.DebitNoteNo);
+                        $('#AcHeadID').val(data.AcHeadID);
+                        $('#lblAcHeadName').html(data.AcHeadName);
+                    }
+                });
+            }
+        });
+    });
+
+</script>
+
+
+
+@using (Html.BeginForm("Create", "DebitNote", FormMethod.Post, new { @class = "needs-validation ", @novalidate = "novalidate" }))
+{
+
+    @Html.ValidationSummary(true)
+
+    <div class="card">
+        <div class="card-body">
+            <div class="row">
+                <div class="col-md-8">
+                    <h4 class="card-title mb-2 mt-3 text-danger" id="msg1">
+                    </h4>
+                </div>
+                <div class="col-md-4 text-md-end">
+
+                    <input type="submit" value="Save" class="btn btn-success" id="btnsave" />
+                    <a href='@Url.Action("Index", "DebitNote", new { id = 0 })' class="btn btn-secondary">Cancel</a>
+                    <div id="divothermenu" class="btn-group">
+                        @*<button type="submit" class="btn btn-primary">Menu</button>*@
+                        <span class="btn btn-primary"><i class="bx bx-cog bx-spin me-2"></i>Sub Menu</span>
+                        <button type="button" class="btn btn-primary dropdown-toggle-split border_right" data-bs-toggle="dropdown" aria-expanded="false">
+                            <i class="mdi mdi-chevron-down"></i>
+                        </button>
+                        <div class="dropdown-menu" id="divsubmenu">
+
+                            <a class="dropdown-item" href="/CreditNote/Create?id=0">New Credit Note</a>
+                         
+                            <a class="dropdown-item" target="_blank" href="/Accounts/Posting?id=@Model.AcJournalID">Journal Entry</a>
+                            <a class="dropdown-item" href="Javascript:void(0)" onclick="funExportToPDF(@Model.DebitNoteId)">Print</a>
+                        </div>
+                    </div>
+                    
+                </div>
+
+            </div>
+
+            <div class="row">
+                <div class="col-md-1">
+                    <div class="mb-2">
+                        <label class="col-form-label">Trans Type</label>
+                        @Html.DropDownListFor(model => model.TransType, new List<SelectListItem> { new SelectListItem { Text = "Debit Note", Value = "DN" }, new SelectListItem { Text = "Supplier JV", Value = "SJ" } }, "Select", new { @class = "form-select", @required = "required",@svalue=@Model.TransType })
+                    </div>
+                </div>
+                <div class="col-md-2">
+                    <div class="mb-2">
+                        <label class="col-form-label">Debit Note No.</label>
+                        @Html.HiddenFor(mode => mode.DebitNoteId)
+                        @Html.HiddenFor(mode => mode.AcJournalID)
+
+                        @Html.HiddenFor(mode => mode.AcHeadName)
+                        @Html.TextBoxFor(mode => mode.DebitNoteNo, new { @class = "form-control", @readonly = "readonly" })
+                    </div>
+                </div>
+                <div class="col-md-2">
+                    <div class="mb-2">
+                        <label class="col-form-label">Transaction Date</label>
+                        <div class="docs-datepicker">
+                            <div class="input-group">
+                                <input type="text" class="form-control docs-date datetimepicker" name="Date" id="Date" data-date-format="dd/MM/yyyy" data-date-autoclose="true" data-provide="datepicker" value="@Convert.ToDateTime(@Model.Date).ToString("dd-MM-yyyy")"
+                                       placeholder="Pick a date" autocomplete="off">
+                                <button type="button"
+                                        class="btn btn-secondary docs-datepicker-trigger"
+                                        disabled>
+                                    <i class="mdi mdi-calendar" aria-hidden="true"></i>
+                                </button>
+                            </div>
+                            <div class="docs-datepicker-container"></div>
+                        </div>
+                        <div class="invalid-feedback">
+                            Select Date
+                        </div>
+                    </div>
+                </div>
+                <div class="col-xs-12 col-md-2">
+                    <div class="mb-2">
+                        <label class=" required col-form-label">Supplier Type</label>
+                        <select class="form-select" id="SupplierTypeId" svalue="@Model.SupplierTypeId">
+                            @foreach (var item in ViewBag.SupplierType)
+                            {
+                                <option value="@item.SupplierTypeID">@item.SupplierType1</option>
+                            }
+                        </select>
+                    </div>
+                </div>
+                    <div class="col-md-2">
+                        <div class="mb-2">
+
+                            <div style="padding-right:5px;float:left;">
+                                <label class="col-form-label">Supplier</label>
+                                <button type="button" class="btn btn-success waves-effect waves-light filter" id="btnsearch">
+                                    <i class="bx bx-revision mt-1" style="font-size: 13px;"></i>
+                                </button>
+                            </div>
+                            @Html.TextBoxFor(model => model.SupplierName, new { @class = "form-select", @required = "true" })
+                            @*@Html.DropDownListFor(model => model.CustomerID, new SelectList(@ViewBag.customer, "CustomerID", "CustomerName"), "Select", new { @class = "form-control", @required = "true" })*@
+                            @Html.HiddenFor(model => model.SupplierID)
+                            @*@Html.HiddenFor(model => model.TransType)*@
+                            @Html.HiddenFor(model => model.ReferenceType)
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="mb-2">
+                            <label class="col-form-label">Description</label>
+                            @Html.TextAreaFor(model => model.Remarks, new { @class = "form-control", @required = "true", @rows = "1" })
+
+                        </div>
+                    </div>
+                    <!--<div class="col-md-2">
+            <div class="mb-2">
+                <label class="col-form-label" id="lblchkInvoice">Allocation Type</label>
+
+                <select class="form-select" id="ReferenceType" name="ReferenceType" value="@Model.ReferenceType" svalue="@Model.ReferenceType" required>
+                    <option value="0">Direct</option>
+                    <option value="1">For Invoice</option>-->
+                    @*<option value="2">For Receipt</option>*@
+                    <!--</select>
+            </div>
+        </div>-->
+
+                </div>
+
+                <div class="row hide">
+                    <div class="col-md-8" style="border: 1px solid grey;">
+                        <div class="row">
+                            <div class="col-md-3">
+                                <div class="mb-2">
+                                    <label class="col-form-label" id="lblInvoice">Invoice No.</label>
+                                    <input type="text" class="form-select" disabled value="@Model.InvoiceNo" id="InvoiceNo" />
+                                    @*@Html.TextBoxFor(model => model.InvoiceNo, new { @Value = Model.InvoiceNo, @class = "form-select", @required = "true" })*@
+                                    @Html.ValidationMessageFor(model => model.InvoiceNo)
+                                    <input type="hidden" id="TradingInvoice" name="TradingInvoice" value="" class="form-control" />
+                                                                        
+                                    @Html.HiddenFor(model => model.InvoiceType)
+                                </div>
+                            </div>
+                            <div class="col-md-3">
+                                <div class="mb-2">
+                                    <label class="col-form-label" id="lblInvoiceDate">Inv. Date</label>
+                                    @*@Html.TextBoxFor(model => model.InvoiceDate, new { @Value=Model.InvoiceDate, @class = "form-control" })*@
+                                    <input type="text" class="form-control" value="@Model.InvoiceDate" readonly id="InvoiceDate" name="InvoiceDate" />
+                                    <div class="invalid-feedback">
+                                        Please enter invoice date
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="col-md-3">
+                                <div class="mb-2">
+                                    <label class="col-form-label" id="lblInvoiceAmt">Inv. Amt</label>
+                                    @Html.TextBoxFor(model => model.InvoiceAmount, new { @class = "form-control textright" })
+                                    <div class="invalid-feedback">
+                                        Please enter invoice amt
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="col-md-3">
+                                <div class="mb-2">
+                                    <label class="col-form-label" id="lblReceivedAmt">Received Amount</label>
+                                    @Html.TextBoxFor(model => model.Amount, new { @class = "form-control textright" })
+                                    <div class="invalid-feedback">
+                                        Please enter Outstanding
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+
+                </div>
+            </div>
+    </div>
+
+    <div class="card">
+        <div class="card-body">
+            <div class="row">
+                <div class="col-md-6" id="listContainer" style="border-right:2px solid #0094ff">
+
+                    @{Html.RenderPartial("DebitNoteDetail", Model);}
+                </div>
+
+
+                <div class="col-md-6" id="allocationcontainer">
+                    <input type="hidden" id="hdnAdvance" value="0" />
+                    <table class="table table-bordered mb-0" id="datatable1" style="width:100%">
+
+                        <thead>
+                            <tr style="background-color:#dedede;text-align:center">
+                                <th width="20%">Invoice No.</th>
+                                <th width="20%">Invoice Date</th>
+                                <th width="15%">Invoice Amount</th>
+                                <th width="10%">Received</th>
+                                <th width="10%">OutStanding</th>
+                                <th width="25%">Amount Allocated</th>
+
+
+                            </tr>
+                            <tr>
+                                <th colspan="5" style="text-align:right">Total</th>
+
+
+                                <th style="text-align:right"><span style="text-align:right;margin-right:12px" id="spantotalallocate"></span></th>
+
+
+                            </tr>
+                        </thead>
+                        <tbody id="tbl1">
+                        </tbody>
+
+                    </table>
+
+                </div>
+
+            </div>
+
+        </div>
+    </div>
+
+
+}
+
+
+@section scripts{
+
+
+    <script src="~/Scripts/JS/DebitNoteCreate.js"></script>
+}

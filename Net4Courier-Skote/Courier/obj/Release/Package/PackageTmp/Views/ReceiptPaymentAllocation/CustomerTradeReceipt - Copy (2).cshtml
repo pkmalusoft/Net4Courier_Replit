@@ -1,0 +1,1772 @@
+﻿@model Net4Courier.Models.CustomerRcieptVM
+
+@{
+
+    Layout = "~/Views/Shared/_Layout.cshtml";
+    var staffmodel = ViewBag.StaffNoteModel as IEnumerable<Net4Courier.Models.StaffNoteModel>;
+    var spath = "/CustomerReceipt/CustomerTradeReceiptDetails/0";// System.Configuration.ConfigurationManager.AppSettings["spath"].ToString();
+    var CustomerNotification = ViewBag.CustomerNotification as IEnumerable<Net4Courier.Models.CustomerNotificationModel>;
+    var CustomerDetails = ViewBag.CustomerDetail;
+    var _decimal = @Session["Decimal"].ToString();
+}
+<script src="~/Content/NewCSS/plugins/jQuery/moment.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/bootstrap-datetimepicker/4.17.43/js/bootstrap-datetimepicker.min.js"></script>
+
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap-datetimepicker/4.17.43/css/bootstrap-datetimepicker.min.css" />
+
+<style>
+    #tbl1 tr {
+        height: 32px;
+    }
+
+    /*#tbl1 tr:first-of-type {
+            background: #35b8eb;
+            color: #fff;
+        }*/
+
+    .form_field {
+        background-color: #fff;
+        border-radius: 10px;
+        box-shadow: 0 9px 23px rgba(0, 0, 0, 0.09), 0 5px 5px rgba(0, 0, 0, 0.06) !important;
+        padding: 16px;
+        margin-top: 21px;
+    }
+
+    .headinglabel {
+        font-family: Calibri;
+        font-size: 17px;
+        color: #1b1919 !important;
+    }
+
+    .modal-dialog {
+        width: 800px;
+    }
+
+    #staffmodelbody {
+        max-height: calc(100vh - 200px);
+        overflow-y: auto;
+    }
+
+    .flex {
+        display: flex;
+    }
+
+    .justify-content-between {
+        justify-content: space-between;
+    }
+
+    #popup h5 {
+        border: 2px solid #35b8eb;
+        min-width: 150px;
+        height: 40px;
+        border-radius: 5px;
+        line-height: 40px;
+        color: #35b8eb;
+        text-align: center;
+        font-weight: bold;
+    }
+</style>
+<script type="text/javascript">
+
+    function isNumberKey1(evt) {
+        var charCode = (evt.which) ? evt.which : evt.keyCode;
+        //if (e.which != 8 && e.which != 0 && (e.which < 48 || e.which > 57)) {
+        if (charCode != 8 && charCode != 0 && (charCode < 48 || charCode > 57))
+            return false;
+
+        return true;
+    }
+    function ShowAWBAllocation(index, Amount, InvoiceNo) {
+        debugger;
+        Amount = parseFloat($('#txtinvoice_' + index).val());
+        var InvoiceId = $('#hdnInvoiceId_' + index).val();
+        $('#hdnEditCustomerInvoiceId').val(InvoiceId);
+        //InvoiceId = InvoiceId.replace('TR', '');
+        $('#hdnAllocatedAmount').val(Amount);
+        $('#hInvoice').html('<b>Invoice No:</b>' + InvoiceNo + ' <b> Allocated Amount :</b>' + Amount.toFixed(@_decimal));
+        $('#hTotal').html(parseFloat(Amount).toFixed(@_decimal));
+        $.ajax({
+            type: "Get",
+            url: '/CustomerReceipt/GetAWBAllocation/',
+            data: { 'InvoiceId': InvoiceId },
+            success: function (data) {
+                $('#AllocationTable').html('');
+                $('#AllocationTable tr:gt(0)').remove();
+                $('#hdnItemCount').val(data.length);
+                for (var i = 0; i < data.length; i++) {
+                    var date = data[i].AWBDate;
+                    var recamt = data[i].ReceivedAmount;
+                    if (recamt == "" || recamt==null)
+                        recamt = 0;
+                    $('#AllocationTable').append('<tr>' +
+                        '<td>' + data[i].AWBNo + '<input type="hidden" name="AWBAllocation[' + i + '].CustomerInvoiceDetailID" value="' + data[i].CustomerInvoiceDetailID + '" /> <input type = "hidden" name = "AWBAllocation[' + i + '].ID" value ="' + data[i].ID + '" />  </td>' +
+                        '<td>' + date + '</td>' +
+                        '<td class="text-right">' + parseFloat(data[i].TotalAmount).toFixed(@_decimal) + '</td>' +
+                        '<td class="text-right">' + parseFloat(recamt).toFixed(@_decimal) +  '</td>' +
+                        '<td class="text-right"><input type="hidden" id="atxtbal_' + data[i].CustomerInvoiceId + '_' +  data[i].CustomerInvoiceDetailID + '" value="' + parseFloat(data[i].PendingAmount).toFixed(@_decimal) + '"/>' + parseFloat(data[i].PendingAmount).toFixed(@_decimal) + '</td>' +
+                        '<td class="text-right"> <input type="text" onBlur="chkAWBAmt(this)" name="AWBAllocation[' + i + '].AllocatedAmount" class="amt txtNum text-right AmountReceived" id="atxt_' + data[i].CustomerInvoiceId + '_' + data[i].CustomerInvoiceDetailID + '" detailid="' + data[i].CustomerInvoiceDetailID + '" value="' + parseFloat(data[i].AllocatedAmount).toFixed(@_decimal) + '" />' +
+                        '<tr>');
+                }
+                $('#popup').modal('show');
+            }
+        });
+
+    }
+
+    function EditAWBAllocation(InvoiceId, Amount, InvoiceNo) {
+        debugger;
+        var Amount1 = $('#txtinvoice_' + InvoiceId).val()
+        Amount1 = Amount1.replace(',', '');
+        Amount = parseFloat(Amount1); //$('#txtinvoice_' + InvoiceId).val());
+        $('#hdnEditCustomerInvoiceId').val(InvoiceId);
+        InvoiceId = InvoiceId.toString().replace('TR', '');
+        $('#hdnAllocatedAmount').val(Amount);
+        $('#hInvoice').html('<b>Invoice No:</b>' + InvoiceNo + ' <b> Allocated Amount :</b>' + Amount.toFixed(@_decimal));
+        $('#hTotal').html(parseFloat(Amount).toFixed(@_decimal));
+        $.ajax({
+            type: "Get",
+            url: '/CustomerReceipt/GetAWBAllocation/',
+            data: { 'InvoiceId': InvoiceId },
+            success: function (data) {
+                $('#AllocationTable').html('');
+                $('#AllocationTable tr:gt(0)').remove();
+                $('#hdnItemCount').val(data.length);
+                for (var i = 0; i < data.length; i++) {
+                    var date = data[i].AWBDate;
+                    var recamt = data[i].ReceivedAmount;
+                    if (recamt == "" || recamt==null)
+                        recamt = 0;
+                    $('#AllocationTable').append('<tr>' +
+                        '<td>' + data[i].AWBNo + '<input type="hidden" name="AWBAllocation[' + i + '].CustomerInvoiceDetailID" value="' + data[i].CustomerInvoiceDetailID + '" /> <input type = "hidden" name = "AWBAllocation[' + i + '].ID" value ="' + data[i].ID + '" />  </td>' +
+                        '<td>' + date + '</td>' +
+                        '<td class="text-right">' + parseFloat(data[i].TotalAmount).toFixed(@_decimal) + '</td>' +
+                        '<td class="text-right">' + parseFloat(recamt).toFixed(@_decimal) +  '</td>' +
+                        '<td class="text-right"><input type="hidden" id="atxtbal_' + data[i].CustomerInvoiceId + '_' +  data[i].CustomerInvoiceDetailID + '" value="' + parseFloat(data[i].PendingAmount).toFixed(@_decimal) + '"/>' + parseFloat(data[i].PendingAmount).toFixed(@_decimal) + '</td>' +
+                        '<td class="text-right"> <input type="text" onBlur="chkAWBAmt(this)" name="AWBAllocation[' + i + '].AllocatedAmount" class="amt txtNum text-right AmountReceived" id="atxt_' + data[i].CustomerInvoiceId + '_' + data[i].CustomerInvoiceDetailID + '" detailid="' + data[i].CustomerInvoiceDetailID + '" value="' + parseFloat(data[i].AllocatedAmount).toFixed(@_decimal) + '" />' +
+                        '<tr>');
+                }
+                $('#popup').modal('show');
+            }
+        });
+
+    }
+    $(document).ready(function () {
+
+        $(":text").css({ "border-radius": "5px" });
+        $("select").css({ "border-radius": "5px" });
+        $("textarea").css({ "border-radius": "5px" });
+
+        //$("#FMoney").attr("readonly", false);
+        $("#PaymentMode").focus();
+
+        if ('@Model.RecPayID' == 0) {
+            $("#divCash").css({ "display": "none" });
+            $("#divBank").css({ "display": "block" });
+
+            //$("#CurrencyId").val('@Session["BaseCurrencyId"]');
+            $("#EXRate").val('1.00');
+
+        } else {
+            $('#btnsearch').attr('disabled', 'disabled');
+            if ($("#RecPayID").val() > 0) {
+            if ($("#StatusEntry").val() == "BK") {
+                $("#Bank").prop('checked', true);
+                $("#Cash").prop('checked', false);
+                $("#Bank").trigger("click");
+            }
+            else if ($("#StatusEntry").val() == "CS") {
+                $("#Cash").prop('checked', true);
+                $("#Bank").prop('checked', false);
+                $("#Cash").trigger("click");
+            }
+
+
+            var money = parseFloat($("#FMoney").val());
+            $("#FMoney").val(money.toFixed(@_decimal));
+
+            var exrate = parseFloat($("#EXRate").val());
+            $("#ExRate").val(exrate.toFixed(@_decimal));
+        }
+             if ('@Model.StatusEntry' == 'CS') {
+                $("#divCash").css({ "display": "block" });
+                $("#divBank").css({ "display": "none" });
+                 $("#ChequeNo").attr("readonly", "readonly");
+                 $("#ChequeDate").attr("readonly", "readonly");
+                 $("#PaymentMode").val(2);
+
+            } else {
+                $("#divCash").css({ "display": "none" });
+                $("#divBank").css({ "display": "block" });
+
+            }
+            setTimeout(function () {
+                PaymentModeChange();
+                SetDecimal();
+                $('#customerName').attr('readonly', 'readonly');
+            },100)
+
+            ValidateTotal();
+        }
+        var wt = $("#EXRate").val();
+        if (wt == null || wt == "") {
+            $("#EXRate").val("0.00");
+        } else {
+            $("#EXRate").val(parseFloat(wt).toFixed(@_decimal));
+        }
+
+        $("#EXRate").blur(function () {
+            var wt = $(this).val();
+            $("#EXRate").val(parseFloat(wt).toFixed(@_decimal));
+
+        });
+        $("#FMoney").blur(function () {
+            var wt = $(this).val();
+            if (wt == null || wt == "") {
+                $("#FMoney").val("0.00");
+            } else {
+                $("#FMoney").val(parseFloat(wt).toFixed(@_decimal));
+            }
+        });
+        $("#FMoney").change(function () {
+            debugger;
+            var wt = $(this).val();
+            if (wt == null || wt == "") {
+                $("#FMoney").val("0.000");
+            }
+            else {
+                $("#FMoney").attr('value', parseFloat(wt));
+            }
+
+
+              if ($('#AllocatedAmount').val() == '') {
+                  $('#AllocatedAmount').val(0);
+            }
+            var allocatedamount = $('#AllocatedAmount').val();
+            var allocatedamount = allocatedamount.replace(',', '');
+            var TotalAmount = parseFloat($('#FMoney').val()) + parseFloat($('#hdnAdvance').val());
+            if (TotalAmount == "")
+                TotalAmount = 0;
+            if (parseFloat(TotalAmount) > 0) {
+                var balance1 = parseFloat(TotalAmount) - parseFloat(allocatedamount);
+                $('#BalanceAmount').val(parseFloat(balance1).toFixed(@_decimal));
+            }
+            else {
+                $('#BalanceAmount').val(parseFloat("0").toFixed(@_decimal));
+            }
+
+
+
+        if (parseFloat($("#FMoney").val()) == 0) {
+            $("#FMoney").val(parseFloat(wt).toFixed(@_decimal));
+            $('#msg1').show();
+            $('#msg1').text('Received Amount Required!');
+            $('#btnsave').attr('disabled', 'disabled');
+        }
+        else if (allocatedamount > 0 && parseFloat(TotalAmount) < allocatedamount) {
+            $('#btnsave').attr('disabled', 'disabled');
+            $('#msg1').show();
+            $('#msg1').text('Allocation amount should not be more than Received amount!');
+        }
+        else {
+            $('#btnsave').removeAttr('disabled', 'disabled');
+            //$("#FMoney").val(parseFloat(wt).toFixed(@_decimal));
+            $('#msg1').hide();
+            $('#msg1').text('');
+            }
+
+        });
+        $(".chkAllocate").click(function () {
+            if ($(".chkAllocate").is(':checked')) {
+
+                $("#FMoney").attr("readonly", false);
+                $(".readonlyamt").show();
+                $(".textamt").hide();
+            }
+            else {
+
+                $("#FMoney").attr("readonly", true);
+                $(".readonlyamt").hide();
+                $(".textamt").show();
+            }
+        });
+        //$.ajax({
+        //    type: "GET",
+        //    url: "/PickUpRequest/GetCustomerName",
+        //    datatype: "Json",
+        //    success: function (response) {
+        //        debugger;
+        //        customernames = response.data;
+        //        $("#CustomerName").autocomplete({
+        //            source: customernames
+        //        });
+        //    }
+        //});
+
+        $("#OPRefNo").autocomplete({
+            source: function (request, response) {
+                $.ajax({
+                    url: '/CustomerReceipt/GetOpeningPayment',
+                    datatype: "json",
+                    data: {
+                        term: request.term, CustomerId: $('#CustomerID').val()
+                    },
+                    success: function (data) {
+                        response($.map(data, function (val, item) {
+                            return {
+                                label: val.RefNo,
+                                value: val.ACOPInvoiceDetailId,
+                                Amount: val.Amount
+                            }
+                        }))
+                    }
+                })
+            },
+            minLength: 0,
+            autoFocus: false,
+            focus: function (e, i) {
+                $("#OPRefNo").val(i.item.label);
+                $('#FMoney').val(i.item.Amount);
+                $('#AcOPInvoiceDetailID').val(i.item.value);
+
+            },
+            select: function (e, i) {
+                e.preventDefault();
+                $("#OPRefNo").val(i.item.label);
+                $('#FMoney').val(i.item.Amount);
+                $('#AcOPInvoiceDetailID').val(i.item.value);
+
+            },
+
+        });
+         $("#customerName").autocomplete({
+            source: function (request, response) {
+                $.ajax({
+                    //url: '/CustomerReceipt/GetCustomerName',
+                    url: '/AWB/GetCustomerName',
+                    datatype: "json",
+                    data: {
+                        term: request.term
+                    },
+                    success: function (data) {
+                        response($.map(data, function (val, item) {
+                            return {
+                                label: val.CustomerName,
+                                value: val.CustomerName,
+                                ID: val.CustomerID,
+                                type:val.CustomerType
+                            }
+                        }))
+                    }
+                })
+            },
+            minLength: 0,
+            autoFocus: false,
+            focus: function (e, i) {
+                $("#customerName").val(i.item.label);
+                $('#CustomerID').val(i.item.ID);
+                $('#CustomerID').attr('label', i.item.label);
+             },
+            select: function (e, i) {
+                e.preventDefault();
+                $("#customerName").val(i.item.label);
+                $('#CustomerID').val(i.item.ID);
+                $('#CustomerID').attr('label',i.item.label);
+
+            },
+
+        });
+        $('#btnsearch').click(function () {
+            var autoallocate = $("#AutoAllocate").is(':checked');
+            var TotalAmount = 0;
+            var recpayid = $("#RecPayID").val();
+            if (autoallocate == true)
+                TotalAmount = parseFloat($('#FMoney').val()).toFixed(3);
+            if ($('#CustomerID').val() == 0) {
+                alert('Select Customer!');
+                return;
+            }
+
+            if ($('#FMoney').val() == "") {// || $('#FMoney').val()=="0") {
+                //alert('Enter Receipt Amount!');
+                $('#FMoney').val(0);
+            }
+
+            var ID = $('#CustomerID').val();
+            $.ajax({
+                type: "POST",
+                url: '/CustomerReceipt/GetTradeInvoiceOfCustomer/' + ID,
+                data: {
+                    'ID': ID, 'amountreceived': parseFloat(TotalAmount), 'RecPayId': recpayid },
+                success: function (response) {
+                    debugger;
+                    var data = response.salesinvoice;
+                    var advance = response.advance;
+                    $('#hdnAdvance').val(advance);
+                    $('#tbl1').html('');
+                    if (data.length == 0) {
+                        $('#BalanceAmount').val(parseFloat(advance).toFixed(@_decimal));
+                    }
+                    //$scope.Orders = data;
+                    var amt = 0;
+                    for (var i = 0; i < data.length; i++) {
+                        var date = new Date(data[i].date);
+                        amt = parseFloat(amt) + parseFloat(data[i].Amount);
+                        var tempdate = new Date(date).getDate() + '/' + (new Date(date).getMonth() + 1) + '/' + new Date(date).getFullYear();
+                        var invoiceno = "'" + data[i].InvoiceNo + "'";
+                        html = '<tr>' +
+                            '<td>' + data[i].InvoiceNo + '<input type="hidden" name="CustomerRcieptChildVM[' + i + '].InvoiceType"  value="' + data[i].InvoiceType + '" />  <input id="" name="CustomerRcieptChildVM[' + i + '].AcOPInvoiceDetailID" value=' + data[i].AcOPInvoiceDetailID + ' type="hidden"><input id="hdnInvoiceId_' + i + '"  name="CustomerRcieptChildVM[' + i + '].InvoiceID" value=' + data[i].SalesInvoiceID + ' type="hidden"></td>' +
+                            '<td>' + data[i].DateTime + '<input id="" name="CustomerRcieptChildVM[' + i + '].InvoiceDate" value=' + data[i].DateTime + ' type="hidden"></td>' +
+                            '<td class="text-right">' + parseFloat(data[i].InvoiceAmount).toFixed(@_decimal) + '<input id="" name="CustomerRcieptChildVM[' + i + '].AmountToBeRecieved" value=' + data[i].InvoiceAmount + ' type="hidden" class="AmountToBeRecieved"></td>' +
+                            '<td class="text-right">' + parseFloat(data[i].AmountReceived).toFixed(@_decimal) + '<input id="" name="CustomerRcieptChildVM[' + i + '].AmtPaidTillDate" value=' + data[i].AmountReceived + ' type="hidden"></td>' +
+                            '<td class="text-right">' + parseFloat(data[i].Balance).toFixed(@_decimal) + '<input id="txtbalance_' + i + '" name="CustomerRcieptChildVM[' + i + '].Balance" value=' + data[i].Balance + ' type="hidden"><input id="" name="CustomerRcieptChildVM[' + i + '].InvoiceNo" value=' + data[i].InvoiceNo + ' type="hidden"></td>';
+                            //'<td>' + data[i].Amount + '<input id="" name="customerRcieptVM[' + i + '].Amount" value=' + data[i].Amount + ' type="hidden"></td>' +
+                        if (data[i].Allocated == true) {
+                            html = html + '<td><input type="checkbox" onchange="allocate(this);" checked id="chkallocate_' + i + '" /><input type="text" onchange="CheckAmt(this)"  id="txtinvoice_' + i + '" class="amt txtNum text-right AmountReceived" name="CustomerRcieptChildVM[' + i + '].Amount"  value="' + parseFloat(data[i].Amount).toFixed(@_decimal) + '" /></td>';
+                        }
+                        else {
+                            html = html + '<td><input type="checkbox" onchange="allocate(this);" id="chkallocate_' + i + '" /><input type="text" onchange="CheckAmt(this)"  id="txtinvoice_' + i + '" class="amt txtNum text-right AmountReceived" name="CustomerRcieptChildVM[' + i + '].Amount"  value="' + parseFloat(data[i].Amount).toFixed(@_decimal) + '" /></td>';
+                        }
+
+                        html=html+ '<td> <input type="text"  onchange="CheckAmt1(this)" id="txtadjust_' + i + '" class="amt1 txtNum text-right AdjustmentAmount" name="CustomerRcieptChildVM[' + i + '].AdjustmentAmount" /></td>';
+                        if (data[i].InvoiceType == 'OP') {
+                            html = html + '<td></td>';
+                        }
+                        else {
+                            html = html + '<td> <a href="JavaScript:void(0)"   onclick="ShowAWBAllocation(' + i + ',' + data[i].Amount + ',' + invoiceno + ')" ><i class="fa fa-eye"></i></a></td>';
+                        }
+
+                        html = html + '</tr>';
+
+                          $('#tbl1').append(html);
+                        //hideLoading();
+                    }
+                    ValidateTotal();
+
+                }
+            });
+
+        });
+        $("#customerName").change(function () {
+            if ($('#customerName').val() != $('#CustomerID').attr('label')) {
+                $('#customerName').val('');
+                $('#CustomerID').val(0);
+                $('#customerName').focus();
+            }
+
+    });
+        $("#AllocationClose").on("click", function () {
+            $('#popup').modal('hide');
+            //$('#popupbackground').hide();
+        });
+        $('#AllocationSave').on("click", function () {
+            var invoiceid = $('#hdnEditCustomerInvoiceId').val();
+            var allocatedamount =parseFloat($('#hdnAllocatedAmount').val()).toFixed(@_decimal);
+            var amt = 0;
+            var obj = [];
+            var formdata = $('form#FormReceipt').serialize();
+          //  console.log(JSON.stringify(formdata));
+            var idtext = 'atxt_' + invoiceid;
+            var maxrow = parseFloat($('#hdnItemCount').val());
+
+            $('[id^=' + idtext + ']').each(function (index, item) {
+                var detailid = $(item).attr('detailid');
+                if ($(item).val() == "") {
+                    $(item).val(0);
+                }
+                amt = amt + parseFloat($(item).val());
+                var item1 = { CustomerInvoiceId: invoiceid, CustomerInvoiceDetailId: detailid, AllocatedAmount: $(item).val() }
+                obj.push(item1);
+                if (maxrow == obj.length) {
+                    if (parseFloat(amt).toFixed(@_decimal) != allocatedamount) {
+                        alert('Allocate Amount should be equal to allocation of AWB!')
+                        return;
+                    }
+                    else {
+                        var RecP = JSON.stringify({ 'RecP': obj });
+                        $.ajax({
+                            contentType: 'application/json; charset=utf-8',
+                            dataType: 'json',
+                            type: 'POST',
+                            url: '/CustomerReceipt/SaveAWBAllocation/',
+                            data: RecP,
+                            success: function (data) {
+                                $('#popup').modal('hide');
+
+                            }
+                        });
+                    }
+                }
+            });
+
+
+
+        });
+        $(".amt").blur(function () {
+            var curror = $(this).parent("div").parent("td").parent("tr");
+            var amt = parseFloat($(curror).find("td").eq(2).find("div").find('input[type=hidden]').val());
+
+            var allocateamt = parseFloat($(curror).find("td").eq(3).find("div").find(".amt").val());
+            if (allocateamt == "") {
+                allocateamt = 0;
+            }
+
+            if (allocateamt > amt) {
+                $(curror).find("td").eq(3).find("div").find(".amt").val(amt);
+
+            }
+            else {
+                $(curror).find("td").eq(3).find("div").find(".amt").val(allocateamt);
+            }
+        });
+
+
+
+
+
+
+
+        if ($("#RecPayID").val() > 0) {
+            if ($("#StatusEntry").val() == "BK") {
+                $("#Bank").prop('checked', true);
+                $("#Cash").prop('checked', false);
+                $("#Bank").trigger("click");
+            }
+            else if ($("#StatusEntry").val() == "CS") {
+                $("#Cash").prop('checked', true);
+                $("#Bank").prop('checked', false);
+                $("#Cash").trigger("click");
+            }
+            PaymentModeChange();
+
+            var money = parseFloat($("#FMoney").val());
+            $("#FMoney").val(money.toFixed(@_decimal));
+
+            var exrate = parseFloat($("#EXRate").val());
+            $("#ExRate").val(exrate.toFixed(@_decimal));
+        }
+
+        //Comma($(".aeamt").val());
+
+        @*$('.txtNum').blur(function () {
+            if (isNaN(parseInt($(this).val()))) {
+                $(this).val('0.00');
+            } else {
+                var amt = parseFloat($(this).val());
+                $(this).val(amt.toFixed(@_decimal));
+            }
+        });*@
+
+
+        //$('#tbl1').on('blur', '.amt', function () {
+        //    var result = ValidateTotal();
+        //});
+
+        $('form').submit(function (e) {
+            var result = ValidateTotal();
+            if (result == false) {
+                e.preventDefault();
+            }
+        });
+        var startdate = '@Session["FyearFrom"].ToString()';
+        var enddate = '@Session["FyearTo"].ToString()';
+        var sd = new Date(startdate.split('-')[1] + '-' + startdate.split('-')[0] + '-' + startdate.split('-')[2]);
+        var ed = new Date(enddate.split('-')[1] + '-' + enddate.split('-')[0] + '-' + enddate.split('-')[2]);
+        $('#RecPayDate').datetimepicker({
+            maxDate: ed,
+            minDate: sd,
+            format: 'DD-MM-YYYY'
+        });
+        $('#ChequeDate').datetimepicker({
+            maxDate: ed,
+            minDate: sd,
+            format: 'DD-MM-YYYY'
+        });
+
+    });
+</script>
+
+<script>
+    function Comma(Num) { //function to add commas to textboxes
+        Num += '';
+        Num = Num.replace(',', ''); Num = Num.replace(',', ''); Num = Num.replace(',', '');
+        Num = Num.replace(',', ''); Num = Num.replace(',', ''); Num = Num.replace(',', '');
+        x = Num.split('.');
+        x1 = x[0];
+        x2 = x.length > 1 ? '.' + x[1] : '';
+        var rgx = /(\d+)(\d{3})/;
+        while (rgx.test(x1))
+            x1 = x1.replace(rgx, '$1' + ',' + '$2');
+        $(".aeamt").val(x1 + x2);
+    }
+</script>
+
+<script type="text/javascript">
+    function numberWithCommas(x) {
+        return x.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+    }
+    function chkAWBAmt(x) {
+        var amt = 0;
+        var obj = [];
+        var invoiceid = $('#hdnEditCustomerInvoiceId').val();
+        var idtext = 'atxt_' + invoiceid;
+        var maxrow = parseFloat($('#hdnItemCount').val());
+
+        $('[id^=' + idtext + ']').each(function (index, item) {
+
+            if ($(item).val() == "") {
+                $(item).val(0);
+            }
+            amt = amt + parseFloat($(item).val());
+            $('#hTotal').html(parseFloat(amt).toFixed(@_decimal));
+            if (maxrow == index) {
+                if (parseFloat(amt).toFixed(@_decimal) != allocatedamount) {
+                    alert('Allocate Amount should be equal to allocation of Consignment!')
+                    return;
+                }
+
+            }
+        });
+    }
+ function CheckAmt(x) {
+        debugger;
+        var thisval = $(x).val();
+        $(x).attr('value', thisval);
+        if (thisval == null || thisval == "") {
+            $(x).val('0.00');
+        } else {
+            $(x).val(parseFloat(thisval).toFixed(3));
+        }
+        //paid amount change
+        var id = $(x).attr('id').split('_')[1];
+        var balance = parseFloat($('#txtbalance_' + id).val());
+        var paidamount = parseFloat($(x).val());
+        if ($('#txtadjust_' + id).val() == "") {
+            $('#txtadjust_' + id).val(0);
+        }
+        var adjustmentamount = parseFloat($('#txtadjust_' + id).val());
+        if (balance < (paidamount + adjustmentamount)) {
+            $(x).val(0);
+            $('#msg1').show();
+            $('#msg1').text('Received Amount should not exceed than the balance!');
+        }
+
+        ValidateTotal();
+
+
+
+    }
+
+    function CheckAmt1(x) {
+        debugger;
+        var thisval = $(x).val();
+        $(x).attr('value', thisval);
+        if (thisval == null || thisval == "") {
+            $(x).val('0.00');
+        } else {
+            $(x).val(parseFloat(thisval).toFixed(2));
+        }
+        var id = $(x).attr('id').split('_')[1];
+        var balance = parseFloat($('#txtbalance_' + id).val());
+        var paidamount = parseFloat($('#txtinvoice_'  + id).val());
+        if ($('#txtadjust_' + id).val() == "") {
+            $('#txtadjust_' + id).val(0);
+        }
+        var adjustmentamount = parseFloat($('#txtadjust_' + id).val());
+        if (balance < (paidamount + adjustmentamount)) {
+            $(x).val(0);
+            $('#msg1').show();
+            $('#msg1').text('Received Amount should not exceed than the Balance!');
+        }
+
+            ValidateTotal();
+
+
+    }
+      function ShowStaffNotes() {
+         if ('@Model.RecPayID' > 0) {
+             $("#StaffNoteModal").modal('show');
+        } else {
+            alert("Receipt not Created !!")
+        }
+    }
+    function SaveStaffNotes() {
+           var Jobid = '@Model.RecPayID';
+        var staffnote = $("#txtStaffnote").val();
+        if (staffnote == "" || staffnote == null) {
+            alert("Please Enter Your Notes !")
+        } else {
+            $.ajax({
+                type: "GET",
+                url: "/CustomerReceipt/UpdateStaffNote",
+                datatype: "Json",
+                data: { Jobid: Jobid, staffnote: staffnote },
+                success: function (data) {
+                    if (data.success == true) {
+                        $.notify("Notes Submitted Successfully !!", "success");
+                        $("#txtStaffnote").val('');
+                        window.setTimeout(function () {
+                            location.reload();
+                        }, 1000);
+                    } else {
+                        $.notify(data.message, "error");
+                        $('#StaffNoteModal').modal('hide');
+                    }
+                }
+            });
+        }
+    }
+     function Printreceipt(id) {
+        if (id > 0) {
+            var url = '@spath' + "/Reports/ReceiptVocher.aspx?recpayid=" + id;
+            window.open(url, "_blank");
+        } else {
+            alert("Receipt not Created !!")
+
+        }
+    }
+     function ShowCustomerNotification() {
+         if ('@Model.RecPayID' > 0) {
+             $("#CustomerNotificationmodel").modal('show');
+
+        } else {
+            alert("Receipt not Created !!")
+        }
+    }
+      function SaveCustNotes() {
+           var Jobid = '@Model.RecPayID';
+         var Custid = '@Model.CustomerID';
+         var isemail = false;
+         var iswhatsapp = false;
+         var issms = false;
+         if ($("#Isemail").prop('checked') == true) {
+             isemail = true;
+         }
+         if ($("#Issms").prop('checked') == true) {
+             issms = true;
+         }
+         if ($("#Iswhatsapp").prop('checked') == true) {
+             iswhatsapp = true;
+         }
+         var staffnote = $("#txtcustMessage").val();
+         if (staffnote == "" || staffnote == null) {
+             alert("Please Enter Your Message !")
+         } else if (isemail == false && issms == false && iswhatsapp == false)
+         {
+             alert("Please select any one of the notification method !")
+         }
+         else {
+            $.ajax({
+                type: "GET",
+                url: "/CustomerReceipt/SendCustomerNotification",
+                datatype: "Json",
+                data: { JobId: Jobid, Message: staffnote, Customerid: Custid, whatsapp: iswhatsapp, Email: isemail, sms: issms },
+                success: function (data) {
+                    if (data.success == true) {
+                        $.notify("Notification Sent Successfully !!", "success");
+                        window.setTimeout(function () {
+                            location.reload();
+                        }, 1000);
+                    } else {
+                        $.notify(data.message, "error");
+                        $('#CustomerNotificationmodel').modal('hide');
+                    }
+                }
+            });
+        }
+    }
+    function PaymentModeChange() {
+        debugger;
+        var val = $("#PaymentMode").val();
+        if (val == 1) { //Bank
+            $("#divCash").css({ "display": "none" });
+            $("#divBank").css({ "display": "block" });
+            $("#ChequeNo").attr('required', 'required');
+            $("#ChequeDate").attr('required', 'required');
+            $("#ChequeNo").removeAttr('readonly');
+            $("#ChequeDate").removeAttr('readonly');
+            $('#CashBank').removeAttr('required', 'required');
+            $('#ChequeBank').attr('required', 'required');
+            $('#CashBank').val(0).trigger('change');
+            $('#FMoney').removeAttr('readonly');
+        } else if (val==2) { //2 Cash
+            $("#divBank").css({ "display": "none" });
+            $("#divCash").css({ "display": "block" });
+            $("#ChequeNo").val('');
+            $("#ChequeDate").val('');
+            $("#ChequeNo").removeAttr('required');
+            $("#ChequeDate").removeAttr('required');
+            $("#ChequeNo").attr('readonly', 'readonly');
+            $("#ChequeDate").attr('readonly', 'readonly')
+            $('#CashBank').attr('required', 'required');
+            $('#ChequeBank').val(0).trigger('change');
+            $('#ChequeBank').removeAttr('required');
+            $('#FMoney').removeAttr('readonly');
+        }
+         else if (val == 3) { //2 Settlement
+        $("#divBank").css({ "display": "none" });
+        $("#divCash").css({ "display": "block" });
+        $("#ChequeNo").val('');
+        $("#ChequeDate").val('');
+        $("#ChequeNo").removeAttr('required');
+        $("#ChequeDate").removeAttr('required');
+        $("#ChequeNo").attr('readonly', 'readonly');
+        $("#ChequeDate").attr('readonly', 'readonly')
+        $('#CashBank').attr('required', 'required');
+        $('#ChequeBank').val(0).trigger('change');
+            $('#ChequeBank').removeAttr('required')
+            $('#CashBank').attr('readonly', 'readonly');
+            $('#ChequeBank').attr('readonly', 'readonly');
+            $('#CashBank').removeAttr('required');
+            $('#FMoney').attr('readonly', 'readonly');
+            
+        }
+
+    }
+</script>
+
+<section class="content-header">
+    <div class="row">
+        <div class="col-md-5 pull-left">
+            <h1 class="headingfont">@ViewBag.Title</h1>
+        </div>
+        <div class="col-md-5 pull-right text-right">
+            <h2 class="awb" id="h2awb"><strong>@ViewBag.AWBNo</strong></h2>
+            @*<h5>Delivered</h5>*@
+            <h4 class="text-right" id="h4statustype" style='color:#07a7e3!important'>@ViewBag.StatusType</h4><h5 class="pull-right" id="h4courierstatus" style='color:red'>@ViewBag.CourierStatus</h5>
+            <div class="pull-right setting">
+                <div class="navbar-custom-menu" id="divsetting">
+                    <ul class="nav navbar-nav">
+
+                        <!-- User Account Menu -->
+                        <li class="dropdown user user-menu">
+                            <!-- Menu Toggle Button -->
+
+                            <ul class="dropdown-menu extended logout" style="top:0%!important">
+                                <li><a style="color:#35b8eb;cursor:pointer" onclick="Printreceipt(1)">Print</a></li>
+                                <li><a style="color:#35b8eb;cursor:pointer" onclick="ShowStaffNotes()">Staff Notes</a></li>
+                                <li><a style="color:#35b8eb;cursor:pointer" onclick="ShowCustomerNotification()">Customer Notification</a></li>
+                            </ul>
+                            <a href="#" class="dropdown-toggle" data-toggle="dropdown">
+                                <i style="font-size: 30px;color:#35b8eb;padding-top: 11px;" class="fa fa-cog"></i>
+                            </a>
+                        </li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+
+    </div>
+    <div class="row">
+
+    </div>
+</section>
+
+<!-- Main content -->
+<section class="content">
+    @using (Html.BeginForm("CustomerTradeReceipt", "CustomerReceipt", FormMethod.Post, new { @id = "FormReceipt" }))
+    {
+        @Html.ValidationSummary(true)
+
+        @Html.HiddenFor(model => model.RecPayID)
+        @Html.HiddenFor(model => model.CustomerID)
+        @Html.HiddenFor(model => model.RecPayDetailID)
+        @Html.HiddenFor(model => model.AcJournalID)
+        @Html.HiddenFor(model => model.StatusEntry)
+        @Html.HiddenFor(model => model.Balance, new { id = "hdnAdvance" })
+
+        <div class="row no-margin">
+            <div class="col-xs-5 col-sm-5">
+                <p style="color:red;display:none;font-size: 15px;margin-top: 30px;" id="msg1">Amount Paid TillDate + Amount Allocated cannot be greater than Balance.</p>
+            </div>
+        </div>
+        <div class="row no-margin" style="padding-top:10px">
+            <div class="col-xs-12 col-sm-2">
+                <label class="headinglabel">Document No</label>
+                @Html.TextBoxFor(model => model.DocumentNo, new { @Value = ViewBag.DocumentNos, @class = "form-control", @readonly = "readonly" })
+
+            </div>
+            <div class="col-xs-12 col-sm-2">
+                <label class="headinglabel">Transaction Date</label>
+                @Html.TextBoxFor(model => model.RecPayDate, new { @class = "form-control text-right", @required = true })
+
+            </div>
+
+
+            <div class="col-xs-12 col-sm-2">
+                <label class="headinglabel">Payment Mode</label>
+                <select id="PaymentMode" class="form-control" onchange="PaymentModeChange()">
+                    <option value="1">Bank</option>
+                    <option value="2">Cash</option>
+                    <option value="3">Settlement</option>
+                </select>
+            </div>
+
+            <div class="col-xs-12 col-sm-2">
+                <div id="divCash" style="">
+                    <label class=" required headinglabel">Cash</label>
+                    @*  @Html.DropDownListFor(model => model.CashBank, new List<SelectListItem> {
+                        new SelectListItem{Text="Cash Account",Value="Cash Account"},
+                        new SelectListItem{Text="PETTY CASH",Value="PETTY CASH"},
+                        new SelectListItem{Text="Cash ControlAccount",Value="Cash ControlAccount"},
+                        new SelectListItem{Text="Petty Cash-Noora",Value="Petty Cash-Noora"},
+                        new SelectListItem{Text="Petty Cash-Sreenithy",Value="Petty Cash-Sreenithy"}},
+                        "Select", new { @class = "form-control" })*@
+                    @Html.DropDownListFor(model => model.CashBank, new SelectList(@ViewBag.achead, "AcHeadID", "AcHead"), "Select", new { @class = "form-control" })
+
+                </div>
+                <div id="divBank">
+                    <label class=" required headinglabel">Bank</label>
+                    @Html.DropDownListFor(model => model.ChequeBank, new SelectList(@ViewBag.acheadbank, "AcHeadID", "AcHead"), "Select", new { @class = "form-control", @required = true })
+                </div>
+            </div>
+
+            <div class="col-xs-12 col-sm-2">
+                <label class=" required headinglabel">Cheque Number</label>
+                @Html.TextBoxFor(model => model.ChequeNo, new { @class = "form-control textright", @required = true, @autocomplete = "off" })
+
+            </div>
+            <div class="col-xs-12 col-sm-2">
+                <label class=" required headinglabel">Cheque Date</label>
+
+                @Html.TextBoxFor(model => model.ChequeDate, new { @class = "form-control text-right", @required = true, @autocomplete = "off" })
+
+            </div>
+
+
+        </div>
+
+
+        <div class="row no-margin" style="padding-top:10px">
+
+
+
+            @if (Model.RecPayID <= 0)
+            {
+
+                <div class="col-xs-12 col-sm-2 hide">
+                    <label class=" required headinglabel">Currency</label>
+                    @Html.DropDownListFor(model => model.CurrencyId, (SelectList)ViewBag.Currency, "Select", new { ng_model = "ExR", @class = "form-control", required = "required" })
+
+                </div>
+                <div class="col-xs-12 col-sm-2 hide">
+                    <label class="headinglabel">Ex. Rate</label>
+                    @Html.TextBoxFor(model => model.EXRate, new { ng_model = "exChangeRate", @class = "form-control textright" })
+
+                </div>
+
+
+            }
+            else
+            {
+
+                <div class="col-xs-12 col-sm-2 hide">
+                    <label class="headinglabel">Currency</label>
+
+                    @Html.DropDownListFor(model => model.CurrencyId, (SelectList)ViewBag.Currency, "Select", new { @class = "form-control" })
+                </div>
+                <div class="col-xs-12 col-sm-2 hide">
+                    <label class="headinglabel">Ex. Rate</label>
+                    @Html.TextBoxFor(model => model.EXRate, new { @readonly = "readonly", @class = "form-control" })
+
+                </div>
+
+            }
+            <div class="col-xs-12 col-sm-3">
+                @*style="width: calc(45% - 100px);"*@
+
+                <label class=" required headinglabel">Client</label>
+                @Html.TextBoxFor(model => model.customerName, new { @class = "form-control" })
+            </div>
+            <div class="col-xs-12 col-sm-3">
+                @*style="width: calc(45% - 100px);"*@
+
+                <label class=" required headinglabel">Opening Ref No.</label>
+                @Html.TextBoxFor(model => model.OPRefNo, new { @class = "form-control" })
+            </div>
+            <div class="col-xs-4 col-sm-2" style="width: calc(45% - 350px);">
+                <label class="headinglabel">Remarks</label>
+                @Html.TextAreaFor(model => model.Remarks, new { @class = "form-control txttarget" })
+            </div>
+
+
+
+            <div class="pull-left" style="padding-right:5px; padding-top: 10px">
+                <button class="btn btn-success small_btn" type="button" id="btnsearch"><i class="fa fa-refresh" aria-hidden="true"></i></button>
+            </div>
+
+
+            <div class="col-xs-12 col-sm-3">
+
+                <div class="col-xs-12 flex justify-content-between">
+                    <label class="headinglabel">Amount</label>
+                    <div>
+                        @Html.CheckBox("AutoAllocate", new { @name = "AutoAllocate", @onchange = "autoallocation()" })
+                        <label class="headinglabel">Auto Allocate</label>
+                    </div>
+                </div>
+
+                @Html.TextBoxFor(model => model.FMoney, new { @class = "form-control textright" })
+
+
+                @*<button type="button" class="btn btn-primary small_btn btn-2" onclick="autoallocation()" id="btnallocation" title="Add Consignments"><i class=" fa fa-th"></i></button>*@
+
+
+            </div>
+
+
+        </div>
+
+
+
+
+
+
+        <div class="row" style="padding-top:10px">
+
+            <div class="col-sm-2 col-sm-offset-8">
+                <label class="headinglabel">Allocated Amount</label>
+                <input type="text" id="AllocatedAmount" class="form-control text-right" readonly />
+            </div>
+            <div class=" col-sm-2">
+                <label class="headinglabel">UnAllocated Amount</label>
+                <input type="text" id="BalanceAmount" class="form-control text-right" readonly />
+            </div>
+        </div>
+        @Html.HiddenFor(model => model.AcCompanyID)
+        @Html.HiddenFor(model => model.AcJournalID)
+        @Html.HiddenFor(model => model.BusinessCentreID)
+        @Html.HiddenFor(model => model.FYearID)
+        @Html.HiddenFor(model => model.AcOPInvoiceDetailID)
+
+
+
+        <div class="row no-margin" style="padding-top:10px">
+            <div class="col-xs-12 no-padding for-device">
+                <div class="data-table payment-div">
+                    <div class="data">
+                        <table border="1" style="margin-top: 15px; " class="table table-bordered table-responsive">
+                            <thead style="background:transparent;">
+                                <tr style="font-weight: bold; background:#07a7e3;">
+                                    <th>Invoice No</th>
+                                    <th>Invoice Date</th>
+                                    <th>Invoice Amount</th>
+                                    <th>Received</th>
+                                    <th>Outstanding</th>
+                                    <th>Amount Allocated</th>
+                                    <th>Adjustment Amount</th>
+                                    <th></th>
+                                </tr>
+                            </thead>
+                            <tbody id="tbl1">
+                                @if (Model.RecPayID > 0)
+                                {
+                                    for (int i = 0; i < Model.CustomerRcieptChildVM.Count; i++)
+                                    {
+
+                                        <tr>
+                                            <td>
+                                                <div class="data1">
+                                                    @*@Model.CostUpdationDetails[i].JobCode*@
+                                                    @Model.CustomerRcieptChildVM[i].SInvoiceNo
+                                                    @Html.HiddenFor(item => @Model.CustomerRcieptChildVM[i].InvoiceID)
+                                                    @Html.HiddenFor(item => @Model.CustomerRcieptChildVM[i].InvoiceType)
+                                                    @Html.HiddenFor(item => @Model.CustomerRcieptChildVM[i].AcOPInvoiceDetailID)
+                                                    @Html.HiddenFor(item => @Model.CustomerRcieptChildVM[i].RecPayID)
+                                                    @Html.HiddenFor(item => @Model.CustomerRcieptChildVM[i].RecPayDetailID)
+                                                    @Html.HiddenFor(item => @Model.CustomerRcieptChildVM[i].CurrencyId)
+                                                    @Html.HiddenFor(item => @Model.CustomerRcieptChildVM[i].InvoiceNo)
+                                                    @*@Html.HiddenFor(item => @Model.CustomerRcieptChildVM[i].Amount)*@
+                                                    @*@Html.HiddenFor(item => @Model.CustomerRcieptChildVM[i].AdjustmentAmount)*@
+                                                </div>
+                                            </td>
+
+                                            <td>
+                                                <div class="data1">
+                                                    @*@Model.CostUpdationDetails[i].JobCode*@
+                                                    @if (@Model.CustomerRcieptChildVM[i].InvoiceDate != null)
+                                                    {
+                                                        @Net4Courier.Models.CommonFunctions.GetShortDateFormat(@Model.CustomerRcieptChildVM[i].strDate)
+                                                        @Html.HiddenFor(item => @Model.CustomerRcieptChildVM[i].InvoiceDate)
+                                                    }
+                                                    else
+                                                    {
+                                                        @Model.CustomerRcieptChildVM[i].strDate
+                                                        @Html.HiddenFor(item => @Model.CustomerRcieptChildVM[i].InvoiceDate)
+                                                    }
+                                                </div>
+                                            </td>
+
+                                            <td style="text-align:right;">
+                                                <div class="data1">
+                                                    @Html.HiddenFor(item => @Model.CustomerRcieptChildVM[i].AmountToBeRecieved, new { @Class = "AmountToBeRecieved" })
+                                                    @string.Format("{0:n3}", @Model.CustomerRcieptChildVM[i].AmountToBeRecieved)
+                                                </div>
+                                            </td>
+
+                                            <td style="text-align:right;">
+                                                <div class="data1">
+                                                    @*@Model.CostUpdationDetails[i].JobCode*@
+                                                    @Html.HiddenFor(item => @Model.CustomerRcieptChildVM[i].AmountToBePaid, new { @Class = "AmountToBePaid" })
+                                                    @string.Format("{0:n3}", @Model.CustomerRcieptChildVM[i].AmountToBePaid)
+
+
+                                                </div>
+                                            </td>
+                                            <td style="text-align:right;">
+                                                <div class="data1">
+                                                    @*@Model.CostUpdationDetails[i].JobCode*@
+                                                    @Html.HiddenFor(item => @Model.CustomerRcieptChildVM[i].Balance, new { @Class = "Balance", @id = "txtbalance_" + Model.CustomerRcieptChildVM[i].JobCode })
+                                                    @string.Format("{0:n3}", @Model.CustomerRcieptChildVM[i].Balance)
+
+
+                                                </div>
+                                            </td>
+                                            <td style="">
+                                                @if (Model.CustomerRcieptChildVM[i].Amount > 0)
+                                                {
+                                                    <input type="checkbox" id="chkallocate_@Model.CustomerRcieptChildVM[i].JobCode" onchange="allocate(this)" checked />
+                                                }
+                                                else
+                                                {
+                                                    <input type="checkbox" id="chkallocate_@Model.CustomerRcieptChildVM[i].JobCode" onchange="allocate(this)" />
+                                                }
+
+                                                @Html.TextBoxFor(item => item.CustomerRcieptChildVM[i].Amount, new { @class = "amt txtNum text-right Amount", @id = "txtinvoice_" + @Model.CustomerRcieptChildVM[i].JobCode, onchange = "CheckAmt(this)" })
+
+
+                                            </td>
+                                            <td style="text-align:right;">
+                                                <div class="data1">
+                                                    @Html.TextBoxFor(item => @Model.CustomerRcieptChildVM[i].AdjustmentAmount, new { @class = "amt1 txtNum text-right AdjustmentAmount", onchange = "CheckAmt1(this)", @id = "txtadjust_" + Model.CustomerRcieptChildVM[i].JobCode })
+
+                                                </div>
+                                            </td>
+                                            <td>
+                                                @if (Model.CustomerRcieptChildVM[i].InvoiceID > 0)
+                                                {
+                                                    <a href="Javascript:void(0)" onclick="EditAWBAllocation('@Model.CustomerRcieptChildVM[i].JobCode',@Model.CustomerRcieptChildVM[i].Amount,'@Model.CustomerRcieptChildVM[i].SInvoiceNo')"><i class="fa fa-eye"></i></a>
+                                                }
+                                            </td>
+
+                                        </tr>
+
+                                    }
+                                }
+                            </tbody>
+
+                        </table>
+
+
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="row no-margin" style="padding-top: 10px">
+            <div class="col-md-12 btn-right">
+                @if (Model.RecPayID > 0)
+                {
+                    <input type="submit" id="btnsave" class="btn btn-primary  btnwidth" value="Update" />
+                }
+                else
+                {
+                    <input type="submit" id="btnsave" class="btn btn-primary  btnwidth" value="Save" name="Command" />
+                }
+                <a href='@Url.Action("CustomerTradeReceiptDetails", "CustomerReceipt", new { id = 0 })' class="btn btn-danger  btnwidth">Cancel</a>
+            </div>
+        </div>
+
+        <div class="modal fade" id="popup" role="dialog" aria-labelledby="exampleModalLabel" aria-hidden="true">
+            <div class="modal-dialog">
+                <div class="modal-content" style="border-radius:5px">
+                    <div class="modal-header">
+                        <button type="button" class="close" data-dismiss="modal" aria-label="Close"><span aria-hidden="true">&times;</span></button>
+                        <h4 class="modal-title" id="exampleModalLabel">
+                            Invoice AWB Allocation
+                        </h4>
+                    </div>
+
+                    <div class="modal-body">
+                        <div class="container-fluid" style="max-height:480px;overflow-y:scroll">
+                            <div class="row">
+                                <div class="flex justify-content-between">
+                                    <h4 id="hInvoice"></h4>
+                                    @Html.CheckBox("AutoAllocate1", new { @name = "AutoAllocate1", @onchange = "awbautoallocation1()" })
+                                    <label class="headinglabel">Auto Allocate</label>
+                                    <h5 id="hTotal"> Total</h5>
+                                </div>
+                            </div>
+                            <div class="row">
+
+                                <input type="hidden" value="" id="hdnEditCustomerInvoiceId" />
+                                <input type="hidden" value="" id="hdnAllocatedAmount" />
+                                <input type="hidden" value="" id="hdnItemCount" />
+                                <table id="ExpAllocationTable" class="table table-bordered table-responsive" style="max-height:400px;overflow-y:scroll">
+                                    <thead>
+                                        <tr>
+                                            <th>AWB No.</th>
+                                            <th>AWB Date</th>
+                                            <th>Total Amount</th>
+                                            <th>Received Amount</th>
+                                            <th>Balance</th>
+                                            <th>Allocated</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="AllocationTable">
+                                    </tbody>
+                                    <tfoot>
+
+                                    </tfoot>
+                                </table>
+
+                            </div>
+                        </div>
+                    </div>
+                    <div class="modal-footer" style="padding-top: 5px">
+                        <button type="button" id="AllocationSave" class="btn btn-primary">Save</button>
+                        <button type="button" id="AllocationClose" class="btn btn-warning" data-dismiss="modal">Close</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    }
+</section>
+<div id="wrapper">
+    <div id="page-wrapper">
+        <div class="row">
+            <div class="col-lg-10">
+                <div class="modal fade StaffNoteModal" id="StaffNoteModal" role="dialog" aria-labelledby="exampleModalLabel" aria-hidden="true">
+                    <div class="modal-dialog" style="width:70%">
+                        <div class="modal-content">
+
+                            <div class="modal-header" style="background-color: #f5f5f5;">
+                                <button type="button" class="close" data-dismiss="modal" aria-label="Close"><span aria-hidden="true">&times;</span></button>
+
+                                <h4 class="modal-title" id="StaffNoteModal1">
+                                    <span style="font-size: 18px; color: #3c8dbc !important; text-align:center">Staff Notes</span>
+                                </h4>
+                            </div>
+
+                            <div class="modal-body" id="staffmodelbody">
+                                <div class="container-fluid">
+                                    <div class="row" style="padding-top: 5px">
+                                        <div class="col-sm-12">
+                                            <div class="row form-group">
+                                                <div class="col-xs-7 col-sm-12">
+                                                    <label>Enter Your Note</label>
+                                                    <textarea id="txtStaffnote" rows="4" cols="100"></textarea>
+                                                </div>
+                                            </div>
+                                            <div class="row form-group">
+                                                <div class="col-xs-7 col-sm-12">
+                                                    <table class="table table-bordered">
+                                                        <thead>
+                                                            <tr>
+                                                                <th width="18%">Date</th>
+                                                                <th width="15%">Staff</th>
+                                                                <th style="text-align:center !important">Notes</th>
+                                                            </tr>
+                                                        </thead>
+                                                        <tbody>
+                                                            @foreach (var staffnote in staffmodel)
+                                                            {
+
+                                                                <tr>
+                                                                    <td width="18%">@staffnote.Datetime</td>
+                                                                    <td width="15%">@staffnote.EmpName</td>
+                                                                    <td>@staffnote.TaskDetails</td>
+                                                                </tr>
+
+
+                                                            }
+                                                        </tbody>
+                                                    </table>
+                                                </div>
+                                            </div>
+
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="modal-footer" style="padding-top: 5px;text-align:right">
+                                <button type="button" class="btn btn-danger" data-dismiss="modal">Close</button>
+                                <button type="button" name="SaveStaffnote" class="btn btn-primary" onclick="SaveStaffNotes()" id="SaveStaffnote">Save</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+<div id="wrapper">
+    <div id="page-wrapper">
+        <div class="row">
+            <div class="col-lg-10">
+                <div class="modal fade CustomerNotificationmodel" id="CustomerNotificationmodel" role="dialog" aria-labelledby="exampleModalLabel" aria-hidden="true">
+                    <div class="modal-dialog" style="width:70%">
+                        <div class="modal-content">
+
+                            <div class="modal-header" style="background-color: #f5f5f5;">
+                                <button type="button" class="close" data-dismiss="modal" aria-label="Close"><span aria-hidden="true">&times;</span></button>
+
+                                <h4 class="modal-title" id="CustomerNotificationmodel1">
+                                    <span style="font-size: 18px; color: #3c8dbc !important; text-align:center">Customer Notification</span>
+                                </h4>
+                            </div>
+
+                            <div class="modal-body" id="staffmodelbody">
+                                <div class="container-fluid">
+                                    <div class="row" style="padding-top: 5px">
+                                        <div class="col-sm-12">
+                                            <div class="row form-group">
+                                                <div class="col-xs-7 col-sm-4">
+                                                    <label>TO  </label>
+                                                </div>
+                                                <div class="col-xs-7 col-sm-8">
+                                                    <label>@CustomerDetails.CustomerName </label>
+                                                </div>
+                                            </div>
+                                            <div class="row form-group">
+                                                <div class="col-xs-7 col-sm-4">
+                                                    <label><input type="checkbox" id="Isemail" /> Email  </label>
+                                                </div>
+                                                <div class="col-xs-7 col-sm-8">
+                                                    <span>@CustomerDetails.Email  </span>
+                                                </div>
+                                            </div>
+                                            <div class="row form-group">
+                                                <div class="col-xs-7 col-sm-4">
+                                                    <label><input type="checkbox" id="Issms" /> SMS  </label>
+                                                </div>
+                                                <div class="col-xs-7 col-sm-8">
+                                                    <span>@*@CustomerDetails.MobileNo*@ </span>
+                                                </div>
+                                            </div>
+                                            <div class="row form-group">
+                                                <div class="col-xs-7 col-sm-4">
+                                                    <label><input type="checkbox" id="Iswhatsapp" /> WhatsApp  </label>
+                                                </div>
+                                                <div class="col-xs-7 col-sm-8">
+                                                    @*<span>@CustomerDetails.WhatsAppNumber </span>*@
+                                                </div>
+                                            </div>
+                                            <div class="row form-group">
+                                                <div class="col-xs-7 col-sm-12">
+                                                    <label>Enter Your Message</label>
+                                                    <textarea id="txtcustMessage" rows="4" cols="100"></textarea>
+                                                </div>
+                                            </div>
+                                            <div class="row form-group">
+                                                <div class="col-xs-7 col-sm-12">
+                                                    <table class="table table-bordered">
+                                                        <thead>
+                                                            <tr>
+                                                                <th width="18%">Date</th>
+                                                                <th width="15%">Staff</th>
+                                                                <th width="15%">Is Email</th>
+                                                                <th width="15%">Is SMS</th>
+                                                                <th width="15%">Is WhatsApp</th>
+                                                                <th style="text-align:center !important">Message</th>
+                                                            </tr>
+                                                        </thead>
+                                                        <tbody>
+                                                            @*@foreach (var CustNotify in CustomerNotification)
+                                                                {
+
+                                                                    <tr>
+                                                                        <td width="18%">@CustNotify.Datetime</td>
+                                                                        <td width="15%">@CustNotify.EmpName</td>
+                                                                        <td width="15%">@CustNotify.IsEmail</td>
+                                                                        <td width="15%">@CustNotify.IsSms</td>
+                                                                        <td width="15%">@CustNotify.IsWhatsapp</td>
+                                                                        <td>@CustNotify.Message</td>
+                                                                    </tr>
+
+
+                                                                }*@
+                                                        </tbody>
+                                                    </table>
+                                                </div>
+                                            </div>
+
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="modal-footer" style="padding-top: 5px;text-align:right">
+                                <button type="button" class="btn btn-danger" data-dismiss="modal">Close</button>
+                                <button type="button" name="SaveStaffnote" class="btn btn-primary" onclick="SaveCustNotes()" id="SaveStaffnote">Send</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+
+
+
+<div>
+</div>
+
+<script type="text/javascript">
+
+  function awbautoallocation1() {
+
+         var invoiceid = $('#hdnEditCustomerInvoiceId').val();
+            var allocatedamount =parseFloat($('#hdnAllocatedAmount').val()).toFixed(@_decimal);
+            var amt = 0;
+            var obj = [];
+            var formdata = $('form#FormReceipt').serialize();
+          //  console.log(JSON.stringify(formdata));
+            var idtext = 'atxt_' + invoiceid;
+            var maxrow = parseFloat($('#hdnItemCount').val());
+
+        //$('[id^=' + idtext + ']').each(function (index, item) {
+        if ($("#AutoAllocate1").is(':checked')) {
+            var TotalAmount = parseFloat($('#hdnAllocatedAmount').val()).toFixed(3);
+            if (TotalAmount > 0) {
+
+                var amt = 0;
+                $('[id^=' + idtext + ']').each(function (index, item) {
+                    if ($(item).val() == "" || $(item).val() == null) {
+                        $(item).val(0);
+                    }
+                    var id = $(item).attr('id');
+                    var balanceid = id.replace('atxt', 'atxtbal');
+                    var balance = $('#' + balanceid).val();
+                    var balanceval = balance.replace(',', '');
+
+                    if (parseFloat(TotalAmount) > parseFloat(balanceval)) {
+                        $(item).val(parseFloat(balanceval).toFixed(@_decimal));
+                        TotalAmount = parseFloat(TotalAmount).toFixed(@_decimal) - parseFloat(balanceval).toFixed(@_decimal);
+
+                    }
+                    else if (parseFloat(TotalAmount) > 0) {
+                        $(item).val(parseFloat(TotalAmount).toFixed(@_decimal));
+                        TotalAmount = 0;
+                    }
+                    else {
+                        $(item).val(parseFloat(TotalAmount).toFixed(@_decimal));
+                    }
+
+                });
+
+            }
+            else {
+                $('[id^=' + idtext + ']').each(function (index, item) {
+                    if ($(item).val() == "" || $(item).val() == null) {
+                        $(item).val(0);
+                    }
+                    var itemval = $(item).val();
+                    itemval = itemval.replace(',', '');
+                    $(item).val("0.000");
+
+
+                });
+
+            }
+        }
+        else {
+
+                $('[id^=' + idtext + ']').each(function (index, item) {
+                    if ($(item).val() == "" || $(item).val() == null) {
+                        $(item).val(0);
+                    }
+                    var itemval = $(item).val();
+                    itemval = itemval.replace(',', '');
+                    $(item).val("0.000");
+                    $('#chkallocate_' + idindex).prop('checked', false);
+                    //$('#chkallocate_' + idindex).removeAttr('checked');
+                    ValidateTotal();
+
+                });
+
+
+        }
+
+    }
+    function autoallocation() {
+
+        var idtext = 'txtinvoice_';
+        if ($("#AutoAllocate").is(':checked')) {
+            var TotalAmount = parseFloat($('#FMoney').val()).toFixed(3);
+            if (TotalAmount > 0) {
+                $('#btnsearch').trigger('click');
+                return;
+                var amt = 0;
+                $('[id^=' + idtext + ']').each(function (index, item) {
+                    if ($(item).val() == "" || $(item).val() == null) {
+                        $(item).val(0);
+                    }
+                    var itemval = $(item).val();
+                    itemval = itemval.replace(',', '');
+                    var idindex = $(item).attr('id').split('_')[1];
+                    var balance = $('#txtbalance_' + idindex).val();
+                    var balanceval = balance.replace(',', '');
+
+                    if (parseFloat(TotalAmount) > parseFloat(balanceval)) {
+                        $(item).val(parseFloat(balanceval).toFixed(@_decimal));
+                        TotalAmount = parseFloat(TotalAmount).toFixed(@_decimal) - parseFloat(balanceval).toFixed(@_decimal);
+                        $('#chkallocate_' + idindex).prop('checked', true);
+                    }
+                    else if (parseFloat(TotalAmount) > 0) {
+                        $(item).val(parseFloat(TotalAmount).toFixed(@_decimal));
+                        TotalAmount = 0;
+                        $('#chkallocate_' + idindex).prop('checked', true);
+                    }
+                    else {
+                        $(item).val(parseFloat(TotalAmount).toFixed(@_decimal));
+                        $('#chkallocate_' + idindex).prop('checked', false);
+                        $('#chkallocate_' + idindex).attr('value', 'false');
+                    }
+                    ValidateTotal();
+                });
+
+            }
+            else {
+                $('[id^=' + idtext + ']').each(function (index, item) {
+                    if ($(item).val() == "" || $(item).val() == null) {
+                        $(item).val(0);
+                    }
+                    var itemval = $(item).val();
+                    itemval = itemval.replace(',', '');
+                    $(item).val("0.000");
+                    //$('#chkallocate_' + idindex).prop('checked', false);
+                    //$('#chkallocate_' + idindex).attr('value', 'false');
+                    ValidateTotal();
+
+                });
+
+            }
+        }
+        else {
+
+                $('[id^=' + idtext + ']').each(function (index, item) {
+                    if ($(item).val() == "" || $(item).val() == null) {
+                        $(item).val(0);
+                    }
+                    var itemval = $(item).val();
+                    itemval = itemval.replace(',', '');
+                    $(item).val("0.000");
+                    $('#chkallocate_' + index).prop('checked', false);
+                    $('#chkallocate_' + index).removeAttr('checked');
+                    ValidateTotal();
+
+                });
+
+
+        }
+
+    }
+     function SetDecimal() {
+        debugger;
+
+            var idtext = 'txtinvoice_';
+
+           $('[id^=' + idtext + ']').each(function (index, item) {
+
+               if ($(item).val() == "" || $(item).val() == null) {
+                   $(item).val(0);
+               }
+               else {
+                   var amt = $(item).val();
+                   $(item).val(parseFloat(amt).toFixed(@_decimal));
+               }
+
+           });
+
+         idtext = 'txtadjust_';
+         $('[id^=' + idtext + ']').each(function (index, item) {
+
+               if ($(item).val() == "" || $(item).val() == null) {
+                   $(item).val(0);
+               }
+               else {
+                   var amt = $(item).val();
+                   $(item).val(parseFloat(amt).toFixed(@_decimal));
+               }
+
+           });
+
+
+    }
+     function ValidateTotal() {
+        debugger;
+         var TotalAmount = parseFloat($("#FMoney").val()) + parseFloat($('#hdnAdvance').val());
+            var idtext = 'txtinvoice_';
+        var amt = 0;
+        //if ($('#Balance').val() == "") {
+        //    $('#Balance').val(0);
+        //}
+        //var balance =parseFloat($('#Balance').val());
+
+            $('[id^=' + idtext + ']').each(function (index, item) {
+              //  var id = $(item).attr('id').split('_')[1];
+                if ($(item).val() == "" || $(item).val()==null) {
+                    $(item).val(0);
+                }
+                var itemval = $(item).val();
+                itemval = itemval.replace(',', '');
+
+                var paidamount = parseFloat(itemval);
+                amt = amt + paidamount;
+
+                if (parseFloat(amt) == 0) {
+                    $('#btnsave').attr('disabled', 'disabled');
+                }
+
+                @*if (parseFloat($('#FMoney').val()) == 0) {
+                    $('#FMoney').val(parseFloat(amt).toFixed(@_decimal))
+                }*@
+
+                var alloamt = numberWithCommas(parseFloat(amt).toFixed(@_decimal));
+                var balance1 = parseFloat(TotalAmount) - parseFloat(amt);
+                $('#BalanceAmount').val(parseFloat(balance1).toFixed(@_decimal));
+                $('#AllocatedAmount').val(alloamt);
+                var payingamount = parseFloat($('#FMoney').val());
+                var allocatedamount = parseFloat(amt).toFixed(@_decimal);
+                var advance = 0;
+         if (parseFloat($("#FMoney").val()) == 0) {
+            //$("#FMoney").val(parseFloat(wt).toFixed(@_decimal));
+            $('#msg1').show();
+            $('#msg1').text('Received Amount Required!');
+            $('#btnsave').attr('disabled', 'disabled');
+        }
+        else if (allocatedamount > 0 && parseFloat(TotalAmount) < allocatedamount) {
+            $('#btnsave').attr('disabled', 'disabled');
+            $('#msg1').show();
+             $('#msg1').text('Allocation amount should not be more than Received amount!');
+        }
+        else {
+            $('#btnsave').removeAttr('disabled', 'disabled');
+            //$("#FMoney").val(parseFloat(wt).toFixed(@_decimal));
+            $('#msg1').hide();
+            $('#msg1').text('');
+            }
+
+            });
+
+
+    }
+
+     function allocate(obj) {
+
+         var balamt = $('#BalanceAmount').val();
+         if (balamt == "")
+             balamt = "0";
+
+         var idindex = $(obj).attr('id').split('_')[1];
+         var txinvoice = $('#txtinvoice_' + idindex);
+         if (parseFloat(balamt) > 0) {
+
+             var idtext = 'txtinvoice_' + idindex;
+
+             var balance = $('#txtbalance_' + idindex).val();
+             if (balance == "") {
+                 balance = 0;
+             }
+             var adjust = $('#txtadjust_' + idindex).val();
+             if (adjust == "")
+                 adjust = 0;
+             if (parseFloat(balance) > 0 && parseFloat(balamt) > parseFloat(balance)) {
+                 balance = parseFloat(balance) - parseFloat(adjust);
+             }
+             else {
+                 balance = parseFloat(balamt); //parseFloat(balance) - parseFloat(adjust);
+             }
+             if ($(obj).is(':checked')) {
+                 $(txinvoice).val(parseFloat(balance).toFixed(@_decimal));
+             }
+             else {
+                 $(txinvoice).val(parseFloat("0").toFixed(@_decimal));
+             }
+             ValidateTotal();
+         }
+         else {
+             $(txinvoice).val(parseFloat("0").toFixed(@_decimal));
+             ValidateTotal();
+         }
+    }
+    // When the document is ready
+
+    $(document).ready(function () {
+        var startdate = '@Session["FyearFrom"].ToString()';
+        var enddate = '@Session["FyearTo"].ToString()';
+        var sd = new Date(startdate);
+        var ed = new Date(enddate);
+        var datevalid = false;
+        var dateerror = "";
+
+
+
+
+          $('#RecPayDate').keydown(function (e) {
+
+            if (e.keyCode == 13 || e.keyCode == 9) {
+                if ($("#RecPayDate").val() != "") {
+                    $.ajax({
+                        url: "@Url.Action("CheckDateValidate", "Accounts")",
+                        data: { entrydate: $("#RecPayDate").val() },
+                        type: "GET",
+                        dataType: "json",
+                        success: function (response) {
+
+                            if (response.Status == "OK") {
+                                datevalid = true;
+                                dateerror = response.Message;
+                            }
+                            else {
+                                datevalid = false;
+                                dateerror = response.Message;
+                                $('#RecPayDate').val(response.ValidDate);
+                            }
+
+                        },
+                        error: function () {
+                            alert("Failed! Please try again.");
+                        }
+                    });
+                }
+            }
+        });
+        $('#RecPayDate').change(function ()    {
+
+            if ($("#RecPayDate").val() != "") {
+                 $.ajax({
+                url: "@Url.Action("CheckDateValidate", "Accounts")",
+                     data: { entrydate: $("#RecPayDate").val()},
+                type: "GET",
+                dataType: "json",
+                     success: function (response) {
+                    if (response.Status == "OK") {
+                        datevalid = true;
+                        dateerror = response.Message;
+                    }
+                    else {
+                        datevalid = false;
+                        dateerror = response.Message;
+                        $('#RecPayDate').val(response.ValidDate);
+                        alert(dateerror);
+                    }
+
+                },
+                error: function () {
+                    alert("Failed! Please try again.");
+                }
+            });
+            }
+        });
+
+        $('#RecPayDate').on('dp.change', function (e) {
+            $('#RecPayDate').trigger('change');
+        })
+
+        $('#RecPayDate').datepicker("setDate", new Date());
+
+
+    });
+
+</script>

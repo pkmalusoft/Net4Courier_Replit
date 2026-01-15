@@ -1,0 +1,397 @@
+﻿@model Net4Courier.Models.CODInvoiceVM
+
+@{
+    ViewBag.Title = "Print";
+    ViewBag.pageTitle = "Account Receivable";
+    ViewBag.pTitle = "COD Invoice";
+    Layout = "~/Views/Shared/_Layout.cshtml";
+    var _decimal = @Session["Decimal"].ToString();
+    var _alphanum = Session["AWBAlphaNumeric"].ToString();
+}
+@*<style>
+.taxBlock .col-md-2,.taxBlock .col-md-3{
+	display:flex;
+	flex-wrap:wrap;
+	align-items:center;
+}
+.taxBlock label{
+	margin:0;
+}
+input[type=checkbox], input[type=radio] {
+    height: auto!important;
+    margin-right: 10px;
+    margin-left: 10px;
+}
+</style>*@
+<script src="~/Content/plugins/excel/jquery.table2excel.js"></script>
+<style>
+    .w-6 {
+        width: 6%;
+    }
+
+    .charegRow {
+        background: #f8fbff;
+    }
+
+        .charegRow td {
+            border: 0 !important;
+        }
+
+        .charegRow label {
+            font-size: 14px !important;
+        }
+
+    .taxBlock .col-md-2, .taxBlock .col-md-3 {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+    }
+
+    .align_self {
+        margin-top: 31px;
+    }
+
+    .w-12 {
+        width: 12%;
+    }
+
+    .taxBlock label {
+        margin: 0;
+    }
+</style>
+<script src="~/Content/NewCSS/plugins/jQuery/moment.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/bootstrap-datetimepicker/4.17.43/js/bootstrap-datetimepicker.min.js"></script>
+
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap-datetimepicker/4.17.43/css/bootstrap-datetimepicker.min.css" />
+<script type="text/javascript">
+    
+    //$(function () {
+    //    $('#InvoiceDate').datetimepicker({ format: 'DD-MM-YYYY HH:mm' });
+    //});
+</script>
+<script type="text/javascript">
+    function redrawgridbyawbno(obj) {
+        debugger;
+        if ('@_alphanum'== 'True') {
+            var txt = $(obj).val().trim();
+          $(obj).val(txt.replace(/[^\d,]/g, ''));
+          }
+        var awbno = $(obj).val();
+        if (awbno != '') {
+            CheckAWBExists(awbno);
+
+
+        }
+    }
+    function redrawgrid(obj) {
+        debugger;
+        var awbno = $(obj).attr('awbno');
+        var statuschecked = $(obj).prop('checked');
+
+        $.ajax({
+            type: "POST",
+            url: "/CODInvoice/ShowItemListSelect",
+            datatype: "html",
+            data: { AWBNo: awbno, statuschecked: statuschecked },
+            success: function (response) {
+                $("#listContainer").html(response);
+                ValidateTotal();
+            }
+        });
+    }
+    function redrawgridall() {
+        debugger;
+        var customer = 0;
+        var statuschecked = $('#Selectall').prop('checked');
+
+        $.ajax({
+            type: "POST",
+            url: "/CODInvoice/ShowItemListSelect",
+            datatype: "html",
+            data: { AWBNo: '', statuschecked: statuschecked },
+            success: function (response) {
+                $("#listContainer").html(response);
+                setTimeout(function () {
+                    $('#Selectall').prop('checked', statuschecked);
+                    ValidateTotal();
+                }, 300)
+
+            }
+        });
+    }
+     function addCommas(nStr) {
+        debugger;
+        nStr += '';
+        x = nStr.split('.');
+        x1 = x[0];
+        x2 = x.length > 1 ? '.' + x[1] : '';
+        var rgx = /(\d+)(\d{3})/;
+        while (rgx.test(x1)) {
+                x1 = x1.replace(rgx, '$1' + ',' + '$2');
+    }
+    return x1 + x2;
+    }
+    function setTwoNumberDecimal(obj) {
+
+        if ($(obj).val() == null || $(obj).val() == "") {
+            $(obj).val(0);
+        }
+        else {
+            var itemvalue = $(obj).val().replace(',', '');
+            $(obj).val(parseFloat($(obj).val()).toFixed(@_decimal));
+        }
+        gettotal();
+    }
+
+     function gettotal() {
+        debugger;
+        var netvalue = parseFloat($('#lbltotalcharge').html());
+        //var CustomerInvoiceTax = $('#CustomerInvoiceTax').val();
+        var AdminPer = $('#AdminPer').val();
+        //var FuelPer = $('#FuelPer').val();
+        var Clearance = $('#ClearingCharge').val();
+        var Discount = $('#Discount').val();
+        if (netvalue == '' || netvalue == null)
+            netvalue = 0;
+
+        //if (CustomerInvoiceTax == null || CustomerInvoiceTax == '') {
+        //    CustomerInvoiceTax = 0;
+        //}
+        if (AdminPer == null || AdminPer == '') {
+            AdminPer = 0;
+        }
+        if (Clearance == null || Clearance == '') {
+            Clearance = 0;
+        }
+        if (Discount == null || Discount == '') {
+            Discount = 0;
+        }
+
+        //$('#lblfuelpercent').html(FuelPer);
+        $('#lbladminpercent').html(AdminPer);
+        //$('#lbltaxpercent').html(CustomerInvoiceTax);
+        $('#lbldiscount').html(Discount);
+        $('#lblclearancecharge').html(Clearance);
+        @*var taxamt = parseFloat(CustomerInvoiceTax) / 100 * parseFloat(netvalue);
+        taxamt = parseFloat(taxamt).toFixed(@_decimal);
+        $('#ChargeableWT').val(parseFloat(taxamt).toFixed(@_decimal));
+        $('#lbltaxamount').html(taxamt);*@
+
+        var adminamt = parseFloat(AdminPer) / 100 * parseFloat(netvalue);
+        adminamt = parseFloat(adminamt).toFixed(@_decimal);
+        $('#AdminAmt').val(adminamt);
+        $('#lbladminamount').html(adminamt);
+
+        var fuelamt = $('#lblfuelamount').html();// parseFloat(FuelPer) / 100 * parseFloat(netvalue);
+        fuelamt = parseFloat(fuelamt).toFixed(@_decimal);
+        $('#FuelAmt').val(fuelamt);
+        $('#lblfuelamount').html(fuelamt);
+
+        var taxamount = $('#lbltaxamount').html();// parseFloat(FuelPer) / 100 * parseFloat(netvalue);
+        taxamount = parseFloat(taxamount).toFixed(@_decimal);
+        $('#ChargeableWT').val(taxamount);
+
+
+
+        //var netotal = parseFloat(netvalue) + parseFloat(taxamt) + parseFloat(adminamt) + parseFloat(fuelamt) + parseFloat(Clearance) - parseFloat(Discount);
+        var netotal = parseFloat(netvalue) + parseFloat(adminamt) + parseFloat(Clearance) - parseFloat(Discount);
+        $('#InvoiceTotal').val(parseFloat(netotal).toFixed(@_decimal));
+        $('#lblinvoicetotal').html(parseFloat(netotal).toFixed(@_decimal))
+    }
+    function ValidateTotal() {
+        debugger;
+
+        var idtext = 'hdnTotalCharge_';
+        var amt = 0;
+        var totalsurchargeamount = 0;
+        var totalcouriercharge = 0;
+        var totalotherCharge = 0;
+        var totalVATCharge = 0;
+        var max = $('#details > tbody > tr').length;// - 6;
+        $('#lbltotalcharge').html(0);
+        $('[id^=' + idtext + ']').each(function (index, item) {
+            var awbchecked = $('#hdnawbchecked_' + index).prop('checked');
+            //var surchargeamount = $('#hdnSurCharge_' + index).val();
+            //var couriercharge = $('#hdnCourierCharge_' + index).val();
+            //var othercharge = $('#hdnOtherCharge_' + index).val();
+            //var vatamount = $('#hdnVatAmount_' + index).val();
+            if (awbchecked == true) {
+
+                if ($(item).val() == "" || $(item).val() == null) {
+                    $(item).val(0);
+                }
+                var itemval = $(item).val();
+                itemval = itemval.replace(',', '');
+
+                var invamount = parseFloat(itemval);
+                amt = parseFloat(amt)+ parseFloat(invamount);// -Total Charge + parseFloat(invamount);
+                //totalsurchargeamount = parseFloat(totalsurchargeamount) + parseFloat(surchargeamount);
+                //totalcouriercharge = parseFloat(totalcouriercharge) + parseFloat(couriercharge);
+                //totalotherCharge = parseFloat(totalotherCharge) + parseFloat(othercharge);
+                //totalVATCharge = parseFloat(totalVATCharge) + parseFloat(vatamount);
+                //$('#lblcouriercharge').html(parseFloat(totalcouriercharge).toFixed(2));
+                //$('#lblfuelamount').html(parseFloat(totalsurchargeamount).toFixed(2));
+                //$('#lblothercharge').html(parseFloat(totalotherCharge).toFixed(2));
+                //$('#lbltotalcharge').html(parseFloat(amt).toFixed(2));
+
+                //$('#lbltaxamount').html(parseFloat(totalVATCharge).toFixed(2));
+
+                console.log((parseInt(index) + 1));
+            }
+
+            if ((parseInt(index) + 1) == parseInt(max)) {
+                $('#InvoiceTotal').val(parseFloat(amt).toFixed(@_decimal));
+                $('#lblinvoicetotal').html(parseFloat(amt).toFixed(@_decimal))
+                //gettotal();
+            }
+        });
+
+
+
+
+    }
+    $(document).ready(function () {
+        $(":text").css({ "border-radius": "5px" });
+        $("select").css({ "border-radius": "5px" });
+       // setTwoNumberDecimal($('#AdminPer'));
+        //setTwoNumberDecimal($('#CustomerInvoiceTax'));
+        //setTwoNumberDecimal($('#FuelPer'));
+       // setTwoNumberDecimal($('#ClearingCharge'));
+        //setTwoNumberDecimal($('#CustomerInvoiceTax'));
+        //setTwoNumberDecimal($('#Discount'));
+        //ValidateTotal();
+        var startdate = '@Session["FyearFrom"].ToString()';
+        var enddate = '@Session["FyearTo"].ToString()';
+        var sd = new Date(startdate.split('-')[1] + '-' + startdate.split('-')[0] + '-' + startdate.split('-')[2]);
+        var ed = new Date(enddate.split('-')[1] + '-' + enddate.split('-')[0] + '-' + enddate.split('-')[2]);
+
+        $(function () {
+            $('#InvoiceDate').datetimepicker({
+                maxDate: ed,
+                minDate: sd,
+                format: 'DD-MM-YYYY HH:mm',
+            });
+
+        });
+    });
+</script>
+
+ 
+
+<div class="card">
+ 
+
+
+    <div class="card-body">
+        @using (Html.BeginForm("Edit", "CODInvoice", FormMethod.Post, new { @id = "customerInvoice" }))
+        {
+            @Html.AntiForgeryToken()
+            @Html.ValidationSummary(true)
+
+            <div class="row no-margin" style="padding-top: 10px">
+
+            </div>
+            <div class="row no-margin" style="padding-top:10px">
+                <div class="col-md-1">
+                    <label class="headinglabel required "> Invoice No</label>
+                    @Html.TextBoxFor(model => model.InvoiceNo, new { @class = "form-control txttarget", @disabled = "true" })
+                    @Html.ValidationMessageFor(model => model.InvoiceNo)
+                </div>
+                <div class="col-md-1">
+                    @Html.HiddenFor(model => model.CODInvoiceID)
+                    @Html.HiddenFor(model => model.CustomerID)
+                    @Html.HiddenFor(model => model.InvoiceTotal)
+                    <label class="headinglabel required"> Invoice Date</label>
+                    @Html.TextBoxFor(model => model.InvoiceDate, new { @class = "form-control txttarget" })
+                    @Html.ValidationMessageFor(model => model.InvoiceDate)
+                </div>
+
+                <div class="col-md-3">
+                    <label class="headinglabel required ">Customer</label>
+                    @Html.TextBoxFor(model => model.CustomerName, new { @class = "form-control" })
+                    @Html.ValidationMessageFor(model => model.CustomerID)
+                </div>
+                @*<div class="col-md-2 w-6">
+                        <label class="headinglabel">Tax %</label>
+                        @Html.TextBoxFor(model => model.CustomerInvoiceTax, new { @class = "form-control txttarget text-right calfield", @onchange = "setTwoNumberDecimal(this)" })
+                        @Html.ValidationMessageFor(model => model.CustomerInvoiceTax)
+                    </div>*@
+
+
+
+                @*<div class="col-md-2 w-6">
+                    <label class="headinglabel">Discount</label>
+                    @Html.TextBoxFor(model => model.Discount, new { @class = "form-control txttarget text-right calfield", @onchange = "setTwoNumberDecimal(this)" })
+                    @Html.ValidationMessageFor(model => model.Discount)
+                </div>*@
+                @*<div class="col-md-1 no-padding" style="text-align:right">
+                        <a class="btn btn-primary btnwidth" title="Export to Excel" style="width: 60px!Important;min-width: 50px!important;" href="Javascript:void(0)" onclick="ExportExcel()"><img style="width:30px;height:30px" src="~/Content/img/ExcelIcon.jpg" /></a>
+                    </div>*@
+                <div class="col-md-3 align_self">
+
+                    <input type="submit" value="Save" class="btn btn-primary btnwidth" id="btnsave" />&nbsp;&nbsp;
+                    @Html.ActionLink("Cancel", "Index", null, new { @class = "btn btn-secondary btnwidth float-right" })
+
+                </div>
+            </div>
+            <div class="row no-margin" style="padding-top: 10px">
+                <div class="col-md-12" id="listContainer">
+
+                    @{Html.RenderPartial("InvoiceList", Model);}
+
+
+                </div>
+            </div>
+
+
+
+
+
+        }
+
+    </div>
+</div>
+<script type="text/javascript">
+    $(document).ready(function () {
+        $(":text").css({ "border-radius": "5px" });
+        $("select").css({ "border-radius": "5px" });
+      
+
+          $('.checkfilter').click(function () {
+              ValidateTotal();
+        })
+
+        $('#CustomerID').change(function () {
+
+            var fullform = $('form#customerInvoice').serialize();
+            console.log(fullform);
+            $.ajax({
+                type: 'POST',
+                url: '@Url.Action("GetCustomerAWBList", "CustomerInvoice")?Id=' + $('#CustomerID').val(),
+                datatype: "html",
+                data: {
+                    ship: fullform
+                },
+                success: function (data) {
+                    //console.log(data);
+                    var _cust = JSON.stringify(data);
+                    $("#listContainer").html(data);
+                    $('#Selectall').prop('checked', true);
+                    gettotal();
+                }
+            });
+
+        });
+
+        $('#btnsave').click(function () {
+
+            var tot = $('#lbltotalcharge').html();
+            var totval = parseFloat(tot);
+            if (totval == 0) {
+                alert('Select AWB Details to Invoice!');
+                return false;
+            }
+        });
+
+    });
+</script>

@@ -1,0 +1,535 @@
+﻿@model Net4Courier.Models.CODReceiptVM
+
+@{
+    ViewBag.Title = "COD Reciept";
+    Layout = "~/Views/Shared/_Layout.cshtml";
+    var staffmodel = ViewBag.StaffNoteModel as IEnumerable<Net4Courier.Models.StaffNoteModel>;
+    var spath = "";// System.Configuration.ConfigurationManager.AppSettings["spath"].ToString();
+    var CustomerNotification = ViewBag.CustomerNotification as IEnumerable<Net4Courier.Models.CustomerNotificationModel>;
+    var CustomerDetails = ViewBag.CustomerDetail; /*as  Net4Courier.Models.CustomerMaster()*/
+    var _decimal = @Session["Decimal"].ToString();
+    int i = 0;
+}
+<script src="~/Content/NewCSS/plugins/jQuery/moment.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/bootstrap-datetimepicker/4.17.43/js/bootstrap-datetimepicker.min.js"></script>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap-datetimepicker/4.17.43/css/bootstrap-datetimepicker.min.css" />
+<link href="~/Content/Multiselect/bootstrap-multiselect.css" rel="stylesheet" />
+<script src="~/Content/Multiselect/bootstrap-multiselect.js"></script>
+@*<script src="@Url.Content("~/Scripts/angular.js")"></script>
+    <script src="@Url.Content("~/MyJsFiles/CustomerReceiptJS.js")"></script>*@
+<style>
+    .form_field {
+        background-color: #fff;
+        border-radius: 10px;
+        box-shadow: 0 9px 23px rgba(0, 0, 0, 0.09), 0 5px 5px rgba(0, 0, 0, 0.06) !important;
+        padding: 16px;
+        margin-top: 21px;
+    }
+
+    .headinglabel {
+        font-family: Calibri;
+        font-size: 17px;
+        color: #1b1919 !important;
+    }
+
+    #staffmodelbody {
+        max-height: calc(100vh - 200px);
+        overflow-y: auto;
+    }
+    .multiselect-container{
+
+    }
+    .multiselect {
+        align-items: center;
+        display: flex !Important;
+        justify-content: space-around;
+    }
+
+    #movementid + .btn-group button, #movementid + .btn-group {
+        display: block;
+        width: 100%;
+    }
+</style>
+<script type="text/javascript">
+    //$('#ReceiptDate').datetimepicker({ format: 'DD-MM-YYYY HH:mm' });
+</script>
+<script type="text/javascript">
+
+    $(document).ready(function () {
+        $(":text").css({ "border-radius": "5px" });
+        $("select").css({ "border-radius": "5px" });
+        $("textarea").css({ "border-radius": "5px" });
+         var startdate = '@Session["FyearFrom"].ToString()';
+        var enddate = '@Session["FyearTo"].ToString()';
+        var sd = new Date(startdate.split('-')[1] + '-' + startdate.split('-')[0] + '-' + startdate.split('-')[2]);
+        var ed = new Date(enddate.split('-')[1] + '-' + enddate.split('-')[0] + '-' + enddate.split('-')[2]);
+        $('#ReceiptDate').datetimepicker({
+            maxDate: ed,
+            minDate: sd,
+            format: 'DD-MM-YYYY HH:mm'
+        });
+        $('#ChequeDate').datetimepicker({
+            maxDate: ed,
+            minDate: sd,
+            format: 'DD-MM-YYYY HH:mm'
+        });
+        var d = new Date();
+        var curr_date = d.getDate();
+        var curr_month = d.getMonth() + 1;
+        var curr_year = d.getFullYear();
+
+        var reqdate = curr_date + "-" + curr_month + "-" + curr_year + ' ' + d.getHours() + ':' + d.getMinutes();
+        if ($("#ReceiptID").val()==0)
+            $('#ReceiptDate').val(reqdate);
+
+
+
+        PaymentModeChange();
+
+        //$("#FMoney").attr("readonly", false);
+
+        @*if ('@Model.ReceiptID' == null) {
+            $("#divCash").css({ "display": "none" });
+            $("#divBank").css({ "display": "block" });
+
+            $("#CurrencyId").val('@Session["BaseCurrencyId"]');
+            $("#EXRate").val('1.00');
+
+        } else {
+
+            if ('@Model.ChequeNo' == null || '@Model.ChequeNo' == '') {
+                $("#divCash").css({ "display": "block" });
+                $("#divBank").css({ "display": "none" });
+                $("#ChequeNo").attr({ "disabled": true })
+                $("#ChequeDate").attr({ "disabled": true })
+                $("#PaymentMode").val(2);
+
+            } else {
+                $("#divCash").css({ "display": "none" });
+                $("#divBank").css({ "display": "block" });
+
+            }
+        }*@
+        var wt = $("#EXRate").val();
+        if (wt == null || wt == "") {
+            $("#EXRate").val("0.00");
+        } else {
+            $("#EXRate").val(parseFloat(wt).toFixed(2));
+        }
+
+        $("#EXRate").blur(function () {
+            var wt = $(this).val();
+            $("#EXRate").val(parseFloat(wt).toFixed(2));
+
+        });
+
+        $('#movementid').multiselect({
+            nonSelectedText: 'Select',
+            enableClickableOptGroups: true,
+            enableCollapsibleOptGroups: true,
+            enableFiltering: false,
+            includeSelectAllOption: true,
+            enableCaseInsensitiveFiltering: false,
+            selectAllValue: 'multiselect-all'
+        });
+
+
+
+        if ($("#ReceiptID").val() > 0) {
+            if ($("#StatusEntry").val() == "BK") {
+                $("#Bank").prop('checked', true);
+                $("#Cash").prop('checked', false);
+                $("#Bank").trigger("click");
+            }
+            else if ($("#StatusEntry").val() == "CS") {
+                $("#Cash").prop('checked', true);
+                $("#Bank").prop('checked', false);
+                $("#Cash").trigger("click");
+            }
+
+            var money = parseFloat($("#Amount").val());
+            $("#Amount").val(money.toFixed(2));
+
+            var exrate = parseFloat($("#EXRate").val());
+            $("#ExRate").val(exrate.toFixed(2));
+        }
+
+        $('.txtNum').blur(function () {
+            if (isNaN(parseInt($(this).val()))) {
+                $(this).val('0.00');
+            } else {
+                var amt = parseFloat($(this).val());
+                $(this).val(amt.toFixed(2));
+            }
+        });
+
+
+
+
+    });
+</script>
+
+<script>
+    function checktotal(obj) {
+        if (obj!=null)
+            setTwoNumberDecimal(obj);
+
+        gettotal();
+        var totalamt= parseFloat($("#txttotalamountcollected").val());
+        var disctotal = parseFloat($("#txttotaldiscount").val());
+        var amtreceived = $("#Amount").val();
+        if ((totalamt + disctotal) > amtreceived) {
+            alert('Allocated Amount + Discount should not be exceed than the Amount Received!');
+            if ((obj) != null)
+                $(obj).focus();
+            else
+                return false;
+        }
+        else {
+            return true;
+        }
+    }
+    function gettotal() {
+        var totalamt = 0;
+        var disctotal = 0;
+        $('[id^=amtallocate_]').each(function (i, e) {
+            if ($(e).val() == "")
+                $(e).val(0);
+            var amt = parseFloat($(e).val());
+            totalamt += amt;
+        });
+        $('[id^=amtdisc_]').each(function (i, e) {
+            if ($(e).val() == "")
+                $(e).val(0);
+            var amt = parseFloat($(e).val());
+            disctotal += amt;
+        });
+
+        $("#txttotalamountcollected").val(totalamt.toFixed(2));
+        $("#txttotaldiscount").val(disctotal.toFixed(2));
+
+
+    }
+    function Comma(Num) { //function to add commas to textboxes
+        Num += '';
+        Num = Num.replace(',', ''); Num = Num.replace(',', ''); Num = Num.replace(',', '');
+        Num = Num.replace(',', ''); Num = Num.replace(',', ''); Num = Num.replace(',', '');
+        x = Num.split('.');
+        x1 = x[0];
+        x2 = x.length > 1 ? '.' + x[1] : '';
+        var rgx = /(\d+)(\d{3})/;
+        while (rgx.test(x1))
+            x1 = x1.replace(rgx, '$1' + ',' + '$2');
+        $(".aeamt").val(x1 + x2);
+    }
+</script>
+
+<script type="text/javascript">
+    function setTwoNumberDecimal(obj) {
+        debugger;
+        if ($(obj).val() == "")
+            $(obj).val(0);
+       $(obj).val(parseFloat($(obj).val()).toFixed(@_decimal));
+    }
+    function CheckAmt(x) {
+        var thisval = $(x).val();
+
+        if (thisval == null || thisval == "") {
+            $(x).val('0.00');
+        } else {
+            $(x).val(parseFloat(thisval).toFixed(2));
+        }
+        var curror = $(x).parent("td").parent("tr");
+        var exactamt = $(curror).find("td").eq(5).text();
+        var amt = parseFloat($(curror).find("td").eq(5).text());
+        var allocateamt = parseFloat($(curror).find("td").eq(6).find(".amt").val());
+        if (exactamt.trim() == null || exactamt.trim()  == "") {
+            $(curror).find("td").eq(6).find(".amt").val("0.00");
+        } else {
+            if (allocateamt > amt) {
+                $(curror).find("td").eq(6).find(".amt").val(parseFloat(amt).toFixed(2));
+            }
+            else {
+                $(curror).find("td").eq(6).find(".amt").val(parseFloat(allocateamt).toFixed(2));
+            }
+        }
+    }
+
+    function CheckAmt1(x) {
+        var thisval = $(x).val();
+
+        if (thisval == null || thisval == "") {
+            $(x).val('0.00');
+        } else {
+            $(x).val(parseFloat(thisval).toFixed(2));
+        }
+      
+    }
+
+   
+    
+     
+    function PaymentModeChange() {
+        var val = $("#PaymentMode").val();
+        if (val == 1) {
+            $("#divCash").css({ "display": "none" });
+            $("#divBank").css({ "display": "block" });
+            $("#ChequeNo").attr({ "disabled": false })
+            $("#ChequeDate").attr({ "disabled": false })
+        } else {
+            $("#divBank").css({ "display": "none" });
+            $("#divCash").css({ "display": "block" });
+            $("#ChequeNo").attr({ "disabled": true })
+            $("#ChequeDate").attr({ "disabled": true })
+        }
+
+    }
+</script>
+
+<section class="content-header">
+    <div class="row">
+        <div class="col-md-5 pull-left">
+            <h1 class="headingfont">Customer Receipt - Create</h1>
+        </div>
+        <div class="col-md-5 pull-right text-right">
+            <h2 class="awb" id="h2awb"><strong>@ViewBag.AWBNo</strong></h2>
+            @*<h5>Delivered</h5>*@
+            <h4 class="text-right" id="h4statustype" style='color:#07a7e3!important'>@ViewBag.StatusType</h4><h5 class="pull-right" id="h4courierstatus" style='color:red'>@ViewBag.CourierStatus</h5>
+        </div>
+
+    </div>
+    <div class="row">
+        <div class="pull-right setting">
+            <div class="navbar-custom-menu" id="divsetting">
+                <ul class="nav navbar-nav">
+
+                    <!-- User Account Menu -->
+                    <li class="dropdown user user-menu">
+                        <!-- Menu Toggle Button -->
+
+                        <ul class="dropdown-menu extended logout" style="top:0%!important">
+                            <li><a style="color:#35b8eb;cursor:pointer" onclick="Printreceipt(1)">Print</a></li>
+                            <li><a style="color:#35b8eb;cursor:pointer" onclick="ShowStaffNotes()">Staff Notes</a></li>
+                            <li><a style="color:#35b8eb;cursor:pointer" onclick="ShowCustomerNotification()">Customer Notification</a></li>
+                        </ul>
+                        <a href="#" class="dropdown-toggle" data-toggle="dropdown">
+                            <i style="font-size: 30px;color:#35b8eb;padding-top: 11px;" class="fa fa-cog"></i>
+                        </a>
+                    </li>
+                </ul>
+            </div>
+        </div>
+    </div>
+</section>
+
+<!-- Main content -->
+<section class="content">
+    @using (Html.BeginForm("Create", "CODReceipt", FormMethod.Post, new { @id = "codreceipt" }))
+    {
+        @Html.AntiForgeryToken()
+        @Html.ValidationSummary(true)
+
+        @Html.HiddenFor(model => model.ReceiptID)
+
+        @Html.HiddenFor(model => model.AcJournalID)
+        <div class="row no-margin" style="padding-top:10px">
+            <div class="col-xs-12 col-sm-4">
+                <label class="headinglabel">Receipt No.</label>
+                @Html.DisplayFor(model => model.ReceiptNo, new { @class = "form-control", @readonly = "readonly" })
+
+            </div>
+            <div class="col-xs-12 col-sm-2">
+                <label class="headinglabel">Date</label>
+                @Html.DisplayFor(model => model.ReceiptDate, new { Value = Model.ReceiptDate.ToString("dd-MMM-yyyy"), @class = "form-control text-right" })
+
+            </div>
+            <div class="col-xs-12 col-sm-2">
+                <label class="headinglabel">Payment Mode</label>
+                <select id="PaymentMode" class="form-control" onchange="PaymentModeChange()">
+                    <option value="1">Bank</option>
+                    <option selected value="2">Cash</option>
+                </select>
+            </div>
+            <div class="col-xs-12 col-sm-4">
+                <div id="divCash">
+                    <label class=" headinglabel">Cash Head</label>
+                    @Html.DisplayFor(model => model.AcHeadName, new { @class = "form-control"})
+                </div>
+                <div id="divBank">
+                    <div class="form-title">
+                        <label class=" headinglabel">Bank</label>
+                    </div>
+                    <div class="form-field">
+                        @Html.DisplayFor(model => model.AcHeadName, new { @class = "form-control" })
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="row no-margin" style="padding-top:10px">
+            <div class="col-xs-12 col-sm-2">
+                <label class=" headinglabel">Cheque No</label>
+                @Html.DisplayFor(model => model.ChequeNo)
+
+            </div>
+            <div class="col-xs-12 col-sm-2">
+                <label class=" headinglabel">Cheque Date</label>
+                @if (Model.ChequeDate != null)
+                {
+                    @Html.DisplayFor(m => m.ChequeDate, new { Value = Model.ChequeDate.Value.ToString("dd-MMM-yyyy"), id = "", @class = "form-control text-right" })
+                }
+                else
+                {
+                                        
+                }
+            </div>
+            <div class="col-xs-12 col-sm-4">
+                <label class=" headinglabel">Agent</label>
+                @Html.DisplayFor(model => model.AgentName, new {@class = "form-control" })
+                
+            </div>
+            @*<div class="col-xs-12 col-sm-3">
+                <label class="required headinglabel">Manifest</label>
+                <select id="movementid" name="SelectedValues" multiple="multiple" class="form-control">
+                    <option value=""></option>
+                </select>
+                @Html.HiddenFor(model => model.ManifestID, new { @class = "form-control" })
+            </div>*@       
+        </div>
+
+        <div class="row no-margin" style="padding-top:10px">
+          
+                <div class="col-xs-12 col-sm-2">
+                    <label class="headinglabel">Currency</label>
+                    @Html.DisplayFor(model => model.CurrencyName,  new { @class = "form-control" })
+
+                </div>
+                <div class="col-xs-12 col-sm-2 textright">
+                    <label class="headinglabel">Exchange Rate</label>
+                    @Html.DisplayFor(model => model.EXRate, new { ng_model = "exChangeRate", @class = "form-control " })
+
+                </div>
+
+
+
+                <div class="col-xs-12 col-sm-4 ">
+                    <label class=" headinglabel">Amount Received</label>
+
+                    @Html.DisplayFor(model => model.Amount, new { @class = "form-control amt textright TotalInvoiceAmount", @required = "true", @onchange = "setTwoNumberDecimal(this)" })
+
+                </div>
+                <div class="col-xs-12 col-sm-4">
+                    <label class="headinglabel">Remarks</label>
+                    @Html.TextAreaFor(model => model.Remarks, new { @class = "form-control txttarget" })
+                </div>
+                      
+
+
+        </div>
+        <div class="row no-margin" style="padding-top:10px">
+
+            <div class="col-xs-12 col-sm-8">
+                <p style="color:red;display:none;font-size: 15px;margin-top: 30px;" id="msg1">Amount Paid TillDate + Amount Allocated cannot be greater than Balance.</p>
+            </div>
+        </div>
+        <div class="row no-margin" style="padding-top:10px">
+            <div class="col-xs-12 no-padding for-device">                
+                    <div class="table-responsive tblbackground">
+                        <table class="table table-responsive table-bordered tblfont" role="grid" aria-describedby="datatable-1_info" style="min-width: 100%;overflow:auto" id="DetailsTable">
+                            <thead class="input-table">
+                                <tr>
+                                    <th>S.No.</th>
+                                    <th>Manifest No.</th>
+                                    <th>AWB NO.</th>
+                                    <th>AWB Date</th>
+                                    <th>Consignee</th>
+                                    <th>Phone No.</th>
+                                    <th>Courier Charge</th>
+                                    <th>Other Charge</th>
+                                    <th>Total Charge</th>
+                                    <th>Amount Allocated</th>
+                                    <th>Discount</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var item in Model.ReceiptDetails)
+                                {
+                                    <tr>
+                                        <td>@(i + 1)</td>
+                                        <td>
+
+                                            @Html.DisplayFor(model => model.ReceiptDetails[i].ManifestNumber)
+                                            <input type="hidden" name='ReceiptDetails[@i.ToString()].ManifestID' value="@Model.ReceiptDetails[i].ManifestID" />
+                                        </td>
+                                        <td>
+                                            <input type="hidden" name='ReceiptDetails[@i.ToString()].ReceiptID' value="@Model.ReceiptDetails[i].ReceiptID" />
+                                            <input type="hidden" name='ReceiptDetails[@i.ToString()].ReceiptDetailID' value="@Model.ReceiptDetails[i].ReceiptDetailID" />
+                                            <input type="hidden" name='ReceiptDetails[@i.ToString()].InScanId' value="@Model.ReceiptDetails[i].InScanId" />
+                                            <input type="hidden" name='ReceiptDetails[@i.ToString()].AWBNo' value="@Model.ReceiptDetails[i].AWBNo" />
+                                            @Html.DisplayFor(model => model.ReceiptDetails[i].AWBNo)
+
+                                        </td>
+                                        <td>
+                                            @Net4Courier.Models.CommonFunctions.GetShortDateFormat(@Model.ReceiptDetails[i].AWBDate)
+                                            <input type="hidden" name='ReceiptDetails[@i.ToString()].AWBDate' value=@Net4Courier.Models.CommonFunctions.GetShortDateFormat(@Model.ReceiptDetails[i].AWBDate) />
+                                        </td>
+                                        <td>
+                                            @Html.DisplayFor(model => model.ReceiptDetails[i].Consignee)
+                                            <input type="hidden" name='ReceiptDetails[@i.ToString()].Consignee' value="@Model.ReceiptDetails[i].Consignee" />
+                                        </td>
+                                        <td>
+                                            @Html.DisplayFor(model => model.ReceiptDetails[i].ConsigneePhone)
+                                            <input type="hidden" name='ReceiptDetails[@i.ToString()].ConsigneePhone' value="@Model.ReceiptDetails[i].ConsigneePhone" />
+                                        </td>
+                                        <td class="text-right">
+                                            @Html.DisplayFor(model => model.ReceiptDetails[i].CourierCharge, new { @class = "text-right" })
+                                            <input type="hidden" name='ReceiptDetails[@i.ToString()].CourierCharge' value="@Model.ReceiptDetails[i].CourierCharge" />
+                                        </td>
+                                        <td class="text-right">
+                                            @Html.DisplayFor(model => model.ReceiptDetails[i].OtherCharge, new { @class = "text-right" })
+                                            <input type="hidden" name='ReceiptDetails[@i.ToString()].OtherCharge' value="@Model.ReceiptDetails[i].OtherCharge" />
+                                        </td>
+                                        <td class="text-right">
+                                            @Html.DisplayFor(model => model.ReceiptDetails[i].TotalCharge, new { @class = "text-right" })
+                                            <input type="hidden" name='ReceiptDetails[@i.ToString()].TotalCharge' value="@Model.ReceiptDetails[i].TotalCharge" />
+                                        </td>
+                                        <td class="text-right">
+                                            @Html.DisplayFor(model => model.ReceiptDetails[i].AmountAllocate, new { @class = "text-right" })
+                                            <input type="hidden" id="amtallocate_@i" name='ReceiptDetails[@i.ToString()].AmountAllocate' value="@Model.ReceiptDetails[i].AmountAllocate" class="text-right" onchange="checktotal(this)" />
+                                        </td>
+                                        <td class="text-right">
+                                            @Html.DisplayFor(model => model.ReceiptDetails[i].Discount, new { @class = "text-right" })
+                                            <input type="hidden" id="amtdisc_@i" name='ReceiptDetails[@i.ToString()].Discount' value="@Model.ReceiptDetails[i].Discount" class="text-right" onchange="checktotal(this)" />
+                                            
+                                        </td>
+                                    </tr>
+                                    i++;                                    
+                                }
+                                <tr>
+                                    <td colspan="9" class="text-right">
+                                        <b>Total</b>
+                                    </td>
+                                    <td>
+                                        <input type="text" id="txttotalamountcollected" readonly class="text-right" value="@Model.allocatedtotalamount" />
+                                    </td>
+                                    <td>
+                                        <input type="text" id="txttotaldiscount" readonly value="0" class="text-right" />
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>                
+            </div>
+        </div>
+        <div class="row no-margin" style="padding-top: 10px">
+            <div class="col-md-12 btn-right">                
+                <a href='@Url.Action("Index", "ManifestReceipt")' class="btn btn-danger  btnwidth">Cancel</a>
+            </div>
+        </div>
+    }
+</section>
+
+
+
+
+<div>
+</div>

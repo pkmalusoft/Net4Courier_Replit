@@ -1,0 +1,3549 @@
+﻿@model Net4Courier.Models.DRRVM
+
+@{
+    
+    ViewBag.pTitle = "DRS Reconciliation";
+    ViewBag.pageTitle = "Outbound";
+    Layout = "~/Views/Shared/_Layout.cshtml";
+    var spath = "/DRSReceipt/Index/0";// System.Configuration.ConfigurationManager.AppSettings["spath"].ToString();
+    var _decimal = @Session["Decimal"].ToString();
+    var _alphanum = Session["AWBAlphaNumeric"].ToString();
+}
+
+<style>
+    .drsAwb .form-control{
+        height: 28px !important;
+        font-size:11px!important;
+     /*   font-weight:bold;*/
+    }
+    .drsAwb .col-form-label {
+        padding-bottom:2px!important;
+    }
+    .drsAwb .docs-datepicker-trigger{
+        height: 30px !important;
+    }
+    .drsAwb .filter {
+    padding: 0px 7px !important;
+}
+    .color_yellow
+    {
+        color:yellow;
+    }
+    .spantotal {
+        color: blue;
+        font-size: 12px;
+    }
+    .sm_btn {
+        margin-top: 18px !important;
+    }
+    .table > tr {
+        height: 32px;
+    }
+    .cred
+    {
+        color:red;
+    }
+    #tblTrans > tr > td {
+        text-align: right !important;
+        font-size:13px;
+    }
+        #tblTrans > tr > td:first-child {
+            text-align: left !important;
+        }
+        #tblTrans > tfoot > td.form-control {
+            font-size:12px;
+        }
+  
+    /*#tbl1 tr:first-of-type {
+            background: #35b8eb;
+            color: #fff;
+        }*/
+
+
+
+    .modal-dialog {
+        width: 800px;
+    }
+
+    #staffmodelbody {
+        max-height: calc(100vh - 200px);
+        overflow-y: auto;
+    }
+
+    .flex {
+        display: flex;
+    }
+
+    .justify-content-between {
+        justify-content: space-between;
+    }
+
+    #popup h5 {
+        border: 2px solid #35b8eb;
+        min-width: 150px;
+        height: 40px;
+        border-radius: 5px;
+        line-height: 40px;
+        color: #35b8eb;
+        text-align: center;
+        font-weight: bold;
+    }
+
+    .card-body .active{
+            background-color: #50a5f1;
+            color: #fff !important;
+    }
+</style>
+<style>
+    /* Style the buttons that are used to open and close the accordion panel */
+    .accordion {
+        background-color: #eee;
+        color: #444;
+        cursor: pointer;
+        padding: 10px; /*//18px;*/
+        width: 100%;
+        text-align: left;
+        border: none;
+        outline: none;
+        transition: 0.4s;
+        border-bottom: 1px solid rgb(128 128 128 / 30%);
+    }
+
+     
+    /* Style the accordion panel. Note: hidden by default */
+    .panel {
+        padding: 0 5px;
+        background-color: white;
+        display: none;
+        overflow: hidden;
+    }
+
+    .drsAwb table{
+        table-layout: fixed;
+    }
+
+</style>
+<script type="text/javascript">
+    var AWBObj = {};
+    function setawbrowactive(index1) {
+
+        var idtext = 'awbtr_'
+        $('[id^=' + idtext + ']').each(function (index, item) {
+            $('#awbtr_' + (index + 1)).removeClass('rowactive');
+        });
+        $('#awbtr_' + index1).addClass('rowactive');
+    }
+     function setTwoNumberDecimal(obj) {
+
+         if ($(obj).val() == '') {
+             $(obj).val(0);
+         }
+         $(obj).val(parseFloat($(obj).val()).toFixed(@_decimal));
+
+    }
+    function DeleteTransaction(id) {
+        var DRRID = $('#DRRID').val();
+        $.ajax({
+            type: "GET",
+            url: "/DRSReconc/DeleteDRSAWB",
+            datatype: "Json",
+            data: { DrrDetailID: id ,DRRID: DRRID },
+                        success: function (response) {
+                            if (response == "ok") {
+
+                                Swal.fire('Save Status','Item Deleted Succesfully', 'success');
+
+                            }
+                            else {
+
+                                Swal.fire('Save Status', response, 'error');
+                                return false;
+                            }
+                        }
+                    });
+    }
+      function edittrans(obj, i) {
+            debugger;
+            var transtype = $('#hdntype_' + i).val();
+
+            if (transtype == 'AWB') {
+
+                var awb = $('#hdnref_' + i).val();
+                //awb = awb.replace('AWB-', '');
+                awb = awb.replace('AWB:', '');
+                var item = {
+                    label: awb,
+                    value: $('#hdnrefId_' + i).val(),
+                    InscanId: $('#hdnrefId_' + i).val(),
+                    ShipmentDetailID: 0,
+                    CustomerName: $('#hdnrefId_' + i).attr('customername'),
+                    CustomerID: $('#hdnrefId_' + i).attr('awbcustomerid'),
+                    Shipper: $('#hdnrefId_' + i).attr('shipper'),
+                    Consignee: $('#hdnrefId_' + i).attr('consignee'),
+                    AWBDate: $('#hdnrefId_' + i).attr('AWBDate'),
+                    TotalCharge: $('#hdnrefId_' + i).attr('totalcharge'),
+                    MaterialCost: $('#hdnmc_' + i).val(),
+                    CODVAT: 0,
+
+                    IsNCND: $('#hdnrefId_' + i).attr('isncnd'),
+                    IsCashOnly: $('#hdnrefId_' + i).attr('iscashonly'),
+                    IsCollectMaterial: $('#hdnrefId_' + i).attr('iscollectmaterial'),
+                    IsCheque: $('#hdnrefId_' + i).attr('ischeque'),
+                    IsDoCopyBack: $('#hdnrefId_' + i).attr('isdocopyback'),
+                    Pieces: $('#hdnrefId_' + i).attr('pieces'),
+                    Weight: $('#hdnrefId_' + i).attr('weight'),
+                    PaymentMode: $('#hdnrefId_' + i).attr('paymode'),
+                    PaymentModeId: $('#hdnrefId_' + i).attr('paymentmodeid'),
+                    LockedStatus: false,
+                    CollectedBy: $('#hdnrefId_' + i).attr('collectedby'),
+                    AWBDate: $('#hdnrefId_' + i).attr('AWBDate'),
+                    Confirmation : $('#hdnconfirmation_'+i).val()
+                }
+                displayawbdetail(item);
+                $('#txtAWB').val(awb);
+                $('#txtCODReceived').val($('#hdncod_' + i).val())
+                $('#txtMCCost').val($('#hdnrefId_' + i).attr('materialcost'));
+                $('#txtAWBDate').val($('#hdnrefId_' + i).attr('AWBDate'));
+                $('#btnUpdateAWB').attr('rowindex', i);
+                $('#btnUpdateAWB').removeClass('hide');
+                $('#btnAddAWB').addClass('hide');
+            }
+        }
+        function displayawbdetail(obj) {
+            debugger;
+            if (obj != null) {
+                AWBObj = obj;
+                var awbdate1 = obj.AWBDate;
+                var myDate = new Date(awbdate1.match(/\d+/)[0] * 1);
+                var cmon = myDate.getMonth() + 1;
+                var ulhtml = '<ul>';
+                var awbdate = myDate.getDate() + "-" + cmon + "-" + myDate.getFullYear();
+                $('#txtAWBDate').val(awbdate);
+                $('#txtCollected').val(obj.CollectedBy);
+                $('#txtInScanID').val(obj.InscanId);
+                $('#txtShipmentDetailID').val(obj.ShipmentDetailID);
+                $('#txtPayMode').val(obj.PaymentMode);
+                $('#PaymentModeId').val(obj.PaymentModeId).trigger('change');
+                //ulhtml = ulhtml + awbdate;
+                $('#txtCustomerName').val(obj.CustomerName);
+                $('#txtCustomerName').attr('readonly', 'readonly');
+                $('#txtCustomerId1').val(obj.CustomerID);
+                $('#txtShipper').val(obj.Shipper);
+                $('#txtConsignee').val(obj.Consignee);
+                $('#txtPieces').val(obj.Pieces);
+                $('#txtWeight').val(parseFloat(obj.Weight).toFixed(3));
+                $('#txtMCConfirmation').val(obj.Confirmation);
+                //var shipper = '<li>Shipper :' + obj.Shipper + '</li>';
+                //ulhtml = ulhtml + shipper;
+                //var consignee = '<li>Consignee : ' + obj.Consignee + '</li>';
+                //ulhtml = ulhtml + consignee;
+                //var pcs = '<li>Pcs : ' + obj.Pieces + '</li>';
+                //var weight = '<li>Weight : ' + obj.Weight + '</li>';
+                //ulhtml = ulhtml + pcs;
+                //ulhtml = ulhtml + weight;
+
+                var Instructions = '';// '<li>Instructions <ul>';
+                if (obj.IsNCND == true || obj.IsNCND=="true")
+                    Instructions = Instructions + ',NCND';
+                if (obj.IsCashOnly == true || obj.IsCashOnly == "true")
+                    Instructions = Instructions + ',Cash Only';
+                if (obj.IsCheque == true || obj.IsCheque == "true")
+                    Instructions = Instructions + ',Cheque';
+                if (obj.IsCollectMaterial == true || obj.IsCollectMaterial=="true")
+                    Instructions = Instructions + ',Collect Material';
+                if (obj.IsDoCopyBack == true || obj.IsDoCopyBack=="true")
+                    Instructions = Instructions + ',Do Copy Back';
+
+                //ulhtml = ulhtml + Instructions;
+                //ulthml = ulhtml + '</ul';
+                //$('#divawbdetail').html(ulhtml);
+                $('#txtInstructions').val(Instructions);
+
+                if ($('#txtShipmentDetailID').val() > 0) {
+                    $('#txtCODAmount').val(parseFloat(obj.CODVAT).toFixed(@_decimal));
+                $('#txtCODReceived').val(parseFloat(obj.CODVAT).toFixed(@_decimal));
+                $('#txtCODAmount').attr('codamount', parseFloat(obj.CODVAT).toFixed(@_decimal));
+                }
+                else {
+                    $('#txtCODAmount').val(parseFloat(obj.TotalCharge).toFixed(@_decimal));
+                    $('#txtCODReceived').val(parseFloat(obj.CourierChargePending).toFixed(@_decimal));
+                $('#txtCODAmount').attr('codamount', parseFloat(obj.TotalCharge).toFixed(@_decimal));
+                }
+
+                $('#txtMCCost').val(parseFloat(obj.MaterialCost).toFixed(@_decimal));
+                $('#txtMCReceived').val(parseFloat(obj.MaterialCost).toFixed(@_decimal));
+                $('#txtMCPaid').val(parseFloat(obj.MaterialCost).toFixed(@_decimal));
+                if (obj.LockedStatus == 'Locked') {
+                    $('#ChangeAWB').attr('disabled', 'disabled');
+                    $('#ChangeNCND').attr('disabled', 'disabled');
+                    $('#ChangeAWB').prop('checked', false);
+                    $('#ChangeAWB').trigger('change');
+                }
+                else if (obj.LockedStatus != 'Locked' && obj.PaymentModeId != 2) {
+                    $('#ChangeAWB').removeAttr('disabled');
+                    $('#ChangeAWB').prop('checked', false);
+                    $('#ChangeNCND').removeAttr('disabled');
+                    $('#ChangeNCND').prop('checked', false);
+                    $('#ChangeNCND').trigger('change');
+                    $('#ChangeAWB').trigger('change');
+                }
+                else {
+                    $('#ChangeAWB').removeAttr('disabled');
+                    $('#ChangeNCND').removeAttr('disabled');
+                    $('#ChangeNCND').prop('checked', false);
+                    $('#ChangeNCND').trigger('change');
+                    if (obj.PaymentModeId == 2 && $('#ChangeAWB').prop('checked') == false)
+                        $('#ChangeAWB').prop('checked', true);
+                }
+
+                if ($('#ChangeAWB').prop('checked') == true) {
+                    $('#ChangeAWB').trigger('change');
+                }
+
+                $('#txtAWB').focus();
+            }
+            else {
+                AWBObj = {};
+                $("#txtAWB").val('');
+                $('#txtInScanID').val(0);
+                $('#txtAWBDate').val('');
+                $('#txtCollected').val('');
+                $('#txtCustomerName').val('');
+                $('#txtCustomerId1').val(0);
+                $('#txtCustomerName').attr('readonly', 'readonly');
+                $('#txtShipper').val('');
+                $('#txtConsignee').val('');
+                $('#txtPieces').val('');
+                $('#txtWeight').val('');
+                $('#txtInstructions').val('');
+                $('#txtCODAmount').val('');
+                $('#txtDiscount').val('');
+                $('#txtMCCost').val('');
+                $('#txtCODReceived').val('');
+                $('#txtMCReceived').val('');
+                $('#txtMCPaid').val('');
+                $('#txtMCChequeDetail').val('');
+                $('#txtMCChequeAmt').val('');
+                $('#txtMCSettleAmt').val('');
+                $('#txtMCConfirmation').val('');
+                $('#txtAWBReceived').val('');
+                $('#MCPending').prop('checked', false);
+                $('#POD').prop('checked', true);
+                $('#Cheque').prop('checked', false);
+                //$('#ChangeAWB').prop('checked', false);
+                $('#ChangeAWB').attr('disabled', 'disabled');
+                $('#PaymentModeId').addClass('hide');
+                $('#txtPayMode').val('');
+                $('#txtPayMode').removeClass('hide');
+                $('#txtCODAmount').attr('readonly', 'readonly');
+                $('#txtAWB').focus();
+            }
+        }
+    function deletetrans(obj, i) {
+        //setawbrowactive(i);
+        debugger;
+
+            var detailid = $('#hdndetailId_' + i).val();
+            //DeleteDRSAWB
+            if (detailid == "")
+                detailid = 0;
+
+        if (detailid > 0) {
+            if (confirm("Are you sure to Delete this Selected Entry from Database?")) {
+                DeleteTransaction(detailid);
+                $(obj).parent().parent().addClass('hide');
+                var obj1 = $(obj).parent().parent().find('.hdndeleted');
+                $(obj1).val(true);
+                calculatetotal();
+            }
+        }
+        else {
+
+            $(obj).parent().parent().addClass('hide');
+            var obj1 = $(obj).parent().parent().find('.hdndeleted');
+            $(obj1).val(true);
+            calculatetotal();
+        }
+
+    }
+    function deletenewawb(obj, i) {
+        $(obj).parent().parent().addClass('hide');
+        var obj1 = $(obj).parent().parent().find('.hdndeleted');
+        $(obj1).val(true);
+    }
+    function isNumberKey1(evt) {
+        var charCode = (evt.which) ? evt.which : evt.keyCode;
+        //if (e.which != 8 && e.which != 0 && (e.which < 48 || e.which > 57)) {
+        if (charCode != 8 && charCode != 0 && (charCode < 48 || charCode > 57))
+            return false;
+
+        return true;
+    }
+
+    function deleteexp(obj, j) {
+        $(obj).parent().parent().addClass('hide');
+        var obj1 = $(obj).parent().parent().find('.hdndeleted');
+        $(obj1).val(true);
+    }
+
+    function allocate(obj) {
+
+         var balamt = $('#BalanceAmount').val();
+         if (balamt == "")
+             balamt = "0";
+
+         var idindex = $(obj).attr('id').split('_')[1];
+         var txinvoice = $('#txtinvoice_' + idindex);
+         if (parseFloat(balamt) > 0) {
+
+             var idtext = 'txtinvoice_' + idindex;
+
+             var balance = $('#txtbalance_' + idindex).val();
+             if (balance == "") {
+                 balance = 0;
+             }
+             var adjust = $('#txtadjust_' + idindex).val();
+             if (adjust == "")
+                 adjust = 0;
+             if (parseFloat(balance) > 0 && parseFloat(balamt) > parseFloat(balance)) {
+                 balance = parseFloat(balance) - parseFloat(adjust);
+             }
+             else {
+                 balance = parseFloat(balamt); //parseFloat(balance) - parseFloat(adjust);
+             }
+             if ($(obj).is(':checked')) {
+                 $(txinvoice).val(parseFloat(balance).toFixed(@_decimal));
+             }
+             else {
+                 $(txinvoice).val(parseFloat("0").toFixed(@_decimal));
+             }
+             ValidateTotal();
+         }
+         else {
+             $(txinvoice).val(parseFloat("0").toFixed(@_decimal));
+             ValidateTotal();
+         }
+    }
+    function parseDate(dateStr) {
+        // Split the string into day, month, and year
+        let parts = dateStr.split('-');
+        let day = parseInt(parts[0], 10);
+        let month = parseInt(parts[1], 10) - 1; // JavaScript months are 0-based (0 = January)
+        let year = parseInt(parts[2], 10);
+
+        // Create a new Date object (year, month, day)
+        return new Date(year, month, day);
+    }
+    $(document).ready(function () {
+        var acc = document.getElementsByClassName("accordion");
+        var i;
+        $("input:text").focus(function () { $(this).select(); });
+        for (i = 0; i < acc.length; i++) {
+            debugger;
+            acc[i].addEventListener("click", function () {
+                /* Toggle between adding and removing the "active" class,
+                to highlight the button that controls the panel */
+                var index = $(this).attr('id').split('_')[1];
+                var acc = document.getElementsByClassName("panel");
+                for (i = 1; i <= acc.length; i++) {
+                    if (index != i) {
+                        $('#accordion_' + i).removeClass('active');
+                        $('#panel_' + i).css('display', 'none')
+                    }
+                }
+                //$('#accordion_' + index).addClass('active');
+                //$('#panel_' + index).css('display', 'block');
+                this.classList.toggle("active");
+
+                /* Toggle between hiding and showing the active panel */
+                var panel = $('#panel_' + index);// this.nextElementSibling;
+                if ($('#panel_' + index).css('display') === "block") {
+                    $('#panel_' + index).css('display', 'none');
+                } else {
+                    $('#panel_' + index).css('display', 'block');
+                }
+                if (index == 1) {
+                    $('#txtAWB').focus();
+                }
+                else if (index == 2) {
+                    $('#txtCustomer').focus();
+                }
+                else if (index == 3) {
+                    $('#txtNewAWB').focus();
+                }
+                else if (index == 4) {
+                    $('#txtExpAccountHead').focus();
+                }
+            });
+        }
+        $(":text").css({ "border-radius": "5px" });
+        $("select").css({ "border-radius": "5px" });
+        $("textarea").css({ "border-radius": "5px" });
+
+
+        document.addEventListener('keydown', function (event) {
+            if (event.code == 'KeyA' && (event.altKey)) { //ADD AWB
+                //accordion active
+                var acc = document.getElementsByClassName("accordion");
+                var index = 0;
+                for (i = 1; i <= acc.length; i++) {
+                    if ($('#panel_' + i).css('display') === "block") {
+                        if (i == 1) { //add awb
+                            if ($('#btnAddAWB').hasClass('hide')) {
+                                $('#btnUpdateAWB').trigger('click');
+                            }
+                            else {
+                                $('#btnAddAWB').trigger('click');
+                            }
+                            
+                        }
+                        else if (i == 2) { //customer receipt
+                            $('#btnAddInvoice').trigger('click');
+                        }
+                        else if (i == 3)//new awb
+                        {
+                            $('#btnAddNewAWB').trigger('click');
+                        }
+                        else if (i == 4) { //expense
+                            $('#btnAddExpense').trigger('click');
+                        }
+                    }
+                }
+            }
+
+        });
+        $('#tblTrans').on("click", "#DeleteNewRow", function () {
+            debugger;
+            //$(this).parent().parent().remove();
+            $(this).parent().parent().addClass('hide');
+            var obj = $(this).parent().parent().find('.hdndeleted');
+            $(obj).val(true);
+        });
+
+        $("#DRSNo").autocomplete({
+            source: function (request, response) {
+                $.ajax({
+                    url: '/DRSReceipt/GetDRSNo',
+                    datatype: "json",
+                    data: {
+                        term: request.term
+                    },
+                    success: function (data) {
+                        response($.map(data, function (val, item) {
+                            return {
+                                label: val.DRSNo,
+                                value: val.DRSID,
+                                DRSDate: val.DRSDate
+                            }
+                        }))
+                    }
+                })
+            },
+            minLength: 0,
+            autoFocus: false,
+            focus: function (e, i) {
+                $("#DRSNo").val(i.item.label);
+                $('#DRSID').val(i.item.value);
+                $('#DRSID').attr('label', i.item.label);
+            },
+            select: function (e, i) {
+                e.preventDefault();
+                $("#DRSNo").val(i.item.label);
+                $('#DRSID').val(i.item.value);
+                $('#DRSID').attr('label', i.item.label);
+
+            },
+
+        });
+
+        $("#DRSReceiptNo").autocomplete({
+            source: function (request, response) {
+                $.ajax({
+                    url: '/DRSReconc/GetDRSReceiptNo',
+                    datatype: "json",
+                    data: {
+                        term: request.term, DeliveredBy: $('#DeliveredBy').val()
+                    },
+                    success: function (data) {
+                        response($.map(data, function (val, item) {
+                            return {
+                                label: val.DocumentNo,
+                                value: val.DRSRecPayId,
+                                ReceiptDate: val.DRSRecPayDate,
+                                DRSID: val.DRSID,
+                                ReceivedAmount: val.ReceivedAmount,
+                                DeliveredBy: val.DeliveredBy,
+                                CollectedAmount :val.CollectedAmount
+
+                            }
+                        }))
+                    }
+                })
+            },
+            minLength: 0,
+            autoFocus: false,
+            focus: function (e, i) {
+                e.preventDefault();
+                $("#DRSReceiptNo").val(i.item.label);
+                $('#DRSRecPayID').val(i.item.value);
+                var myDate = new Date(i.item.ReceiptDate.match(/\d+/)[0] * 1);
+                var cmon = myDate.getMonth()+ 1;
+                var collectdate = myDate.getDate() + "-" + cmon + "-" + myDate.getFullYear();
+                $('#ReceiptDate').val(collectdate);
+                //  Create a two  date objects
+
+                
+                let drrdate1 = parseDate($('#DRRDate').val());
+                let receiptdate2 = parseDate(collectdate);
+                $('#DRRDate').val(collectdate); //for highway
+                
+                //if (drrdate1.getTime() < receiptdate2.getTime()) {
+                //    console.log('date1 is after date2.');                    
+                //    $('#DRRDate').val(collectdate); //for highway
+                //}              
+
+                //  Look for comparison among the trio using the comparison operators
+
+              
+                //if ($('#DRRDate').val() < collectdate) {
+                //    $('#DRRDate').val(collectdate); //for highway
+                //}
+                
+                $('#DRSID').val(i.item.DRSID);
+                //$('#DRSNo').val(i.item.DRSNo);
+                //myDate = new Date(i.item.DRSDate.match(/\d+/)[0] * 1);
+                //cmon = myDate.getMonth() + 1;
+                //var collectdate = myDate.getDate() + "-" + cmon + "-" + myDate.getFullYear();
+                //$('#DRSDate').val(collectdate);
+                
+                $('#DeliveredBy').val(i.item.DeliveredBy).trigger('change');
+                $('#ReceivedAmount').val(parseFloat(i.item.ReceivedAmount).toFixed(2));
+
+                   ////reverted on 23 oct 2024 
+                //if (parseFloat(i.item.CollectedAmount) > 0) {
+                //    $('#lblreceipt').html('Receipt :' + parseFloat(i.item.ReceivedAmount).toFixed(2));
+                //    $('#ReceivedAmount').val(parseFloat(i.item.CollectedAmount).toFixed(2));
+                //}
+                //else {
+                //    $('#lblreceipt').html('');
+                //    $('#ReceivedAmount').val(parseFloat(i.item.ReceivedAmount).toFixed(2));
+                //}
+                
+            },
+            select: function (e, i) {
+                e.preventDefault();
+                $("#DRSReceiptNo").val(i.item.label);
+                $('#DRSRecPayID').val(i.item.value);
+                var myDate = new Date(i.item.ReceiptDate.match(/\d+/)[0] * 1);
+                var cmon = myDate.getMonth() + 1;
+                var collectdate = myDate.getDate() + "-" + cmon + "-" + myDate.getFullYear();
+                $('#ReceiptDate').val(collectdate);
+                let drrdate1 = parseDate($('#DRRDate').val());
+                let receiptdate2 = parseDate(collectdate);
+                $('#DRRDate').val(collectdate); //for highway
+
+                //if (drrdate1.getTime() < receiptdate2.getTime()) {
+                //    //console.log('date1 is after date2.');
+                //    //console.log(drrdate1);
+                //    //console.log(receiptdate2);
+                //    $('#DRRDate').val(collectdate); //for highway
+                //}
+                
+                $('#DRSID').val(i.item.DRSID);
+                //$('#DRSNo').val(i.item.DRSNo);
+                //myDate = new Date(i.item.DRSDate.match(/\d+/)[0] * 1);
+                //cmon = myDate.getMonth() + 1;
+                //var collectdate = myDate.getDate() + "-" + cmon + "-" + myDate.getFullYear();
+
+                //$('#DRSDate').val(collectdate);
+                $('#DeliveredBy').val(i.item.DeliveredBy).trigger('change');
+                $('#ReceivedAmount').val(parseFloat(i.item.ReceivedAmount).toFixed(2));
+               
+              ////reverted on 23 oct 2024 
+              //  if (parseFloat(i.item.CollectedAmount) > 0) {
+              //      $('#lblreceipt').html('Receipt :' + parseFloat(i.item.ReceivedAmount).toFixed(2));
+              //      $('#ReceivedAmount').val(parseFloat(i.item.CollectedAmount).toFixed(2));
+              //  }
+              //  else {
+              //      $('#lblreceipt').html('');
+              //      $('#ReceivedAmount').val(parseFloat(i.item.ReceivedAmount).toFixed(2));
+              //  }
+            },
+
+        });
+
+        $("#DRSReceiptNo").change(function () {
+
+            if ($('#DRSID').val() != '') {
+                $.ajax({
+                    url: '/DRSReconc/GetDRSDetail',
+                    datatype: "json",
+                    data: {
+                        DRSID: $('#DRSID').val()
+                    },
+                    success: function (data) {
+                        console.log(data);
+                        $('#DRSNo').val(data.DRSNo);
+                        myDate = new Date(data.DRSDate.match(/\d+/)[0] * 1);
+                        console.log(myDate);
+                        cmon = myDate.getMonth() + 1;
+                        var collectdate = myDate.getDate() + "-" + cmon + "-" + myDate.getFullYear();
+                        $('#DRSDate').val(collectdate);
+                        //$('#DeliveredBy').val(data.DeliveredBy).trigger('change');
+
+                    }
+                });
+            }
+        })
+        //$("#DRSNo").autocomplete({
+        //    source: function (request, response) {
+        //        $.ajax({
+        //            url: '/DRSReconc/GetDRS',
+        //            datatype: "json",
+        //            data: {
+        //                term: request.term
+        //            },
+        //            success: function (data) {
+        //                response($.map(data, function (val, item) {
+        //                    return {
+        //                        label: val.DRSNo,
+        //                        value: val.DRSID,
+        //                        Delivered: val.DeliveredBy,
+        //                        DRSDate: val.DRSDate,
+        //                    }
+        //                }))
+        //            }
+        //        })
+        //    },
+        //    minLength: 0,
+        //    autoFocus: false,
+        //    focus: function (e, i) {
+        //        $("#DRSNo").val(i.item.label);
+        //        $('#DRSID').val(i.item.value);
+
+        //        var myDate = new Date(i.item.DRSDate.match(/\d+/)[0] * 1);
+        //        var cmon = myDate.getMonth() + 1;
+        //        var collectdate = myDate.getDate() + "-" + cmon + "-" + myDate.getFullYear();
+        //        $('#DRSDate').val(collectdate);
+        //        $('#DeliveredBy').val(i.item.DeliveredBy).trigger('change');
+        //    },
+        //    select: function (e, i) {
+        //        e.preventDefault();
+        //        $("#DRSNo").val(i.item.label);
+        //        $('#DRSID').val(i.item.value);
+
+        //        var myDate = new Date(i.item.DRSDate.match(/\d+/)[0] * 1);
+        //        var vcmon = myDate.getMonth() + 1;
+        //        var collectdate = myDate.getDate() + "-" + cmon + "-" + myDate.getFullYear();
+        //        $('#DRSDate').val(collectdate);
+        //        $('#DeliveredBy').val(i.item.DeliveredBy).trigger('change');
+
+        //    },
+
+        //});
+
+        //$("#txtAWB").autocomplete({
+        //    source: function (request, response) {
+        //        $.ajax({
+        //            url: '/DRSReconc/GetDRSAWB',
+        //            datatype: "json",
+        //            data: {
+        //                term: request.term, DRSID: $('#DRSID').val(), DRSRecPayId: $('#DRSRecPayID').val()
+        //            },
+        //            success: function (data) {
+        //                response($.map(data, function (val, item) {
+        //                    return {
+        //                        label: val.AWBNo,
+        //                        value: val.InscanId,
+        //                        InscanId: val.InscanId,
+        //                        ShipmentDetailID: val.ShipmentDetailID,
+        //                        CustomerName :val.CustomerName,
+        //                        Shipper: val.Shipper,
+        //                        Consignee: val.Consignee,
+        //                        AWBDate: val.AWBDate,
+        //                        CourierCharge: val.CourierCharge,
+        //                        OtherCharge: val.OtherCharge,
+        //                        TotalCharge: val.TotalCharge,
+        //                        MaterialCost: val.MaterialCost,
+        //                        IsNCND: val.IsNCND,
+        //                        IsCashOnly: val.IsCashOnly,
+        //                        IsCollectMaterial: val.IsCollectMaterial,
+        //                        IsCheque: val.IsCheque,
+        //                        IsDoCopyBack: val.IsDOCopyBack,
+        //                        Pieces: val.Pieces,
+        //                        Weight: val.Weight,
+        //                        PaymentMode: val.PaymentMode,
+        //                        CollectedBy : val.CollectedBy
+
+        //                    }
+        //                }))
+        //            }
+        //        })
+        //    },
+        //    minLength: 0,
+        //    autoFocus: false,
+        //    focus: function (e, i) {
+        //        $("#txtAWB").val(i.item.label);
+        //        $('#txtInScanID').val(i.item.value);
+        //        $('#txtShipmentDetailID').val(i.item.ShipmentDetailID);
+        //        $('#txtPayMode').val(i.item.PaymentMode);
+        //        //displayawbdetail(i.item);
+        //    },
+        //    select: function (e, i) {
+        //        e.preventDefault();
+        //        $("#txtAWB").val(i.item.label);
+        //        $('#txtInScanID').val(i.item.value);
+        //        $('#txtPayMode').val(i.item.PaymentMode);
+        //        $('#txtShipmentDetailID').val(i.item.ShipmentDetailID);
+        //        //displayawbdetail(i.item);
+        //    },
+
+        //});
+
+        $('#txtAWB').change(function () {
+            if ('@_alphanum' == 'True') {
+                var txt = $('#txtAWB').val().trim();
+                $('#txtAWB').val(txt.replace(/[^\d,]/g, ''));
+            }
+            var drsid = 0;
+            var recpayid = 0;
+            if ($('#DRSID').val() != '' && $('#DRSID').val() != null)
+                drsid = $('#DRSID').val();
+
+            if ($('#DRSRecPayID').val() != '' && $('#DRSRecPayID').val() != null) {
+                recpayid = $('#DRSRecPayID').val()
+            }
+            if ($('#txtAWB').val() == '') {
+                return false;
+            }
+            if (recpayid == 0) {
+                Swal.fire('Data Valiation','Select Receipt No!');
+                $('#txtAWB').val('');
+                $('#DRSReceiptNo').focus();
+                return false;
+            }
+
+            if (!checkduplicate($('#txtAWB').val())) {
+                $('#txtAWB').focus();
+                $(window).scrollTop(100);
+                return false;
+            }
+            
+            $.ajax({
+                url: '/DRSReconc/GetDRSAWB',
+                datatype: "json",
+                data: {
+                    term: $('#txtAWB').val(), DRSID: drsid, DRSRecpayId: recpayid
+                },
+                success: function (response) {
+                    console.log(response);
+                    if (response.length == 0) {
+                      //  Swal.fire({'Data Validation','AWB not valid for Reconciliation!','error',1000);
+
+                        //Swal.fire({
+                        //  //  position: "top-right",
+                        //    icon: "error",
+                        //    title: "AWB not valid for Reconciliation!",
+                        //    showConfirmButton: false,
+                        //    timer: 500
+                        //});
+                        displayawbdetail(null);
+                        //Swal.fire({
+                        //    title: "Data Validation",
+                        //    text: "AWB not valid for Reconciliation",
+                        //    icon: "error",
+                        //    //showCancelButton: true,
+                        //    //confirmButtonText: "Yes, delete it!"
+                        //}).then(function (result) {
+                        //    if (result.value) {
+                        //        $('#txtAWB').focus();
+                        //        return false;
+                        //    }
+                        //});
+                        Swal.fire({
+                          //  position: "top-right",
+                            icon: "error",
+                            title: "This AWB does not have any cash transaction and cannot add in the reconciliation!",  //modified on 18/10/2024 AWB not valid for Reconciliation!",
+                            showConfirmButton: false,
+                            timer: 500
+                        });
+                        setTimeout(function () {
+                            $('#txtAWB').focus();
+                        },100)
+
+                        return false;
+                    }
+                    var data = response[0];
+                    var obj = {
+                        label: data.AWBNo,
+                        value: data.InscanId,
+                        InscanId: data.InscanId,
+                        ShipmentDetailID: data.ShipmentDetailID,
+                        CustomerName: data.CustomerName,
+                        CustomerID :data.CustomerID,
+                        Shipper: data.Shipper,
+                        Consignee: data.Consignee,
+                        AWBDate: data.AWBDate,
+                        CourierCharge: data.CourierCharge,
+                        OtherCharge: data.OtherCharge,
+                        TotalCharge: data.TotalCharge,
+                        MaterialCost: data.MaterialCost,
+                        CODVAT: data.CODVAT,
+                        CourierChargePending: data.CourierChargePending,
+                        IsNCND: data.IsNCND,
+                        IsCashOnly: data.IsCashOnly,
+                        IsCollectMaterial: data.IsCollectMaterial,
+                        IsCheque: data.IsCheque,
+                        IsDoCopyBack: data.IsDOCopyBack,
+                        Pieces: data.Pieces,
+                        Weight: data.Weight,
+                        PaymentMode: data.PaymentMode,
+                        PaymentModeId: data.PaymentModeId,
+                        LockedStatus: data.LockedStatus,
+                        CollectedBy : data.CollectedBy
+                    }
+                    displayawbdetail(obj);
+                    if ($('#ChangeAWB').prop('checked') == true)
+                    {
+                        if (parseFloat($('#txtCODAmount').val()) > 0) {
+                            //$('#PaymentModeId').focus();
+                            $('#txtCODAmount').focus();
+                        }
+                        else {
+                            $('#txtMCReceived').focus();
+                        }
+
+                    }
+                        else {
+                        $('#txtCODReceived').focus();
+                    }
+
+                }
+            })
+
+        });
+
+        $('#txtPayMode').blur(function () {
+            if ($('#txtAWB').val() == '') {
+                $('#txtAWB').focus();
+            }
+        })
+
+        $('#btnAddAWB').click(function () {
+            debugger;
+
+            if (AWBObj == null) {
+                Swal.fire("Data Validation","Select AWB!");
+                $('#txtAWB').focus();
+                $(window).scrollTop(100);
+                return false;
+            }
+            else if (AWBObj.label == '' || AWBObj.label == null) {
+                Swal.fire("Data Validation", "Select AWB!");
+                $('#txtAWB').focus();
+                $(window).scrollTop(100);
+                return false;
+            }
+            if (!checkduplicate(AWBObj.label)) {
+                $('#txtAWB').focus();
+                $(window).scrollTop(100);
+                return false;
+            }
+            var i = $('#tblTrans > tr').length;
+            var TransType = 'AWB';
+            var Reference = 'AWB:' + AWBObj.label;
+            var Referencehtml = '<a target="_blank" href="/AWB/Create?id=' + AWBObj.value + '">AWB:' + AWBObj.label + '</>';
+            var MaterialCost = $('#txtMCCost').val();
+            var COD = $('#txtCODReceived').val();
+            var chequeamount = $('#txtMCChequeAmt').val();
+            var Discount = $('#txtDiscount').val();
+            var MCReceived = $('#txtMCReceived').val();
+            var MCPaid = $('#txtMCPaid').val();
+            var referenceid = AWBObj.value;
+            var inscanid = AWBObj.value;
+            var shipmentdetailid = $('#txtShipmentDetailID').val();
+            if (parseFloat(shipmentdetailid) > 0)
+                referenceid = shipmentdetailid;
+            var importcod = 0;
+
+            var codamount = $('#txtCODAmount').val();
+            var confirmation = $('#txtMCConfirmation').val();
+            var mcpending = $('#MCPending').prop('checked');
+            var podstatus = $('#POD').prop('checked');
+            var chequestatus = $('#Cheque').prop('checked');
+            var awbreceivedby = $('#txtAWBReceived').val();
+
+            var settleamount = $('#txtMCSettleAmt').val();
+            var chequeno = $('#txtMCChequeDetail').val();
+            var changeawbstatus = $('#ChangeAWB').prop('checked');
+            var changemcstatus = $('#ChangeNCND').prop('checked');
+            var changepaymentid = 0;
+            var changecod = 0;
+            var changemc = 0;
+            var pickupcash = 0;
+            var changecustomerid = -2;
+            if (settleamount == '')
+                settleamount = 0;
+
+            if (chequeamount == '') {
+                chequeamount = 0;
+            }
+            if (confirmation == null)
+                confirmation = '';
+
+            if (COD == '')
+                COD = 0;
+            if (MCReceived == '')
+                MCReceived = 0;
+
+            if (MaterialCost == '')
+                MaterialCost = 0;
+            if (MCPaid == '')
+                MCPaid = 0;
+            if (codamount == '')
+                codamount = 0;
+
+            if (chequeamount == '')
+                chequeamount = 0;
+
+            if (Discount == '')
+                Discount = 0;
+            if (podstatus == null)
+                postatus = false;
+            if (chequestatus == null)
+                chequestatus = false;
+
+            if (changeawbstatus == true) {
+                debugger;
+                changepaymentid = $('#PaymentModeId').val();
+                changecod = $('#txtCODAmount').val();
+                if ($('#PaymentModeId').val() == '3') {
+
+                    changecustomerid = $('#txtCustomerId1').val();
+                }
+            }
+            if (changemcstatus == true) {
+                changemc = MaterialCost;
+            }
+            if (inscanid>0 && (parseFloat(codamount) > 0 && parseFloat(COD) == 0) && (parseFloat(MaterialCost) > 0 && parseFloat(MCReceived) == 0 && chequestatus == false && mcpending == false)) {
+                Swal.fire("'Data Validation","Enter collected Amount!", "error");
+                $('#txtCODReceived').focus();
+                return;
+            }
+            else if (shipmentdetailid > 0 && (parseFloat(codamount) > 0 && parseFloat(COD) == 0) && (parseFloat(MaterialCost) > 0 && parseFloat(MCReceived) == 0 && chequestatus == false && mcpending == false)) {
+                Swal.fire("'Data Validation", "Enter collected Amount!", "error");
+                $('#txtCODReceived').focus();
+                return;
+            }
+            else if ((parseFloat(codamount) > 0 && parseFloat(COD) == 0) && $('#PaymentModeId').val()==2) {
+                Swal.fire("Data Validation","Enter COD Amount!", "error");
+                $('#txtCODReceived').focus();
+                return;
+            }
+            else if ((parseFloat(MaterialCost) > 0 && parseFloat(MCReceived) == 0 && chequestatus == false && mcpending == false)) {
+                Swal.fire("Data Validation","Enter MC Collected Amount!", "error");
+                $('#txtMCReceived').focus();
+                return;
+            }
+
+            else if (parseFloat(MaterialCost) > 0 && (changemcstatus == true && $('#txtMCConfirmation').val().trim() == '')) {
+                Swal.fire("Data Valiation", "Check Settlement and  Enter Confirmation", "error");
+
+                $('#txtMCConfirmation').focus();
+                return;
+            }
+            //else if (parseFloat(MaterialCost) > 0 && (parseFloat(MaterialCost) > parseFloat(MCReceived) && parseFloat(MCReceived) > 0 && $('#txtMCConfirmation').val() == '')) {
+            else if (parseFloat(MaterialCost) > 0 && (mcpending == true && $('#txtMCConfirmation').val().trim() == '')) {
+                Swal.fire("Data Valiation", "Enter Confirmation","error");
+
+                $('#txtMCConfirmation').focus();
+                return;
+            }
+            else if (chequestatus == true && chequeno == '') {
+
+                Swal.fire("Data Valiation", "Enter Cheque No.!", "error");
+                $('#txtMCChequeDetail').focus();
+                return;
+            }
+            else if (chequestatus == true && parseFloat(chequeamount) == 0) {
+
+                Swal.fire("Data Valiation", "Enter Cheque Amount!", "error");
+                $('#txtMCChequeAmt').focus();
+                return;
+            }
+
+            if ($('#txtPayMode').val() == 'PKP') {
+                pickupcash = COD;
+                COD = 0;
+            }
+
+
+            if (shipmentdetailid > 0) {
+                TransType = 'ImportAWB';
+                Reference = 'ImportAWB:' + AWBObj.label;
+                importcod = COD;
+                COD = 0;
+            }
+
+            var total = parseFloat(COD) + parseFloat(MCReceived) + parseFloat(importcod) ;
+            var html = '<tr class="newrowactive" id="awbtr_' + i + '"><td><input type="hidden" value="0" id="hdndetailId_' + i + '" /><input type="hidden" value="AWB" changeawb="' + changeawbstatus + '" paymodeid="' + changepaymentid + '"  changecod="' + changecod + '" changemc="' + changemc + '" changencndstatus="' + changemcstatus + '" id="hdntype_' + i + '" /><input class="hdndeleted" type="hidden" value="false" id="hdndeleted_' + i + '" /> <input type="hidden" id="hdnrefId_' + i + '" value="' + referenceid + '" /><input type="hidden" id="hdnref_' + i + '" value="' + Reference + '" /> <input type="hidden" id="hdncod_' + i + '" value="' + COD + '" /><input type="hidden" id="hdncodvat_' + i + '" value="' + importcod + '" /><input type="hidden" id="hdndiscount_' + i + '" value="' + Discount + '" /> <input type="hidden" id="hdnmc_' + i + '" value="' + MCReceived + '" /><input type="hidden" id="hdnreceipt_' + i + '" value="0" /> <input type="hidden" id="hdnpkp_' + i + '" value="' + pickupcash + '" /> <input type="hidden" id="hdnexp_' + i + '" value="0" />' + Referencehtml + '<input type="hidden" id="hdnpayment_' + i + '" value="' + MCPaid + '" /><input type = "hidden" id ="hdnconfirmation_' + i + '" value = "' + confirmation + '" /><input type = "hidden" id ="hdncustomerid_' + i + '" value = "0" /><input type = "hidden" id ="hdnmcpending_' + i + '" value = "' + mcpending + '" /><input type = "hidden" id ="hdnpodstatus_' + i + '" value = "' + podstatus + '" /><input type = "hidden" id ="hdnawbreceivedby_' + i + '" value = "' + awbreceivedby + '" /><input type = "hidden" id ="hdnchequestatus_' + i + '" value = "' + chequestatus + '" /><input type = "hidden" id ="hdnchequeamount_' + i + '" value = "' + chequeamount + '" /><input type = "hidden" id ="hdnsettleamount_' + i + '" value = "' + settleamount + '" /><input type = "hidden" id ="hdnchequeno_' + i + '" value = "' + chequeno + '" /><input type = "hidden" id ="hdnchangecustomerid_' + i + '" value = "' + changecustomerid + '" /></td>';
+            console.log(html);
+            html = html + '<td>' + parseFloat(COD).toFixed(@_decimal) + '</td>';  //cod
+             html = html + '<td>' + parseFloat(importcod).toFixed(@_decimal) + '</td>';  //import vat cod
+            html = html + '<td>' + parseFloat(Discount).toFixed(@_decimal) + '</td>';  //cod
+            html = html + '<td>' + parseFloat(MCReceived).toFixed(@_decimal) + '</td>';//mcreceived
+            html = html + '<td>' + '' + '</td>';//receipt
+            html = html + '<td>' + parseFloat(pickupcash).toFixed(@_decimal) + '</td>';//pickupcash
+            html = html + '<td>' + '' + '</td>';//expenses
+            html = html + '<td>' + parseFloat(MCPaid).toFixed(@_decimal) + '</td>';//mc paid
+            html = html + '<td><input type="hidden" value="' + parseFloat(total).toFixed(2) + '" id="hdntotal_' + i + '" />' + parseFloat(total).toFixed(2) + '</td>';//total
+            html = html + '<td>' + parseFloat(chequeamount).toFixed(@_decimal) + '</td>';
+            html = html + '<td>' + parseFloat(settleamount).toFixed(@_decimal) + '</td>';
+            html = html + '<td><a href="javascript:void(0)" class="text-danger" onclick="deletetrans(this,' + i + ')"><i class="mdi mdi-delete font-size-18"></i></a></td>'; //delete
+
+            $('#tblTrans').append(html);
+            displayawbdetail(null);
+            calculatetotal();
+            $('#txtAWB').focus();
+            $(window).scrollTop(100);
+        });
+
+          $('#btnUpdateAWB').click(function () {
+            debugger;
+
+            if (AWBObj == null) {
+                Swal.fire("Data Validation","Select AWB!");
+                $('#txtAWB').focus();
+                $(window).scrollTop(100);
+                return false;
+            }
+            else if (AWBObj.label == '' || AWBObj.label == null) {
+                Swal.fire("Data Validation", "Select AWB!");
+                $('#txtAWB').focus();
+                $(window).scrollTop(100);
+                return false;
+            }
+            //if (!checkduplicate(AWBObj.label)) {
+            //    $('#txtAWB').focus();
+            //    $(window).scrollTop(100);
+            //    return false;
+            //}
+              var i = $('#btnUpdateAWB').attr('rowindex');
+               
+            var TransType = 'AWB';
+            var Reference = 'AWB:' + AWBObj.label;
+            var MaterialCost = $('#txtMCCost').val();
+            var COD = $('#txtCODReceived').val();
+            var chequeamount = $('#txtMCChequeAmt').val();
+            var Discount = $('#txtDiscount').val();
+            var MCReceived = $('#txtMCReceived').val();
+            var MCPaid = $('#txtMCPaid').val();
+            var referenceid = AWBObj.value;
+            var inscanid = AWBObj.value;
+            var shipmentdetailid = $('#txtShipmentDetailID').val();
+            if (parseFloat(shipmentdetailid) > 0)
+                referenceid = shipmentdetailid;
+            var importcod = 0;
+
+            var codamount = $('#txtCODAmount').val();
+            var confirmation = $('#txtMCConfirmation').val();
+            var mcpending = $('#MCPending').prop('checked');
+            var podstatus = $('#POD').prop('checked');
+            var chequestatus = $('#Cheque').prop('checked');
+            var awbreceivedby = $('#txtAWBReceived').val();
+
+            var settleamount = $('#txtMCSettleAmt').val();
+            var chequeno = $('#txtMCChequeDetail').val();
+            var changeawbstatus = $('#ChangeAWB').prop('checked');
+            var changemcstatus = $('#ChangeNCND').prop('checked');
+            var changepaymentid = 0;
+            var changecod = 0;
+            var changemc = 0;
+            var pickupcash = 0;
+            var changecustomerid = -2;
+            if (settleamount == '')
+                settleamount = 0;
+
+            if (chequeamount == '') {
+                chequeamount = 0;
+            }
+            if (confirmation == null)
+                confirmation = '';
+
+            if (COD == '')
+                COD = 0;
+            if (MCReceived == '')
+                MCReceived = 0;
+
+            if (MaterialCost == '')
+                MaterialCost = 0;
+            if (MCPaid == '')
+                MCPaid = 0;
+            if (codamount == '')
+                codamount = 0;
+
+            if (chequeamount == '')
+                chequeamount = 0;
+
+            if (Discount == '')
+                Discount = 0;
+            if (podstatus == null)
+                postatus = false;
+            if (chequestatus == null)
+                chequestatus = false;
+
+            if (changeawbstatus == true) {
+                debugger;
+                changepaymentid = $('#PaymentModeId').val();
+                changecod = $('#txtCODAmount').val();
+                if ($('#PaymentModeId').val() == '3') {
+
+                    changecustomerid = $('#txtCustomerId1').val();
+                }
+            }
+            if (changemcstatus == true) {
+                changemc = MaterialCost;
+            }
+            if (inscanid>0 && (parseFloat(codamount) > 0 && parseFloat(COD) == 0) && (parseFloat(MaterialCost) > 0 && parseFloat(MCReceived) == 0 && chequestatus == false && mcpending == false)) {
+                Swal.fire("'Data Validation","Enter collected Amount!", "error");
+                $('#txtCODReceived').focus();
+                return;
+            }
+            else if (shipmentdetailid > 0 && (parseFloat(codamount) > 0 && parseFloat(COD) == 0) && (parseFloat(MaterialCost) > 0 && parseFloat(MCReceived) == 0 && chequestatus == false && mcpending == false)) {
+                Swal.fire("'Data Validation", "Enter collected Amount!", "error");
+                $('#txtCODReceived').focus();
+                return;
+            }
+            else if ((parseFloat(codamount) > 0 && parseFloat(COD) == 0) && $('#PaymentModeId').val()==2) {
+                Swal.fire("Data Validation","Enter COD Amount!", "error");
+                $('#txtCODReceived').focus();
+                return;
+            }
+            else if ((parseFloat(MaterialCost) > 0 && parseFloat(MCReceived) == 0 && chequestatus == false && mcpending == false)) {
+                Swal.fire("Data Validation","Enter MC Collected Amount!", "error");
+                $('#txtMCReceived').focus();
+                return;
+            }
+
+            //else if (parseFloat(MaterialCost) > 0 && (parseFloat(MaterialCost) > parseFloat(MCReceived) && parseFloat(MCReceived) > 0 && $('#txtMCConfirmation').val() == '')) {
+            else if (parseFloat(MaterialCost) > 0 && (mcpending == true && $('#txtMCConfirmation').val() == '')) {
+                Swal.fire("Data Valiation", "Enter Confirmation","error");
+
+                $('#txtMCConfirmation').focus();
+                return;
+            }
+            else if (chequestatus == true && chequeno == '') {
+
+                Swal.fire("Data Valiation", "Enter Cheque No.!", "error");
+                $('#txtMCChequeDetail').focus();
+                return;
+            }
+            else if (chequestatus == true && parseFloat(chequeamount) == 0) {
+
+                Swal.fire("Data Valiation", "Enter Cheque Amount!", "error");
+                $('#txtMCChequeAmt').focus();
+                return;
+            }
+
+            if ($('#txtPayMode').val() == 'PKP') {
+                pickupcash = COD;
+                COD = 0;
+            }
+
+
+            if (shipmentdetailid > 0) {
+                TransType = 'ImportAWB';
+                Reference = 'ImportAWB:' + AWBObj.label;
+                importcod = COD;
+                COD = 0;
+            }
+              $('#hdndetailId_' + i).parent().parent().addClass('hide');
+              var obj1 = $('#hdndetailId_' + i).parent().parent().find('.hdndeleted');
+              $(obj1).val(true);
+
+
+              i = $('#tblTrans > tr').length;
+            var total = parseFloat(COD) + parseFloat(MCReceived) + parseFloat(importcod) ;
+            var html = '<tr><td><input type="hidden" value="0" id="hdndetailId_' + i + '" /><input type="hidden" value="AWB" changeawb="' + changeawbstatus + '" paymodeid="' + changepaymentid + '"  changecod="' + changecod + '" changemc="' + changemc + '" changencndstatus="' + changemcstatus + '" id="hdntype_' + i + '" /><input class="hdndeleted" type="hidden" value="false" id="hdndeleted_' + i + '" /> <input type="hidden" id="hdnrefId_' + i + '" value="' + referenceid + '" /><input type="hidden" id="hdnref_' + i + '" value="' + Reference + '" /> <input type="hidden" id="hdncod_' + i + '" value="' + COD + '" /><input type="hidden" id="hdncodvat_' + i + '" value="' + importcod + '" /><input type="hidden" id="hdndiscount_' + i + '" value="' + Discount + '" /> <input type="hidden" id="hdnmc_' + i + '" value="' + MCReceived + '" /><input type="hidden" id="hdnreceipt_' + i + '" value="0" /> <input type="hidden" id="hdnpkp_' + i + '" value="' + pickupcash + '" /> <input type="hidden" id="hdnexp_' + i + '" value="0" />' + Reference + '<input type="hidden" id="hdnpayment_' + i + '" value="' + MCPaid + '" /><input type = "hidden" id ="hdnconfirmation_' + i + '" value = "' + confirmation + '" /><input type = "hidden" id ="hdncustomerid_' + i + '" value = "0" /><input type = "hidden" id ="hdnmcpending_' + i + '" value = "' + mcpending + '" /><input type = "hidden" id ="hdnpodstatus_' + i + '" value = "' + podstatus + '" /><input type = "hidden" id ="hdnawbreceivedby_' + i + '" value = "' + awbreceivedby + '" /><input type = "hidden" id ="hdnchequestatus_' + i + '" value = "' + chequestatus + '" /><input type = "hidden" id ="hdnchequeamount_' + i + '" value = "' + chequeamount + '" /><input type = "hidden" id ="hdnsettleamount_' + i + '" value = "' + settleamount + '" /><input type = "hidden" id ="hdnchequeno_' + i + '" value = "' + chequeno + '" /><input type = "hidden" id ="hdnchangecustomerid_' + i + '" value = "' + changecustomerid + '" /></td>';
+            html = html + '<td>' + parseFloat(COD).toFixed(@_decimal) + '</td>';  //cod
+             html = html + '<td>' + parseFloat(importcod).toFixed(@_decimal) + '</td>';  //import vat cod
+            html = html + '<td>' + parseFloat(Discount).toFixed(@_decimal) + '</td>';  //cod
+            html = html + '<td>' + parseFloat(MCReceived).toFixed(@_decimal) + '</td>';//mcreceived
+            html = html + '<td>' + '' + '</td>';//receipt
+            html = html + '<td>' + parseFloat(pickupcash).toFixed(@_decimal) + '</td>';//pickupcash
+            html = html + '<td>' + '' + '</td>';//expenses
+            html = html + '<td>' + parseFloat(MCPaid).toFixed(@_decimal) + '</td>';//mc paid
+            html = html + '<td><input type="hidden" value="' + parseFloat(total).toFixed(2) + '" id="hdntotal_' + i + '" />' + parseFloat(total).toFixed(2) + '</td>';//total
+            html = html + '<td>' + parseFloat(chequeamount).toFixed(@_decimal) + '</td>';
+            html = html + '<td>' + parseFloat(settleamount).toFixed(@_decimal) + '</td>';
+            html = html + '<td><a href="javascript:void(0)" class="text-danger" onclick="deletetrans(this,' + i + ')"><i class="mdi mdi-delete font-size-18"></i></a></td></tr>'; //delete
+
+              $('#tblTrans').append(html);
+              //$('#awbtr_' + i).html(html);
+              //$('#awbtr_' + i).removeClass('color_red');
+              
+              $('#btnUpdateAWB').addClass('hide');
+              $('#btnAddAWB').removeClass('hide');
+              displayawbdetail(null);
+              
+            calculatetotal();
+            $('#txtAWB').focus();
+            $(window).scrollTop(100);
+        });
+        $("#txtCustomerName").autocomplete({
+            source: function (request, response) {
+                $.ajax({
+                    url: '/CustomerReceipt/GetCustomerName',
+                    datatype: "json",
+                    data: {
+                        term: request.term
+                    },
+                    success: function (data) {
+                        response($.map(data, function (val, item) {
+                            return {
+                                label: val.CustomerName,
+                                value: val.CustomerName,
+                                ID: val.CustomerID,
+                                type: val.CustomerType
+                            }
+                        }))
+                    }
+                })
+            },
+            minLength: 0,
+            autoFocus: false,
+            focus: function (e, i) {
+                $("#txtCustomerName").val(i.item.label);
+                $('#txtCustomerId1').val(i.item.ID);
+                $('#txtCustomerId1').attr('label', i.item.label);
+            },
+            select: function (e, i) {
+                e.preventDefault();
+                $("#txtCustomerName").val(i.item.label);
+                $('#txtCustomerId1').val(i.item.ID);
+                $('#txtCustomerId1').attr('label', i.item.label);
+
+            },
+
+        });
+        $('#txtCustomerName').change(function () {
+            if ($('#PaymentModeId').val() == 3) {
+                getcustomercouriercharge();
+            }
+        });
+        $("#txtCustomer").autocomplete({
+            source: function (request, response) {
+                $.ajax({
+                    url: '/CustomerReceipt/GetCustomerName',
+                    datatype: "json",
+                    data: {
+                        term: request.term
+                    },
+                    success: function (data) {
+                        response($.map(data, function (val, item) {
+                            return {
+                                label: val.CustomerName,
+                                value: val.CustomerName,
+                                ID: val.CustomerID,
+                                type: val.CustomerType
+                            }
+                        }))
+                    }
+                })
+            },
+            minLength: 0,
+            autoFocus: false,
+            focus: function (e, i) {
+                $("#txtCustomer").val(i.item.label);
+                $('#txtCustomerId').val(i.item.ID);
+                $('#txtCustomerId').attr('label', i.item.label);
+            },
+            select: function (e, i) {
+                e.preventDefault();
+                $("#txtCustomer").val(i.item.label);
+                $('#txtCustomerId').val(i.item.ID);
+                $('#txtCustomerId').attr('label', i.item.label);
+
+            },
+
+        });
+        $("#txtCustomer").change(function () {
+            $.ajax({
+                url: '/CustomerReceipt/GetCustomerName',
+                datatype: "json",
+                data: {
+                    term: $("#txtCustomer").val()
+                },
+                success: function (response) {
+
+                    var data = response[0];
+                    if (response.length > 0) {
+                        for (i = 0; i < response.length; i++) {
+                            if (response[i].CustomerName == $("#txtCustomer").val()) {
+                                data = response[i];
+                            }
+                        }
+                    }
+
+                    if (data == null || data == undefined) {
+                        $("#txtCustomer").val('');
+                        $('#txtCustomerId').val('');
+                    } else {
+                        $("#txtCustomer").val(data.CustomerName);
+                        $('#txtCustomerId').val(data.CustomerID);
+                    }
+
+                }
+            })
+        })
+        $('#btnsearchInvoice').click(function () {
+            debugger;
+            var ID = $('#txtCustomerId').val();
+            if ($('#CustomerID').val() == 0) {
+                alert('Select Customer!');
+                return;
+            }
+
+            //if ($('#txtReceiptAmount').val() == "" || $('#txtReceiptAmount').val() == "0") {
+            //    alert('Enter Receipt Amount!');
+            //    $('#txtReceiptAmount').val(0);
+            //}
+
+            $.ajax({
+                type: "POST",
+                url: '/CustomerReceipt/GetTradeInvoiceOfCustomerDRS/' + ID,
+                data: { 'ID': ID, 'amountreceived': 0 },
+                success: function (response) {
+                    $('#tblinvoice').html('');
+                    var data = response.salesinvoice;
+                    var amt = 0;
+                    if (data.length == 0) {
+                        $('#tblinvoice').append('');
+                        //$.notify('No Invoice Pending!');
+                        Swal.fire('Data Validation', 'No Invoice Pending', 'warning');
+                        return;
+                    }
+                    for (var i = 0; i < data.length; i++) {
+                        var date = new Date(data[i].DateTime);
+                        amt = parseFloat(amt) + parseFloat(data[i].Amount);
+                        var tempdate = new Date(date).getDate() + '/' + (new Date(date).getMonth() + 1) + '/' + new Date(date).getFullYear();
+                        var invoiceno = "'" + data[i].InvoiceNo + "'";
+                        html = '<tr>' +
+                            '<td>' + data[i].InvoiceNo + '<input type="hidden" id="hdnInvoiceType_' + i + '"  value="' + data[i].InvoiceType + '-' + data[i].InvoiceNo + '" />  <input id="hdnOpDetailId_' + i + '" value=' + data[i].AcOPInvoiceDetailID + ' type="hidden"/><input id="hdnInvoiceId_' + i + '"  value="' + data[i].SalesInvoiceID + '" type="hidden"/></td>' +
+                            //'<td>' + data[i].DateTime + '<input id="" name="CustomerRcieptChildVM[' + i + '].InvoiceDate" value=' + data[i].DateTime + ' type="hidden"></td>' +
+                            //'<td class="text-right">' + parseFloat(data[i].InvoiceAmount).toFixed(@_decimal) + '<input id="" name="CustomerRcieptChildVM[' + i + '].AmountToBeRecieved" value=' + data[i].InvoiceAmount + ' type="hidden" class="AmountToBeRecieved"></td>' +
+                            //'<td class="text-right">' + parseFloat(data[i].AmountReceived).toFixed(@_decimal) + '<input id="" name="CustomerRcieptChildVM[' + i + '].AmtPaidTillDate" value=' + data[i].AmountReceived + ' type="hidden"></td>' +
+                            '<td class="text-right">' + parseFloat(data[i].Balance).toFixed(@_decimal) + '<input id="txtbalance_' + i + '" name="CustomerRcieptChildVM[' + i + '].Balance" value=' + data[i].Balance + ' type="hidden"><input id="" name="CustomerRcieptChildVM[' + i + '].InvoiceNo" value=' + data[i].InvoiceNo + ' type="hidden"></td>';
+                        //'<td>' + data[i].Amount + '<input id="" name="customerRcieptVM[' + i + '].Amount" value=' + data[i].Amount + ' type="hidden"></td>' +
+                        @*if (data[i].Allocated == true) {
+                            html = html + '<td><input type="checkbox" class="hide" onchange="allocate(this);" checked id="chkallocate_' + i + '" /><input type="text" max="' + data[i].Balance + '" onchange="CheckAmt(this)"  id="txtinvoice_' + i + '" class="amt txtNum text-right AmountReceived" name="CustomerRcieptChildVM[' + i + '].Amount"  value="' + parseFloat(data[i].Amount).toFixed(@_decimal) + '" /></td>';
+                        }
+                        else {
+                            html = html + '<td><input type="checkbox" class="hide" onchange="allocate(this);" id="chkallocate_' + i + '" /><input type="text" max="' + data[i].Balance + '" onchange="CheckAmt(this)"  id="txtinvoice_' + i + '" class="amt txtNum text-right AmountReceived" name="CustomerRcieptChildVM[' + i + '].Amount"  value="' + parseFloat(data[i].Amount).toFixed(@_decimal) + '" /></td>';
+                        }*@
+
+                        html = html + '</tr>';
+
+                        $('#tblinvoice').append(html);
+                        //hideLoading();
+                    }
+
+
+                }
+            });
+
+        });
+
+        $('#btnAddInvoice').click(function () {
+            var CustomerID = $('#txtCustomerId').val();
+            var customername = $('#txtCustomer').val();
+            var receiptamount = $('#txtReceiptAmount').val();
+
+            if (receiptamount == '')
+                receiptamount = 0;
+
+            if (CustomerID == '' || CustomerID == 0) {
+
+                Swal.fire('Data Validation', 'Select Customer!', 'error');
+                return;
+            }
+            else if (customername == '' || customername == 0) {
+                Swal.fire('Data Validation','Select Customer!','error');
+                return;
+            }
+            else if (parseFloat(receiptamount) == 0) {
+
+                Swal.fire('Data Validation', 'Enter Receipt Amount!', 'error');
+                return;
+            }
+
+            var COD = 0;
+            var MCReceived = 0;
+            var receipts = receiptamount;
+            var total = parseFloat(receiptamount);
+            var TransType = 'Receipt';
+            var chequeamount = 0;
+            var settleamount = 0;
+            var chequeno = 0;
+            var changecustomerid = 0;
+            var i = $('#tblTrans > tr').length;
+            var Reference = 'Receipt : ' + customername;
+            var html = '<tr  class="newrowactive" id="awbtr_' + i + '"><td><input type="hidden" value="0" id="hdndetailId_' + i + '" /><input type="hidden" value="' + TransType + '" id="hdntype_' + i + '" /><input class="hdndeleted" type="hidden" value="false" id="hdndeleted_' + i + '" /><input type="hidden" id="hdnrefId_' + i + '" value="' + CustomerID + '" /> <input type="hidden" id="hdnref_' + i + '" value="' + Reference + '" /> <input type="hidden" id="hdncod_' + i + '" value="' + COD + '" /> <input type="hidden" id="hdndiscount_' + i + '" value="0" /><input type="hidden" id="hdnmc_' + i + '" value="' + MCReceived + '" /><input type="hidden" id="hdnreceipt_' + i + '" value="' + receipts + '" /> <input type="hidden" id="hdnpkp_' + i + '" value="0" /> <input type="hidden" id="hdnexp_' + i + '" value="0" />' + Reference + '<input type="hidden" id="hdnpayment_' + i + '" value="0" /><input type="hidden" id="hdnconfirmation_' + i + '" value="" /><input type="hidden" id="hdnmcpending_' + i + '" value="0" /><input type="hidden" id="hdnpodstatus_' + i + '" value="false" /><input type="hidden" id="hdnawbreceivedby_' + i + '" value="" /><input type = "hidden" id ="hdnchequestatus_' + i + '" value = "false" /><input type = "hidden" id ="hdnchequeamount_' + i + '" value = "' + chequeamount + '" /><input type = "hidden" id ="hdnsettleamount_' + i + '" value = "' + settleamount + '" /><input type = "hidden" id ="hdnchequeno_' + i + '" value = "' + chequeno + '" /><input type = "hidden" id ="hdnchangecustomerid_' + i + '" value = "' + changecustomerid + '" /></td>';
+            html = html + '<td>' + '' + '</td>';  //codamt
+            html = html + '<td>' + '' + '</td>';  //codvat
+            html = html + '<td>' + '' + '</td>';  //discount
+            html = html + '<td>' + '' + '</td>';//mcreceived
+            html = html + '<td>' + parseFloat(receiptamount).toFixed(2) + '</td>';//receipt
+            html = html + '<td>' + '' + '</td>';//pickupcash
+            html = html + '<td>' + '' + '</td>';//expenses
+            html = html + '<td>' + '' + '</td>';//mc paid
+            html = html + '<td><input type="hidden" value="' + parseFloat(total).toFixed(2) + '" id="hdntotal_' + i + '" />' + parseFloat(total).toFixed(2) + '</td>';//total
+            html = html + '<td>' + parseFloat(chequeamount).toFixed(@_decimal) + '</td>';
+            html = html + '<td>' + parseFloat(settleamount).toFixed(@_decimal) + '</td>';
+            html = html + '<td><a class="text-danger"  href="javascript:void(0)" onclick="deletetrans(this,' + i + ')"><i class="mdi mdi-delete font-size-18"></i></a></td>'; //delete
+
+            $('#tblTrans').append(html);
+            $('#txtCustomerId').val(0);
+            $('#txtCustomer').val('');
+            $('#txtReceiptAmount').val(0);
+            calculatetotal();
+            //    var idtext = 'txtinvoice_';
+            //    var totalrow = $('#tblinvoice > tr').length;
+            //    $('[id^=' + idtext + ']').each(function (index, item) {
+            //        debugger;
+            //        var i = $('#tblTrans > tr').length;
+            //        var TransType = 'Inv';
+            //        if (parseFloat($(item).val()) > 0) {
+            //            var Reference = 'Inv:' + $('#hdnInvoiceType_' + index).val().trim();
+            //            var type = $('#hdnInvoiceType_' + index).val().trim().split('-')[0];
+
+            //            var COD = 0;
+            //            var MCReceived = 0;
+            //            var receipts = $(item).val();
+            //            var total = parseFloat(receipts);
+            //            var invoiceid = $('#hdnInvoiceId_' + index).val();
+            //            var html = '<tr><td><input type="hidden" value="' + type + '" id="hdntype_' + i + '" /><input class="hdndeleted" type="hidden" value="false" id="hdndeleted_' + i + '" /><input type="hidden" id="hdnrefId_' + i + '" value="' + invoiceid + '" /> <input type="hidden" id="hdnref_' + i + '" value="' + Reference + '" /> <input type="hidden" id="hdncod_' + i + '" value="' + COD + '" /> <input type="hidden" id="hdndiscount_' + i + '" value="0" /><input type="hidden" id="hdnmc_' + i + '" value="' + MCReceived + '" /><input type="hidden" id="hdnreceipt_' + i + '" value="' + receipts + '" /> <input type="hidden" id="hdnpkp_' + i + '" value="0" /> <input type="hidden" id="hdnexp_' + i + '" value="0" />' + Reference + '<input type="hidden" id="hdnpayment_' + i + '" value="0" /><input type="hidden" id="hdnconfirmation_' + i + '" value="" /><input type="hidden" id="hdnmcpending_' + i + '" value="0" /><input type="hidden" id="hdnpodstatus_' + i + '" value="0" /><input type="hidden" id="hdncustomerid_' + i + '" value="' + CustomerID + '" /></td>';
+            //            html = html + '<td>' + '' + '</td>';  //cod
+            //            html = html + '<td>' + '' + '</td>';  //cod
+            //            html = html + '<td>' + '' + '</td>';//mcreceived
+            //            html = html + '<td>' + parseFloat(receipts).toFixed(2) + '</td>';//receipt
+            //            html = html + '<td>' + '' + '</td>';//pickupcash
+            //            html = html + '<td>' + '' + '</td>';//expenses
+            //             html = html + '<td>' + '' + '</td>';//mc paid
+            //            html = html + '<td><input type="hidden" value="' + parseFloat(total).toFixed(2) + '" id="hdntotal_' + i + '" />' + parseFloat(total).toFixed(2) + '</td>';//total
+            //            html = html + '<td><a href="javascript:void(0)" onclick="deletetrans(this,' + i + ')"><i class="fa fa-times"></i></a></td>'; //delete
+
+            //            $('#tblTrans').append(html);
+
+            //        }
+
+            //        if ((index + 1) == totalrow) {
+            //            $('#tblinvoice').html('');
+            //            calculatetotal();
+            //        }
+            //});
+
+
+
+        });
+
+        $('#btnAddMoreAWB').click(function () {
+            var i = $('#tblNewAWB > tr').length;
+            var awb = $('#txtNewAWB').val();
+            var awbamount = $('#txtNewAWBAmount').val();
+            //var awbid = $('#txtNewAWBInscanId').val();
+            var Reference = 'New AWB :' + awb;
+            var html = '<tr><td><input type="hidden" class="hdndeleted" id="hdnnewawbdeleted_' + i + '" value="false"/><input type="hidden" id="hdnnewawbref_' + i + '" value="' + Reference + '" /> <input type="text" id="txtNewAWB_' + i + '" value="' + awb + '" /></td>';
+            html = html + '<td>' + '<input type="text" id="txtNewAWBAmount_' + i + '" value="' + awbamount + '" />' + '</td>';  //cod
+            html = html + '<td><a href="javascript:void(0)" class="text-danger" onclick=deletenewawb(this,' + i + ') "><i class="mdi mdi-delete font-size-18"></i></a></td></tr>'; //delete
+            $('#tblNewAWB').append(html);
+            $('#txtNewAWB').val('');
+            $('#txtNewAWBAmount').val('');
+
+        });
+
+        $('#btnAddNewAWB').click(function () {
+            debugger;
+
+
+            var awbamount = $('#txtNewAWBAmount').val();
+            if (awbamount == '') {
+                awbamount = 0;
+            }
+
+            var awb = $('#txtNewAWB').val();
+            if (awb == '') {
+                Swal.fire("Enter AWB!");
+                $('#txtNewAWB').focus();
+                return false;
+            }
+            if (parseFloat(awbamount) == 0) {
+                Swal.fire("Enter AWB Amount!");
+                $('#txtNewAWBAmount').focus();
+                return false;
+            }
+            var notduplicate = checkduplicate1(awb);
+
+            if (notduplicate != true) {
+                Swal.fire("Duplicate AWB No.!");
+                $('#txtNewAWB').focus();
+                return false;
+            }
+
+            var i = $('#tblTrans > tr').length;
+            var Reference = 'New AWB -' + awb;
+            var COD = 0;
+            var MCReceived = 0;
+            var receipts = 0;
+            var total = parseFloat(awbamount);
+            var invoiceid = 0;
+            var chequeamount = 0;
+            var settleamount = 0;
+            var changecustomerid = 0;
+            var chequeno = '';
+            var html = '<tr class="newrowactive" id="awbtr_' + i + '"><td><input type="hidden" value="0" id="hdndetailId_' + i + '" /><input type="hidden" value="NEW" id="hdntype_' + i + '" /><input type="hidden" value="false" id="hdndeleted_' + i + '" /><input type="hidden" id="hdnrefId_' + i + '" value="' + invoiceid + '" /> <input type="hidden" id="hdnref_' + i + '" value="' + Reference + '" /> <input type="hidden" id="hdncod_' + i + '" value="' + COD + '" /><input type="hidden" id="hdndiscount_' + i + '" value="0" /> <input type="hidden" id="hdnmc_' + i + '" value="' + MCReceived + '" /><input type="hidden" id="hdnreceipt_' + i + '" value="' + receipts + '" /> <input type="hidden" id="hdnpkp_' + i + '" value="' + awbamount + '" /> <input type="hidden" id="hdnexp_' + i + '" value="0" />' + Reference + '<input type="hidden" id="hdnpayment_' + i + '" value="0" /><input type="hidden" id="hdnconfirmation_' + i + '" value="" /><input type="hidden" id="hdnmcpending_' + i + '" value="0" /><input type="hidden" id="hdnpodstatus_' + i + '" value="false" /><input type="hidden" id="hdncustomerid_' + i + '" value="0" /><input type="hidden" id="hdnawbreceivedby_' + i + '" value="" /><input type = "hidden" id ="hdnchequestatus_' + i + '" value = "false" /><input type = "hidden" id ="hdnchequeamount_' + i + '" value = "' + chequeamount + '" /><input type = "hidden" id ="hdnsettleamount_' + i + '" value = "' + settleamount + '" /><input type = "hidden" id ="hdnchequeno_' + i + '" value = "' + chequeno + '" /><input type = "hidden" id ="hdnchangecustomerid_' + i + '" value = "' + changecustomerid + '" /></td>';
+            html = html + '<td>' + '' + '</td>';  //cod
+            html = html + '<td>' + '' + '</td>';  //cod vat
+            html = html + '<td>' + '' + '</td>';  //discount
+            html = html + '<td>' + '' + '</td>';//mcreceived
+            html = html + '<td>' + parseFloat(receipts).toFixed(2) + '</td>';//receipt
+            html = html + '<td>' + parseFloat(awbamount).toFixed(2) + '</td>';//pickupcash
+            html = html + '<td>' + '' + '</td>';//expenses
+            html = html + '<td>' + '' + '</td>';//mc paid
+            html = html + '<td><input type="hidden" value="' + parseFloat(total).toFixed(2) + '" id="hdntotal_' + i + '" />' + parseFloat(total).toFixed(2) + '</td>';//total
+            html = html + '<td>' + parseFloat(chequeamount).toFixed(@_decimal) + '</td>';
+            html = html + '<td>' + parseFloat(settleamount).toFixed(@_decimal) + '</td>';
+            html = html + '<td><a href="javascript:void(0)" class="text-danger" onclick="deletetrans(this,' + i + ')"><i class="mdi mdi-delete font-size-18"></i></a></td></tr>'; //delete
+
+            $('#tblTrans').append(html);
+
+
+            $('#txtNewAWB').val('');
+            $('#txtNewAWBAmount').val(0);
+            calculatetotal();
+            $('#txtNewAWB').focus();
+
+
+
+
+
+        });
+        $('#txtNewAWB').change(function () {
+        if ('@_alphanum' == 'True') {
+            var txt = $('#txtNewAWB').val().trim();
+            $('#txtNewAWB').val(txt.replace(/[^\d,]/g, ''));
+            }
+            if ($('#txtNewAWB').val() != '') {
+                $.ajax({
+                    type: "POST",
+                    url: "/AWB/GetAWB1",
+                    datatype: "Json",
+                    data: { id: $('#txtNewAWB').val() },
+                    success: function (data) {
+                        if (data.Exist == 1) {
+                            Swal.fire('Data Validation', 'AWB Already Exist..!\n If you are using Skylark app to collect shipment, \n New Pickup should be entered through Airway Bills section', 'error');
+//                           $.notify("AWB Already Exist..!\n If you are using Skylark app to collect shipment, \n New Pickup should be entered through 'Airway Bills' section");
+                            $('#txtNewAWB').val('');
+                            $('#txtNewAWB').focus();
+                        }
+
+                    }
+                });
+            }
+
+        });
+        $("#txtExpAccountHead").autocomplete({
+            source: function (request, response) {
+                $.ajax({
+                    url: '/Accounts/AccountHead',
+                    datatype: "json",
+                    data: {
+                        term: request.term
+                    },
+                    success: function (data) {
+                        response($.map(data, function (val, item) {
+                            return {
+                                label: val.AcHead,
+                                value: val.AcHead,
+                                AcHeadID: val.AcHeadID, TaxPercent: val.TaxPercent
+                            }
+                        }))
+                    }
+                })
+            },
+            minLength: 1,
+            autoFocus: true,
+            select: function (e, i) {
+                e.preventDefault();
+                $("#txtExpAccountHead").val(i.item.label);
+                $('#txtExpAccountHeadId').val(i.item.AcHeadID);
+                //$('#TaxPercent').val(i.item.TaxPercent);
+
+            },
+
+        });
+
+        $('#txtExpAccountHead').change(function () {
+            $.ajax({
+                url: '/Accounts/AccountHead',
+                datatype: "json",
+                data: {
+                    term: $('#txtExpAccountHead').val()
+                },
+                success: function (response) {
+                    var data = response[0];
+                    var data = response[0];
+                    if (response.length > 0) {
+                        for (i = 0; i < response.length; i++) {
+                            if (response[i].AcHead == $("#txtExpAccountHead").val()) {
+                                data = response[i];
+                            }
+                        }
+                    }
+                    if (data !== null && data != undefined) {
+                        $("#txtExpAccountHead").val(data.AcHead);
+                        $('#txtExpAccountHeadId').val(data.AcHeadID);
+                    }
+                    else {
+                        $("#txtExpAccountHead").val('');
+                        $('#txtExpAccountHeadId').val(0);
+                    }
+                }
+            })
+        })
+        $('#btnAddMoreAcc').click(function () {
+            var i = $('#tblExpenses > tr').length;
+            var acheadname = $('#txtExpAccountHead').val();
+            var acheadid = $('#txtExpAccountHeadId').val();
+            var amount = $('#txtExpAmount').val();
+            var narration = $('#txtExpNarration').val();
+            //var awbid = $('#txtNewAWBInscanId').val();
+            var chequestatus = false; // $('#Cheque1').prop('checked');
+
+
+
+            var Reference = 'Exp :' + acheadname;
+            var html = '<tr><td style="width:55%"><input type = "hidden" id ="hdnexpchequestatus_' + i + '" value = "' + chequestatus + '" /><input type="hidden" class="hdnremarks" id="hdnexpremarks_' + i + '" value="' + narration + '"/><input type="hidden" class="hdndeleted" id="hdnexpdeleted_' + i + '" value="false"/><input type="hidden" id="hdnexpref_' + i + '" value="' + Reference + '" /> <input type="hidden" id="hdnacheadid_' + i + '" value="' + acheadid + '" />' + acheadname + '</td>';
+            html = html + '<td style="width:40%">' + '<input class="text-right" type="text" id="txtexpamount_' + i + '" value="' + parseFloat(amount).toFixed(@_decimal) + '" />' + '</td>';  //cod
+            html = html + '<td style="width:5%"><a class="text-danger" href="javascript:void(0)"  onclick=deleteexp(this,' + i + ') "><i class="mdi mdi-delete font-size-18"></i></a></td></tr>'; //delete
+            $('#tblExpenses').append(html);
+            $('#txtExpAccountHead').val('');
+            $('#txtExpAccountHeadId').val(0);
+            $('#txtExpAmount').val('');
+            $('#txtExpNarration').val('');
+            $('#txtExpAccountHead').focus();
+
+        });
+
+
+        $('#btnAddExpense').click(function () {
+            debugger;
+            var acheadname = $('#txtExpAccountHead').val();
+            var acheadid = $('#txtExpAccountHeadId').val();
+            var amount = $('#txtExpAmount').val();
+            var remarks = $('#txtExpNarration').val();
+            var Reference = 'Exp :' + acheadname;
+            var chequestatus = false;
+            if (acheadname == '') {
+
+                Swal.fire('Data Validation', 'Select Account Head', 'error');
+                return false;
+            }
+            else if (amount == '' || amount==0) {
+
+                Swal.fire('Data Validation', 'Enter Amount!', 'error');
+                return false;
+            }
+            var expenses = parseFloat(amount) * -1;
+            var total = parseFloat(amount) * -1;
+            var COD = 0;
+            var MCReceived = 0;
+            var receipts = 0;
+            var chequeamount = 0;
+            var settleamount = 0;
+            var changecustomerid = 0;
+            var chequeno = '';
+            var i = $('#tblTrans > tr').length;
+            var html = '<tr class="newrowactive" id="awbtr_' + i + '"><td><input type="hidden" value="0" id="hdndetailId_' + i + '" /><input type="hidden" value="EXP" id="hdntype_' + i + '" /><input type="hidden" value="false" class="hdndeleted" id="hdndeleted_' + i + '" /><input type="hidden" id="hdnrefId_' + i + '" value="' + acheadid + '" /> <input type="hidden" id="hdnref_' + i + '" value="' + Reference + '" /> <input type="hidden" id="hdncod_' + i + '" value="' + COD + '" /><input type="hidden" id="hdndiscount_' + i + '" value="0" /> <input type="hidden" id="hdnmc_' + i + '" value="' + MCReceived + '" /><input type="hidden" id="hdnreceipt_' + i + '" value="' + receipts + '" /> <input type="hidden" id="hdnpkp_' + i + '" value="0" /> <input type="hidden" id="hdnexp_' + i + '" value="' + expenses + '" />' + Reference + '<input type="hidden" id="hdnpayment_' + i + '" value="0" /><input type="hidden" id="hdnconfirmation_' + i + '" value="' + remarks + '" /><input type="hidden" id="hdnpodstatus_' + i + '" value="false" /><input type="hidden" id="hdnawbreceivedby_' + i + '" value="" /><input type = "hidden" id ="hdnchequestatus_' + i + '" value = "' + chequestatus + '" /><input type = "hidden" id ="hdnchequeamount_' + i + '" value = "' + chequeamount + '" /><input type = "hidden" id ="hdnsettleamount_' + i + '" value = "' + settleamount + '" /><input type = "hidden" id ="hdnchequeno_' + i + '" value = "' + chequeno + '" /><input type = "hidden" id ="hdnchangecustomerid_' + i + '" value = "' + changecustomerid + '" /></td>';
+            html = html + '<td>' + '' + '</td>';  //cod
+            html = html + '<td>' + '' + '</td>';  //codvat
+                    html = html + '<td>' + '' + '</td>';  //discount
+                        html = html + '<td>' + '' + '</td>';//mcreceived
+                        html = html + '<td>' + '' + '</td>';//receipt
+                        html = html + '<td>' + '' + '</td>';//pickupcash
+                        html = html + '<td class="cred">' + parseFloat(expenses).toFixed(2) + '</td>';//expenses
+                        html = html + '<td>' + ''  + '</td>';//mc paid
+                    html = html + '<td class="cred"><input type="hidden" value="' + parseFloat(total).toFixed(2) + '" id="hdntotal_' + i + '" />' + parseFloat(total).toFixed(2) + '</td>';//total
+                    html = html + '<td>' + parseFloat(chequeamount).toFixed(@_decimal) + '</td>';
+            html =html + '<td>' + parseFloat(settleamount).toFixed(@_decimal) + '</td>';
+                        html = html + '<td><a class="text-danger"  href="javascript:void(0)" onclick="deletetrans(this,' + i + ')"><i class="mdi mdi-delete font-size-18"></i></a></td></tr>'; //delete
+
+            $('#tblTrans').append(html);
+            calculatetotal();
+            $('#txtExpAccountHead').val('');
+            $('#txtExpAccountHeadId').val(0);
+            $('#txtExpAmount').val(0);
+            $('#txtExpNarration').val('');
+            $('#txtExpAccountHead').focus();
+
+            @*var idtext = 'hdnacheadid_';
+            $('[id^=' + idtext + ']').each(function (index, item) {
+                var amount = $('#txtexpamount_' + index).val();
+                if (amount == '')
+                    amount = 0;
+                var deleted = $('#hdnexpdeleted_' + index).val();
+
+                var remarks = $('#hdnexpremarks_' + index).val();
+                if (deleted == 'false' && $(item).val() != '' && $(item).val() != '0' && parseFloat(amount) != 0) {
+                        var i = $('#tblTrans > tr').length;
+                        var Reference = $('#hdnexpref_' + index).val();
+                    var chequestatus = $('#hdnexpchequestatus_' + index).val();
+                        var COD = 0;
+                        var MCReceived = 0;
+                    var receipts = 0;
+                    var chequeamount = 0;
+                        var expenses = parseFloat(amount) * -1;
+                        var total = parseFloat(amount) *  -1 ;
+                    var acheadid = $(item).val();
+                    var chequeamount = 0;
+                    var settleamount = 0;
+                    var chequeno = '';
+                    var html = '<tr id="awbtr_' + i + '"><td><input type="hidden" value="EXP" id="hdntype_' + i + '" /><input type="hidden" value="false" class="hdndeleted" id="hdndeleted_' + i + '" /><input type="hidden" id="hdnrefId_' + i + '" value="' + acheadid + '" /> <input type="hidden" id="hdnref_' + i + '" value="' + Reference + '" /> <input type="hidden" id="hdncod_' + i + '" value="' + COD + '" /><input type="hidden" id="hdndiscount_' + i + '" value="0" /> <input type="hidden" id="hdnmc_' + i + '" value="' + MCReceived + '" /><input type="hidden" id="hdnreceipt_' + i + '" value="' + receipts + '" /> <input type="hidden" id="hdnpkp_' + i + '" value="0" /> <input type="hidden" id="hdnexp_' + i + '" value="' + expenses + '" />' + Reference + '<input type="hidden" id="hdnpayment_' + i + '" value="0" /><input type="hidden" id="hdnconfirmation_' + i + '" value="' + remarks + '" /><input type="hidden" id="hdnpodstatus_' + i + '" value="false" /><input type="hidden" id="hdnawbreceivedby_' + i + '" value="" /><input type = "hidden" id ="hdnchequestatus_' + i + '" value = "' + chequestatus + '" /><input type = "hidden" id ="hdnchequeamount_' + i + '" value = "' + chequeamount + '" /><input type = "hidden" id ="hdnsettleamount_' + i + '" value = "' + settleamount + '" /><input type = "hidden" id ="hdnchequeno_' + i + '" value = "' + chequeno + '" /></td>';
+                    html = html + '<td>' + '' + '</td>';  //cod
+                    html = html + '<td>' + '' + '</td>';  //discount
+                        html = html + '<td>' + '' + '</td>';//mcreceived
+                        html = html + '<td>' + '' + '</td>';//receipt
+                        html = html + '<td>' + '' + '</td>';//pickupcash
+                        html = html + '<td class="cred">' + parseFloat(expenses).toFixed(2) + '</td>';//expenses
+                        html = html + '<td>' + ''  + '</td>';//mc paid
+                    html = html + '<td class="cred"><input type="hidden" value="' + parseFloat(total).toFixed(2) + '" id="hdntotal_' + i + '" />' + parseFloat(total).toFixed(2) + '</td>';//total
+                    html = html + '<td>' + parseFloat(chequeamount).toFixed(@_decimal) + '</td>';
+            html =html + '<td>' + parseFloat(settleamount).toFixed(@_decimal) + '</td>';
+                        html = html + '<td><a href="javascript:void(0)" onclick="deletetrans(this,' + i + ')"><i class="fa fa-times"></i></a></td></tr>'; //delete
+
+                        $('#tblTrans').append(html);
+                    }
+                    var totalrow = $('#tblExpenses > tr').length;
+
+                    debugger;
+                    if ((index + 1) == totalrow) {
+                        $('#tblExpenses').html('');
+                        calculatetotal();
+                    }
+
+            });*@
+
+        });
+        $('#btnsearch').click(function () {
+
+            if ($('#CustomerID').val() == 0) {
+                alert('Select Customer!');
+                return;
+            }
+
+            if ($('#txtReceiptAmount').val() == "" || $('#txtReceiptAmount').val()=="0") {
+                alert('Enter Receipt Amount!');
+                $('#txtReceiptAmount').val(0);
+            }
+
+            var ID = $('#DRSID').val();
+            var RecPayId = $('#DRSRecPayID').val();
+            $.ajax({
+                type: "GET",
+                url: '/DRSReceipt/GetDRSAWB/',
+                data: { 'DRSID': ID, 'RecPayId': RecPayId },
+                success: function (data) {
+                    $('#tbl1').html('');
+                    //$scope.Orders = data;
+                    var amt = 0;
+                    for (var i = 0; i < data.length; i++) {
+
+                        debugger;
+
+                        $('#tbl1').append('<tr>' +
+                            '<td>' + data[i].AWBNO + '<input type = "hidden" name ="Details[' + i + '].AWBNO"  value = "' + data[i].AWBNO + '" /><input type="hidden" name="Details[' + i + '].DRSRecPayDetailID"  value="' + data[i].DRSRecPayDetailID + '" /><input type="hidden" name="Details[' + i + '].InScanID"  value="' + data[i].InScanID + '" />  </td>' +
+                            '<td>' + data[i].AWBDate + '<input id="" name="Details[' + i + '].AWBDate" value=' + data[i].DateTime + ' type="hidden"></td>' +
+                            '<td class="text-right">' + parseFloat(data[i].CourierCharge).toFixed(@_decimal) + '<input id="" name="Details[' + i + '].CourierCharge" value=' + data[i].CourierCharge + ' type="hidden"></td>' +
+                            '<td class="text-right">' + parseFloat(data[i].MaterialCost).toFixed(@_decimal) + '<input id="" name="Details[' + i + '].MaterialCost" value=' + data[i].MaterialCost+ ' type="hidden"/></td>' +
+                            '<td class="text-right"><input class="text-right" id="txtccrec_' + i + '" name="Details[' + i + '].CCReceived" value="' + data[i].CCReceived + '" type="text" onchange="CheckAmt1(this)"/></td>' +
+                            '<td class="text-right"><input class="text-right" id="txtmcrec_' + i + '" name="Details[' + i + '].MCReceived" value="' + data[i].MCReceived + '" type="text" onchange="CheckAmt1(this)"/></td>' +
+                            '<td class="text-right"><input class="text-right" id="txttotal_' + i + '" name="Details[' + i + '].TotalAmount" value="' + data[i].TotalAmount + '" type="text"></td>' +
+                            '<td class="text-right"><input class="text-right" id="txtbalance_' + i + '" name="Details[' + i + '].Balance" value="' + data[i].Balance + '" type="text"></td>' +
+                            '<td class="text-right"><input class="text-right" id="txtdiscount_' + i + '" name="Details[' + i + '].Discount" value="' + data[i].Discount + '" type="text" onchange="CheckAmt1(this)"></td>' +
+                            '<td> <input type="checkbox" id="chkstatus_' + data[i].StatusClose + '" class="" name="Details[' + i + '].StatusClose" />' +
+                            '</tr>');
+                        //hideLoading();
+                    }
+
+
+                }
+            });
+
+        });
+
+        $("#MCPending").click(function () {
+            if ($("#MCPending").is(':checked')) {
+                //$('#txtMCReceived').val(0);
+                //$('#txtMCPaid').val(0);
+                $('#txtMCConfirmation').removeAttr('readonly');
+                var mccost= $('#txtMCCost').val();
+                var received = $('#txtMCReceived').val();
+                var chequeamt = $('#txtMCChequeAmt').val();
+                if (received == "")
+                    received = 0;
+                if (chequeamt == "")
+                    chequeamt = 0;
+                if (mccost == "")
+                    mccost = 0;
+                var settlement = parseFloat(mccost) - parseFloat(received) - parseFloat(chequeamt);
+                $('#txtMCSettleAmt').val(settlement);
+            }
+            else {
+                var received = $('#txtMCReceived').val();
+                if (received == '')
+                    received = 0;
+                $('#txtMCConfirmation').attr('readonly', 'readonly');
+                $('#txtMCSettle').val(0);
+                $('#txtMCPaid').val(parseFloat(received).toFixed(2));
+            }
+        });
+        $("#Cheque").click(function () {
+            if ($("#Cheque").is(':checked')) {
+                $('#txtMCChequeDetail').removeAttr('readonly');
+                $('#txtMCChequeAmt').removeAttr('readonly');
+                $('#txtMCChequeAmt').val($('#txtMCCost').val());
+                $('#txtMCReceived').val(0);
+                $('#txtMCPaid').val(0);
+                $('#txtMCChequeDetail').val('CHQ');
+                $('#txtMCChequeAmt').focus();
+            }
+            else {
+                $('#txtMCChequeDetail').attr('readonly', 'readonly');
+                $('#txtMCChequeAmt').attr('readonly', 'readonly');
+                $('#txtMCChequeAmt').val('');
+                $('#txtMCChequeDetail').val('');
+            }
+        });
+        $("#POD").click(function () {
+            if ($("#POD").is(':checked')) {
+                $('#txtAWBReceived').val($('#txtConsignee').val());
+                $('#txtAWBReceived').removeAttr('readonly');
+            }
+            else {
+                $('#txtAWBReceived').val('');
+                $('#txtAWBReceived').attr('readonly', 'readonly');
+            }
+        });
+        $("#DRSNo").change(function () {
+            if ($('#DRSNo').val() != $('#DRSID').attr('label')) {
+                $('#DRSNo').val('');
+                $('#DRSID').val('0');
+                $('#DRSNo').focus();
+            }
+
+        });
+        $('#ChangeNCND').change(function () {
+            if ($("#ChangeNCND").is(':checked')) {
+                $('#txtMCCost').removeAttr('readonly');
+                $('#txtMCCost').focus();
+            }
+            else {
+                $('#txtMCCost').attr('readonly', 'readonly');
+            }
+        })
+        $("#ChangeAWB").change(function () {
+            if ($("#ChangeAWB").is(':checked')) {
+                $('#PaymentModeId').removeClass('hide');
+                $('#txtPayMode').addClass('hide');
+                $('#txtCODAmount').removeAttr('readonly');
+
+            }
+            else {
+                $('#txtAWBReceived').val('');
+                $('#txtPayMode').removeClass('hide');
+                $('#PaymentModeId').addClass('hide');
+                $('#txtCODAmount').attr('readonly', 'readonly');
+
+            }
+        });
+        $('#PaymentModeId').change(function () {
+            if ($('#PaymentModeId').val() == 4) {
+                $('#txtCODAmount').val(0);
+                $('#txtCODReceived').val(0);
+                $('#txtDiscount').val(0);
+                $('#txtMCReceived').focus();
+            }
+            else if ($('#PaymentModeId').val() == 3)
+            {
+                $('#txtCustomerName').removeAttr('readonly');
+                $('#txtCustomerName').focus();
+            }
+            else {
+                var codamount = $('#txtCODAmount').attr('codamount');
+                if (codamount != undefined && codamount != null) {
+                    $('#txtCODAmount').val(codamount);
+                    $('#txtCODReceived').val(codamount);
+                    $('#txtDiscount').val(0);
+                }
+            }
+        })
+        $('#txtCODAmount').change(function () {
+            if ($('#txtCODAmount').val() != '' && $('#PaymentModeId').val()!=3) {
+                var codamount = $('#txtCODAmount').val();
+                $('#txtCODReceived').val(parseFloat(codamount).toFixed(@_decimal));
+            }
+            else if ($('#PaymentModeId').val() != 3){
+                var codamount = $('#txtCODAmount').attr('codamount');
+                $('#txtCODAmount').val(codamount);
+                $('#txtCODReceived').val(parseFloat(codamount).toFixed(@_decimal));
+            }
+        });
+        $('#txtCODReceived').change(function () {
+            if ($('#txtCODAmount').val() == $('#txtCODReceived').val()) {
+                $('#txtMCReceived').focus();
+            }
+
+        });
+
+        $('#txtMCCost').change(function () {
+            if ($('#txtMCCost').val() != '') {
+                var codamount = $('#txtMCCost').val();
+                $('#txtMCReceived').val(parseFloat(codamount).toFixed(@_decimal));
+                $('#txtMCPaid').val(parseFloat(codamount).toFixed(@_decimal));
+            }
+            else {
+                var codamount = 0;
+                $('#txtMCReceived').val(parseFloat(codamount).toFixed(@_decimal));
+                $('#txtMCPaid').val(parseFloat(codamount).toFixed(@_decimal));
+            }
+        });
+
+        if (@Model.DRRID > 0) {
+            calculatetotal();
+            setTwoNumberDecimal($('#ReceivedAmount'));
+            setTwoNumberDecimal($('#ReceivedAmount'));
+            $('#btnSave').html('Update');
+        }
+
+        if (@Model.DRRID> 0) {
+            $('#DRSReceiptNo').attr('readonly', 'readonly');
+            $('#DRSNo').attr('readonly', 'readonly');
+            $('#DeliveredBy').attr('readonly', 'readonly');
+
+        }
+
+        //get items based on drsreceiptid
+           $('#btnList').click(function () {
+            debugger;
+               $.ajax({
+                   url: '/DRSReconc/GetCourierAWBDetail',
+                   datatype: "json",
+                   data: {
+                       DRSRecPayID: $('#DRSRecPayID').val()
+                   },
+                   success: function (data) {
+                       debugger;
+                       console.log(data);
+                       $('#tblTrans').html('');
+                       $.each(data, function (index, item) {
+                           $('#h2totalawb').html('Total AWB:'+item.TotalAWB);
+                           var i = $('#tblTrans > tr').length;
+                           var TransType = item.TransactionType;
+                           var Reference = item.Reference;
+                           var MaterialCost = item.MCReceived;
+                           var COD = item.COD;
+                           var chequeamount = 0;
+                           var Discount = item.Discount;
+                           var MCReceived = item.MCReceived;
+                           var MCPaid = item.MCPaid;
+                           var referenceid = item.ReferenceId;
+                           var inscanid = item.InScanID;
+                           var shipmentdetailid = 0;
+                           if (parseFloat(shipmentdetailid) > 0)
+                               referenceid = shipmentdetailid;
+                           var importcod = item.CODVat;
+                           var receipt = 0;
+                           var codamount = item.COD;
+                           var confirmation = item.Confirmation;
+                           var mcpending = 0;
+                           var podstatus = false;
+                           var chequestatus = false;
+                           var awbreceivedby = '';
+
+                           var settleamount = 0;
+                           var chequeno = '';
+                           var changeawbstatus = false; // $('#ChangeAWB').prop('checked');
+                           var changemcstatus = false;//$('#ChangeNCND').prop('checked');
+                           var changepaymentid = 0;
+                           var changecod = 0;
+                           var changemc = 0;
+                           var pickupcash = item.PKPCash;
+                           var changecustomerid = -2;
+                           if (settleamount == '')
+                               settleamount = 0;
+
+                           if (chequeamount == '') {
+                               chequeamount = 0;
+                           }
+                           if (confirmation == null)
+                               confirmation = '';
+
+                           if (COD == '')
+                               COD = 0;
+                           if (MCReceived == '')
+                               MCReceived = 0;
+
+                           if (MaterialCost == '')
+                               MaterialCost = 0;
+                           if (MCPaid == '')
+                               MCPaid = 0;
+                           if (codamount == '')
+                               codamount = 0;
+
+                           if (chequeamount == '')
+                               chequeamount = 0;
+
+                           if (Discount == '')
+                               Discount = 0;
+                           if (podstatus == null)
+                               postatus = false;
+                           if (chequestatus == null)
+                               chequestatus = false;
+
+                           if (changeawbstatus == true) {
+                               debugger;
+                               changepaymentid = $('#PaymentModeId').val();
+                               changecod = $('#txtCODAmount').val();
+                               if ($('#PaymentModeId').val() == '3') {
+
+                                   changecustomerid = $('#txtCustomerId1').val();
+                               }
+                           }
+                           receipt = item.Receipt;
+                           var expense = item.Expense;
+                           var CustomerName = item.CustomerName;
+                           var CustomerId = item.CustomerId;
+                           var paymentmode = item.PaymentMode;
+
+                           var paymentmodeid = item.PaymentModeId;
+                           var consignor = item.Shipper;
+                           var consignee = item.Consignee;
+                           var MaterialCost = item.MaterialCost;
+                           var TotalCharge = item.TotalCharge;
+                           var IsNCND = item.IsNCND;
+                           var IsCashOnly = item.IsCashOnly;
+                           var IsCollectMaterial = item.IsCollectMaterial;
+                           var IsCheque = item.IsCheque;
+                           var IsDoCopyBack = item.IsDoCopyBack;
+                           var Pieces = item.Pieces;
+                           var Weight = item.Weight;
+                           var CollectedBy = item.CollectedBy;
+                           var AWBDate = item.AWBDate1;
+                           var errclass = "";
+                           var _awbattrdetail = 'AWBDate="' + AWBDate + '" CustomerName="' + CustomerName + '" PayMode="' + paymentmode + '" PaymentModeId=' + paymentmodeid + ' Shipper="' + consignor + '" Consignee="' + consignee + '" MaterialCost=' + MaterialCost + ' TotalCharge=' + TotalCharge + ' IsNCND=' + IsNCND + ' IsCashOnly=' + IsCashOnly + ' IsCollectMaterial=' + IsCollectMaterial + ' IsCheque=' + IsCheque + '  IsDoCopyBack=' + IsDoCopyBack + ' Pieces="' + Pieces + '" Weight="' + Weight + '" CollectedBy="' + CollectedBy + '" ';
+                           var total = item.Total;/// parseFloat(COD) + parseFloat(MCReceived) + parseFloat(importcod);
+                           if (item.COD != TotalCharge)
+                               errclass = "color_red";
+                           if (item.MaterialCost != item.MCReceived)
+                               errclass = "color_red";
+
+                           var edithtml = '';
+                           var awbhtml = '';
+
+                           if (TransType == 'AWB') {
+                               edithtml = '<a href = "javascript:void(0)" class="text-success" onclick = "edittrans(this,' + i + ')" > <i class="mdi mdi-pencil font-size-18"></i></a>'
+                               awbhtml =  '<div class="input-group gap-2">' + edithtml + '<a target="_blank" href="/AWB/Create?id=' + referenceid + '">' + Reference + '</>' + '</div>';
+                           }
+                           else {
+                               awbhtml = Reference;
+
+                           }
+                           var html = '<tr class="newrowactive ' + errclass + '" id="awbtr_' + i + '"><td><input type="hidden" value="0" id="hdndetailId_' + i + '" /><input type="hidden" value="' + TransType + '" changeawb="' + changeawbstatus + '" paymodeid="' + changepaymentid + '"  changecod="' + changecod + '" changemc="' + changemc + '" changencndstatus="' + changemcstatus + '" id="hdntype_' + i + '" /><input class="hdndeleted" type="hidden" value="false" id="hdndeleted_' + i + '" /> <input type="hidden" id="hdnrefId_' + i + '" value="' + referenceid + '"' + _awbattrdetail + ' /><input type="hidden" id="hdnref_' + i + '" value="' + Reference + '" /> <input type="hidden" id="hdncod_' + i + '" value="' + COD + '" /><input type="hidden" id="hdncodvat_' + i + '" value="' + importcod + '" /><input type="hidden" id="hdndiscount_' + i + '" value="' + Discount + '" /> <input type="hidden" id="hdnmc_' + i + '" value="' + MCReceived + '" /><input type="hidden" id="hdnreceipt_' + i + '" value="' + receipt + '" /> <input type="hidden" id="hdnpkp_' + i + '" value="' + pickupcash + '" /> <input type="hidden" id="hdnexp_' + i + '" value="' + expense + '" />' + awbhtml + '<input type="hidden" id="hdnpayment_' + i + '" value="' + MCPaid + '" /><input type = "hidden" id ="hdnconfirmation_' + i + '" value = "' + confirmation + '" /><input type = "hidden" id ="hdncustomerid_' + i + '" value = "' +  CustomerId +'" /><input type = "hidden" id ="hdnmcpending_' + i + '" value = "' + mcpending + '" /><input type = "hidden" id ="hdnpodstatus_' + i + '" value = "' + podstatus + '" /><input type = "hidden" id ="hdnawbreceivedby_' + i + '" value = "' + awbreceivedby + '" /><input type = "hidden" id ="hdnchequestatus_' + i + '" value = "' + chequestatus + '" /><input type = "hidden" id ="hdnchequeamount_' + i + '" value = "' + chequeamount + '" /><input type = "hidden" id ="hdnsettleamount_' + i + '" value = "' + settleamount + '" /><input type = "hidden" id ="hdnchequeno_' + i + '" value = "' + chequeno + '" /><input type = "hidden" id ="hdnchangecustomerid_' + i + '" value = "' + changecustomerid + '" /></td>';
+                           html = html + '<td>' + parseFloat(COD).toFixed(@_decimal) + '</td>';  //cod
+                           html = html + '<td>' + parseFloat(importcod).toFixed(@_decimal) + '</td>';  //import vat cod
+                           html = html + '<td>' + parseFloat(Discount).toFixed(@_decimal) + '</td>';  //cod
+                           html = html + '<td>' + parseFloat(MCReceived).toFixed(@_decimal) + '</td>';//mcreceived
+                           html = html + '<td>' + parseFloat(receipt).toFixed(@_decimal)  + '</td>';//receipt
+                           html = html + '<td>' + parseFloat(pickupcash).toFixed(@_decimal) + '</td>';//pickupcash
+                           html = html + '<td>' + parseFloat(expense).toFixed(@_decimal)  + '</td>';//expenses
+                           html = html + '<td>' + parseFloat(MCPaid).toFixed(@_decimal) + '</td>';//mc paid
+                           html = html + '<td><input type="hidden" value="' + parseFloat(total).toFixed(2) + '" id="hdntotal_' + i + '" />' + parseFloat(total).toFixed(2) + '</td>';//total
+                           html = html + '<td>' + parseFloat(chequeamount).toFixed(@_decimal) + '</td>';
+                           html = html + '<td>' + parseFloat(settleamount).toFixed(@_decimal) + '</td>';
+                           html = html + '<td>' + edithtml + '<a href="javascript:void(0)" class="text-danger" onclick="deletetrans(this,' + i + ')"><i class="mdi mdi-delete font-size-18"></i></a></td>'; //delete
+                           $('#tblTrans').append(html);
+                           calculatetotal();
+                       });
+                   }
+
+        });
+        });
+    });
+</script>
+
+<script>
+    function Comma(Num) { //function to add commas to textboxes
+        Num += '';
+        Num = Num.replace(',', ''); Num = Num.replace(',', ''); Num = Num.replace(',', '');
+        Num = Num.replace(',', ''); Num = Num.replace(',', ''); Num = Num.replace(',', '');
+        x = Num.split('.');
+        x1 = x[0];
+        x2 = x.length > 1 ? '.' + x[1] : '';
+        var rgx = /(\d+)(\d{3})/;
+        while (rgx.test(x1))
+            x1 = x1.replace(rgx, '$1' + ',' + '$2');
+        $(".aeamt").val(x1 + x2);
+    }
+</script>
+
+<script type="text/javascript">
+    function checkCODReceived() {
+        debugger;
+        if ($('#txtCODAmount').val() == "")
+            $('#txtCODAmount').val(0);
+        var codamount = $('#txtCODAmount').val();
+
+        if ($('#txtCODReceived').val() == "")
+            $('#txtCODReceived').val(0);
+
+        var codrecevied = $('#txtCODReceived').val();
+
+        if ($('#txtDiscount').val() == "")
+            $('#txtDiscount').val(0);
+
+        var discount = $('#txtDiscount').val();
+
+        var totalamount = parseFloat(codrecevied) + parseFloat(discount);
+        if (parseFloat(codrecevied) > parseFloat(codamount)) {
+            $('#txtCODReceived').val(parseFloat(codamount).toFixed(@_decimal));
+        }
+        else if (parseFloat(totalamount) > parseFloat(codamount)) {
+            $('#txtCODReceived').val(parseFloat(codamount).toFixed(@_decimal));
+            $('#txtDiscount').val(0);
+        }
+        else if (parseFloat(codrecevied)>0 && (parseFloat(codrecevied) < parseFloat(codamount))) {
+            var discount = parseFloat(codamount) - parseFloat(codrecevied);
+            $('#txtDiscount').val(parseFloat(discount).toFixed(@_decimal));
+        }
+
+    }
+
+    function checkCODDiscount() {
+
+        if ($('#txtCODAmount').val() == "")
+            $('#txtCODAmount').val(0);
+        var codamount = $('#txtCODAmount').val();
+
+        if ($('#txtCODReceived').val() == "")
+            $('#txtCODReceived').val(0);
+
+        var codrecevied = $('#txtCODReceived').val();
+
+        if ($('#txtDiscount').val() == "")
+            $('#txtDiscount').val(0);
+
+        var discount = $('#txtDiscount').val();
+
+        var totalamount = parseFloat(codrecevied) + parseFloat(discount);
+        if (parseFloat(codrecevied) > parseFloat(codamount)) {
+            $('#txtCODReceived').val(parseFloat(codamount).toFixed(@_decimal));
+        }
+        else if (parseFloat(totalamount) > parseFloat(codamount)) {
+            $('#txtCODReceived').val(parseFloat(codamount).toFixed(@_decimal));
+            $('#txtDiscount').val(0);
+        }
+        else if (parseFloat(codrecevied) > 0 && (parseFloat(codrecevied) < parseFloat(codamount))) {
+            var discount = parseFloat(codamount) - parseFloat(codrecevied);
+            $('#txtDiscount').val(parseFloat(discount).toFixed(@_decimal));
+        }
+
+    }
+
+    function checkMCReceived() {
+
+        if ($('#txtMCCost').val() == "")
+            $('#txtMCCost').val(0);
+
+        var mcamount = $('#txtMCCost').val();
+
+        if ($('#txtMCReceived').val() == "")
+            $('#txtMCReceived').val(0);
+
+        var mcreceived = $('#txtMCReceived').val();
+
+
+
+        if (parseFloat(mcreceived ) > parseFloat(mcamount)) {
+            $('#txtMCReceived').val(parseFloat(mcamount).toFixed(@_decimal));
+            $('#txtMCPaid').val(parseFloat(mcamount).toFixed(@_decimal));
+        }
+        else {
+            $('#txtMCReceived').val(parseFloat(mcreceived).toFixed(@_decimal));
+            $('#txtMCPaid').val(parseFloat(mcreceived).toFixed(@_decimal));
+        }
+
+    }
+    function checkMCPayment() {
+
+        if ($('#txtMCCost').val() == "")
+            $('#txtMCCost').val(0);
+
+        var mccost = $('#txtMCCost').val();
+
+        if ($('#txtMCReceived').val() == "")
+            $('#txtMCreceived').val(0);
+
+        var mcamount = $('#txtMCReceived').val();
+
+        if ($('#txtMCReceived').val() == "")
+            $('#txtMCReceived').val(0);
+
+        var mcpaid = $('#txtMCPaid').val();
+
+
+
+        if (parseFloat(mcpaid) > parseFloat(mcamount)) {
+            $('#txtMCPaid').val(parseFloat(mcamount).toFixed(@_decimal));
+        }
+        else {
+            $('#txtMCPaid').val(parseFloat(mcreceived).toFixed(@_decimal));
+        }
+        if (parseFloat(mcreceived) < parseFloat(mccost)) {
+            //$('#txtMCPaid').val(parseFloat(mcamount).toFixed(@_decimal));
+            $('#txtMCConfirmation').focus();
+        }
+
+
+    }
+
+    function CheckAmt(x) {
+        debugger;
+        var idindex = $(x).attr('id');
+        var thisval = $(x).val();
+        var maxval = $(x).attr('max');
+        if (parseFloat(thisval) > parseFloat(maxval)) {
+            $(x).val(parseFloat(maxval).toFixed(@_decimal));
+        }
+
+    }
+
+    function CheckAmt1(x) {
+        var thisval = $(x).val();
+        $(x).attr('value', thisval);
+        thisval = $(x).val();
+        if (thisval == null || thisval == "") {
+            $(x).val('0.000');
+        } else {
+            $(x).val(parseFloat(thisval).toFixed(@_decimal));
+        }
+
+    }
+
+</script>
+<script>
+    function getcustomercouriercharge() {
+        if ($('#txtCustomerId1').val() > 0) {
+            $.ajax({
+                type: "Post",
+                url: '/AWBBatch/GetCourierChargeDRSReconc',
+                datatype: "json",
+                data: {
+                    CustomerId: $('#txtCustomerId1').val(), InscanID: $('#txtInScanID').val()
+                },
+                success: function (response) {
+                    debugger;
+                    console.log(response);
+                    if (response.status == "OK") {
+                        var tax = parseFloat(response.data.CourierCharge) * 0.05;
+                        $('#txtCODAmount').val(parseFloat(response.data.CourierCharge) + parseFloat(tax));
+                        $('#txtCODReceived').val(0);
+                        if ($('#txtPieces').val() == 1) {
+                            $('#txtMCReceived').focus();
+                        }
+                        else {
+                            $('#txtCODAmount').focus();
+                        }
+                    } else {
+                        $('#txtCODReceived').val(0);
+                        if ($('#txtPieces').val() == 1) {
+                            $('#txtMCReceived').focus();
+                        }
+                        else {
+                            $('#txtCODAmount').focus();
+                        }
+                    }
+
+                }
+            });
+        }
+    }
+    function calculatetotal() {
+
+        var maxrow = $('#tblTrans > tr').length;
+        var totalcod = 0;
+        var totaldiscount = 0;
+        var totalmc = 0;
+        var totalreceipt = 0;
+        var totalexp = 0;
+        var totalpkp = 0;
+        var totalall = 0;
+        var totalpaid = 0;
+        var totalcheque = 0;
+        var totalsettlement = 0;
+        var totalimportvat = 0;
+        var totalawbcount = 0;
+        var totalnewawbcount = 0;
+        
+        for (i = 0; i < maxrow; i++) {
+            var deleted = $('#hdndeleted_' + i).val();
+            if (deleted == 'false') {
+                debugger;
+                //hdntype_1
+                if ($('#hdntype_' + i).val() == 'AWB') {
+                    totalawbcount = parseInt(totalawbcount) + 1;
+                }
+                else if ($('#hdntype_' + i).val() == 'NEW') {
+                    totalnewawbcount = parseInt(totalnewawbcount) + 1;
+                }
+                var COD = $('#hdncod_' + i).val();
+                var importvat = $('#hdncodvat_' + i).val();
+                var MCReceived = $('#hdnmc_' + i).val();
+                var receipt = $('#hdnreceipt_' + i).val();
+                var exp = $('#hdnexp_' + i).val();
+                var pkp = $('#hdnpkp_' + i).val();
+                var discount = $('#hdndiscount_' + i).val();
+                var mcpaid = $('#hdnpayment_' + i).val();
+                var total = $('#hdntotal_' + i).val();
+                var cheque = $('#hdnchequeamount_' + i).val();
+                var settle = $('#hdnsettleamount_' + i).val();
+                if (COD == '')
+                    COD = 0;
+                if (importvat == '')
+                    importvat = 0;
+                if (discount == '')
+                    discount = 0;
+                if (MCReceived == '')
+                    MCReceived = 0;
+                if (receipt == '')
+                    receipt = 0;
+                if (exp == '')
+                    exp = 0;
+                if (pkp == '')
+                    pkp = 0;
+                if (mcpaid == '')
+                    mcpaid = 0;
+                if (total == '')
+                    total = 0;
+                if (cheque == '')
+                    cheque = 0;
+                if (settle == '')
+                    settle = 0;
+                totalcod = parseFloat(totalcod) + parseFloat(COD);
+                totalimportvat = parseFloat(totalimportvat) + parseFloat(importvat);
+                totaldiscount = parseFloat(totaldiscount) + parseFloat(discount);
+                totalmc = parseFloat(totalmc) + parseFloat(MCReceived);
+                totalreceipt = parseFloat(totalreceipt) + parseFloat(receipt);
+                totalexp = parseFloat(totalexp) + parseFloat(exp);
+                totalpkp = parseFloat(totalpkp) + parseFloat(pkp);
+                totalpaid = parseFloat(totalpaid) + parseFloat(mcpaid);
+                totalall = parseFloat(totalall) + parseFloat(total);
+                totalcheque = parseFloat(totalcheque) + parseFloat(cheque);
+                totalsettlement = parseFloat(totalsettlement) + parseFloat(settle);
+            }
+
+            if (totalawbcount > 0 && totalnewawbcount > 0)
+                $('#txtTotalAWB').html('Total AWB :' + totalawbcount.toLocaleString() + '  NEW AWB : ' + totalnewawbcount);
+            else if (totalawbcount > 0 && totalnewawbcount == 0)
+               $('#txtTotalAWB').html('Total AWB :' + totalawbcount.toLocaleString());
+            else if (totalnewawbcount > 0)
+                $('#txtTotalAWB').html('Total New AWB :' + totalnewawbcount);
+
+            $('#txtTotalCOD').html(parseFloat(totalcod).toFixed(2));
+            $('#txtTotalCODVAT').html(parseFloat(totalimportvat).toFixed(2));
+            $('#txtTotalDiscount').html(parseFloat(totaldiscount).toFixed(2));
+            $('#txtTotalMC').html(parseFloat(totalmc).toFixed(2));
+            $('#txtTotalReceipt').html(parseFloat(totalreceipt).toFixed(2));
+            $('#txtTotalPKP').html(parseFloat(totalpkp).toFixed(2));
+            $('#txtTotalExp').html(parseFloat(totalexp).toFixed(2));
+            $('#txtTotalPayment').html(parseFloat(totalpaid).toFixed(2));
+            $('#txtTotal').html(parseFloat(totalall).toFixed(2));
+            $('#txtTotalCheque').html(parseFloat(totalcheque).toFixed(2));
+            $('#txtTotalSettle').html(parseFloat(totalsettlement).toFixed(2));
+            $('#txtDRSReceipt').val(parseFloat($('#ReceivedAmount').val()).toFixed(2));
+            var shortage = parseFloat($('#txtDRSReceipt').val()) - parseFloat($('#txtTotal').html()) ;// - parseFloat(totalall);
+            if (shortage > 0) {
+                $('#lbshortage').html('EXCESS');
+                $('#txtShortage').html(parseFloat(shortage).toFixed(2));
+                $('#txtShortage').removeClass('cred');
+            }
+            else {
+                $('#lbshortage').html('SHORTAGE');
+                $('#txtShortage').html(parseFloat(shortage).toFixed(2));
+
+                $('#txtShortage').addClass('cred');
+            }
+
+
+        }
+    }
+    $(document).ready(function () {
+        document.addEventListener('keydown', function (event) {
+            if (event.code == 'KeyC' && (event.altKey)) { //ADD AWB
+                window.location = '/DRSReconc/Index';
+                //$('#btnCreateNew').trigger('click');
+            }
+
+            if (event.code == 'KeyB' && (event.altKey)) { //awb
+                //accordion_2
+                $('#accordion_1').trigger('click');
+                $(window).scrollTop(100);
+            }
+            if (event.code == 'KeyR' && (event.altKey)) { //customer receipt
+                //accordion_2
+                $('#accordion_2').trigger('click');
+                $(window).scrollTop(0);
+            }
+            if (event.code == 'KeyP' && (event.altKey)) { //New Pickup
+                //accordion_2
+                $('#accordion_3').trigger('click');
+                $(window).scrollTop(0);
+            }
+            
+            if (event.code == 'KeyX' && (event.altKey)) { //expense
+                //accordion_2
+                $('#accordion_4').trigger('click');
+                $(window).scrollTop(0);
+            }
+            
+        });
+
+        
+
+        document.addEventListener('keydown', function (event) {
+            if (event.code == 'KeyS' && (event.altKey)) { //ADD AWB
+                $('#btnSave').trigger('click');
+            }
+        });
+        $('#btnSave').click(function () {
+            $('#btnSave').attr('disabled', 'disabled');
+            var obj = [];
+            var maxrow = $('#tblTrans > tr').length;
+            for (i = 0; i < maxrow; i++) {
+                var deleted = $('#hdndeleted_' + i).val();
+                var detailid = $('#hdndetailId_' + i).val();
+                if (deleted == 'false' && detailid==0) {
+                    debugger;
+                    var DRRID = $('#DRRID').val();
+                    var DRSID =$('#DRSID').val();
+                    var DRSRecPayId = $('#DRSRecPayID').val();
+                    var DeliveredBy = $('#DeliveredBy').val();
+                    var referenceid = $("#hdnrefId_" + i).val();
+                    var type = $("#hdntype_" + i).val();
+                    var Reference = $("#hdnref_" + i).val();
+                    var COD = $('#hdncod_' + i).val();
+                    var importcod = $('#hdncodvat_' + i).val();
+                    var Discount = $('#hdndiscount_' + i).val();
+                    var MCReceived = $('#hdnmc_' + i).val();
+                    var receipt = $('#hdnreceipt_' + i).val();
+                    var exp = $('#hdnexp_' + i).val();
+                    var pkp = $('#hdnpkp_' + i).val();
+                    var total = $('#hdntotal_' + i).val();
+                    var payment = $('#hdnpayment_' + i).val();
+                    var confirmation = $('#hdnconfirmation_' + i).val();
+                    //var customerid = $('#hdncustomerid_' + i).val();
+                    var podstatus = $('#hdnpodstatus_' + i).val();
+                    var chequestatus = $('#hdnchequestatus_' + i).val();
+                    var awbreceivedby = $('#hdnawbreceivedby_' + i).val();
+                    var chequeamount = $('#hdnchequeamount_' + i).val();
+                    var settleamount = $('#hdnsettleamount_' + i).val();
+                    var chequeno = $('#hdnchequeno_' + i).val();
+                    var changeAwbstatus = $('#hdnchangeawb_' + i).val();
+                    var changeNCNDtatus = $('#hdnchangencnd_' + i).val();
+                    var paymentmodeId = 0;
+                    var changecod = 0;
+                    var changemc = 0;
+                    var changemcstatus = $("#hdntype_" + i).attr('changencndstatus');
+                    var changecustomerid = $('#hdnchangecustomerid_' + i).val();
+                    if (changecustomerid == '')
+                        changecustomerid = 0;
+                    if (type == 'AWB') {
+                        debugger;
+                        if ($("#hdntype_" + i).attr('changeawb') == 'true') {
+                            changeAwbstatus = true;
+                            paymentmodeId = $("#hdntype_" + i).attr('paymodeid');
+                            changecod = $("#hdntype_" + i).attr('changecod');
+                         
+                        }
+
+                        if ($("#hdntype_" + i).attr('changencndstatus') == 'true') {
+                                                       
+                            changemc = $("#hdntype_" + i).attr('changemc');
+
+                        }
+
+                        
+                    }
+
+                    if (podstatus == "")
+                        podstatus = false;
+
+                    if (chequestatus == "")
+                        chequestatus = false;
+                    if (changeAwbstatus == "")
+                        changeAwbstatus = false;
+
+                    if (changecod == '')
+                        changecod = 0;
+
+                    var item = {
+                        ReferenceId: referenceid,
+                        Type:type,
+                        Reference: Reference,
+                        COD: COD,
+                        CODVat :importcod,
+                        Discount:Discount,
+                        MCReceived: MCReceived,
+                        Receipt: receipt,
+                        PKPCash: pkp,
+                        Expense: exp,
+                        MCPayment: payment,
+                        Total: total,
+                        Confirmation: confirmation,
+                        PODStatus: podstatus,
+                        ChequeStatus:chequestatus,
+                        AWBReceivedBy: awbreceivedby        ,
+                        ChequeAmount: chequeamount,
+                        SettlementAmount: settleamount,
+                        ChequeNo: chequeno,
+                        ChangeAWB: changeAwbstatus,
+                        ChangePaymentModeId: paymentmodeId,
+                        ChangeCourierCharge: changecod,
+                        ChangeMaterialCost: changemc,
+                        ChangeMC: changemcstatus,
+                        ChangeCustomerId :changecustomerid
+                    }
+                    obj.push(item);
+                }
+
+                if (maxrow == (i + 1)) {
+                    debugger;
+                    if (obj.length == 0)
+                        location.href = '@Url.Action("Index","DRSReconc")';
+                    $.ajax({
+                        type: "POST",
+                        url: "/DRSReconc/SaveReconc",
+                        datatype: "Json",
+                        data: { DRRID: DRRID, DRRDate :$('#DRRDate').val(), DRSID: DRSID, DRSRecPayId: DRSRecPayId, ReconcAmount:0, CourierId:DeliveredBy,Details: JSON.stringify(obj) },
+                        success: function (response) {
+                            if (response == "Ok") {
+                                //alert("Reconciliation Saved Succesfully");
+                                Swal.fire("Save Status","Reconciliation Saved Succesfully", "success");
+                                $('#btnSave').removeAttr('disabled');
+                                location.href = '@Url.Action("Create","DRSReconc")';
+                            }
+                            else {
+                                alert(response);
+                                $('#btnSave').removeAttr('disabled');
+                                //$.notify(response.message, "warning");
+                                return false;
+                            }
+                        }
+                    });
+                }
+            }
+
+
+        });
+
+       
+        $('#DRSReceiptNo').blur(function () {
+            if ($('#DRSReceiptNo').val() != '') {
+                if ($('#panel_1').css('display') === "block") {
+                    $('#txtAWB').focus();
+                }
+                else if ($('#panel_2').css('display') === "block") {
+                    $('#txtCustomer').focus();
+                }
+                else if ($('#panel_3').css('display') === "block") {
+                    $('#txtNewAWB').focus();
+                }
+                else if ($('#panel_4').css('display') === "block") {
+                    $('#txtExpAccountHead').focus();
+                }
+            }
+            //else {
+            //    $('#DRSReceiptNo').focus();
+            //}
+        });
+
+        $('#DRSReceiptNo').focus();
+    });
+</script>
+
+
+
+@*<section class="content-header">    
+    <div class="row">
+      
+        <div class="col-md-12 pull-right text-right">
+                    
+        </div>
+    </div>
+</section>*@
+
+<!-- Main content -->
+
+
+<style>
+ul{
+    padding-left: 0px !important;
+}
+ul li{
+    list-style: none !important;
+}
+</style>
+
+
+<div class="row">
+    <div class="drsAwb col-lg-3">
+        <div class="card">
+            <div class="card-body" style="padding-top:10px">
+                <button class="accordion active" id="accordion_1">AIRWAY <u>B</u>ILLS</button>
+                <div class="panel" id="panel_1" style="display:block">
+                    <div id="divAWB">
+                        <div class="row mt-1">
+                            <div class="col-md-12 text-md-end">
+                                <input type="button" class="btn btn-sm btn-success" value="ADD AWB (Alt+A)" id="btnAddAWB" name="Command" />
+                                <input type="button" class="btn btn-sm btn-success hide" value="Update AWB (Alt+A)" id="btnUpdateAWB" editrowindex="0" name="Command" />
+                                @*<a href='@Url.Action("Index", "DRSReconc", new { id = 0 })' class="btn btn-danger  btnwidth">Cancel</a>*@
+                            </div>
+                        </div>
+                        <div class="row no-margin mb-2" style="padding-top:10px">
+                            <div class="col-md-12" id="divawbdetail">
+                                <div class="">
+                                    <div class="flexTitle">
+                                        <label class="col-form-label">AWB No.</label>
+                                        <div class="checkboxdesign no-padding  text-right" style="float:right">
+                                            @Html.CheckBox("ChangeNCND", new { @name = "ChangeNCND", style = "height:15px!important;width:auto!important;margin-right:5px" }) &nbsp
+                                            <label class="col-form-label" style="color:#07a7e3!important;padding-left: 0!important">Modify NCND</label> &nbsp;&nbsp;
+                                            @Html.CheckBox("ChangeAWB", new { @name = "ChangeAWB", style = "height:15px!important;width:auto!important;margin-right:5px" }) &nbsp
+                                            <label class="col-form-label" style="color:#07a7e3!important;padding-left: 0!important">Modify COD</label>
+                                        </div>
+                                    </div>
+                                    <input type="text" id="txtAWB" style="font-weight:bold;font-size:12px!important" class="form-control" autocomplete="off">
+                                    <input type="hidden" id="txtInScanID" class="form-control">
+                                    <input type="hidden" id="txtShipmentDetailID" class="form-control">
+                                </div>
+                                <div class="row no-margin">
+
+
+                                    <div class="col-md-6">
+                                        <div class="mb-0">
+
+                                            <label class="col-form-label">AWB Date</label>
+                                            <input type="text" class="form-control" name="txtAWBDate" id="txtAWBDate" readonly tabindex="-1" />
+
+
+
+                                        </div>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <div class="mb-0">
+                                            <label class="col-form-label">Collected By </label>
+                                            <input type="text" class="form-control" name="" id="txtCollected" readonly tabindex="-1" />
+
+                                        </div>
+                                    </div>
+
+
+                                </div>
+                                <div class="row no-margin">
+                                    <div class="col-md-4">
+                                        <div class="mb-0">
+                                            <label class="col-form-label">Pc </label>
+                                            <input type="text" name="" class="form-control" id="txtPieces" value="" readonly="" tabindex="-1" style="border-radius: 5px;">
+                                        </div>
+                                    </div>
+                                    <div class="col-md-4">
+                                        <div class="mb-0">
+                                            <label class="col-form-label">Weight</label>
+                                            <input type="text" class="form-control" name="" id="txtWeight" value="" readonly tabindex="-1" style="border-radius: 5px;">
+                                        </div>
+                                    </div>
+                                    <div class="col-md-4">
+                                        <div class="mb-1">
+                                            <label class="col-form-label">PayMode</label>
+                                            <input type="text" class="form-control" name="" id="txtPayMode" value="" readonly style="border-radius: 5px;">
+                                            @Html.DropDownList("PaymentModeId", new SelectList(@ViewBag.PaymentMode, "ID", "PaymentModeCode"), "Select", new { @class = "form-control hide", @required = "true", @id = "PaymentModeId", @style = "font-size:10px!important;" })
+                                        </div>
+                                    </div>
+                                </div>
+                                <div>
+                                    <div class="mb-1">
+                                        <label class="col-form-label">Customer</label> <input type="text" id="txtCustomerName" tabindex="-1" class="form-control" value="" readonly="" style="border-radius: 5px;">
+                                        <input type="hidden" id="txtCustomerId1" class="form-control" value="" readonly="" style="border-radius: 5px;">
+                                    </div>
+                                </div>
+                                <div class="row no-margin">
+                                    <div class="col-md-6">
+                                        <div class="mb-2">
+
+                                            <label class="col-form-label">Shipper</label> <input type="text" id="txtShipper" class="form-control" tabindex="-1" value="" readonly="" style="border-radius: 5px;">
+                                        </div>
+                                    </div>
+                                    <div class="col-md-6 ">
+                                        <div class="mb-2">
+                                            <label class="col-form-label">Consignee</label>  <input type="text" class="form-control" id="txtConsignee" tabindex="-1" value="" readonly="" style="border-radius: 5px;">
+                                        </div>
+                                    </div>
+                                </div>
+
+
+                            </div>
+                        </div>
+
+
+                        <!--<div class="row no-margin" style="padding-top:10px">
+        <div class="col-md-6">
+            <label class="col-form-label">POD Update</label>
+            <input type="text" id="txtPOD" class="form-control" />
+        </div>
+        <div class="col-md-6">
+            <label class="col-form-label">Received By</label>-->
+                        @*<input type="text" id="txtReceivedBy" class="form-control" />*@
+                        <!--@Html.DropDownList("ReceivedBy", new SelectList(ViewBag.Deliverdby, "EmployeeID", "EmployeeName"), "Select", new { @class = "form-control" })
+        </div>
+
+    </div>
+    <div class="row no-margin" style="padding-top:10px">
+        <div class="col-md-6">
+            <label class="col-form-label">Delivered Date &  Time</label>
+            <input type="text" id="txtDeliveredDate" class="form-control" />
+        </div>
+        <div class="col-md-6">
+            <label class="col-form-label">Delivered By</label>-->
+                        @*<input type="text" id="txtDeliveredBy" class="form-control" />*@
+                        <!--@Html.DropDownList("DeliveredBy1", new SelectList(ViewBag.Deliverdby, "EmployeeID", "EmployeeName"), "Select", new { @class = "form-control" })
+            </div>
+    </div>-->
+
+                        <div class="row no-margin">
+                            <div class="col-md-4">
+                                <div class="mb-0">
+                                    <label class="col-form-label">Amount</label>
+                                    <input type="text" id="txtCODAmount" style="font-weight:bold;font-size:11px" class="form-control text-right" readonly />
+                                </div>
+                            </div>
+                            <div class="col-md-4">
+                                <div class="mb-0">
+                                    <label class="col-form-label">Received</label>
+                                    <input type="text" id="txtCODReceived" style="font-weight:bold;font-size:11px" class="form-control text-right" onchange="checkCODReceived()" />
+                                </div>
+                            </div>
+                            <div class="col-md-4">
+                                <div class="mb-0">
+                                    <label class="col-form-label">Discount</label>
+                                    <input type="text" id="txtDiscount" class="form-control text-right" onchange="checkCODDiscount()" />
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="row no-margin" style="padding-top:5px">
+                            <div class="col-md-4">
+                                <label class="col-form-label">MC Amt</label>
+                                <input type="text" id="txtMCCost" style="font-weight:bold;font-size:11px" class="form-control text-right" readonly />
+                            </div>
+                            <div class="col-md-4">
+                                <label class="col-form-label">Received</label>
+                                <input type="text" id="txtMCReceived" class="form-control text-right" style="font-weight:bold;font-size:11px" onchange="checkMCReceived()" />
+                            </div>
+
+                            <div class="col-md-4">
+
+                                <label class="col-form-label">Paid</label>
+
+
+                                <input type="text" id="txtMCPaid" style="font-weight:bold" class="form-control text-right" onchange="checkMCReceived()" />
+                            </div>
+                        </div>
+                        <div class="row no-margin" style="padding-top:5px">
+                            <div class="col-md-8">
+                                <div class="flexTitle">
+                                    <label class="col-form-label"></label>
+                                    <div class="checkboxdesign no-padding  text-right" style="float:right">
+                                        @Html.CheckBox("MCPending", new { @name = "MCPending", style = "height:15px!important;width:auto!important;margin-right:5px" }) &nbsp
+                                        <label class="col-form-label" style="color:#07a7e3!important;padding-left: 0!important">Settlement</label>
+                                    </div>
+                                </div>
+                                @*<label class="headinglabel" id="lblconfirmation">Confirmation</label>*@
+                                <input type="text" id="txtMCConfirmation" class="form-control" readonly />
+                            </div>
+                            <div class="col-md-4">
+                                <label class="col-form-label">Set. Amt</label>
+                                <input type="text" id="txtMCSettleAmt" class="form-control text-right" readonly />
+                            </div>
+                        </div>
+                        <div class="row no-margin" style="padding-top:5px">
+                            <div class="col-md-8">
+                                <div class="col-md-12">
+                                    <div class="flexTitle">
+                                        <label class="col-form-label">Chq.No.</label>
+                                        <div class="checkboxdesign no-padding  text-right" style="float:right">
+                                            @Html.CheckBox("Cheque", new { @name = "Cheque", style = "height:15px!important;width:auto!important;" }) &nbsp
+                                            <label class="col-form-label" style="color:#07a7e3!important;padding-left: 0!important">MC-Cheque</label>
+                                        </div>
+                                    </div>
+                                    @*<label class="headinglabel" id="lblconfirmation">Confirmation</label>*@
+                                    <input type="text" id="txtMCChequeDetail" class="form-control" readonly />
+                                </div>
+                            </div>
+                            <div class="col-md-4">
+                                <label class="col-form-label">Chq.Amt</label>
+                                <input type="text" id="txtMCChequeAmt" class="form-control text-right" readonly />
+                            </div>
+
+                            @*<div class="col-md-4">
+                @Html.CheckBox("MCPending", new { @name = "MCPending", style = "height:15px!important;width:auto!important;margin-right:5px" })
+                <label class="headinglabel" style="color:red!important;padding-bottom:10px">MC-Pending</label>
+            </div>
+
+            <div class="col-md-4">
+                @Html.CheckBox("Cheque", new { @name = "Cheque", style = "height:15px!important;width:auto!important;margin-right:5px" }) &nbsp
+                <label class="headinglabel" style="color:blue!important;padding-bottom:10px">Cheque</label>
+            </div>*@
+                        </div>
+
+                        <div class="row no-margin" style="padding-top:5px">
+                            <div class="col-md-6 mb-2">
+                                <div class="flexTitle">
+                                    <label class="col-form-label">Received By</label>
+                                    <div class="checkboxdesign no-padding  text-right" style="float:right">
+                                        @Html.CheckBox("POD", new { @name = "POD", style = "height:15px!important;width:auto!important;", @checked = "true" }) &nbsp
+                                        <label class="headinglabel" style="color:#07a7e3!important;padding-left: 0!important">POD</label>
+                                    </div>
+                                </div>
+                                <input type="text" id="txtAWBReceived" class="form-control" readonly />
+                            </div>
+                            <div class="col-md-6">
+                                <div class="mb-0">
+                                    <label class="col-form-label">Instructions</label>
+                                    <input type="text" class="form-control" id="txtInstructions" tabindex="-1" value="Shipping Instructions" readonly="" style="border-radius: 5px;">
+                                </div>
+                            </div>
+                        </div>
+
+
+
+
+                    </div>
+                </div>
+
+                <button class="accordion" id="accordion_2">CUSTOMER <u>R</u>ECEIPT</button>
+                <div class="panel" id="panel_2">
+                    <div class="row no-margin" style="padding-top:10px">
+                        <div class="col-md-12">
+                            <label class="headinglabel">Customer</label>
+                            <input type="text" id="txtCustomer" style="font-size:12px;font-weight:bold" class="form-control" />
+                            <input type="hidden" id="txtCustomerId" class="form-control" />
+                        </div>
+                    </div>
+                    <div class="row no-margin" style="padding-top:10px">
+                        <div class="col-md-9">
+
+                            <label class="col-form-label">Receipt Amount</label>
+                           
+                            <input type="text" id="txtReceiptAmount" class="form-control" style="font-weight:bold;font-size:12px" />
+                        </div>
+
+                            <div class="col-md-3">
+                                <div class="mb-2 mt-2 text-md-end">
+                                    <button type="button" class="btn btn-success waves-effect waves-light filter btn_top" id="btnsearchInvoice">
+                                        <i class="bx bx-search mt-1" style="font-size: 21px;"></i>
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    <div class="row no-margin" style="padding-top:10px">
+                        <table border="1" style="margin-top: 15px; " class="table table-bordered table-responsive">
+                            <thead>
+                                <tr>
+                                    <th>
+                                        Invoice No.
+                                    </th>
+                                    @*<th>
+                                            Invoice Date
+                                        </th>*@
+                                    <th>
+                                        Amount
+                                    </th>
+                                    @*<th>
+                                            Received
+                                        </th>*@
+                                </tr>
+                            </thead>
+                            <tbody id="tblinvoice">
+                            </tbody>
+                        </table>
+                    </div>
+                    <div class="row no-margin mt-3 mb-4">
+                        <div class="col-md-12 text-md-end">
+                            <input type="submit" class="btn btn-success" value="ADD RECEIPT (Alt + A)" id="btnAddInvoice" name="Command" />
+                        </div>
+                    </div>
+                </div>
+
+                <button class="accordion" id="accordion_3">NEW <u>P</u>ICKUP</button>
+                <div class="panel" id="panel_3">
+                    <div class="row no-margin" style="padding-top:3px">
+                        <table border="1" style="margin-top: 3px; " class="table table-bordered table-responsive">
+                            <thead>
+                                <tr>
+                                    <th width="70%">
+                                        AWB No.
+                                    </th>
+                                    <th width="30%">
+                                        Amount
+                                    </th>
+                                    @*<th>
+
+                                        </th>*@
+
+
+                                </tr>
+                            </thead>
+                            <tbody id="tblNewAWB">
+                            </tbody>
+                            <tfoot>
+                                <tr>
+                                    <td>
+                                        <input type="text" id="txtNewAWB" style="font-size:12px;font-weight:bold" class="form-control" placeholder="Enter New AWB" />
+                                        <input type="hidden" id="txtNewAWBInscanId" class="form-control" value="0" />
+                                    </td>
+                                    <td>
+                                        <input type="text" id="txtNewAWBAmount" style="font-weight:bold;font-size:12px" class="form-control text-right" placeholder="Enter Charge" />
+                                    </td>
+                                    @*<td>
+                                            <a href="Javascript:void(0);" id="btnAddMoreAWB"><i class="fa fa-plus"></i></a>
+                                        </td>*@
+                                </tr>
+                            </tfoot>
+                        </table>
+                    </div>
+                    <div class="row mt-3 mb-4">
+                        <div class="col-md-12 text-md-end">
+                            <input type="submit" class="btn btn-success" value="ADD NEW AWB (Alt+A)" id="btnAddNewAWB" name="Command" />
+                        </div>
+                    </div>
+                </div>
+                <button class="accordion" id="accordion_4">RECEIPT / E<u>X</u>PENSES</button>
+                <div class="panel" id="panel_4">
+                    <div class="row no-margin" style="padding-top:3px">
+                        <table border="1" style="margin-top: 3px; " class="table table-bordered table-responsive">
+                            <thead>
+                                <tr>
+                                    <th width="55%">
+                                        Chart of Acccount
+                                    </th>
+                                    <th width="39%">
+                                        Amount
+                                    </th>
+                                    <th style="width:6%;text-align:center"></th>
+
+
+                                </tr>
+
+                            </thead>
+                            <tbody id="tblExpenses">
+                            </tbody>
+                            <tfoot>
+                                <tr>
+                                    <td colspan="3">
+                                        <label class="col-form-label required">Account</label>
+                                        <input type="text" id="txtExpAccountHead" class="form-control" placeholder="Select A/C" />
+                                        <input type="hidden" id="txtExpAccountHeadId" class="form-control" />
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <td colspan="3">
+                                        <label class="col-form-label required">Amount</label>
+                                        <input type="text" id="txtExpAmount" class="form-control text-right" placeholder="Amount" />
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <td colspan="3">
+                                        <label class="col-form-label required">Remarks</label>
+                                        <div class="d-flex flexTitle">
+
+                                            <input type="text" id="txtExpNarration" class="form-control" style="width:95%" placeholder="Narration" /> &nbsp;
+                                            @*<a href="Javascript:void(0);" id="btnAddMoreAcc"><i class="fa fa-plus"></i></a>*@
+                                        </div>
+
+                                    </td>
+
+
+                                </tr>
+
+                            </tfoot>
+                        </table>
+                    </div>
+                    <div class="row mt-3 mb-4">
+                        <div class="col-md-12 text-md-end">
+                            <input type="submit" class="btn btn-success" value="ADD EXPENSE (Alt+A)" id="btnAddExpense" name="Command" />
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-lg-9">
+        @using (Html.BeginForm())
+        {
+            @Html.ValidationSummary(true)
+
+            @Html.HiddenFor(model => model.DRRID)
+            @Html.HiddenFor(model => model.DRSRecPayID)
+            @*@Html.HiddenFor(model => model.StatusEntry)*@
+            @Html.HiddenFor(model => model.AcJournalID)
+            @Html.HiddenFor(model => model.ReconciledAmount)
+        <div class="card" style="margin-bottom:5px!important">
+            <div class="card-body">
+
+
+                <div class="row">
+
+                    <div class="col-xs-12 col-sm-6 col-md-2">
+                        <div class="mb-2">
+                            <label class="col-form-label">DRR Date</label>
+                            <div class="docs-datepicker">
+                                <div class="input-group">
+                                    <input type="text" class="form-control docs-date" name="DRRDate" id="DRRDate" data-date-format="dd/MM/yyyy" data-date-autoclose="true" data-provide="datepicker" value="@Model.DRRDate.Value.ToShortDateString()"
+                                           placeholder="Pick a date" autocomplete="off">
+                                    <button type="button" class="btn btn-secondary docs-datepicker-trigger" disabled>
+                                        <i class="mdi mdi-calendar" aria-hidden="true"></i>
+                                    </button>
+                                </div>
+                                <div class="docs-datepicker-container"></div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-xs-12 col-sm-6 col-md-2">
+                        <div class="mb-2">
+                            <label class="col-form-label required">Delivered By</label>
+                            @Html.DropDownListFor(model => model.DeliveredBy, new SelectList(ViewBag.Deliverdby, "EmployeeID", "EmployeeName"), "Select", new { @class = "form-select" })
+                        </div>
+                    </div>
+                    <div class="col-xs-12 col-sm-6 col-md-2">
+                        <div class="mb-2">
+                            <label class="col-form-label required">DRS Receipt No.</label>
+                            <div class="input-group gap-3">
+
+                                @Html.TextBoxFor(model => model.DRSReceiptNo, new { @class = "form-select" })
+
+                            </div>
+                        </div>
+                    </div>
+
+
+                    <div class="col-xs-12 col-sm-3">
+                        <div class="mb-2">
+                            <label class="col-form-label">Receipt Date</label>
+                            <div class="docs-datepicker">
+                                <div class="input-group">
+                                    <input type="text" class="form-control docs-date" name="ReceiptDate" id="ReceiptDate" data-date-format="dd/MM/yyyy" data-date-autoclose="true" data-provide="datepicker" value="@Model.ReceiptDate.ToShortDateString()"
+                                           placeholder="Pick a date" autocomplete="off">
+                                    <button type="button" class="btn btn-secondary docs-datepicker-trigger" disabled>
+                                        <i class="mdi mdi-calendar" aria-hidden="true"></i>
+                                    </button>
+                                </div>
+                                <div class="docs-datepicker-container"></div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-xs-2 col-sm-3">
+                        <div class="mb-2">
+                            <div class="flexTitle">
+                                <label class="col-form-label">Skylark Amt</label>
+                                <div class="checkboxdesign no-padding  text-right" style="float:right">
+                                    <label class="col-form-label" id="lblreceipt" style="color:deeppink"></label>
+                                </div>
+                            </div>
+                            
+                           
+                            @Html.TextBoxFor(model => model.ReceivedAmount, new { @class = "form-control text-right", @readonly = "readonly" })
+                        </div>
+                    </div>
+                    <div class="col-xs-12 col-sm-3 col-md-2">
+                        <div class="mb-2">
+                            <label class=" required col-form-label">DRS No.</label>
+                            @Html.TextBoxFor(model => model.DRSNo, new { @class = "form-control", @readonly = "readonly" })
+                            @Html.HiddenFor(mode => Model.DRSID)
+                        </div>
+                    </div>
+
+                    <div class="col-xs-12 col-sm-6 col-md-2">
+                        <div class="mb-2">
+                            <label class="col-form-label">DRS Date</label>
+                            <div class="docs-datepicker">
+                                <div class="input-group">
+                                    <input type="text" class="form-control docs-date" name="DRSDate" id="DRSDate" data-date-format="dd/MM/yyyy" data-date-autoclose="true" data-provide="datepicker" value="@Model.DRSDate.ToShortDateString()"
+                                           placeholder="Pick a date" autocomplete="off">
+                                    <button type="button" class="btn btn-secondary docs-datepicker-trigger" disabled>
+                                        <i class="mdi mdi-calendar" aria-hidden="true"></i>
+                                    </button>
+                                </div>
+                                <div class="docs-datepicker-container"></div>
+                            </div>
+                        </div>
+                    </div>
+
+
+
+
+                    <div class="col-md-2 mb-2" style="padding-top:8px">
+                        <button type="button" class="btn btn-success waves-effect waves-light filter btn_top" id="btnList" title="Get AWB List of Collected and POD!">
+                            <i class="bx bx-revision mt-1" style="font-size: 21px;"></i> List Skylark Data
+                        </button>
+                    </div>
+                    <div class="col-md-3" style="">
+                        <div class="flexTitle" style="padding-top:35px">
+                            <label class=" required col-form-label" title="Total PKP & DLV AWB" style="font-size:17px; font-weight: bold; color: #f111e0; " id="h2totalawb">Total AWB: @ViewBag.TotalAWB</label>
+                            <h4 class="awb" id="h2awb" style="float:right;color:blue;margin-top:8px;"><strong>@ViewBag.DRRNo</strong></h4>
+                        </div>
+                      
+                    </div>
+                    <div class="col-md-3 text-md-end mb-2">
+                        <input type="submit" class="btn btn-success btn_top" value="Save" id="btnSave" name="Command" />
+                        <a href='@Url.Action("Index", "DRSReconc", new { id = 0 })' class="btn btn-secondary btn_top btnwidth">Cancel</a>
+                    </div>
+                </div>
+            </div>
+        </div>
+        }
+        <div class="card">
+            <div class="card-body" style="overflow-x:scroll">
+                <table class="table table-bordered mb-0" id="datatable1" style="width:100%">
+
+
+                    <thead>
+                        <tr style="font-weight: bold; background-color: #dedede">
+                            <th>Reference</th>
+                            <th>CODAmt</th>
+                            <th>CODVAT</th>
+                            <th>Disc</th>
+                            <th>MCCost</th>
+                            <th>Cust.Rcpt</th>
+                            <th>PKP</th>
+                            <th>Recpt/Exp.</th>
+                            <th>MCPaid</th>
+                            <th>Total</th>
+                            <th>Chq.Amt</th>
+                            <th title="Settlement Amount">Set.Amt</th>
+                            <th></th>
+
+                        </tr>
+                        <tr style="font-weight: bold; background-color: #efe5e5">
+                            <th colspan="2" class="text-left">
+                                <span style="color:red" id="txtTotalAWB"></span>
+                            </th>
+                            <th colspan="2" class="text-right">
+                                DRS Receipt
+                            </th>
+                            <th colspan="1">
+                                <!--<input type="text" class="text-right" id="txtDRSReceipt"  readonly style="margin-bottom:0px;width: 40px;" value="@Model.ReceivedAmount" />-->
+                                <span id="txtDRSReceipt">@Model.ReceivedAmount</span>
+                            </th>
+                            <th colspan="3" class="text-right">
+                                <label id="lbshortage" style="margin-bottom:0px">SHORTAGE</label>
+                            </th>
+                            <th colspan="5">
+                                <!-- <input type="text" class="text-right" id="txtShortage"  readonly style="margin-bottom:0px;width: 40px;" value="0" />-->
+                                <span id="txtShortage">0</span>
+                            </th>
+                        </tr>
+                        <tr style="font-weight: bold; background-color: #efe5e5">
+                            <th>Total</th>
+                            <th style="text-align:right"><span class="spantotal text-right" id="txtTotalCOD" value="0" />0</th>
+                            <th style="text-align:right"><span class="spantotal text-right" id="txtTotalCODVAT" value="0" />0</th>
+                            <th style="text-align:right"><span class="spantotal text-right" id="txtTotalDiscount" value="0" />0</th>
+                            <th style="text-align:right"><span class="spantotal text-right" id="txtTotalMC" value="0" /></th>
+                            <th style="text-align:right"><span class="spantotal text-right" id="txtTotalReceipt" value="0" />0</th>
+                            <th style="text-align:right"><span class="spantotal text-right" id="txtTotalPKP" value="0" />0</th>
+                            <th style="text-align:right"><span class="spantotal text-right" id="txtTotalExp" value="0" />0</th>
+                            <th style="text-align:right"><span class="spantotal text-right" id="txtTotalPayment" />0</th>
+                            <th style="text-align:right"><span class="spantotal" id="txtTotal" value="0" /></th>
+                            <th style="text-align:right"><span class="spantotal" id="txtTotalCheque" style=" color:#ff6a00" value="0" /></th>
+                            <th style="text-align:right"><span class="spantotal" id="txtTotalSettle" style=" color:#ff6a00" value="0" /></th>
+                            <th></th>
+                        </tr>
+
+                    </thead>
+                    <tbody id="tblTrans">
+                        @if (@Model.DRRID > 0)
+                        {
+                            var i = 0;
+                            foreach (var item in Model.Details)
+                            {
+                                <tr id="awbtr_@i">
+                                    <td>
+                                        <input type="hidden" id="hdntype_@i" value="@item.Type" />
+                                        <input type="hidden" value="false" class="hdndeleted" id="hdndeleted_@i" />
+                                        <input type="hidden" id="hdnrefId_@i" value="@item.ReferenceId" />
+                                        <input type="hidden" id="hdndetailId_@i" value="@item.DRRDetailID" />
+                                        <input type="hidden" id="hdnref_@i" value="@item.Reference" />
+                                        <input type="hidden" id="hdncod_@i" value="@item.COD" />
+                                        <input type="hidden" id="hdncodvat_@i" value="@item.CODVat" />
+                                        <input type="hidden" id="hdndiscount_@i" value="@item.Discount" />
+                                        <input type="hidden" id="hdnpayment_@i" value="@item.MCPayment" />
+                                        <input type="hidden" id="hdnmc_@i" value="@item.MCReceived" />
+                                        <input type="hidden" id="hdnreceipt_@i" value="@item.Receipt" />
+                                        <input type="hidden" id="hdnpkp_@i" value="@item.PKPCash" />
+                                        <input type="hidden" id="hdnexp_@i" value="@item.Expense" />
+                                        <input type="hidden" id="hdntotal_@i" value="@item.Total" />
+                                        <input type="hidden" id="hdnpodstatus_@i" value="@item.PODStatus.ToString()" />
+                                        <input type="hidden" id="hdnchequestatus_@i" value="@item.ChequeStatus.ToString()" />
+                                        <input type="hidden" id="hdnawbreceivedby_@i" value="@item.AWBReceivedBy" />
+                                        <input type="hidden" id="hdnsettleamount_@i" value="@item.SettlementAmount" />
+                                        <input type="hidden" id="hdnchequeamount_@i" value="@item.ChequeAmount" />
+                                        <input type="hidden" id="hdnchequeno_@i" value="@item.ChequeNo" />
+                                        @{
+                                            if (@item.Type == "AWB")
+                                            {
+                                                <a class="colorblue" target="_blank" href="/AWB/Create?id=@item.ReferenceId">@item.Reference</a>
+
+                                            }
+                                            else if (@item.Type == "Receipt")
+                                            {
+                                                <a target="_blank" href="/CustomerReceipt/Create?id=@item.RecPayID">@item.Reference</a>
+                                            }
+                                            else
+                                            {
+                                                @item.Reference
+                                            }
+
+                                        }
+                                    </td>
+                                    <td>
+                                        @Net4Courier.Models.CommonFunctions.GetDecimalFormat1(item.COD, @_decimal)
+                                    </td>
+                                    <td>
+                                        @Net4Courier.Models.CommonFunctions.GetDecimalFormat1(item.CODVat, @_decimal)
+                                    </td>
+                                    <td>
+                                        @Net4Courier.Models.CommonFunctions.GetDecimalFormat1(item.Discount, @_decimal)
+                                    </td>
+                                    <td>
+                                        @Net4Courier.Models.CommonFunctions.GetDecimalFormat1(item.MCReceived, @_decimal.ToString())
+                                    </td>
+                                    <td>
+                                        @Net4Courier.Models.CommonFunctions.GetDecimalFormat1(item.Receipt, "2")
+                                    </td>
+                                    <td>
+                                        @Net4Courier.Models.CommonFunctions.GetDecimalFormat1(item.PKPCash, "2")
+                                    </td>
+                                    <td>
+                                        @Net4Courier.Models.CommonFunctions.GetDecimalFormat1(item.Expense, "2")
+                                    </td>
+                                    <td>
+                                        @Net4Courier.Models.CommonFunctions.GetDecimalFormat1(item.MCPayment, "2")
+                                    </td>
+                                    <td style="text-align:right">
+                                        @Net4Courier.Models.CommonFunctions.GetDecimalFormat1(item.Total, "2")
+                                    </td>
+                                    <td style="color:#ff6a00">
+                                        @Net4Courier.Models.CommonFunctions.GetDecimalFormat1(item.ChequeAmount, "2")
+
+                                    </td>
+                                    <td style="color:#ff6a00">@Net4Courier.Models.CommonFunctions.GetDecimalFormat1(item.SettlementAmount, "2")</td>
+                                    <td>
+                                        <a href="#" onclick="deletetrans(this, @i)" class="text-danger"><i class="mdi mdi-delete font-size-18"></i></a>
+                                    </td>
+
+                                </tr>
+                                i++;
+                            }
+                        }
+                    </tbody>
+
+                </table>
+            </div>
+        </div>
+    </div>
+
+</div>
+
+          
+
+            <script type="text/javascript">
+                function checkduplicate1(awbno) {
+                    debugger;
+                    var idtext = 'hdnref_';
+                    var maxrow = $('#tblTrans > tr').length;
+                    if (maxrow > 0) {
+                        var duplicate = false;
+                        $('[id^=' + idtext + ']').each(function (index1, item1) {
+                            var deleted = $('#hdndeleted_' + index1).val();
+                            if (deleted != "true") {
+                                var con = $('#hdnref_' + index1).val();
+                                console.log(con.trim());
+                                if (con.trim() == 'New AWB -' + awbno.trim()) {
+                                    duplicate = true;
+                                    var message = 'Duplicate New AWB No.!';
+                                   // $.notify('Duplicate New AWB No.', 'error');
+                                    $('#txtNewAWB').val('');
+                                    $('#txtNewAWBInscanId').val(0);
+                                    $('#txtNewAWB').focus();
+                                    //break;
+                                }
+
+                                if (duplicate == false && index1 == (parseInt(maxrow - 1))) {
+                                    return true;
+                                }
+                                 
+                            }
+                        });
+                        if (duplicate == true) {
+                            return false;
+                        } else {
+                            return true;
+                        }
+                    }
+                    else {
+
+                        return true;
+                    }
+                }
+                function checkduplicate(awbno) {
+                    debugger;
+                    var idtext = 'hdnref_';
+                    var maxrow = $('#tblTrans > tr').length;
+                    if (maxrow > 0) {
+                        var duplicate = false;
+                        $('[id^=' + idtext + ']').each(function (index, item) {
+                            var deleted = $('#hdndeleted_' + index).val();
+                            if (deleted != "true") {
+                                var con = $('#hdnref_' + index).val();
+                                if (con.trim() == 'AWB:' +awbno.trim()) {
+                                    duplicate = true;
+                                    var message = 'Duplicate AWB No.!';
+                                 //   Swal.fire('Data Validation','Duplicate AWB No.', 'error');
+                                    $('#txtAWB').val('');                                    
+                                    $('#txtInScanID').val(0);
+                                    $('#txtShipmentDetailID').val(0);
+                                
+                                    $('#txtAWB').focus();
+                                    Swal.fire({
+                                        title: "Data Validation",
+                                        text: "Duplicate AWB No.",
+                                        icon: "error",
+                                        timer: 1000
+                                        //showCancelButton: true,
+                                        //confirmButtonText: "Yes, delete it!"
+                                    });
+                                    //.then(function (result) {
+                                    //    if (result.value) {
+                                    //        $('#txtAWB').focus();
+                                    //        return false;
+                                    //    }
+                                    //});
+                                    //break;
+                                }
+
+                                if (duplicate == false && index == (parseInt(maxrow - 1))) {
+                                    return true;
+                                }
+                                 
+                            }
+                        });
+                        if (duplicate == true) {
+                            return false;
+                        }
+                        else { return true; }
+                    }
+                    else {
+
+                        return true;
+                    }
+                }
+                 function ValidateTotal() {
+                    debugger;
+                    var TotalAmount = 0;
+                    var idtext = 'txtinvoice_';
+                    var amt = 0;
+                    if ($('#Balance').val() == "") {
+                        $('#Balance').val(0);
+                    }
+                    var balance =parseFloat($('#Balance').val());
+
+                        $('[id^=' + idtext + ']').each(function (index, item) {
+                        //  var id = $(item).attr('id').split('_')[1];
+                        if ($(item).val() == "" || $(item).val()==null) {
+                                $(item).val(0);
+                        }
+                        var paidamount = parseFloat($(item).val());
+                        amt = amt + paidamount;
+
+                        if (parseFloat(amt) == 0) {
+                                $('#btnSave').attr('disabled', 'disabled');
+                        }
+
+                            @*if (parseFloat($('#FMoney').val()) == 0) {
+                                $('#FMoney').val(parseFloat(amt).toFixed(@_decimal))
+                            }*@
+                            $('#AllocatedAmount').val(parseFloat(amt).toFixed(@_decimal));
+                            var payingamount = parseFloat($('#FMoney').val());
+                            var allocatedamount = parseFloat($('#AllocatedAmount').val());
+                            var advance = 0;
+                            if (allocatedamount > (payingamount + advance)) {
+                                $('#btnSave').attr('disabled', 'disabled');
+                            }
+                            else if (parseFloat(amt) == 0) {
+                                $('#btnSave').attr('disabled', 'disabled');
+                            }
+                            else {
+                                $('#btnSave').removeAttr('disabled');
+                            }
+
+                            //$('#Balance').val(parseFloat(advance).toFixed(@_decimal));
+
+                        });
+
+                        //var TotalInvoiceAmount = parseFloat($('.TotalInvoiceAmount').val());
+                        //if (TotalAmount > TotalInvoiceAmount) {
+                        //    $('#msg1').show();
+                        //    $('#msg1').text('Sum of Amount cannot be greater than Total Invoice Amount');
+                        //    return false;
+                        //} else {
+                        //    return true;
+                        //}
+                    }
+                // When the document is ready
+
+                $(document).ready(function () {
+                    var startdate = '@Session["FyearFrom"].ToString()';
+                    var enddate = '@Session["FyearTo"].ToString()';
+                    var sd = new Date(startdate.split('-')[1] + '-' + startdate.split('-')[0] + '-' + startdate.split('-')[2]);
+                    var ed = new Date(enddate.split('-')[1] + '-' + enddate.split('-')[0] + '-' + enddate.split('-')[2]);
+                    var datevalid = false;
+                    var dateerror = "";
+
+                    $('#DRRDate').datepicker({
+                        maxDate: ed,
+                        minDate: sd,
+                        dateFormat: 'dd-mm-yy'
+                    });
+                    //$('#txtDeliveredDate').datetimepicker({
+                    //    format: 'DD-MM-YYYY HH:mm'
+                    //});
+                    //$('#txtDeliveredDate').datetimepicker({
+                    //    date: new Date(1434544882775)
+                    //});
+                    //$('#DRSRecPayDate').datepicker({
+                    //    maxDate: ed,
+                    //    minDate: sd,
+                    //    dateFormat: 'dd-mm-yy'
+                    //});
+                  
+
+                });
+
+            </script>

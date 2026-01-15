@@ -1,0 +1,201 @@
+﻿@model IEnumerable<DAL.RecPay>
+
+@{
+    Layout = null;
+    var ismodify = true;
+    var isdelete = true;
+    var isprint = true;
+
+    string path = "/CustomerReciept/CustomerRecieptDetails/0";
+    var customers = ViewBag.AllCustomers as IEnumerable<DAL.CUSTOMER>;
+    var spath = System.Configuration.ConfigurationManager.AppSettings["spath"].ToString();
+
+    if (Convert.ToInt32(Session["UserRoleID"]) > 1)
+    {
+        TrueBooksMVC.Models.SourceMastersModel obj = new TrueBooksMVC.Models.SourceMastersModel();
+        isprint = obj.GetPrintpermission(Convert.ToInt32(Session["UserRoleID"]), path);
+        ismodify = obj.GetModifypermission(Convert.ToInt32(Session["UserRoleID"]), path);
+        isdelete = obj.GetDeletepermission(Convert.ToInt32(Session["UserRoleID"]), path);
+
+    }
+}
+<style>
+    table.dataTable tfoot th {
+        padding-left: 10px !important;
+    }
+
+    table.dataTable thead th {
+        padding-left: 10px !important;
+    }
+</style>
+
+<script type="text/javascript">
+
+    $(document).ready(function () {
+
+        $('#dataTables-example tfoot th:not(:last)').each(function () {
+            var title = $(this).text();
+            $(this).html('<input type="text"  style="width:100%" />');
+        });
+
+
+        var table = $('#dataTables-example').DataTable({ "sPaginationType": "full_numbers" });
+
+        table.columns().every(function () {
+            var that = this;
+
+            $('input', this.footer()).on('keyup change', function () {
+                if (that.search() !== this.value) {
+                    that
+                        .search(this.value)
+                        .draw();
+                }
+            });
+        });
+
+        $(".print").click(function () {
+            var row = $(this).parent("a").parent("td").parent("tr");
+            var id = $(row).find("td").eq(0).find('input[type=hidden]').val();
+              var url = '@spath' + "/Reports/ReceiptVocher.aspx?recpayid=" + id;
+            //var src = "http://localhost:1052/Reports/ReceiptVocher.aspx?recpayid=" + id;
+            window.open(url, "_blank");
+        });
+
+
+    });
+
+
+
+
+</script>
+
+
+
+<div class="box-body">
+    <div class="col-md-12">
+        <div class="col-md-12">
+            <div class="form-group">
+                <div class="row">
+                    <div class="tab-content">
+                        <div class="panel panel-danger">
+                            <div class="panel-body">
+                                <div class="dataTable_wrapper">
+                                    <table class="table table-striped table-bordered table-hover" id="dataTables-example">
+                                        <thead>
+                                            <tr>
+
+                                                <th>Receipt Date</th>
+                                                <th>Receipt Number</th>
+                                                <th>Customer</th>
+                                                <th>Amount</th>
+                                                <th>Currency</th>
+
+                                                <th style="width:120px;">Action</th>
+                                            </tr>
+                                        </thead>
+
+                                        <tfoot>
+                                            <tr>
+
+                                                <th>Receipt Date</th>
+                                                <th>Receipt Number</th>
+                                                <th>Customer</th>
+                                                <th>Amount</th>
+                                                <th>Currency</th>
+
+                                                <th style="width:120px;"></th>
+                                            </tr>
+                                        </tfoot>
+
+
+                                        <tbody>
+
+
+                                            @foreach (var item in Model)
+                                            {
+                                                <tr>
+
+                                                    <td>
+                                                        @TrueBooksMVC.Models.CommonFunctions.GetShortDateFormat(item.RecPayDate)
+
+                                                        @Html.HiddenFor(model => item.RecPayID)
+                                                    </td>
+                                                    <td>@Html.DisplayFor(modelItem => item.DocumentNo)</td>
+                                                    <td class="tdtarget">@customers.Where(d => d.CustomerID == item.CustomerID).FirstOrDefault().Customer1</td>
+                                                    <td class="tdtarget">@Html.DisplayFor(modelItem => item.FMoney)</td>
+                                                    <td class="tdtarget">@Html.DisplayFor(modelItem => item.Remarks)</td>
+                                                    <td>
+
+                                                        @if (ismodify)
+                                                        {
+                                                            <a href='@Url.Action("CustomerReciept", "CustomerReciept", new { id = item.RecPayID })' data-toggle="tooltip" data-placement="left" title="Click here"><i class="fa fa-pencil"></i></a>
+                                                        }
+                                                        |
+                                                        @if (isdelete)
+                                                        {
+                                                            <a href="#" onclick="DeleteCustomer(cid=@item.RecPayID)"><i class="fa fa-times-circle"></i></a>
+                                                        }
+                                                        |
+                                                        @if (isprint)
+                                                        {
+                                                            <a href="#"><i class="fa fa-print " aria-hidden="true" onclick="funExportToPDF(@item.RecPayID)"></i></a>
+                                                        }
+                                                        |
+                                                        @if (isprint)
+                                                        {
+                                                            <a href="#"><i class="fa fa-print print"></i></a>
+                                                        }
+
+
+                                                    </td>
+                                                </tr>
+
+                                            }
+
+                                        </tbody>
+                                    </table>
+                                    <div id="divPDF" style="display:none">
+                                        <div id="printerDiv"><iframe id="frmPDF"></iframe></div>
+                                    </div>
+                                </div>
+                            </div>
+
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script type="text/javascript">
+      function funExportToPDF(id) {
+          showLoading();
+        $.ajax({
+             url: '@Url.Action("ExportToPDF", "CustomerReciept")',
+
+            type: "GET",
+            data: { recpayid:id},
+                    dataType: "json",
+            success: function (result) {
+                if (result.success == true) {
+                    $('#frmPDF').attr('src', '@Url.Content("~/")' + result.path);
+
+                    setTimeout(function () {
+                        hideLoading();
+                        frame = document.getElementById("frmPDF");
+                        framedoc = frame.contentWindow;
+                        framedoc.focus();
+                        framedoc.print();
+                    }, 1000);
+                } else {
+                    alert(result.message);
+                    hideLoading();
+                }
+            },
+           
+        });
+
+        return false;
+    }
+</script>

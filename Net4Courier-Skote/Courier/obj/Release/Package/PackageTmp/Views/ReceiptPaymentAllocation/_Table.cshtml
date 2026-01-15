@@ -1,0 +1,170 @@
+﻿@model IEnumerable<Net4Courier.Models.RecPay>
+
+@{
+    Layout = null;
+    int i = 0;
+    var _decimal = @Session["Decimal"].ToString();
+    var ismodify = true;
+    var isdelete = true;
+    var isprint = true;
+    string path = "/CustomerInvoice/Index";
+    var spath = "";
+    //var customers = ViewBag.AllCustomers as IEnumerable<Net4Courier.Models.CustomerMaster>;
+
+    if (Convert.ToInt32(Session["UserRoleID"]) > 1)
+    {
+        Net4Courier.Models.SourceMastersModel obj = new Net4Courier.Models.SourceMastersModel();
+        isprint = obj.GetPrintpermission(Convert.ToInt32(Session["UserRoleID"]), path);
+        ismodify = obj.GetModifypermission(Convert.ToInt32(Session["UserRoleID"]), path);
+        isdelete = obj.GetDeletepermission(Convert.ToInt32(Session["UserRoleID"]), path);
+    }
+}
+
+        <script type="text/javascript">
+
+    $(document).ready(function () {
+
+        $('#dataTables-example tfoot th:not(:last)').each(function () {
+            var title = $(this).text();
+            $(this).html('<input type="text"  style="width:100%" />');
+        });
+
+
+        var table = $('#dataTables-example').DataTable({ "sPaginationType": "full_numbers", "order": [[0, "desc"]]  });
+
+        table.columns().every(function () {
+            var that = this;
+
+            $('input', this.footer()).on('keyup change', function () {
+                if (that.search() !== this.value) {
+                    that
+                        .search(this.value)
+                        .draw();
+                }
+            });
+        });
+
+        @*$(".print").click(function () {
+            var row = $(this).parent("a").parent("td").parent("tr");
+            var id = $(row).find("td").eq(0).find('input[type=hidden]').val();
+            var url = '@spath' + "/Reports/ReceiptVocher.aspx?recpayid=" + id;
+
+            //var src = "http://localhost:1052/Reports/ReceiptVocher.aspx?recpayid=" + id;
+            window.open(url, "_blank");
+        });*@
+
+
+    });
+
+
+
+
+        </script>
+        <table class="table table-responsive table-bordered tblfont" id="dataTables-example">
+            <thead>
+                <tr>
+
+                    <th style="width: 10%">Receipt Date</th>
+                    <th>Receipt Number</th>
+                    <th style="width: 25%">Client</th>
+                    <th>Amount</th>
+                    <th>Currency</th>
+                    <th style="width:120px;">Action</th>
+                </tr>
+            </thead>
+            <tfoot>
+                <tr>
+
+                    <th>Receipt Date</th>
+                    <th>Receipt Number</th>
+                    <th>Client</th>
+                    <th class="right_text">Amount</th>
+                    <th>Currency</th>
+                    <th style="width:120px;"></th>
+                </tr>
+            </tfoot>
+
+            <tbody>
+
+
+                @foreach (var item in Model)
+                {
+                    <tr>
+
+                        <td>
+                            @Net4Courier.Models.CommonFunctions.GetShortDateFormat(item.RecPayDate)
+
+                            @Html.HiddenFor(model => item.RecPayID)
+                        </td>
+                        <td>@Html.DisplayFor(modelItem => item.DocumentNo)</td>
+                        <td class="tdtarget">
+                        @*@customers.Where(d => d.CustomerID == item.CustomerID).FirstOrDefault().CustomerName*@
+                        </td>
+                        <td class="tdtarget " style="text-align:right!important">@Html.DisplayFor(modelItem => item.FMoney)</td>
+                        <td class="tdtarget">@Html.DisplayFor(modelItem => item.Remarks)</td>
+
+                        <td>
+
+                            @if (ismodify)
+                            {
+                                <a href='@Url.Action("CustomerTradeReceipt", "CustomerReciept", new { id = item.RecPayID })' data-toggle="tooltip" data-placement="left" title="Click here"><i class="fa fa-pencil"></i></a>
+                            }
+                            |
+                            @if (isdelete)
+                            {
+                                <a href="#" onclick="DeleteCustomer(cid=@item.RecPayID)"><i class="fa fa-times-circle"></i></a>
+                            }
+                            |
+                            @if (isprint)
+                            {
+                                <a href="#"><i class="fa fa-print " aria-hidden="true" onclick="funExportToPDF1(@item.RecPayID)"></i></a>
+                            }
+                            |
+                            @if (isprint)
+                            {
+
+                                <a href="#"><i class=" fa fa-file-pdf-o print" style="color:red"></i></a>
+                            }
+
+
+                        </td>
+                    </tr>
+
+                }
+
+            </tbody>
+        </table>
+        <div id="divPDF" style="display:none">
+            <div id="printerDiv"><iframe id="frmPDF"></iframe></div>
+        </div>
+        <script type="text/javascript">
+      function funExportToPDF1(id) {
+
+        $.ajax({
+             url: '@Url.Action("ReceiptReport", "CustomerReceipt")',
+
+            type: "GET",
+            data: { id:id},
+                    dataType: "json",
+            success: function (result) {
+                if (result.success == true) {
+                    $('#frmPDF').attr('src', '@Url.Content("~/")' + result.path);
+
+                    setTimeout(function () {
+                        //hideLoading();
+                        
+                        frame = document.getElementById("frmPDF");
+                        framedoc = frame.contentWindow;
+                        framedoc.focus();
+                        framedoc.print();
+                    }, 1000);
+                } else {
+                    alert(result.message);
+                    //hideLoading();
+                }
+            },
+        });
+
+        return false;
+    }
+        </script>

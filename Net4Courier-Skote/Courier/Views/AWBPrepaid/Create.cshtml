@@ -1,0 +1,704 @@
+﻿@model Net4Courier.Models.AWBPrepaidVM
+@{
+ 
+    ViewBag.pTitle = "Customer AWB";
+    ViewBag.pageTitle = "Customer AWB";
+    Layout = "~/Views/Shared/_Layout.cshtml";
+    var spath = "/AWBPrepaid/Index/0";// System.Configuration.ConfigurationManager.AppSettings["spath"].ToString();
+    var _decimal = @Session["Decimal"].ToString();
+}
+
+<style>
+    #tbl1 tr {
+        height: 32px;
+    }
+
+    /*#tbl1 tr:first-of-type {
+            background: #35b8eb;
+            color: #fff;
+        }*/
+
+
+
+    .modal-dialog {
+        width: 800px;
+    }
+
+    #staffmodelbody {
+        max-height: calc(100vh - 200px);
+        overflow-y: auto;
+    }
+
+    #popup h5 {
+        border: 2px solid #35b8eb;
+        min-width: 150px;
+        height: 40px;
+        border-radius: 5px;
+        line-height: 40px;
+        color: #35b8eb;
+        text-align: center;
+        font-weight: bold;
+    }
+</style>
+ 
+<script type="text/javascript">
+      function generateawb () {
+        debugger;
+        if ($('#AWBNOFrom').val() == 0 || $('#AWBNOFrom').val() == '') {
+            //alert('Enter Starting AWB No.!');
+            return;
+        }
+        if ($('#AWBNOTo').val() == 0 || $('#AWBNOTo').val() == '') {
+           // alert('Enter Ending AWB No.!');
+            return;
+        }
+
+        if ($('#NoOfAWBs').val() == 0 || $('#NoOfAWBs').val() == '') {
+           // alert('Enter No of AWBs!');
+            return;
+        }
+
+        var startno = $('#AWBNOFrom').val();
+        var endno = $('#AWBNOTo').val();
+        $.ajax({
+            type: "Get",
+            url: '/AWBBookIssue/GetAWBBook/',
+            data: {
+                'StartAWB': startno, 'EndAWB': endno, AWBBookIssueId: 0, PrepaidAWBID: $('#PrepaidAWBID').val()
+            },
+            success: function (response) {
+                if (response.status == "ok") {
+                    var data = response.awbs;
+                    $('#tbl1').html('');
+                    //$scope.Orders = data;
+                    var amt = 0;
+                    for (var i = 1; i <= data.length; i++) {
+                        debugger;
+
+                        $('#tbl1').append('<tr>' +
+                            '<td>' + i + '</td>' +
+                            '<td>' + data[i - 1].AWBNo + '</td>' +
+                            '</tr>');
+                    }
+                }
+                else {
+                    Swal.fire('Data Validation',response.message, "error");
+                    $('#tbl1').html('');
+                }
+            }
+        });
+
+    }
+
+    function isNumberKey1(evt) {
+        var charCode = (evt.which) ? evt.which : evt.keyCode;
+        //if (e.which != 8 && e.which != 0 && (e.which < 48 || e.which > 57)) {
+        if (charCode != 8 && charCode != 0 && (charCode < 48 || charCode > 57))
+            return false;
+
+        return true;
+    }
+    function checkawbstartend() {
+        if ($('#NoOfAWBs').val() == '') {
+            $('#NoOfAWBs').val(0);
+        }
+
+        var awbcount = $('#NoOfAWBs').val();
+        if ($('#AWBNOFrom').val() == '')
+            $('#AWBNOFrom').val(0);
+        var startno = $('#AWBNOFrom').val();
+        $('#AWBNOTo').val(parseInt(startno) + parseInt(awbcount)-1);
+
+         var charge = parseFloat($('#CourierCharge').val()).toFixed(@_decimal)
+                var awbcount = $('#NoOfAWBs').val();
+                var totalcharge = parseInt(awbcount) * parseFloat(charge);
+        $('#Total').val(parseFloat(totalcharge).toFixed(@_decimal));
+        generateawb();
+    }
+    $(document).ready(function () {
+
+        $(":text").css({ "border-radius": "5px" });
+        $("select").css({ "border-radius": "5px" });
+        $("textarea").css({ "border-radius": "5px" });
+
+        //$("#FMoney").attr("readonly", false);
+        $("#PaymentMode").focus();
+
+        if ('@Model.PrepaidAWBID' == 0) {
+            $("#divCash").css({ "display": "none" });
+            $("#divBank").css({ "display": "block" });
+
+            //$("#CurrencyId").val('@Session["BaseCurrencyId"]');
+
+
+        } else {
+            $('#btnsearch').attr('disabled', 'disabled');
+            if ('@Model.ChequeNo' == null || '@Model.ChequeNo' == '') {
+                $("#divCash").css({ "display": "block" });
+                $("#divBank").css({ "display": "none" });
+                $("#ChequeNo").attr("readonly","readonly")
+                $("#ChequeDate").attr("readonly","readonly")
+                $("#PaymentMode").val(2);
+
+            } else {
+                $("#divCash").css({ "display": "none" });
+                $("#divBank").css({ "display": "block" });
+
+            }
+        }
+        $('#DestinationLocation').autocomplete({
+            source: function (request, response) {
+                $.ajax({
+                    url: "@Url.Action("GetCountryList", "ZoneChart")",
+                    data: { SearchText: request.term },
+                    dataType: "json",
+                    type: "GET",
+                    success: function (data) {
+                        response($.map(data, function (val, item) {
+                            return {
+                                label: val.CountryName,
+                                value: val.CountryName
+                            }
+                        }))
+                    }
+                });
+            },
+            minLength: 1,
+            autoFocus: false,
+            select: function (event, ui) {
+                event.preventDefault();
+                $('#DestinationLocation').val(ui.item.label);
+                return false;
+            },
+            focus: function (event, ui) {
+                $('#DestinationLocation').val(ui.item.label);
+
+                return false;
+            }
+        });
+
+        $("#CourierCharge").blur(function () {
+            var wt = $(this).val();
+            if (wt == null || wt == "") {
+                $("#CourierCharge").val("0.00");
+            } else {
+                $("#CourierCharge").val(parseFloat(wt).toFixed(@_decimal));
+
+            }
+        });
+        $("#CourierCharge").change(function () {
+                var charge = parseFloat($(this).val()).toFixed(@_decimal)
+                var awbcount = $('#NoOfAWBs').val();
+                var totalcharge = parseInt(awbcount) * parseFloat(charge);
+                $('#Total').val(parseFloat(totalcharge).toFixed(@_decimal));
+        })
+
+        $("#CustomerName").autocomplete({
+            source: function (request, response) {
+                $.ajax({
+                    url: '/AWBPrepaid/GetCustomerName',
+                    datatype: "json",
+                    data: {
+                        term: request.term
+                    },
+                    success: function (data) {
+                        response($.map(data, function (val, item) {
+                            return {
+                                label: val.CustomerName,
+                                value: val.CustomerName,
+                                CustomerId: val.CustomerID,
+                                type: val.CustomerType,
+                                Location:val.LocationName
+                            }
+                        }))
+                    }
+                })
+            },
+            minLength: 1,
+            autoFocus: false,
+            focus: function (event, ui) {
+                $("#CustomerName").val(ui.item.value);
+                $('#CustomerID').val(ui.item.CustomerId);
+                $('#OriginLocation').val(ui.item.Location);
+            },
+            select: function (e, i) {
+                e.preventDefault();
+                $("#CustomerName").val(i.item.label);
+                $('#CustomerID').val(i.item.CustomerId);
+                $('#OriginLocation').val(i.item.Location);
+            },
+
+        });
+     //$('#AWBNOFrom').change(function () {
+     //       var awbcount = $('#NoOfAWBs').val();
+     //       var startno = $('#AWBNOFrom').val();
+     //       $('#AWBNOTo').val(parseInt(startno) +parseInt(awbcount));
+     //   })
+
+
+
+        if ($("#PrepaidAWBID").val() > 0) {
+            if ($("#StatusEntry").val() == "BK") {
+                $("#Bank").prop('checked', true);
+                $("#Cash").prop('checked', false);
+                $("#Bank").trigger("click");
+            }
+            else if ($("#StatusEntry").val() == "CS") {
+                $("#Cash").prop('checked', true);
+                $("#Bank").prop('checked', false);
+                $("#Cash").trigger("click");
+            }
+            PaymentModeChange();
+        }
+
+        $('#btnSave').click(function (e) {
+            debugger;
+            var result = false;
+            var rowcount = $('#tbl1 > tr').length;
+
+            if (rowcount == 0) {
+                Swal.fire('Data Validation','Please Enter Required Values to Generate AWBNo!','error');
+            }
+            else {
+                result = true;
+            }
+
+            if (result == false) {
+                e.preventDefault();
+            }
+        });
+
+        //$('#btnsave').click(function () {
+        //    debugger;
+        //    var rowcount = $('#tbl1 > tr').length();
+        //    alert(rowcount);
+        //    if (rowcount == 0) {
+        //        alert('Generate AWBNo!');
+        //        return false;
+        //    }
+        //})
+
+    });
+</script>
+
+<script>
+    function Comma(Num) { //function to add commas to textboxes
+        Num += '';
+        Num = Num.replace(',', ''); Num = Num.replace(',', ''); Num = Num.replace(',', '');
+        Num = Num.replace(',', ''); Num = Num.replace(',', ''); Num = Num.replace(',', '');
+        x = Num.split('.');
+        x1 = x[0];
+        x2 = x.length > 1 ? '.' + x[1] : '';
+        var rgx = /(\d+)(\d{3})/;
+        while (rgx.test(x1))
+            x1 = x1.replace(rgx, '$1' + ',' + '$2');
+        $(".aeamt").val(x1 + x2);
+    }
+</script>
+
+<script type="text/javascript">
+    function ChangePrepaidAWB() {
+        var prepaidawb = $('#Prepaid').prop('checked');
+        if (prepaidawb == true) {
+            //$('#divPrepaidAWB').removeClass('hide');
+            $("#PaymentMode").removeAttr('disabled');
+            $("#ChequeBank").removeAttr('readonly');
+            $('#CashBank').removeAttr('readonly');
+            PaymentModeChange();
+        }
+        else {
+            
+            $("#ChequeNo").removeAttr('required');
+            $("#ChequeDate").removeAttr('required');
+            $('#CashBank').removeAttr('required');
+            $('#ChequeBank').removeAttr('required');
+            $("#ChequeBank").attr('readonly', 'readonly');
+            $("#ChequeNo").attr('readonly', 'readonly');
+            $("#ChequeDate").attr('readonly', 'readonly')
+            $('#CashBank').attr('readonly', 'readonly');
+            $("#PaymentMode").attr('disabled','disabled');
+        }
+    }
+    function PaymentModeChange() {
+        var val = $("#PaymentMode").val();
+        if (val == 1) {
+            $("#divCash").css({ "display": "none" });
+            $("#divBank").css({ "display": "block" });
+            $("#ChequeNo").attr('required', 'required');
+            $("#ChequeDate").attr('required', 'required');
+            $("#ChequeNo").removeAttr('readonly');
+            $("#ChequeDate").removeAttr('readonly');
+            $('#CashBank').removeAttr('required');
+            $('#ChequeBank').attr('required', 'required');
+        } else {
+            $("#divBank").css({ "display": "none" });
+            $("#divCash").css({ "display": "block" });
+            $("#ChequeNo").removeAttr('required');
+            $("#ChequeDate").removeAttr('required');
+            $("#ChequeNo").attr('readonly', 'readonly');
+            $("#ChequeDate").attr('readonly', 'readonly')
+            $('#CashBank').attr('required', 'required');
+
+            $('#ChequeBank').removeAttr('required')
+        }
+
+    }
+</script>
+
+
+
+
+    @using (Html.BeginForm("Create", "AWBPrepaid", FormMethod.Post, new { @id = "FormReceipt" }))
+    {
+        @Html.ValidationSummary(true)
+
+        @Html.HiddenFor(model => model.PrepaidAWBID)
+        @Html.HiddenFor(model => model.StatusEntry)
+        @Html.HiddenFor(model => model.AcjournalID)
+        <div class="row">
+            <div class="col-md-6">
+<div class="card">
+<div class="card-body">
+    <div class="row">
+
+        <div class="col-md-3">
+            <div class="mb-2">
+                <label class="col-form-label">
+                    Document No.
+                </label>
+                <div class="checkboxdesign no-padding text-right" style="float:right">
+                    @Html.CheckBox("Prepaid", new { @name = "Prepaid", @onchange = "ChangePrepaidAWB()" }) &nbsp
+                    <label class="col-form-label" style="color:#07a7e3!important;padding-left: 0!important">Prepaid</label>
+                </div>
+
+
+                @Html.TextBoxFor(model => model.Documentno, new { @class = "form-control", @readonly = "readonly" })
+
+            </div>
+        </div>
+        <div class="col-sm-3">
+            <div class="mb-2">
+                <label class="col-form-label">Document Date</label>
+                <div class="docs-datepicker">
+                    <div class="input-group">
+                        <input type="text" class="form-control docs-date" name="TransDate" id="TransDate" value="@Model.TransDate.ToShortDateString()"
+                               placeholder="Pick a From Date" autocomplete="off">
+                        <button type="button"
+                                class="btn btn-secondary docs-datepicker-trigger"
+                                disabled>
+                            <i class="mdi mdi-calendar" aria-hidden="true"></i>
+                        </button>
+                    </div>
+                    <div class="docs-datepicker-container"></div>
+                </div>
+            </div>
+        </div>
+
+
+
+        <div class="col-md-6">
+            <div class="mb-2">
+                <label class="col-form-label required">Customer</label>
+                @Html.TextBoxFor(model => model.CustomerName, new { @class = "form-select", @required = "true" })
+                @Html.HiddenFor(model => Model.CustomerID)
+            </div>
+        </div>
+
+        <div class="col-md-3">
+            <div class="mb-2">
+                <label class="col-form-label">Origin</label>
+                @Html.TextBoxFor(model => model.OriginLocation, new { @class = "form-control" })
+                @Html.HiddenFor(model => Model.OriginPlaceID)
+                @Html.HiddenFor(model => Model.PickupSubLocality)
+            </div>
+        </div>
+        <div class="col-md-6">
+            <div class="mb-2">
+                <label class="col-form-label">Consignee </label>
+                @Html.TextBoxFor(model => model.Consignee, new { @class = "form-control" })               
+                
+            </div>
+        </div>
+        <div class="col-md-3 col-sm-3">
+            <div class="mb-2">
+                <label class="col-form-label">Destination </label>
+                @Html.TextBoxFor(model => model.DestinationLocation, new { @class = "form-control" })
+                @Html.HiddenFor(model => Model.DestinationPlaceID)
+                @Html.HiddenFor(model => Model.DeliverySubLocality)
+            </div>
+        </div>
+
+        <div class="col-xs-12 col-sm-3">
+            <div class="mb-2">
+                <label class="col-form-label required">No. of AWBs</label>
+                @Html.TextBoxFor(model => model.NoOfAWBs, new { @class = "form-control", @onchange = "checkawbstartend()" })
+            </div>
+        </div>
+
+        <div class="col-xs-12 col-sm-3">
+            <div class="mb-2">
+                <label class="col-form-label">Courier Charge</label>
+                @Html.TextBoxFor(model => model.CourierCharge, new { @class = "form-control aamt textright TotalInvoiceAmount", required = "required" })
+            </div>
+        </div>
+
+
+
+        <div class="col-xs-12 col-sm-3">
+            <div class="mb-2">
+                <label class=" required col-form-label">Start AWB Number</label>
+                @Html.TextBoxFor(model => model.AWBNOFrom, new { @class = "form-control textright0", required = "required", @onchange = "checkawbstartend()" })
+            </div>
+        </div>
+
+        <div class="col-xs-12 col-sm-3">
+            <div class="mb-2">
+                <label class=" required col-form-label">End AWB Number</label>
+                @Html.TextBoxFor(model => model.AWBNOTo, new { @class = "form-control textright0", required = "required", @readonly = "true" })
+            </div>
+        </div>
+
+
+    </div>
+                
+
+                <div class="row" id="divPrepaidAWB">
+
+                    <div class="col-xs-12 col-sm-3">
+                        <div class="mb-2">
+                            <label class="col-form-label">Payment Mode</label>
+                            <select id="PaymentMode" class="form-select" onchange="PaymentModeChange()" disabled>
+                                <option value="1">Bank</option>
+                                <option value="2">Cash</option>
+
+                            </select>
+                        </div>
+                    </div>
+
+                    <div class="col-xs-12 col-sm-3">
+                        <div class="mb-2">
+                            <div id="divCash">
+                                <label class=" required col-form-label">Cash</label>
+                                @Html.DropDownListFor(model => model.CashBank, new SelectList(@ViewBag.achead, "AcHeadID", "AcHead"), "Select", new { @class = "form-select", @readonly = "readonly" })
+
+                            </div>
+
+                            <div id="divBank">
+                                <div class="form-title">
+                                    <label class=" required col-form-label">Cash/Bank Acc</label>
+                                </div>
+                                <div class="form-field">
+                                    @Html.DropDownListFor(model => model.ChequeBank, new SelectList(@ViewBag.acheadbank, "AcHeadID", "AcHead"), "Select", new { @class = "form-select", @readonly = "readonly" })
+                                </div>
+                            </div>
+                        </div>
+
+                    </div>
+
+                    <div class="col-xs-12 col-sm-3">
+                        <div class="mb-2">
+                            <label class=" required col-form-label">Cheque Number.</label>
+                            @Html.TextBoxFor(model => model.ChequeNo, new { @class = "form-control text-right", @readonly = "readonly" })
+
+                        </div>
+                    </div>
+                    <div class="col-xs-12 col-sm-3">
+                        <div class="mb-2">
+                            <label class=" required col-form-label">Cheque Date</label>
+
+                            @Html.TextBoxFor(model => model.ChequeDate, new { @class = "form-control text-right", @readonly = "readonly" })
+                        </div>
+                    </div>
+
+
+
+                    <div class="col-xs-12 col-sm-3">
+                        <div class="mb-2">
+                            <label class="col-form-label"> Total Prepaid Amt</label>
+                            @Html.TextBoxFor(model => model.Total, new { @class = "form-control txttarget", @readonly = "readonly" })
+                        </div>
+                    </div>
+
+                    <div class="col-sm-9">
+                        <div class="mb-2">
+                            <label class="col-form-label"> Remarks</label>
+                            @Html.TextBoxFor(model => model.Reference, new { @class = "form-control" })
+                        </div>
+                    </div>
+                </div>
+                    <div class="row">
+                        <div class="col-md-6 mt-2">
+                            @if (Model.PrepaidAWBID > 0)
+                            {
+                                <a href='@Url.Action("AWBPrintReport", "AWBPrepaid", new { id = @Model.PrepaidAWBID })' target="_blank" class="btn btn-warning">Print</a>
+                            }
+                        </div>
+
+
+                        <div class="col-md-6 mt-2 text-md-end">
+                            @if (Model.PrepaidAWBID > 0)
+                            {
+                                <input type="submit" class="btn btn-success" id="btnSave" value="Update" />
+                            }
+                            else
+                            {
+                                <input type="submit" class="btn btn-success" value="Save" id="btnSave" name="Command" />
+                            }
+                            <a href='@Url.Action("Index", "AWBPrepaid", new { id = 0 })' class="btn btn-secondary">Cancel</a>
+                        </div>
+                    </div>
+            
+
+
+
+                </div>
+
+
+</div>
+</div>
+
+            <div class="col-md-6">
+
+                      <div class="card">
+                    <div class="card-body">
+                        
+                                 <table class="table table-bordered mb-0" id="datatable" style="width:100%">
+                    <thead class="table-light">
+                                        <tr>
+                                            <th>
+                                                S.No
+                                            </th>
+                                            <th>AWB No.</th>
+                                            <th>Consignor</th>
+                                           
+                                        </tr>
+                                    </thead>
+                                    <tbody id="tbl1">
+                                        @if (Model.PrepaidAWBID > 0)
+                                        {
+                                    for (int i = 1; i <= Model.Details.Count; i++)
+                                    {
+
+                                                <tr>
+                                                    <td>
+                                                        @i
+                                                    </td>
+                                                    <td>
+                                                        @Model.Details[i - 1].AWBNo
+                                                    </td>
+                                                    <td>
+                                                        @Model.Details[i-1].Consignor
+                                                    </td>
+                                                </tr>
+
+                                            }
+                                }
+                                    </tbody>
+
+                                </table>
+
+
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+            
+
+            <div class="col-xs-12 col-sm-1 pull-left" style="padding-right:5px; display: none">
+                <button class="btn btn-primary small_btn" type="button" id="btnsearch"><i class="fa fa-refresh" aria-hidden="true"></i> </button>
+            </div>
+
+      
+
+
+
+
+    }
+
+
+
+<script type="text/javascript">
+     function setTwoNumberDecimal(obj) {
+
+         if ($(obj).val() == '') {
+             $(obj).val(0);
+         }
+         $(obj).val(parseFloat($(obj).val()).toFixed(@_decimal));
+
+    }
+     function ValidateTotal() {
+                                    debugger;
+                                    var TotalAmount = 0;
+                                    var idtext = 'txtinvoice_';
+                                    var amt = 0;
+                                    if ($('#Balance').val() == "") {
+            $('#Balance').val(0);
+                                    }
+                                    var balance =parseFloat($('#Balance').val());
+
+            $('[id^=' + idtext + ']').each(function (index, item) {
+                                        //  var id = $(item).attr('id').split('_')[1];
+                                        if ($(item).val() == "" || $(item).val()==null) {
+                    $(item).val(0);
+                                        }
+                                        var paidamount = parseFloat($(item).val());
+                                        amt = amt + paidamount;
+
+                                        if (parseFloat(amt) == 0) {
+                    $('#btnsave').attr('disabled', 'disabled');
+                                        }
+
+                @*if (parseFloat($('#FMoney').val()) == 0) {
+                    $('#FMoney').val(parseFloat(amt).toFixed(@_decimal))
+                }*@
+                $('#AllocatedAmount').val(parseFloat(amt).toFixed(@_decimal));
+                var payingamount = parseFloat($('#FMoney').val());
+                var allocatedamount = parseFloat($('#AllocatedAmount').val());
+                var advance = 0;
+                if (allocatedamount > (payingamount + advance)) {
+                    $('#btnsave').attr('disabled', 'disabled');
+                }
+                else if (parseFloat(amt) == 0) {
+                    $('#btnsave').attr('disabled', 'disabled');
+                }
+                else {
+                    $('#btnsave').removeAttr('disabled');
+                }
+
+                //$('#Balance').val(parseFloat(advance).toFixed(@_decimal));
+
+            });
+
+            //var TotalInvoiceAmount = parseFloat($('.TotalInvoiceAmount').val());
+            //if (TotalAmount > TotalInvoiceAmount) {
+            //    $('#msg1').show();
+            //    $('#msg1').text('Sum of Amount cannot be greater than Total Invoice Amount');
+            //    return false;
+            //} else {
+            //    return true;
+            //}
+        }
+    // When the document is ready
+
+    $(document).ready(function () {
+        var startdate = '@Session["FyearFrom"].ToString()';
+        var enddate = '@Session["FyearTo"].ToString()';
+        var sd = new Date(startdate.split('-')[1] + '-' + startdate.split('-')[0] + '-' + startdate.split('-')[2]);
+        var ed = new Date(enddate.split('-')[1] + '-' + enddate.split('-')[0] + '-' + enddate.split('-')[2]);
+        $('#TransDate').datepicker({
+            dateFormat: 'dd-mm-yy',
+            minDate: sd,
+            maxDate: ed
+        });
+        $('#ChequeDate').datepicker({            
+            dateFormat: 'dd-mm-yy'
+        });
+
+        setTwoNumberDecimal($('#CourierCharge'));
+        setTwoNumberDecimal($('#Total'));
+
+    });
+
+</script>
+ 

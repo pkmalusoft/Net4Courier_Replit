@@ -1,0 +1,2476 @@
+﻿@model Net4Courier.Models.AWBBatchVM
+@{
+
+    Layout = "~/Views/Shared/_Layout.cshtml";
+    var spath = "/DRSReceipt/Index/0";// System.Configuration.ConfigurationManager.AppSettings["spath"].ToString();
+    var _decimal = @Session["Decimal"].ToString();
+}
+<link href="/Content/Multiselect/bootstrap-multiselect.css" rel="stylesheet" />
+<script src="/Content/Multiselect/bootstrap-multiselect.js"></script>
+<style>
+    #movementid + .btn-group button, #movementid + .btn-group {
+        display: block;
+        width: 100%;
+    }
+    body .ratelabel {
+        color: #41bd06 !important;
+        font-size: 16px;
+        font-weight: 400;
+        margin-bottom: 10px;
+    }
+</style>
+<script src="~/Content/NewCSS/plugins/jQuery/moment.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/bootstrap-datetimepicker/4.17.43/js/bootstrap-datetimepicker.min.js"></script>
+
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap-datetimepicker/4.17.43/css/bootstrap-datetimepicker.min.css" />
+<style type="text/css">
+
+    .searchMc {
+        border: 2px solid #07a7e3;
+        position: relative;
+        padding: 30px 10px;
+        margin: 20px 0;
+    }
+
+        .searchMc h4 {
+            padding: 0 30px;
+            position: ABSOLUTE;
+            top: -21px;
+            display: inline-block;
+            left: 22px;
+            background: #f8fbff;
+            text-align: center;
+        }
+
+    .show-error {
+        color: red;
+    }
+
+    .show-green {
+        color: blue;
+        font-size: 16px;
+        font-weight: 700;
+    }
+
+    .btnwidth {
+        min-width: 100px;
+        width: auto;
+    }
+
+    .multiselect-container {
+        margin-top: 0 !important;
+    }
+    body .hyperlink {
+    color: #07a7e3!important;
+}
+
+    .searchMc .checkboxdesign {
+        align-items: flex-start;
+    }
+
+    .multiselect.dropdown-toggle {
+        display: block;
+        width: 100%;
+        float: none;
+    }
+    .scrolling_list th{
+        position: sticky;
+        top: 0;
+        background: #07a7e3;
+    }
+    .multiselect-native-select .btn-group {
+        display: block;
+    }
+</style>
+<script type="text/javascript">
+    var pickuplocation, deliverylocation;
+
+    var componentForm = {
+        street_number: 'short_name',
+        route: 'long_name',
+        locality: 'long_name',
+        administrative_area_level_1: 'short_name',
+        country: 'long_name',
+        postal_code: 'short_name'
+    };
+
+    function initAutocomplete() {
+        // Create the autocomplete object, restricting the search predictions to
+        // geographical location types.
+        pickuplocation = new google.maps.places.Autocomplete(
+            document.getElementById('PickUpLocation'));
+        // When the user selects an address from the drop-down, populate the
+        // address fields in the form.
+        pickuplocation.addListener('place_changed', fillPickupLocation);
+
+        deliverylocation = new google.maps.places.Autocomplete(
+            document.getElementById('DeliveryLocation'), { types: [] });
+
+        deliverylocation.addListener('place_changed', fillDeliveryLocation);
+
+    }
+
+    function fillPickupLocation() {
+
+        // Get the place details from the autocomplete object.
+        var place = pickuplocation.getPlace();
+        var postcode = '';
+        //GetEventVenuesList
+        $.ajax({
+            type: "GET",
+            url: "/ZoneChart/GetEventVenuesList",
+            datatype: "Json",
+            data: { SearchText: $('#PickUpLocation').val() },
+            success: function (response) {
+
+                console.log(response);
+                $('#OriginPlaceID').val(response[0].place_id);
+            }
+        });
+
+        $.each(place.address_components, function (index, component) {
+            var types = component.types;
+            console.log(types);
+            $.each(types, function (index, type) {
+                if (type == 'postal_code') {
+                    postcode = component.long_name;
+                }
+                else if (type == 'sublocality' || type == 'sublocality_level_1') {
+                    $('#PickupSubLocality').val(component.long_name);
+                }
+            });
+        });
+
+    }
+
+    function fillDeliveryLocation() {
+
+        // Get the place details from the autocomplete object.
+        var place = deliverylocation.getPlace();
+        var postcode = '';
+        //GetEventVenuesList
+        $.ajax({
+            type: "GET",
+            url: "/ZoneChart/GetEventVenuesList",
+            datatype: "Json",
+            data: { SearchText: $('#DeliveryLocation').val() },
+            success: function (response) {
+
+                console.log(response);
+                $('#DestinationPlaceID').val(response[0].place_id);
+            }
+        });
+
+        $.each(place.address_components, function (index, component) {
+            var types = component.types;
+            console.log(types);
+            $.each(types, function (index, type) {
+                if (type == 'postal_code') {
+                    postcode = component.long_name;
+                }
+                else if (type == 'sublocality' || type == 'sublocality_level_1') {
+                    $('#DeliverySubLocality').val(component.long_name);
+                }
+            });
+        });
+
+    }
+
+
+</script>
+<script>
+    function GetCustomerRateDetail(id) {
+        $.ajax({
+            url: '/AWBBatch/GetCustomerRateDetail', //'/AWB/GetConsigneeName',
+            datatype: "json",
+            data: {
+                id: id
+            },
+            success: function (response) {
+                $('#CustomerRateType').val(response);
+            }
+            });
+    }
+
+    function GetFAgentName(id) {
+        $.ajax({
+            url: '/AWBBatch/GetFAgentName', //'/AWB/GetConsigneeName',
+            datatype: "json",
+            data: {
+                id: id
+            },
+            success: function (response) {
+                $('#FAgentName').val(response);
+            }
+        });
+    }
+    function showshipperaddress() {
+            var fullform = $('form#FormReceipt').serialize();
+
+                        $.ajax({
+                            type: 'POST',
+                            url: '@Url.Action("ShowConsignorAddres", "AWBBatch")',
+                            datatype: "html",
+                            data: {
+                                ship: fullform
+                            },
+                            success: function (data) {
+                                $("#listContainer").html(data);
+                                $('#shipperpopup').modal('show');
+                                var Shipper = $('#Shipper').val();
+                                var ConsignorContact = $("#ConsignorContact").val();
+                                var ConsignorAddress1 = $("#ConsignorAddress1_Building").val();
+                                var ConsignorAddress2 = $("#ConsignorAddress2_Street").val();
+                                var ConsignorAddress3 = $("#ConsignorAddress3_PinCode").val();
+                                var ConsignorPhone = $("#ConsignorPhone").val();
+                                var ConsignorCountryName = $("#ConsignorCountryName").val();
+                                var ConsignorCityName = $("#ConsignorCityName").val();
+                                var ConsignorLocationName = $("#ConsignorLocationName").val();
+                                var ConsignorMobileNo = $('#ConsignorMobileNo').val();
+                                $('#Shipper1').val(Shipper);
+                                $('#ConsignorContact1').val(ConsignorContact);
+                                $('#ConsignorAddress1_1').val(ConsignorAddress1);
+                                $('#ConsignorAddress2_1').val(ConsignorAddress2);
+                                $('#ConsignorAddress3_1').val(ConsignorAddress3);
+                                $('#ConsignorPhone1').val(ConsignorPhone);
+                                $('#ConsignorCountryName1').val(ConsignorCountryName);
+                                $('#ConsignorCityName1').val(ConsignorCityName);
+                                $('#ConsignorLocationName1').val(ConsignorLocationName);
+                                $('#ConsignorMobileNo1').val(ConsignorMobileNo);
+                                setTimeout(function () {
+                                    $('#Shipper1').focus();
+                                },300)
+
+
+                            }
+                        });
+
+
+
+
+        }
+        function saveshipperaddress() {
+            var ConsignorContact = $("#ConsignorContact1").val();
+            var ConsignorAddress1 = $("#ConsignorAddress1_1").val();
+            var ConsignorAddress2 = $("#ConsignorAddress2_1").val();
+            var ConsignorAddress3 = $("#ConsignorAddress3_1").val();
+            var ConsignorPhone = $("#ConsignorPhone1").val();
+            var ConsignorCountryName = $("#ConsignorCountryName1").val();
+            var ConsignorCityName = $("#ConsignorCityName1").val();
+            var ConsignorLocationName = $("#ConsignorLocationName1").val();
+            var ConsignorMobileNo = $('#ConsignorMobileNo1').val();
+            var Shipper = $('#Shipper1').val();
+            $('#Shipper').val(Shipper);
+            $('#ConsignorContact').val(ConsignorContact);
+            $("#ConsignorAddress1_Building").val(ConsignorAddress1);
+            $("#ConsignorAddress2_Street").val(ConsignorAddress2);
+            $("#ConsignorAddress3_PinCode").val(ConsignorAddress3);
+            $('#ConsignorPhone').val(ConsignorPhone);
+            $('#ConsignorCountryName').val(ConsignorCountryName);
+            $('#ConsignorCityName').val(ConsignorCityName);
+            $('#ConsignorLocationName').val(ConsignorLocationName);
+            $('#ConsignorMobileNo').val(ConsignorMobileNo);
+            $('#PickUpLocation').val(ConsignorLocationName);
+            $('#OriginCountry').val(ConsignorCountryName);
+            $('#OriginCity').val(ConsignorCityName);
+            $('#shipperpopup').modal('hide');
+        }
+    function showreceiveraddress() {
+        var fullform = $('form#FormReceipt').serialize();
+
+        $.ajax({
+            type: 'POST',
+            url: '@Url.Action("ShowConsigneeAddres", "AWBBatch")',
+            datatype: "html",
+            data: {
+                ship: fullform
+            },
+            success: function (data) {
+                $("#listcontainer1").html(data);
+                $('#receiverpopup').modal('show');
+                var Receiver = $('#Consignee').val();
+                var ConsigneeContact = $("#ConsigneeContact").val();
+                var ConsigneeAddress1 = $("#ConsigneeAddress1_Building").val();
+                var ConsigneeAddress2 = $("#ConsigneeAddress2_Street").val()
+                var ConsigneeAddress3 = $("#ConsigneeAddress3_PinCode").val();
+                var ConsigneePhone = $("#ConsigneePhone").val();
+                var ConsigneeMobile = $("#ConsigneeMobileNo").val();
+                var ConsigneeCountryName = $("#ConsigneeCountryName").val();
+                var ConsigneeCityName = $("#ConsigneeCityName").val();
+                var ConsigneeLocationName = $("#ConsigneeLocationName").val();
+                $('#Consignee1').val(Receiver);
+                $('#ConsigneeContact1').val(ConsigneeContact);
+                $('#ConsigneeAddress1_1').val(ConsigneeAddress1);
+                $('#ConsigneeAddress2_1').val(ConsigneeAddress2);
+                $('#ConsigneeAddress3_1').val(ConsigneeAddress3);
+                $('#ConsigneePhone1').val(ConsigneePhone);
+                $('#ConsigneeCountryName1').val(ConsigneeCountryName);
+                $('#ConsigneeCityName1').val(ConsigneeCityName);
+                $('#ConsigneeLocationName1').val(ConsigneeLocationName);
+                $("#ConsigneeMobileNo1").val(ConsigneeMobile);
+                setTimeout(function () {
+                    $('#Consignee1').focus();
+                }, 300)
+
+            }
+
+        });
+        }
+        function savereceiveraddress() {
+            // var Receiver = $('#hdnConsignee1').val();
+            var ConsigneeContact = $('#ConsigneeContact1').val();
+            var ConsigneeAddress1 = $("#ConsigneeAddress1_1").val();
+            var ConsigneeAddress2 = $("#ConsigneeAddress2_1").val()
+            var ConsigneeAddress3 = $("#ConsigneeAddress3_1").val();
+            var ConsigneePhone = $("#ConsigneePhone1").val();
+            var ConsigneeCountryName = $("#ConsigneeCountryName1").val();
+            var ConsigneeCityName = $("#ConsigneeCityName1").val();
+            var ConsigneeLocationName = $("#ConsigneeLocationName1").val();
+            var ConsigneeMobile = $("#ConsigneeMobileNo1").val();
+            var Receiver = $('#Consignee1').val();
+            $('#Consignee').val(Receiver);
+            $("#ConsigneeContact").val(ConsigneeContact);
+            $("#ConsigneeAddress1_Building").val(ConsigneeAddress1);
+            $("#ConsigneeAddress2_Street").val(ConsigneeAddress2);
+            $("#ConsigneeAddress3_PinCode").val(ConsigneeAddress3);
+            $('#ConsigneePhone').val(ConsigneePhone);
+            $('#ConsigneeCountryName').val(ConsigneeCountryName);
+            $('#ConsigneeCityName').val(ConsigneeCityName);
+            $('#ConsigneeLocationName').val(ConsigneeLocationName);
+            $("#ConsigneeMobileNo").val(ConsigneeMobile);
+            $('#receiverpopup').modal('hide');
+        }
+    function editawb(obj, i) {
+        $('#hdnEditRow').val(i);
+        var InscanID = $('#hdnInScanID_' + i).val();
+        var AWBNo = $('#hdnAWBNo_' + i).val();
+        var CustomerID = $('#hdnCustomerID_' + i).val();
+        var CustomerName = $('#hdnCustomerName_' + i).val();
+        var AWBDate = $('#hdnTransactionDate_' + i).val();
+        var Shipper = $('#hdnConsignor_' + i).val();
+        var ConsignorContact = $("#hdnConsignorContact_" + i).val();
+        var ConsignorAddress1 = $("#hdnConsignorAddress1_" + i).val();
+        var ConsignorAddress2 = $("#hdnConsignorAddress2_" + i).val();
+        var ConsignorAddress3 = $("#hdnConsignorAddress3_" + i).val();
+        var ConsignorPhone = $("#hdnConsignorPhone_" + i).val();
+        var ConsignorCountryName = $("#hdnConsignorCountryName_" + i).val();
+        var ConsignorCityName = $("#hdnConsignorCityName_" + i).val();
+        var ConsignorLocationName = $("#hdnConsignorLocationName_" + i).val()
+        var Receiver = $('#hdnConsignee_' + i).val();
+        var ConsigneeContact = $("#hdnConsigneeContact_" + i).val();
+        var ConsigneeAddress1 = $("#hdnConsigneeAddress1_" + i).val();
+        var ConsigneeAddress2 = $("#hdnConsigneeAddress2_" + i).val()
+        var ConsigneeAddress3 = $("#hdnConsigneeAddress3_" + i).val();
+        var ConsigneePhone = $("#hdnConsigneePhone_" + i).val();
+        var ConsigneeCountryName = $("#hdnConsigneeCountryName_" + i).val();
+        var ConsigneeCityName = $("#hdnConsigneeCityName_" + i).val();
+        var ConsigneeLocationName = $("#hdnConsigneeLocationName_" + i).val();
+        var Pieces = $("#hdnPieces_" + i).val();
+        var CourierCharge = $("#hdnCourierCharge_" + i).val();
+        var OtherCharge = $("#hdnOtherCharge_" + i).val();
+        var TaxPercent = $('#TaxPercent').val();
+        var TaxAmount = $("#hdnTaxAmount_" + i).val();
+        var NetTotal = $("#hdnNetTotal_" + i).val();
+        var MaterialCost = $("#hdnMaterialCost_" + i).val();
+        var Weight = parseFloat($("#hdnWeight_" + i).val()).toFixed(3);
+        var ParcelTypeId = $('#hdnParcelTypeId_' + i).val();
+        var PaymentTypeId = $("#hdnPaymentModeId_" + i).val();
+        var PickUpLocation = $('#hdnPickupLocation_' + i).val();
+        var DeliveryLocation = $('#hdnDeliveryLocation_' + i).val();
+        var ItemDescription = $('#hdnCargoDescription_' + i).val();
+        var AssignedEmployeeID = $('#hdnAssignedEmployeeID_' + i).val(); // Assigned for collection
+        var AssignedDate = $('#hdnAssignedDate_' + i).val();
+        var PickedUpEmpID = $('#hdnPickedUpEmpID_' + i).val(); //collected by
+        var PickedupDate = $('#hdnPickedupDate_' + i).val();
+        var ProductTypeID = $('#hdnProductTypeID_' + i).val();
+        var MovementID = $('#hdnMovementID_' + i).val();
+        var OriginPlaceID = $('#hdnOriginPlaceID_' + i).val();
+        var DestinationPlaceID = $('#hdnDestinationPlaceID_' + i).val();
+        var PickupSubLocality = $('#hdnPickupSubLocality_' + i).val();
+        var DeliverySubLocality = $('#hdnDeliverySubLocality_' + i).val();
+        var DepotReceivedBy = $('#hdnDepotReceivedBy_' + i).val(); //employee name
+        var ReceivedDate = $('#hdnReceivedDate_' + i).val(); //employee name
+        var CollectedBy = $('#hdnCollectedBy_' + i).val();
+        var ReceivedBy = $('#hdnReceivedBy_' + i).val();
+        var OutScanDelivery = $('#hdnOutScanDelivery_' + i).val();
+        var DeliveryAttempted = $('#hdnDeliveryAttempted_' + i).val();
+        var Delivered = $('#hdnDelivered_' + i).val();
+        var OutScanDeliveredID = $('#hdnOutScanDeliveredID_' + i).val()
+        var OutScanDate = $('#hdnOutScanDate_' + i).val()
+        var DeliveryAttemptedBy = $('#hdnDeliveryAttemptedBy_' + i).val()
+        var DelieveryAttemptDate = $('#hdnDelieveryAttemptDate_' + i).val()
+        var DeliveredBy = $('#hdnDeliveredBy_' + i).val()
+        var DeliveredDate = $('#hdnDeliveredDate_' + i).val()
+        var AssignedForCollection = $('#hdnAssignedForCollection_' + i).val()
+        var ConsignorMobileNo = $('#hdnConsignorMobileNo_' + i).val();
+        var ConsigneeMobileNo = $('#hdnConsigneeMobileNo_' + i).val();
+        var currentcourierstatus = $('#hdnCourierStatus_' + i).val();
+        var statustype = $('#hdnStatusType_' + i).val();
+        var InscanVehicleID = $('#hdnInscanVehicleId_' + i).val();
+        var OutScanVehicleID = $('#hdnOutscanVehicleId_' + i).val();
+        var DocumentTypeId = 1;
+        var IsEnquiry = true;
+        var RequestSource = "";
+        var SpecialInstructions = $('#hdnSpecialInstructions_' + i).val();
+        //var ParcelTypeId = $('#ParcelTypeID').val();
+        //var ProductTypeID = $('#ProductTypeID').val();
+        //var MovementID = $('#MovementID').val();
+        var Remarks = $('#hdnRemarks_' +i).val();
+        var CustomerRateTypeId = $('#hdnCustomerRateTypeID_' + i).val();
+        var FAgentId = $('#hdnFAgentId_' + i).val();
+        var FAgentName = $('#hdnFAgentName_' + i).val();
+        $('#InScanID').val(InscanID);
+        $('#CustomerID').val(CustomerID);
+        $('#CustomerName').val(CustomerName);
+        $('#AWBNo').val(AWBNo);
+        $('#AWBDate').val(AWBDate);
+        $('#Shipper').val(Shipper);
+        $('#ProductTypeID').val(ProductTypeID);
+        $('#Consignee').val(Receiver);
+        $("#ConsignorContact").val(ConsignorContact);
+        $("#ConsignorAddress1_Building").val(ConsignorAddress1);
+        $("#ConsignorAddress2_Street").val(ConsignorAddress2);
+        $("#ConsignorAddress3_PinCode").val(ConsignorAddress3);
+        $("#ConsignorPhone").val(ConsignorPhone);
+        $('#ConsignorMobileNo').val(ConsignorMobileNo);
+        $("#ConsignorCountryName").val(ConsignorCountryName);
+        $("#ConsignorCityName").val(ConsignorCityName);
+        $("#ConsignorLocationName").val(ConsignorLocationName);
+
+        $("#ConsigneeContact").val(ConsigneeContact);
+        $("#ConsigneeAddress1_Building").val(ConsigneeAddress1);
+        $("#ConsigneeAddress2_Street").val(ConsigneeAddress2);
+        $("#ConsigneeAddress3_PinCode").val(ConsigneeAddress3)
+        $("#ConsigneePhone").val(ConsigneePhone);
+        $("#ConsigneeCountryName").val(ConsigneeCountryName);
+        $("#ConsigneeCityName").val(ConsigneeCityName)
+        $("#ConsigneeLocationName").val(ConsigneeLocationName)
+        $('#ConsigneeMobileNo').val(ConsigneeMobileNo);
+        $("#Pieces").val(Pieces);
+        $("#CourierCharge").val(CourierCharge);
+        $('#OtherCharge').val(OtherCharge);
+        $('#TaxPercent').val(TaxPercent);
+        $('#TaxAmount').val(TaxAmount);
+        $('#NetTotal').val(NetTotal);
+        $("#MaterialCost").val(MaterialCost);
+
+        $("#Weight").val(Weight);
+        $("#PaymentTypeId").val(PaymentTypeId).trigger('change');
+        //var PaymentTypetext = $("#PaymentTypeId option:selected").text();
+        $('#PickUpLocation').val(PickUpLocation);
+        $('#DeliveryLocation').val(DeliveryLocation);
+        $('#ItemDescription').val(ItemDescription);
+        $('#Remarks').val(Remarks);
+        $('#FAgentID').val(FAgentId);
+
+        //GetFAgentName(FAgentId);
+        $('#FAgentName').val(FAgentName);
+        $('#CustomerRateTypeID').val(CustomerRateTypeId);
+
+        if (CustomerRateTypeId > 0)
+            GetCustomerRateDetail(CustomerRateTypeID);
+        else {
+            $('#CustomerRateType').val('');
+        }
+        $('#lierr').html('Status : ' + statustype + ' - ' + currentcourierstatus);
+        $('#OriginPlaceID').val(OriginPlaceID);
+        $('#DestinationPlaceID').val(DestinationPlaceID);
+        $('#PickupSubLocality').val(PickupSubLocality);
+        $('#DeliverySubLocality').val(DeliverySubLocality);
+        debugger;
+        var values = SpecialInstructions;
+        var selectedOptions = values.split(",");
+        for (var op1 in selectedOptions) {
+            var optionVal = selectedOptions[op1];
+
+            $("#Specialnstructions").find("option[value=" + optionVal + "]").prop("selected", "selected");
+
+        }
+        $("#Specialnstructions").multiselect('reload');
+        //$('#SpecialInstructions').val(SpecialInstructions);
+        //$('#SpecialInstructions').multiselect({
+        //    //nonSelectedText: 'Select',
+        //    enableClickableOptGroups: true,
+        //    enableCollapsibleOptGroups: true,
+        //    enableFiltering: false,
+        //    includeSelectAllOption: true,
+        //    selectAllValue: 'multiselect-all'
+        //});
+    }
+    function LoadAWB() {
+        $.ajax({
+            url: '/AWBBatch/GetBatchAWB', //'/AWB/GetConsigneeName',
+            datatype: "json",
+            data: {
+                id: $('#ID').val()
+            },
+            success: function (response) {
+                console.log(response);
+                for (var row = 0; row < response.length; row++) {
+                    var data = response[row];
+                    var InScanID = data.InScanID;
+                    var CustomerId = data.CustomerId;
+                    var CustomerName = data.CustomerName;
+                    var ParcelTypeId = data.ParcelTypeId;
+                    var ProductTypeID = data.ProductTypeID;
+                    var CustomerID = data.CustomerID;
+                    var MovementID = data.MovementID;
+                    var AWBNo = data.AWBNo;
+                    var AWBDate = data.TransactionDate;
+                    var Shipper = data.Consignor;
+                    var ConsignorContact = data.ConsignorContact;
+                    var ConsignorAddress1 = data.ConsignorAddress1_Building;
+                    var ConsignorAddress2 = data.ConsignorAddress2_Street;
+                    var ConsignorAddress3 = data.ConsignorAddress3_PinCode;
+                    var ConsignorPhone = data.ConsignorPhone;
+                    var ConsignorMobileNo = data.ConsignorMobileNo;
+                    var ConsignorCountryName = data.ConsignorCountryName;
+                    var ConsignorCityName = data.ConsignorCityName;
+                    var ConsignorLocationName = data.ConsignorLocationName;
+                    var Receiver = data.Consignee;
+                    var ConsigneeContact = data.ConsigneeContact;
+                    var ConsigneeAddress1 = data.ConsigneeAddress1_Building;
+                    var ConsigneeAddress2 = data.ConsigneeAddress2_Street;
+                    var ConsigneeAddress3 = data.ConsigneeAddress3_PinCode;
+                    var ConsigneePhone = data.ConsigneePhone;
+                    var ConsigneeCountryName = data.ConsigneeCountryName;
+                    var ConsigneeCityName = data.ConsigneeCityName;
+                    var ConsigneeLocationName = data.ConsigneeLocationName;
+                    var ConsigneeMobileNo = data.ConsigneeMobileNo;
+                    var Pieces = data.Pieces;
+                    var CourierCharge = data.CourierCharge;
+                    var OtherCharge = data.OtherCharge;
+                    var TaxPercent = data.TaxPercent;
+                    var TaxAmount = data.TaxAmount;
+                    var NetTotal = data.NetTotal;
+
+                    var MaterialCost = data.MaterialCost;
+                    var Weight = data.Weight;
+                    var PaymentTypeId = data.PaymentModeId;
+                    var PaymentTypetext = data.PaymentModeText;
+                    var PickUpLocation = data.PickupLocation;// PickUpLocation;
+                    var DeliveryLocation = data.DeliveryLocation;
+                    var ItemDescription = data.CargoDescription;
+
+                    var AssignedEmployeeID = data.AssignedEmployeeID;
+                    var AssignedDate = data.PickupRequestDate;
+
+                    var PickedUpEmpID = data.PickedUpEmpID;
+                    var PickedupDate = data.PickedupDate;
+                    var CurrentCourierStatus = data.CurrentCourierStatus;
+                    var CurrentStatusType = data.CurrentStatusType;
+                    var FAgentName = data.FAgentName;
+                    var FAgentId = data.FAgetnId;
+                    var CustomerRateTypeId = data.CustomerRateTypeId;
+                    var DepotReceivedBy = data.DepotReceivedBy;;
+                    //var ReceivedDate = defaultdate;
+                    //var InScanVehicleID = 0;
+                    //var ReceivedBy = $('#ReceivedBy').prop('checked');
+                    //if (ReceivedBy) {
+                    //    if (!checkfieldvalidate($('#ReceivedDate')))
+                    //        return;
+                    //    if (!checkdrpfieldvalidate($('#DepotReceivedBy')))
+                    //        return;
+                    //    if (!checkdrpfieldvalidate($('#InscanVehicleId')))
+                    //        return;
+                    //    DepotReceivedBy = $('#DepotReceivedBy').val(); //employee name
+                    //    ReceivedDate = checkDate($('#ReceivedDate'));
+                    //    InScanVehicleID = $('#InscanVehicleId ').val();
+                    //}
+                    //var OutScanDeliveredID = 0;
+                    //var OutScanDate = defaultdate;
+                    //var OutScanVehicleID = 0;
+                    //var OutScanDelivery = $('#OutScanDelivery').prop('checked');
+                    //if (OutScanDelivery) {
+                    //    if (!checkfieldvalidate($('#OutScanDate')))
+                    //        return;
+                    //    if (!checkdrpfieldvalidate($('#OutScanDeliveredID')))
+                    //        return;
+                    //    if (!checkdrpfieldvalidate($('#OutscanVehicleId')))
+                    //        return;
+                    //    OutScanDeliveredID = $('#OutScanDeliveredID').val();
+                    //    OutScanDate = checkDate($('#OutScanDate'));
+                    //    OutScanVehicleID = $('#OutscanVehicleId').val();
+                    //}
+
+                    //var DeliveryAttemptedBy = 0;
+                    //var DelieveryAttemptDate = defaultdate;
+                    //var DeliveryAttempted = $('#DeliveryAttempted').prop('checked');
+                    //if (DeliveryAttempted) {
+                    //    if (!checkfieldvalidate($('#DelieveryAttemptDate')))
+                    //        return;
+                    //    if (!checkdrpfieldvalidate($('#DeliveryAttemptedBy')))
+                    //        return;
+                    //    DeliveryAttemptedBy = $('#DeliveryAttemptedBy').val();
+                    //    DelieveryAttemptDate = checkDate($('#DelieveryAttemptDate'));
+                    //}
+                    //var DeliveredBy = 0;
+                    //var DeliveredDate = defaultdate;
+                    //var Delivered = $('#Delivered').prop('checked');
+                    //if (Delivered) {
+                    //    if (!checkfieldvalidate($('#DeliveredDate')))
+                    //        return;
+                    //    if (!checkdrpfieldvalidate($('#DeliveredBy')))
+                    //        return;
+                    //    DeliveredBy = $('#DeliveredBy').val();
+                    //    DeliveredDate = checkDate($('#DeliveredDate'));
+                    //}
+                    //var OriginPlaceID = checkdata($('#OriginPlaceID'));;
+                    //var DestinationPlaceID = checkdata($('#DestinationPlaceID'));
+                    //var PickupSubLocality = checkdata($('#PickupSubLocality'));
+                    //var DeliverySubLocality = checkdata($('#DeliverySubLocality'));
+                    //debugger;
+                    var SpecialInstructions = data.SpecialInstructions;
+                    var i = $('#tbl1 > tr').length;
+                    var row1 = i + 1;
+                    var datahtml =
+                        '<span id="srow_' + i + '">' + row1 + '</span>' +
+                        '<input class="hdndeleted" type="hidden" value="false" id="hdndeleted_' + i + '" />' +
+                        '<input type="hidden" id="hdnInScanID_' + i + '" value="' + InScanID + '" />' +
+                        '<input type="hidden" id="hdnAWBNo_' + i + '" value="' + AWBNo + '" />' +
+                        '<input type="hidden" id="hdnCustomerID_' + i + '" value="' + CustomerID + '" />' +
+                        '<input type="hidden" id="hdnCustomerName_' + i + '" value="' + CustomerName + '" />' +
+                        '<input type="hidden" id="hdnConsignor_' + i + '" value="' + Shipper + '" />' +
+                        '<input type="hidden" id="hdnConsignorContact_' + i + '" value="' + ConsignorContact + '" />' +
+                        '<input type="hidden" id="hdnConsignorAddress1_' + i + '" value="' + ConsignorAddress1 + '"/>' +
+                        '<input type="hidden" id="hdnConsignorAddress2_' + i + '" value="' + ConsignorAddress2 + '"/>' +
+                        '<input type="hidden" id="hdnConsignorAddress3_' + i + '" value="' + ConsignorAddress3 + '"/>' +
+                        '<input type="hidden" id="hdnConsignorPhone_' + i + '" value="' + ConsignorPhone + '"/>' +
+                        '<input type="hidden" id="hdnConsignorCountryName_' + i + '" value="' + ConsignorCountryName + '"/>' +
+                        '<input type="hidden" id="hdnConsignorCityName_' + i + '" value="' + ConsignorCityName + '"/>' +
+                        '<input type="hidden" id="hdnConsignorLocationName_' + i + '" value="' + ConsignorLocationName + '"/>' +
+                        '<input type="hidden" id="hdnConsignee_' + i + '" value="' + Receiver + '"/>' +
+                        '<input type="hidden" id="hdnConsigneeContact_' + i + '" value="' + ConsigneeContact + '"/>' +
+                        '<input type="hidden" id="hdnConsigneeAddress1_' + i + '" value="' + ConsigneeAddress1 + '"/>' +
+                        '<input type="hidden" id="hdnConsigneeAddress2_' + i + '" value="' + ConsigneeAddress2 + '"/>' +
+                        '<input type="hidden" id="hdnConsigneeAddress3_' + i + '" value="' + ConsigneeAddress3 + '"/>' +
+                        '<input type="hidden" id="hdnConsigneePhone_' + i + '" value="' + ConsigneePhone + '"/>' +
+                        '<input type="hidden" id="hdnConsigneeCountryName_' + i + '" value="' + ConsigneeCountryName + '"/>' +
+                        '<input type="hidden" id="hdnConsigneeCityName_' + i + '" value="' + ConsigneeCityName + '"/>' +
+                        '<input type="hidden" id="hdnConsigneeLocationName_' + i + '" value="' + ConsigneeLocationName + '"/>' +
+                        '<input type="hidden" id="hdnAssignedEmployeeID_' + i + '" value="' + AssignedEmployeeID + '"/>' +
+                        '<input type="hidden" id="hdnAssignedForCollection_' + i + '" value="' + AssignedForCollection + '"/>' +
+                        '<input type="hidden" id="hdnAssignedDate_' + i + '" value="' + AssignedDate + '"/>' +
+                        '<input type="hidden" id="hdnCourierCharge_' + i + '" value="' + CourierCharge + '"/>' +
+                        '<input type="hidden" id="hdnOtherCharge_' + i + '" value="' + OtherCharge + '"/>' +
+                        '<input type="hidden" id="hdnTaxPercent_' + i + '" value="' + TaxPercent + '"/>' +
+                        '<input type="hidden" id="hdnTaxAmount_' + i + '" value="' + TaxAmount + '"/>' +
+                        '<input type="hidden" id="hdnPickedUpEmpID_' + i + '" value="' + PickedUpEmpID + '"/>' +
+                        '<input type="hidden" id="hdnPickedupDate_' + i + '" value="' + PickedupDate + '"/>' +
+                        '<input type="hidden" id="hdnPieces_' + i + '" value="' + Pieces + '"/>' +
+                        '<input type="hidden" id="hdnWeight_' + i + '" value="' + Weight + '"/>' +
+                        '<input type="hidden" id="hdnCargoDescription_' + i + '" value="' + ItemDescription + '"/>' +
+                        '<input type="hidden" id="hdnMovementID_' + i + '" value="' + MovementID + '"/>' +
+                        '<input type="hidden" id="hdnProductTypeID_' + i + '" value="' + ProductTypeID + '"/>' +
+                        '<input type="hidden" id="hdnTransactionDate_' + i + '" value="' + AWBDate + '"/>' +
+                        '<input type="hidden" id="hdnNetTotal_' + i + '" value="' + NetTotal + '"/>' +
+                        '<input type="hidden" id="hdnParcelTypeId_' + i + '" value="' + ParcelTypeId + '"/>' +
+                        '<input type="hidden" id="hdnMaterialCost_' + i + '" value="' + MaterialCost + '"/>' +
+                        '<input type="hidden" id="hdnPaymentModeId_' + i + '" value="' + PaymentTypeId + '"/>' +
+                        '<input type="hidden" id="hdnDepotReceivedBy_' + i + '" value="' + DepotReceivedBy + '"/>' +
+                        //'<input type="hidden" id="hdnReceivedDate_' + i + '" value="' + ReceivedDate + '"/>' +
+
+                        '<input type="hidden" id="hdnDocumentTypeId_' + i + '" value="1"/>' +
+                        '<input type="hidden" id="hdnOriginPlaceID_' + i + '" value="' + OriginPlaceID + '"/>' +
+                        '<input type="hidden" id="hdnDestinationPlaceID_' + i + '" value="' + DestinationPlaceID + '"/>' +
+                        '<input type="hidden" id="hdnPickupLocation_' + i + '" value="' + PickUpLocation + '"/>' +
+                        '<input type="hidden" id="hdnDeliveryLocation_' + i + '" value="' + DeliveryLocation + '"/>' +
+                        '<input type="hidden" id="hdnPickupSubLocality_' + i + '" value="' + PickupSubLocality + '"/>' +
+                        '<input type="hidden" id="hdnDeliverySubLocality_' + i + '" value="' + DeliverySubLocality + '"/>' +
+                        '<input type="hidden" id="hdnConsignorMobileNo_' + i + '" value="' + ConsignorMobileNo + '"/>' +
+                        '<input type="hidden" id="hdnConsigneeMobileNo_' + i + '" value="' + ConsigneeMobileNo + '"/>' +
+                        '<input type="hidden" id="hdnCourierStatus_' + i + '" value="' + CurrentCourierStatus + '"/>' +
+                        '<input type="hidden" id="hdnStatusType_' + i + '" value="' + CurrentStatusType + '"/>'+
+                        '<input type="hidden" id="hdnSpecialInstructions_' + i + '" value="' + SpecialInstructions + '"/>'+
+                        '<input type="hidden" id="hdnFAgentId_' + i + '" value="' + FAgentId + '"/>' +
+                        '<input type="hidden" id="hdnFAgentName_' + i + '" value="' + FAgentName + '"/>' +
+                        '<input type="hidden" id="hdnCustomerRateTypeID_' + i + '" value="' + CustomerRateTypeId + '"/>';
+
+                    //'<input type="hidden" id="hdnCollectedBy_' + i + '" value="' + CollectedBy + '"/>' +
+                    //'<input type="hidden" id="hdnReceivedBy_' + i + '" value="' + ReceivedBy + '"/>' +
+                    //'<input type="hidden" id="hdnOutScanDelivery_' + i + '" value="' + OutScanDelivery + '"/>' +
+                    //'<input type="hidden" id="hdnDeliveryAttempted_' + i + '" value="' + DeliveryAttempted + '"/>' +
+                    //'<input type="hidden" id="hdnDelivered_' + i + '" value="' + Delivered + '"/>' +
+                    //'<input type="hidden" id="hdnOutScanDeliveredID_' + i + '" value="' + OutScanDeliveredID + '"/>' +
+                    //'<input type="hidden" id="hdnOutScanDate_' + i + '" value="' + OutScanDate + '"/>' +
+                    //'<input type="hidden" id="hdnDeliveryAttemptedBy_' + i + '" value="' + DeliveryAttemptedBy + '"/>' +
+                    //'<input type="hidden" id="hdnDelieveryAttemptDate_' + i + '" value="' + DelieveryAttemptDate + '"/>' +
+                    //'<input type="hidden" id="hdnDeliveredBy_' + i + '" value="' + DeliveredBy + '"/>' +
+                    //'<input type="hidden" id="hdnDeliveredDate_' + i + '" value="' + DeliveredDate + '"/>' +
+                    //'<input type="hidden" id="hdnInscanVehicleId_' + i + '" value="' + InScanVehicleID + '"/>' +
+                    //'<input type="hidden" id="hdnOutscanVehicleId_' + i + '" value="' + OutScanVehicleID + '"/>' +
+                    //'<input type="hidden" id="hdnSpecialInstructions_' + i + '" value="' + SpecialInstructions + '"/>';
+
+                    $('#tbl1').append('<tr id="tr_' + i + '">' +
+                        '<td>' + datahtml + '</td>' +
+                        '<td>' + AWBNo + '<br/>' + AWBDate + '</td>' +
+                        '<td>' + PaymentTypetext + '</td>' +
+                        //'<td>' + $('#AWBDate').val() + '</td>' +
+                        '<td>' + Shipper + '<br/>' + PickUpLocation + '</td>' +
+                        '<td>' + Receiver + '<br/>' + DeliveryLocation + '</td>' +
+                        //'<td>' + Pieces + '</td>' +
+                        //'<td>' + Weight + '</td>' +
+                        '<td>' + 'CC:' + parseFloat(CourierCharge).toFixed(2) + '<br/>' + //'</td>' +
+                        'OC:' + parseFloat(OtherCharge).toFixed(2) + '<br/>' +
+                        'Tax:' + parseFloat(TaxAmount).toFixed(2) + '<br/>' +
+                        'Net' + parseFloat(NetTotal).toFixed(2) + '</td>' +
+                        '<td>' + parseFloat(MaterialCost).toFixed(2) + '</td>' +
+                        //'<td>' + DeliveryLocation + '</td>' +
+                        //'<td>' + ItemDescription + '</td>' +
+                        '<td><a href="javascript:void(0)" onclick="editawb(this,' + i + ')"><i class="fa fa-pencil"></i></a></td>' +
+                        '</tr>');
+                }
+            }
+        });
+
+    }
+    function CalculateTax() {
+        debugger;
+        var tax = $('#ChkTaxPercent').prop('checked');
+        if (tax == true) {
+            //$('#lblTaxPercent').removeClass('hide');
+            var taxpercent =parseFloat($('#TaxPercent').val());
+            if ($('#CourierCharge').val() == '' || $('#CourierCharge').val() == null)
+            $('#CourierCharge').val(0);
+            if ($('#OtherCharge').val() == '' || $('#OtherCharge').val() == null)
+                $('#OtherCharge').val(0);
+
+            var charge = parseFloat($('#CourierCharge').val()) + parseFloat($('#OtherCharge').val());
+
+            var taxval = parseFloat(charge) * (parseFloat(taxpercent) / 100.00);
+            $('#TaxAmount').val(parseFloat(taxval).toFixed(2));
+            var net=parseFloat(charge) + parseFloat(taxval)
+            $('#NetTotal').val(parseFloat(net).toFixed(2));
+        }
+        else {
+            $('#TaxAmount').val(0);
+            var charge = parseFloat($('#CourierCharge').val()) + parseFloat($('#OtherCharge').val());
+            var net = parseFloat(charge);
+            $('#NetTotal').val(parseFloat(net).toFixed(2));
+
+        }
+
+
+    }
+    function getCustomerId() {
+        $.ajax({
+            url: '/AWBBatch/GetConsignorCustomer', //'/AWB/GetConsigneeName',
+            datatype: "json",
+            data: {
+                customername: $('#Shipper').val()
+            },
+            success: function (data) {
+
+                if (data == null) {
+                    $('#CustomerID').val(0);
+                }
+                else {
+                    $('#CustomerID').val(data.CustomerID);
+                }
+            }
+        });
+    }
+    function checkduplicate(awbno) {
+        debugger;
+        var idtext = 'hdnAWBNo_';
+        var maxrow = $('#tbl1 > tr').length;
+        if (maxrow > 0) {
+            var duplicate = false;
+            $('[id^=' + idtext + ']').each(function (index, item) {
+                var deleted = $('#hdndeleted_' + index).val();
+                if (deleted != "true") {
+                    var con = $('#hdnAWBNo_' + index).val();
+                    if (con.trim() == awbno.trim()) {
+                        duplicate = true;
+                        var message = 'Duplicate AWB No.!';
+                        $.notify('Duplicate AWB No.', 'error');
+                        $('#ulerr').removeClass('show-green');
+                        $('#ulerr').addClass('show-error');
+                        $('#lierr').html(message);
+                        $('#btnAdd').attr('disabled', 'disabled');
+                        //break;
+                    }
+
+                    if (duplicate == false && index == (parseInt(maxrow - 1))) {
+                        return true;
+                    }
+                }
+            });
+            if (duplicate == true) {
+                return false;
+            }
+        }
+        else {
+
+            return true;
+        }
+    }
+    function checkDate(obj) {
+        var value = '';
+        if ($(obj).val() == '' || $(obj).val() == undefined || $(obj).val() == 'undefined' || $(obj).val() == null) {
+            return '';
+        }
+        else {
+            var date = $(obj).val().split('-');
+            value = date[1] + '/' + date[0] + '/' + date[2];
+        }
+
+        return value
+
+    }
+    function checkdata(obj)
+    {
+        var value = '';
+        if ($(obj).val() == '' || $(obj).val() == undefined || $(obj).val() == 'undefined' ||$(obj).val() == null) {
+            return '';
+        }
+        else {
+            value = $(obj).val();
+        }
+
+        return value
+
+    }
+    function getdate(date) {
+        var myDate = new Date(date);
+        var cmon = myDate.getMonth() + 1;
+        var entrydate = cmon + "/" + myDate.getDate() + '/' + myDate.getFullYear();
+        return entrydate
+    }
+    function deletetrans(obj, i) {
+        $(obj).parent().parent().addClass('hide');
+        var obj1 = $(obj).parent().parent().find('.hdndeleted');
+        $(obj1).val(true);
+    }
+    function checkfieldvalidate(obj) {
+        if ($(obj).val() == null || $(obj).val().trim() == '')
+        {
+            var id = $(obj).attr('id');
+            var message = '';
+            if (id == 'AWBNo') {
+                message = 'Missing Field..AWB No.!';
+            }
+            else if (id == 'AWBDate') {
+                message = 'Missing Field..AWB Date!';
+            }
+            else if (id == 'BatchDate') {
+                message = 'Missing Field..Batch Date!';
+            }
+            else if (id == 'Pieces') {
+                message = 'Missing Field..Pieces!';
+            }
+            else if (id == 'Weight') {
+                message = 'Missing Field..Weight!';
+            }
+            else if (id == 'Shipper') {
+                message = 'Missing Field..Shipper!';
+            }
+            else if (id == 'Consignee') {
+                message = 'Missing Field..Consignee!';
+            }
+            else if (id == 'AssignedDate') {
+                message = 'Missing Field..Collected By!';
+            }
+            else if (id == 'PickedupDate') {
+                message = 'Missing Field..Collected By!';
+            }
+            else if (id == 'ReceivedDate') {
+                message = 'Missing Field..Received at Store!';
+            }
+            else if (id == 'OutScanDeliveredID' || id == 'OutScanDate') {
+                message = 'Missing Field..Out for Delivery!';
+            }
+            else if (id == 'DeliveryAttemptedBy' || id == 'DelieveryAttemptDate') {
+                message = 'Missing Field..Delivery for Attempted!';
+            }
+            else if (id == 'DeliveredBy' || id == 'DeliveredDate') {
+                message = 'Missing Field..Delivery Attempted!';
+            }
+            else if (id == 'PickUpLocation') {
+                message = 'Missing Field..Pickup Location!';
+            }
+            else if (id == 'DeliveryLocation') {
+                message = 'Missing Field..Destination Location!';
+            }
+
+            $.notify(message, "error");
+            //$('#ulerr').removeClass('show-green');
+            //$('#ulerr').addClass('show-error');
+            //$('#lierr').html('Please Enter Required Values!');
+
+            $(obj).focus();
+            return false;
+        }
+        else {
+            return true;
+        }
+    }
+    function checkdrpfieldvalidate(obj) {
+
+        if ($(obj).val() == null || $(obj).val().trim() == '' || $(obj).val().trim() == '0') {
+            debugger;
+            //$('#ulerr').removeClass('show-green');
+            //$('#ulerr').addClass('show-error');
+            //$('#lierr').html('Please Enter Required Values!');
+            var message = '';
+            var id = $(obj).attr('id');
+            if (id == 'MovementID') {
+                message = 'Missing Field..Movement Type!';
+            }
+            else if (id == 'ParcelTypeID') {
+                message = 'Missing Field..Parcel Type!';
+            }
+            else if (id == 'ProductTypeID') {
+                message = 'Missing Field..Product Type!';
+            }
+            else if (id == 'PaymentTypeId') {
+                message = 'Missing Field..Payment Type!';
+            }
+            else if (id == 'AssignedEmployeeID') {
+                message = 'Missing Field..Assigned For Collection!';
+            }
+            else if (id == 'PickedUpEmpID') {
+                message = 'Missing Field..Collected By!';
+            }
+            else if (id == 'DepotReceivedBy') {
+                message = 'Missing Field..Received at Store!';
+            }
+            else if (id == 'InscanVehicleId') {
+                message = 'Missing Field..Received at Store!';
+            }
+            else if (id == 'OutScanDeliveredID') {
+                message = 'Missing Field..Out for Delivery!';
+            }
+            else if (id == 'OutscanVehicleId') {
+                message = 'Missing Field..Out for Delivery!';
+            }
+            else if (id == 'DeliveryAttemptedBy' || id=='DelieveryAttemptDate') {
+                message = 'Missing Field..Delivery for Attempted!';
+            }
+            else if (id == 'DeliveredBy' || id == 'DeliveredDate') {
+                message = 'Missing Field..Delivery Attempted!';
+            }
+
+            $.notify(message, "error");
+            $(obj).focus();
+            return false;
+        }
+        else {
+            return true;
+        }
+    }
+
+    function checkNumberfieldvalidate(obj) {
+        if ($(obj).val() == null || $(obj).val().trim() == '') {
+            $('#ulerr').removeClass('show-green');
+            $('#ulerr').addClass('show-error');
+            $('#lierr').html('Please Enter Required Values!');
+            $(obj).focus();
+            return false;
+        }
+        else if (parseFloat($(obj).val()) == 0 || parseInt($(obj).val()) == 0) {
+            $('#ulerr').removeClass('show-green');
+            $('#ulerr').addClass('show-error');
+            $('#lierr').html('Please Enter Required Values!');
+            $(obj).focus();
+            return false;
+        }
+        else {
+            return true;
+        }
+    }
+    $(document).ready(function () {
+
+        $(":text").css({ "border-radius": "5px" });
+        $("select").css({ "border-radius": "5px" });
+        $("textarea").css({ "border-radius": "5px" });
+        //$('#BatchDate').datetimepicker({ format: 'DD-MM-YYYY' });
+        //$('#AWBDate').datetimepicker({ format: 'DD-MM-YYYY' });
+        //$('#AssignedDate').datetimepicker({ format: 'DD-MM-YYYY' });
+        //$('#DeliveredDate').datetimepicker({ format: 'DD-MM-YYYY' });
+        //$('#DelieveryAttemptDate').datetimepicker({ format: 'DD-MM-YYYY' });
+        //$('#OutScanDate').datetimepicker({ format: 'DD-MM-YYYY' });
+        //$('#ReceivedDate').datetimepicker({ format: 'DD-MM-YYYY' });
+        //$('#PickedupDate').datetimepicker({ format: 'DD-MM-YYYY' });
+        var startdate = '@Session["FyearFrom"].ToString()';
+        var enddate = '@Session["FyearTo"].ToString()';
+        var sd = new Date(startdate.split('-')[1] + '-' + startdate.split('-')[0] + '-' + startdate.split('-')[2]);
+        var ed = new Date(enddate.split('-')[1] + '-' + enddate.split('-')[0] + '-' + enddate.split('-')[2]);
+        $('#BatchDate').datetimepicker({
+            maxDate: ed,
+            minDate: sd,
+            format: 'DD-MM-YYYY'
+        });
+        $('#AWBDate').datetimepicker({
+            maxDate: ed,
+            minDate: sd,
+            format: 'DD-MM-YYYY'
+        });
+        $('#AssignedDate').datetimepicker({
+            maxDate: ed,
+            minDate: sd,
+            format: 'DD-MM-YYYY'
+        });
+        $('#DeliveredDate').datetimepicker({
+            maxDate: ed,
+            minDate: sd,
+            format: 'DD-MM-YYYY'
+        });
+        $('#DelieveryAttemptDate').datetimepicker({
+            maxDate: ed,
+            minDate: sd,
+            format: 'DD-MM-YYYY'
+        });
+        $('#OutScanDate').datetimepicker({
+            maxDate: ed,
+            minDate: sd,
+            format: 'DD-MM-YYYY'
+        });
+        $('#ReceivedDate').datetimepicker({
+            maxDate: ed,
+            minDate: sd,
+            format: 'DD-MM-YYYY'
+        });
+        $('#PickedupDate').datetimepicker({
+            maxDate: ed,
+            minDate: sd,
+            format: 'DD-MM-YYYY'
+        });
+        document.addEventListener('keydown', function (event) {
+            if (event.code == 'KeyA' && (event.altKey)) {
+                $('#btnAdd').trigger('click');
+            }
+        });
+        document.addEventListener('keydown', function (event) {
+            if (event.code == 'KeyS' && (event.altKey)) {
+                showshipperaddress();
+            }
+        });
+        document.addEventListener('keydown', function (event) {
+            if (event.code == 'KeyR' && (event.altKey)) {
+                showreceiveraddress();
+            }
+        });
+        $('#MovementID').focus();
+        $('#SpecialInstructions').multiselect({
+            //nonSelectedText: 'Select',
+            enableClickableOptGroups: true,
+            enableCollapsibleOptGroups: true,
+            enableFiltering: false,
+            includeSelectAllOption: true,
+            selectAllValue: 'multiselect-all'
+        });
+        $('#PaymentTypeId').change(function () {
+            var modeid = $('#PaymentTypeId').val();
+            if (modeid == 3) { //Account
+                $('#CustomerName').removeAttr('readonly');
+                if ($('#CustomerID').val() == $('#CASHCustomerId').val() || $('#CustomerID').val() == $('#CASHCustomerId').val() || $('#CustomerID').val() == $('#FOCCustomerID').val()) {
+                    $('#CustomerName').val('');
+                    $('#CustomerID').val(0);
+                }
+
+            }
+            else {
+                if (modeid == 1) {
+                    $('#CustomerName').val($('#CASHCustomerName').val());
+                    $('#CustomerID').val($('#CASHCustomerId').val());
+                }
+                else if (modeid == 2) {
+                    $('#CustomerName').val($('#CODCustomerName').val());
+                    $('#CustomerID').val($('#CODCustomerID').val());
+                    if ($('#Shipper').attr('readonly') == 'readonly') {
+                        $('#Consignee').focus();
+                    }
+                    else {
+                        $('#Shipper').focus();
+                    }
+                }
+                else if (modeid == 4) {
+                    $('#CustomerName').val($('#FOCCustomerName').val());
+                    $('#CustomerID').val($('#FOCCustomerID').val());
+                }
+                $('#CustomerName').attr('readonly','readonly');
+            }
+        });
+        $("#CustomerName").autocomplete({
+            source: function (request, response) {
+                $.ajax({
+                    url: '/AWB/GetCustomerName',
+                    datatype: "json",
+                    data: {
+                        term: request.term
+                    },
+                    success: function (data) {
+                        response($.map(data, function (val, item) {
+                            console.log(val);
+                            return {
+                                label: val.CustomerName,
+                                value: val.CustomerName,
+                                CustomerId: val.CustomerID,
+                                type: val.CustomerType
+                            }
+                        }))
+                    }
+                })
+            },
+            minLength: 1,
+            autoFocus: false,
+            focus: function (event, ui) {
+                $('#CustomerName').val(ui.item.value);
+                $('#CustomerID').val(ui.item.CustomerId);
+            },
+            select: function (e, i) {
+                e.preventDefault();
+                $("#CustomerName").val(i.item.label);
+                $('#CustomerID').val(i.item.CustomerId);
+            }
+        });
+        $("#CustomerRateType").autocomplete({
+            source: function (request, response) {
+                $.ajax({
+                    url: '/AWBBatch/GetCustomerRateType',
+                    datatype: "json",
+                    data: {
+                        term: request.term, CustomerId: $('#CustomerID').val(), MovementId: $('#MovementID').val(), ProductTypeID: $('#ProductTypeID').val(), PaymentModeId: $('#PaymentTypeId').val(), FAgentID: $('#FAgentID').val(), CityName: $('#DeliveryCity').val(), CountryName: $('#DeliveryCountry').val(), OriginCountry: $('#OriginCountry').val(), OriginCity: $('#OriginCity').val()
+                    },
+                    success: function (data) {
+                        response($.map(data, function (val, item) {
+                            console.log(val);
+                            return {
+                                label: val.CustomerRateType1,
+                                value: val.CustomerRateTypeID
+
+                            }
+                        }))
+                    }
+                })
+            },
+            minLength: 1,
+            autoFocus: false,
+            focus: function (event, ui) {
+                $('#CustomerRateTypeID').val(ui.item.value);
+                $('#CustomerRateTypeID').attr('label', ui.item.label);
+                $('#CustomerRateType').val(ui.item.label);
+
+            },
+            select: function (e, i) {
+                e.preventDefault();
+                $('#CustomerRateTypeID').val(i.item.value);
+                $('#CustomerRateTypeID').attr('label', i.item.label);
+                $('#CustomerRateType').val(i.item.label);
+            }
+        });
+
+        $('#CustomerRateType').change(function () {
+            if ($('#CustomerRateType').val() == '') {
+                $('#CustomerRateTypeID').val(0);
+            }
+            else if ($('#CustomerRateType').val() != $('#CustomerRateTypeID').attr('label')) {
+                $('#CustomerRateType').val('');
+                $('#CustomerRateTypeID').val(0);
+            }
+            getCourierCharge();
+        });
+
+        $("#FAgentName").autocomplete({
+            source: function (request, response) {
+                $.ajax({
+                    url: '/AWBBatch/GetForwardingAgent',
+                    datatype: "json",
+                    data: {
+                        term: request.term
+                    },
+                    success: function (data) {
+                        response($.map(data, function (val, item) {
+                            console.log(val);
+                            return {
+                                label: val.AgentName,
+                                value: val.FAgentID
+
+                            }
+                        }))
+                    }
+                })
+            },
+            minLength: 1,
+            autoFocus: false,
+            focus: function (event, ui) {
+                $('#FAgentName').val(ui.item.label);
+                $('#FAgentID').val(ui.item.value);
+                $('#FAgentID').attr('label', ui.item.label);
+
+            },
+            select: function (e, i) {
+                e.preventDefault();
+                $('#FAgentName').val(i.item.label);
+                $('#FAgentID').val(i.item.value);
+                $('#FAgentID').attr('label', i.item.label);
+            }
+        });
+        $("#FAgentName").change(function () {
+            if ($("#FAgentName").val() == '') {
+                $('#FAgentID').val(0);
+                $('#FAgentID').attr('label', '');
+            }
+            else if ($("#FAgentName").val() != $('#FAgentID').attr('label')) {
+                $('#FAgentID').val(0);
+                $('#FAgentID').attr('label', '');
+            }
+            getCourierCharge();
+        });
+        $('#AWBNo').change(function () {
+            if ($('#AWBNo').val().trim() == '') {
+                var message = 'Enter AWBNo!';
+                $('#ulerr').addClass('show-error');
+                $('#ulerr').removeClass('show-green');
+                $('#lierr').html(message);
+                return;
+            }
+            else if (checkduplicate($('#AWBNo').val()) == false)
+            {
+                return;
+            }
+            else
+            {
+                $.ajax({
+                    type: "Get",
+                    url: '/AWBBatch/GetAWBInfo',
+                    datatype: "json",
+                    data: {
+                        awbno: $('#AWBNo').val()
+                    },
+                    success: function (response) {
+                        debugger;
+                        var status = response.Status;
+                        var mode = response.Mode;
+                        var message = 'Status :' + response.Status + ', Mode :' + response.Mode;
+                        if (status == 'Available') {
+                            $('#ulerr').addClass('show-green');
+                            $('#ulerr').removeClass('show-error');
+                            $('#lierr').html(response.Mode);
+
+                        }
+                        if (status == 'Available' && mode == 'Prepaid') {
+                            var charge = response.CourierCharge;
+                            $('#CourierCharge').val(parseFloat(charge).toFixed(2));
+                            $('#CourierCharge').attr('readonly', 'readonly');
+                            $('#PaymentTypeId').val(5).trigger('change');
+                            $('#PaymentTypeId').attr('readonly', 'readonly');
+                            $('#PaymentTypeId').attr('disabled', 'disabled');
+                        }
+                        else if (status == 'Available' && mode == 'NotPrepaid') {
+                            $('#PaymentTypeId').val(2).trigger('change');
+                            $('#PaymentTypeId').removeAttr('readonly');
+                            $('#PaymentTypeId').removeAttr('disabled');
+                        }
+                        if (status == 'Available' && (mode == 'Prepaid' || mode == 'NotPrepaid')) {
+                            var CustomerName = response.CustomerName;
+                            var CustomerId = response.CustomerID;
+                            var LocationName = response.LocationName;
+                            var CityName = response.CityName;
+                            var CountryName = response.CountryName;
+                            var Address1 = response.Address1;
+                            var Address2 = response.Address2;
+                            var Address3 = response.Address3;
+                            var PhoneNo = response.Phone;
+                            var Mobile = response.Mobile;
+                            var OriginLocation = response.OriginLocation;
+                            var DestinationLocation = response.DestinationLocation;
+                            var ContactPerson = '';
+                            var PickupSubLocality = response.PickupSubLocality;
+                            var DeliverySubLocality = response.DeliverySubLocality;
+                            var OriginPlaceID = response.OriginPlaceID;
+                            var DestinationPlaceID = response.DestinationPlaceID;
+                            $('#CustomerName').val(CustomerName);
+                            $('#Shipper').val(CustomerName);
+                            $('#Shipper').attr('readonly', 'readonly');
+                            $('#CustomerID').val(CustomerId);
+                            $("#ConsignorContact").val(ContactPerson);
+                            $("#ConsignorAddress1_Building").val(Address1);
+                            $("#ConsignorAddress2_Street").val(Address2);
+
+                            $("#ConsignorAddress3_PinCode").val(Address3);
+
+                            $("#ConsignorPhone").val(PhoneNo);
+                            $("#ConsignorCountryName").val(CountryName);
+                            $("#ConsignorCityName").val(CityName);
+                            $("#ConsignorLocationName").val(LocationName);
+                            $("#PickUpLocation").val(OriginLocation);
+                            $("#DeliveryLocation").val(DestinationLocation);
+                            $('#PickupSubLocality').val(PickupSubLocality);
+                            $('#DeliverySubLocality').val(DeliverySubLocality);
+                            $('#OriginPlaceID').val(OriginPlaceID);
+                            $('#DestinationPlaceID').val(DestinationPlaceID);
+                            $("#PickUpLocation").attr('readonly', 'readonly');
+                            $("#ConsignorMobileNo").val(Mobile);
+                            $('#btnAdd').removeAttr('disabled');
+                            if (mode == 'Prepaid') {
+                                $("#DeliveryLocation").attr('disabled', 'disabled');
+                                $('#Consignee').focus();
+                            }
+                            else {
+                                $("#DeliveryLocation").removeAttr('disabled');
+                                $('#PaymentTypeId').focus();
+                            }
+
+                        }
+                        else if (status == 'Available') {
+                            $('#Shipper').val('');
+                            $('#Shipper').removeAttr('readonly');
+                            $('#CourierCharge').val(0);
+                            $('#CourierCharge').removeAttr('readonly');
+                            $('#CustomerID').val(0);
+                            $("#ConsignorContact").val('');
+                            $("#ConsignorAddress1_Building").val('');
+                            $("#ConsignorAddress2_Street").val('');
+                            $("#ConsignorAddress3_PinCode").val('');
+                            $("#ConsignorPhone").val('');
+                            $("#ConsignorCountryName").val('');
+                            $("#ConsignorCityName").val('');
+                            $("#ConsignorLocationName").val('');
+                            $("#PickUpLocation").val('');
+                            $("#DeliveryLocation").val('');
+                            $("#PickUpLocation").removeAttr('readonly');
+                            $("#DeliveryLocation").removeAattr('readonly');
+                            $("#ConsignorMobileNo").val('');
+                            $("#MaterialCost").val(0);
+                            $('#Pieces').val(0);
+                            $('#Weight').val(0);
+                            $('#PaymentTypeId').val(2).trigger('change');
+                            $('#PaymentTypeId').removeAttr('readonly');
+                            $('#PaymentTypeId').removeAttr('disabled');
+                            $('#btnAdd').removeAttr('disabled');
+                            $('#PaymentTypeId').focus();
+                        }
+                        else if (status == 'NotAvailable') {
+                            $('#Shipper').val('');
+                            $('#Shipper').removeAttr('');
+                            $('#CustomerID').val(0);
+                            $("#ConsignorContact").val('');
+                            $("#ConsignorAddress1_Building").val('');
+                            $("#ConsignorAddress2_Street").val('');
+
+                            $("#ConsignorAddress3_PinCode").val('');
+
+                            $("#ConsignorPhone").val('');
+                            $("#ConsignorCountryName").val('');
+                            $("#ConsignorCityName").val('');
+                            $("#ConsignorLocationName").val('');
+                            $("#PickUpLocation").val('');
+                            $("#DeliveryLocation").val('');
+                            $("#ConsignorMobileNo").val('');
+                            $('#OriginPlaceID').val('');
+                            $('#DestinationPlaceID').val('');
+                            $('#PickupSubLocality').val('');
+                            $('#DeliverySubLocality').val('');
+                            $("#Consignee").val('');
+                            $("#MaterialCost").val('');
+                            $('#Pieces').val(0);
+                            $('#Weight').val(0);
+                            $('#btnAdd').attr('disabled', 'disabled');
+                            //$('#ulerr').removeClass('show-green');
+                            //$('#ulerr').addClass('show-error');
+                            //$('#lierr').html(message);
+                            if (response.Mode == 'Used')
+                            {
+                                $.notify('Air wayBill Used,Duplication not allowed!', "error");
+                            }
+                            else {
+                                $.notify('Air wayBill not Available!', "error");
+                            }
+                            $('#AWBNo').val('');
+                            $('#AWBNo').focus();
+                        }
+
+                    }
+                });
+            }
+        });
+        $("#Shipper").autocomplete({
+            source: function (request, response) {
+                $.ajax({
+                    url: '/AWB/GetShipperName',
+                    datatype: "json",
+                    data: {
+                        term: request.term
+                    },
+                    success: function (data) {
+                        response($.map(data, function (val, item) {
+                            return {
+                                label: val.ShipperName,
+                                value: val.ShipperName,
+                                AcHeadID: val.AcHeadID,
+                                ContactPerson: val.ContactPerson,
+                                Address1: val.Address1,
+                                Address2: val.Address2,
+                                Pincode: val.PinCode,
+                                Phone: val.Phone,
+                                CountryName: val.CountryName,
+                                CityName: val.CityName,
+                                LocationName: val.LocationName,
+                                ConsignorMobileNo: val.ConsignorMobileNo
+
+                            }
+                        }))
+                    }
+                })
+            },
+            minLength: 1,
+            autoFocus: false,
+            focus: function (event, i) {
+                $('#Shipper').val(i.item.value);
+                $("#ConsignorContact").val(i.item.ContactPerson);
+                $("#ConsignorAddress1_Building").val(i.item.Address1);
+                $("#ConsignorAddress2_Street").val(i.item.Address2);
+
+                $("#ConsignorAddress3_PinCode").val(i.item.Pincode);
+
+                $("#ConsignorPhone").val(i.item.Phone);
+                $("#ConsignorCountryName").val(i.item.CountryName);
+                $("#ConsignorCityName").val(i.item.CityName);
+                $("#ConsignorLocationName").val(i.item.LocationName);
+                $("#PickUpLocation").val(i.item.LocationName);
+                console.log(i.item.ConsignorMobileNo);
+                if (i.item.ConsignorMobileNo == null || i.item.ConsignorMobileNo == 'undefined' || i.item.ConsignorMobileNo=='')
+                    $("#ConsignorMobileNo").val('');
+                else
+                    $("#ConsignorMobileNo").val(i.item.ConsignorMobileNo);
+
+
+            },
+            select: function (e, i) {
+                e.preventDefault();
+                $("#Shipper").val(i.item.label);
+                $("#ConsignorContact").val(i.item.ContactPerson);
+                $("#ConsignorAddress1_Building").val(i.item.Address1);
+                $("#ConsignorAddress2_Street").val(i.item.Address2);
+
+                $("#ConsignorAddress3_PinCode").val(i.item.Pincode);
+
+                $("#ConsignorPhone").val(i.item.Phone);
+                $("#ConsignorCountryName").val(i.item.CountryName);
+                $("#ConsignorCityName").val(i.item.CityName);
+                $("#ConsignorLocationName").val(i.item.LocationName);
+                $("#PickUpLocation").val(i.item.LocationName);
+                if (i.item.ConsignorMobileNo == null || i.item.ConsignorMobileNo == 'undefined')
+                    $("#ConsignorMobileNo").val('');
+                else
+                    $("#ConsignorMobileNo").val(i.item.ConsignorMobileNo);
+                //fillPickupLocation();
+
+            },
+
+        });
+        $('#Shipper').change(function () {
+
+            $.ajax({
+                url: '/AWBBatch/GetConsignorCustomer', //'/AWB/GetConsigneeName',
+                datatype: "json",
+                data: {
+                    customername: $('#Shipper').val()
+                },
+                success: function (data) {
+
+                    if (data== null) {
+                        $('#CustomerID').val(0);
+                    }
+                    else {
+                        $('#CustomerID').val(data.CustomerID);
+                    }
+                }
+            });
+        });
+        $("#Consignee").autocomplete({
+            source: function (request, response) {
+                $.ajax({
+                    url: '/AWBBatch/GetReceiverName', //'/AWB/GetConsigneeName',
+                    datatype: "json",
+                    data: {
+                        term: request.term,Shipper :$('#Shipper').val()
+                    },
+                    success: function (data) {
+                        response($.map(data, function (val, item) {
+                            return {
+                                label: val.Name,
+                                value: val.Name,
+                                ContactPerson: val.ContactPerson,
+                                Address1: val.Address1,
+                                Address2: val.Address2,
+                                Pincode: val.PinCode,
+                                Phone: val.Phone,
+                                CountryName: val.CountryName,
+                                CityName: val.CityName,
+                                LocationName: val.LocationName,
+                                ConsigneeMobileNo :val.ConsigneeMobileNo
+
+                            }
+                        }))
+                    }
+                })
+            },
+            minLength: 1,
+            autoFocus: false,
+            focus: function (event, i) {
+                $('#Consignee').val(i.item.value);
+                $("#ConsigneeContact").val(i.item.ContactPerson);
+                $("#ConsigneeAddress1_Building").val(i.item.Address1);
+                $("#ConsigneeAddress2_Street").val(i.item.Address2);
+
+                $("#ConsigneeAddress3_PinCode").val(i.item.Pincode);
+                $("#ConsigneePhone").val(i.item.Phone);
+                $("#ConsigneeCountryName").val(i.item.CountryName);
+                $("#ConsigneeCityName").val(i.item.CityName);
+                $("#ConsigneeLocationName").val(i.item.LocationName);
+                if ($('#DeliveryLocation').attr('disabled')!='disabled')
+                    $('#DeliveryLocation').val(i.item.LocationName);
+                $("#ConsigneeLocation").val(i.item.LocationName);
+
+                if (i.item.ConsigneeMobileNo == null || i.item.ConsigneeMobileNo=='undefined')
+                    $("#ConsigneeMobileNo").val('');
+                else
+                    $("#ConsigneeMobileNo").val(i.item.ConsigneeMobileNo);
+                //fillDeliveryLocation();
+            },
+            select: function (e, i) {
+                e.preventDefault();
+                $("#Consignee").val(i.item.label);
+                $("#ConsigneeContact").val(i.item.ContactPerson);
+                $("#ConsigneeAddress1_Building").val(i.item.Address1);
+                $("#ConsigneeAddress2_Street").val(i.item.Address2);
+
+                $("#ConsigneeAddress3_PinCode").val(i.item.Pincode);
+                $("#ConsigneePhone").val(i.item.Phone);
+                $("#ConsigneeCountryName").val(i.item.CountryName);
+                $("#ConsigneeCityName").val(i.item.CityName);
+                $("#ConsigneeLocationName").val(i.item.LocationName);
+                if ($('#DeliveryLocation').attr('disabled') != 'disabled')
+                    $('#DeliveryLocation').val(i.item.LocationName);
+                $("#ConsigneeLocation").val(i.item.LocationName);
+                if (i.item.ConsigneeMobileNo == null || i.item.ConsigneeMobileNo == 'undefined')
+                    $("#ConsigneeMobileNo").val('');
+                else
+                    $("#ConsigneeMobileNo").val(i.item.ConsigneeMobileNo);
+                //fillDeliveryLocation();
+            },
+
+        });
+        $('#btnAdd').click(function () {
+            debugger;
+            if (!checkfieldvalidate($('#BatchDate')))
+                return;
+
+            var defaultdate = checkDate($('#BatchDate'));
+
+            if (!checkdrpfieldvalidate($('#MovementID')))
+                return;
+            if (!checkdrpfieldvalidate($('#ParcelTypeID')))
+                return;
+
+            if (!checkdrpfieldvalidate($('#ProductTypeID')))
+                return;
+
+
+
+            if (!checkfieldvalidate($('#AWBNo')))
+                return;
+
+            if (!checkfieldvalidate($('#AWBDate')))
+                return;
+
+            if (!checkfieldvalidate($('#Shipper')))
+                return;
+
+            if (!checkfieldvalidate($('#Consignee')))
+                return;
+
+            if (!checkNumberfieldvalidate($('#Pieces')))
+                return;
+
+            if (!checkNumberfieldvalidate($('#Weight')))
+                return;
+
+            if (!checkNumberfieldvalidate($('#CourierCharge')))
+                return;
+
+            if (!checkdrpfieldvalidate($('#PaymentTypeId')))
+                return;
+
+            if (!checkfieldvalidate($('#PickUpLocation')))
+                return;
+
+            if (!checkfieldvalidate($('#DeliveryLocation')))
+                return;
+
+            var CustomerID = 0;
+            var PaymentTypeId = $("#PaymentTypeId").val();
+            if (PaymentTypeId == 1)
+                CustomerID = $('#CASHCustomerId').val();
+            else if (PaymentTypeId == 2)
+                CustomerID = $('#CODCustomerID').val();
+            else if (PaymentTypeId == 3 || PaymentTypeId==5)
+                CustomerID = $('#CustomerID').val();
+            else if (PaymentTypeId == 4)
+                CustomerID = $('#FOCCustomerID').val();
+
+            if (CustomerID == 0) {
+                $('#lierr').html('Could not find the corresponding Customer!');
+                return;
+            }
+            var CustomerName = $('#CustomerName').val();
+
+            $('#lierr').html('');
+
+        var ParcelTypeId = $('#ParcelTypeID').val();
+        var ProductTypeID = $('#ProductTypeID').val();
+        var MovementID = $('#MovementID').val();
+            var InScanID = $('#InScanID').val();
+            var AWBNo = $('#AWBNo').val();
+            var AWBDate = checkDate($('#AWBDate'));
+            var Shipper = $('#Shipper').val();
+
+            var ConsignorContact= checkdata($("#ConsignorContact"));
+            var ConsignorAddress1 = $("#ConsignorAddress1_Building").val();
+            var ConsignorAddress2 = $("#ConsignorAddress2_Street").val();
+            var ConsignorAddress3= $("#ConsignorAddress3_PinCode").val();
+            var ConsignorPhone = checkdata($("#ConsignorPhone"));
+            var ConsignorMobileNo = checkdata($('#ConsignorMobileNo'));
+            var ConsignorCountryName =checkdata($("#ConsignorCountryName"));
+            var ConsignorCityName = checkdata($("#ConsignorCityName"));
+            var ConsignorLocationName = checkdata($("#ConsignorLocationName"));
+             var Receiver = checkdata($('#Consignee'));
+            var ConsigneeContact = checkdata($("#ConsigneeContact"));
+        var ConsigneeAddress1 = checkdata($("#ConsigneeAddress1_Building"));
+        var ConsigneeAddress2 = checkdata($("#ConsigneeAddress2_Street"));
+        var ConsigneeAddress3 = checkdata($("#ConsigneeAddress3_PinCode"));
+        var ConsigneePhone = checkdata($("#ConsigneePhone"));
+        var ConsigneeCountryName = checkdata($("#ConsigneeCountryName"));
+        var ConsigneeCityName = checkdata($("#ConsigneeCityName"));
+        var ConsigneeLocationName = checkdata($("#ConsigneeLocationName"));
+            var ConsigneeMobileNo = checkdata($('#ConsigneeMobileNo'));
+            var Pieces = $("#Pieces").val();
+            var CourierCharge = $("#CourierCharge").val();
+            if ($('#OtherCharge').val() == '')
+                $('#OtherCharge').val(0);
+            var OtherCharge = $('#OtherCharge').val();
+            var TaxPercent = $('#TaxPercent').val();
+            var TaxAmount = $('#TaxAmount').val();
+            var NetTotal = $('#NetTotal').val();
+            debugger;
+
+            if ($("#MaterialCost").val() == '')
+            $("#MaterialCost").val(0);
+
+          var MaterialCost = $("#MaterialCost").val();
+
+            var Weight = parseFloat($("#Weight").val()).toFixed(3);
+
+
+
+
+            var PaymentTypetext = $("#PaymentTypeId option:selected").text();
+            var PickUpLocation = $('#PickUpLocation').val();
+            var DeliveryLocation = $('#DeliveryLocation').val();
+        var ItemDescription = checkdata($('#ItemDescription'));
+
+            var AssignedEmployeeID = 0;
+            var AssignedDate = defaultdate;
+        var AssignedForCollection = $('#AssignedForCollection').prop('checked');
+            if (AssignedForCollection) {
+                if (!checkfieldvalidate($('#AssignedDate')))
+                    return;
+                if (!checkdrpfieldvalidate($('#AssignedEmployeeID')))
+                    return;
+             AssignedDate = checkDate($('#AssignedDate'));
+             AssignedEmployeeID = $('#AssignedEmployeeID').val() // Assigned for collection
+
+        }
+            var PickedUpEmpID = 0;
+            var PickedupDate = defaultdate;
+        var CollectedBy = $('#CollectedBy').prop('checked');
+            if (CollectedBy) {
+                if (!checkfieldvalidate($('#PickedupDate')))
+                    return;
+                if (!checkdrpfieldvalidate($('#PickedUpEmpID')))
+                    return;
+             PickedUpEmpID = $('#PickedUpEmpID').val(); //collected by
+             PickedupDate = checkDate($('#PickedupDate'));
+        }
+
+            var DepotReceivedBy = 0;
+            var ReceivedDate = defaultdate;
+            var InScanVehicleID = 0;
+            var ReceivedBy = $('#ReceivedBy').prop('checked');
+            if (ReceivedBy) {
+                if (!checkfieldvalidate($('#ReceivedDate')))
+                    return;
+                if (!checkdrpfieldvalidate($('#DepotReceivedBy')))
+                    return;
+                if (!checkdrpfieldvalidate($('#InscanVehicleId')))
+                    return;
+                DepotReceivedBy = $('#DepotReceivedBy').val(); //employee name
+                ReceivedDate = checkDate($('#ReceivedDate'));
+                InScanVehicleID = $('#InscanVehicleId ').val();
+        }
+        var OutScanDeliveredID = 0;
+            var OutScanDate = defaultdate;
+        var OutScanVehicleID = 0;
+        var OutScanDelivery = $('#OutScanDelivery').prop('checked');
+            if (OutScanDelivery) {
+                if (!checkfieldvalidate($('#OutScanDate')))
+                    return;
+                if (!checkdrpfieldvalidate($('#OutScanDeliveredID')))
+                    return;
+                if (!checkdrpfieldvalidate($('#OutscanVehicleId')))
+                    return;
+            OutScanDeliveredID = $('#OutScanDeliveredID').val();
+            OutScanDate = checkDate($('#OutScanDate'));
+            OutScanVehicleID = $('#OutscanVehicleId').val();
+        }
+
+        var DeliveryAttemptedBy = 0;
+            var DelieveryAttemptDate = defaultdate;
+        var DeliveryAttempted = $('#DeliveryAttempted').prop('checked');
+            if (DeliveryAttempted) {
+                if (!checkfieldvalidate($('#DelieveryAttemptDate')))
+                    return;
+                if (!checkdrpfieldvalidate($('#DeliveryAttemptedBy')))
+                    return;
+             DeliveryAttemptedBy = $('#DeliveryAttemptedBy').val();
+            DelieveryAttemptDate = checkDate($('#DelieveryAttemptDate'));
+        }
+        var DeliveredBy = 0;
+            var DeliveredDate = defaultdate;
+        var Delivered = $('#Delivered').prop('checked');
+            if(Delivered)
+            {
+                if (!checkfieldvalidate($('#DeliveredDate')))
+                    return;
+                if (!checkdrpfieldvalidate($('#DeliveredBy')))
+                    return;
+                DeliveredBy = $('#DeliveredBy').val();
+                DeliveredDate = checkDate($('#DeliveredDate'));
+            }
+            var OriginPlaceID = checkdata($('#OriginPlaceID'));;
+            var DestinationPlaceID = checkdata($('#DestinationPlaceID'));
+            var PickupSubLocality = checkdata($('#PickupSubLocality'));
+            var DeliverySubLocality = checkdata($('#DeliverySubLocality'));
+            debugger;
+            var SpecialInstructions = $('#SpecialInstructions').val();
+            var Remarks = $('#Remarks').val();
+            var CustomerRateTypeId = $('#CustomerRateTypeID').val();
+            var FAgentID = $('#FAgentID').val();
+            //var i = $('#tbl1 > tr').length;
+
+            var i = $('#hdnEditRow').val();
+            var row = parseInt(i) + 1;
+            var datahtml =
+                '<span id="srow_' + i + '">' + row + '</span>' +
+                '<input class="hdndeleted" type="hidden" value="false" id="hdndeleted_' + i + '" />' +
+                '<input type="hidden" id="hdnInScanID_' + i + '" value="' + InScanID + '" />' +
+                '<input type="hidden" id="hdnAWBNo_' + i + '" value="' + AWBNo + '" />' +
+                '<input type="hidden" id="hdnCustomerID_' + i + '" value="' + CustomerID + '" />' +
+                '<input type="hidden" id="hdnCustomerName_' + i + '" value="' + CustomerName + '" />' +
+                '<input type="hidden" id="hdnConsignor_' + i + '" value="' + Shipper + '" />' +
+                '<input type="hidden" id="hdnConsignorContact_' + i + '" value="' + ConsignorContact + '" />' +
+                '<input type="hidden" id="hdnConsignorAddress1_' + i + '" value="' + ConsignorAddress1 + '"/>' +
+                '<input type="hidden" id="hdnConsignorAddress2_' + i + '" value="' + ConsignorAddress2 + '"/>' +
+                '<input type="hidden" id="hdnConsignorAddress3_' + i + '" value="' + ConsignorAddress3 + '"/>' +
+                '<input type="hidden" id="hdnConsignorPhone_' + i + '" value="' + ConsignorPhone + '"/>' +
+                '<input type="hidden" id="hdnConsignorCountryName_' + i + '" value="' + ConsignorCountryName + '"/>' +
+                '<input type="hidden" id="hdnConsignorCityName_' + i + '" value="' + ConsignorCityName + '"/>' +
+                '<input type="hidden" id="hdnConsignorLocationName_' + i + '" value="' + ConsignorLocationName + '"/>' +
+                '<input type="hidden" id="hdnConsignee_' + i + '" value="' + Receiver + '"/>' +
+                '<input type="hidden" id="hdnConsigneeContact_' + i + '" value="' + ConsigneeContact + '"/>' +
+                '<input type="hidden" id="hdnConsigneeAddress1_' + i + '" value="' + ConsigneeAddress1 + '"/>' +
+                '<input type="hidden" id="hdnConsigneeAddress2_' + i + '" value="' + ConsigneeAddress2 + '"/>' +
+                '<input type="hidden" id="hdnConsigneeAddress3_' + i + '" value="' + ConsigneeAddress3 + '"/>' +
+                '<input type="hidden" id="hdnConsigneePhone_' + i + '" value="' + ConsigneePhone + '"/>' +
+                '<input type="hidden" id="hdnConsigneeCountryName_' + i + '" value="' + ConsigneeCountryName + '"/>' +
+                '<input type="hidden" id="hdnConsigneeCityName_' + i + '" value="' + ConsigneeCityName + '"/>' +
+                '<input type="hidden" id="hdnConsigneeLocationName_' + i + '" value="' + ConsigneeLocationName + '"/>' +
+                '<input type="hidden" id="hdnAssignedEmployeeID_' + i + '" value="' + AssignedEmployeeID + '"/>' +
+                '<input type="hidden" id="hdnAssignedForCollection_' + i + '" value="' + AssignedForCollection + '"/>' +
+                '<input type="hidden" id="hdnAssignedDate_' + i + '" value="' + AssignedDate + '"/>' +
+                '<input type="hidden" id="hdnCourierCharge_' + i + '" value="' + CourierCharge + '"/>' +
+                '<input type="hidden" id="hdnOtherCharge_' + i + '" value="' + OtherCharge + '"/>' +
+                '<input type="hidden" id="hdnTaxPercent_' + i + '" value="' + TaxPercent + '"/>' +
+                '<input type="hidden" id="hdnTaxAmount_' + i + '" value="' + TaxAmount + '"/>' +
+                '<input type="hidden" id="hdnPickedUpEmpID_' + i + '" value="' + PickedUpEmpID + '"/>' +
+                '<input type="hidden" id="hdnPickedupDate_' + i + '" value="' + PickedupDate + '"/>' +
+                '<input type="hidden" id="hdnPieces_' + i + '" value="' + Pieces + '"/>' +
+                '<input type="hidden" id="hdnWeight_' + i + '" value="' + Weight + '"/>' +
+                '<input type="hidden" id="hdnCargoDescription_' + i + '" value="' + ItemDescription + '"/>' +
+                '<input type="hidden" id="hdnMovementID_' + i + '" value="' + MovementID + '"/>' +
+                '<input type="hidden" id="hdnProductTypeID_' + i + '" value="' + ProductTypeID + '"/>' +
+                '<input type="hidden" id="hdnTransactionDate_' + i + '" value="' + AWBDate + '"/>' +
+                '<input type="hidden" id="hdnNetTotal_' + i + '" value="' + NetTotal + '"/>' +
+                '<input type="hidden" id="hdnParcelTypeId_' + i + '" value="' + ParcelTypeId + '"/>' +
+                '<input type="hidden" id="hdnMaterialCost_' + i + '" value="' + MaterialCost + '"/>' +
+                '<input type="hidden" id="hdnPaymentModeId_' + i + '" value="' + PaymentTypeId + '"/>' +
+                '<input type="hidden" id="hdnDepotReceivedBy_' + i + '" value="' + DepotReceivedBy + '"/>' +
+                '<input type="hidden" id="hdnReceivedDate_' + i + '" value="' + ReceivedDate + '"/>' +
+
+                '<input type="hidden" id="hdnDocumentTypeId_' + i + '" value="1"/>' +
+                '<input type="hidden" id="hdnOriginPlaceID_' + i + '" value="' + OriginPlaceID + '"/>' +
+                '<input type="hidden" id="hdnDestinationPlaceID_' + i + '" value="' + DestinationPlaceID + '"/>' +
+                '<input type="hidden" id="hdnPickupLocation_' + i + '" value="' + PickUpLocation + '"/>' +
+                '<input type="hidden" id="hdnDeliveryLocation_' + i + '" value="' + DeliveryLocation + '"/>' +
+                '<input type="hidden" id="hdnPickupSubLocality_' + i + '" value="' + PickupSubLocality + '"/>' +
+                '<input type="hidden" id="hdnDeliverySubLocality_' + i + '" value="' + DeliverySubLocality + '"/>' +
+                '<input type="hidden" id="hdnConsignorMobileNo_' + i + '" value="' + ConsignorMobileNo + '"/>' +
+                '<input type="hidden" id="hdnConsigneeMobileNo_' + i + '" value="' + ConsigneeMobileNo + '"/>' +
+                '<input type="hidden" id="hdnCollectedBy_' + i + '" value="' + CollectedBy + '"/>' +
+                '<input type="hidden" id="hdnReceivedBy_' + i + '" value="' + ReceivedBy + '"/>' +
+                '<input type="hidden" id="hdnOutScanDelivery_' + i + '" value="' + OutScanDelivery + '"/>' +
+                '<input type="hidden" id="hdnDeliveryAttempted_' + i + '" value="' + DeliveryAttempted + '"/>' +
+                '<input type="hidden" id="hdnDelivered_' + i + '" value="' + Delivered + '"/>' +
+                '<input type="hidden" id="hdnOutScanDeliveredID_' + i + '" value="' + OutScanDeliveredID + '"/>' +
+                '<input type="hidden" id="hdnOutScanDate_' + i + '" value="' + OutScanDate + '"/>' +
+                '<input type="hidden" id="hdnDeliveryAttemptedBy_' + i + '" value="' + DeliveryAttemptedBy + '"/>' +
+                '<input type="hidden" id="hdnDelieveryAttemptDate_' + i + '" value="' + DelieveryAttemptDate + '"/>' +
+                '<input type="hidden" id="hdnDeliveredBy_' + i + '" value="' + DeliveredBy + '"/>' +
+                '<input type="hidden" id="hdnDeliveredDate_' + i + '" value="' + DeliveredDate + '"/>' +
+                '<input type="hidden" id="hdnInscanVehicleId_' + i + '" value="' + InScanVehicleID + '"/>' +
+                '<input type="hidden" id="hdnOutscanVehicleId_' + i + '" value="' + OutScanVehicleID + '"/>' +
+                '<input type="hidden" id="hdnSpecialInstructions_' + i + '" value="' + SpecialInstructions + '"/>'+
+                '<input type="hidden" id="hdnCustomerRateTypeID_' + i + '" value="' + CustomerRateTypeId + '"/>' +
+                '<input type="hidden" id="hdnFAgentID_' + i + '" value="' + FAgentID + '"/>';
+                //'<input type="hidden" id="hdnFAgentName_' + i + '" value="' + FAgentName + '"/>';
+
+            $('#tr_' + i).html('<td>' + datahtml + '</td>' +
+                '<td>' + AWBNo + '<br/>' + $('#AWBDate').val() + '</td>' +
+                '<td>' + PaymentTypetext + '</td>' +
+                //'<td>' + $('#AWBDate').val() + '</td>' +
+                '<td>' + Shipper + '<br/>' + PickUpLocation + '</td>' +
+                '<td>' + Receiver + '<br/>' + DeliveryLocation + '</td>' +
+                //'<td>' + Pieces + '</td>' +
+                //'<td>' + Weight + '</td>' +
+                '<td>' + 'CC:' + parseFloat(CourierCharge).toFixed(2) + '<br/>' + //'</td>' +
+                'OC:' + parseFloat(OtherCharge).toFixed(2) + '<br/>' +
+                'Tax:' + parseFloat(TaxAmount).toFixed(2) + '<br/>' +
+                'Net' + parseFloat(NetTotal).toFixed(2) + '</td>' +
+                '<td>' + parseFloat(MaterialCost).toFixed(2) + '</td>' +
+                //'<td>' + DeliveryLocation + '</td>' +
+                //'<td>' + ItemDescription + '</td>' +
+                '<td><a href="javascript:void(0)" onclick="editawb(this,' + i + ')"><i class="fa fa-pencil"></i></a></td>');
+            //$('#AWBNo').val('');
+            //$('#Shipper').val('');
+            //$('#Shipper').removeAttr('');
+            //$('#CustomerID').val(0);
+            //$('#CustomerName').val('');
+            //$("#ConsignorContact").val('');
+            //$("#ConsignorAddress1_Building").val('');
+            //$("#ConsignorAddress2_Street").val('');
+
+            //$("#ConsignorAddress3_PinCode").val('');
+
+            //$("#ConsignorPhone").val('');
+            //$("#ConsignorCountryName").val('');
+            //$("#ConsignorCityName").val('');
+            //$("#ConsignorLocationName").val('');
+            //$("#PickUpLocation").val('');
+            //$("#DeliveryLocation").val('');
+            //$("#ConsignorMobileNo").val('');
+            //$('#OriginPlaceID').val('');
+            //$('#DestinationPlaceID').val('');
+            //$('#PickupSubLocality').val('');
+            //$('#DeliverySubLocality').val('');
+            //$("#Consignee").val('');
+            //$("#MaterialCost").val('');
+            //$("#CourierCharge").val('');
+            //$("#OtherCharge").val('');
+            //$("#TotalCharge").val('');
+            //$('#ItemDescription').val('');
+            //$('#Pieces').val(0);
+            //$('#Weight').val(0);
+            //$('#AWBNo').focus();
+
+        });
+
+        $('#btnSave').click(function () {
+
+            // $('#btnSave').attr('disabled', 'disabled');
+            var obj = [];
+            var maxrow = $('#tbl1 > tr').length;
+            if (maxrow == 0) {
+                alert('AWB Not added,could not save Batch!');
+                return;
+            }
+            for (i = 0; i < maxrow; i++) {
+                var deleted = $('#hdndeleted_' + i).val();
+                if (deleted == 'false') {
+                    debugger;
+                    var InScanID =  $('#hdnInScanID_' + i).val();
+                    var AWBNo = $('#hdnAWBNo_' + i).val();
+                    var CustomerID = $('#hdnCustomerID_' + i).val();
+                    var AWBDate = $('#hdnTransactionDate_' + i).val();
+                    var Shipper = $('#hdnConsignor_' + i).val();
+                    var ConsignorContact = $("#hdnConsignorContact_" + i).val();
+                    var ConsignorAddress1 = $("#hdnConsignorAddress1_" + i).val();
+                    var ConsignorAddress2 = $("#hdnConsignorAddress2_" + i).val();
+                    var ConsignorAddress3 = $("#hdnConsignorAddress3_" + i).val();
+                    var ConsignorPhone = $("#hdnConsignorPhone_" + i).val();
+                    var ConsignorCountryName = $("#hdnConsignorCountryName_" + i).val();
+                    var ConsignorCityName = $("#hdnConsignorCityName_" + i).val();
+                    var ConsignorLocationName = $("#hdnConsignorLocationName_" + i).val()
+                    var Receiver = $('#hdnConsignee_' + i).val();
+                    var ConsigneeContact = $("#hdnConsigneeContact_" + i).val();
+                    var ConsigneeAddress1 = $("#hdnConsigneeAddress1_" + i).val();
+                    var ConsigneeAddress2 = $("#hdnConsigneeAddress2_"+ i).val()
+                    var ConsigneeAddress3 = $("#hdnConsigneeAddress3_" + i).val();
+                    var ConsigneePhone = $("#hdnConsigneePhone_" + i).val();
+                    var ConsigneeCountryName = $("#hdnConsigneeCountryName_" + i).val();
+                    var ConsigneeCityName = $("#hdnConsigneeCityName_" + i).val();
+                    var ConsigneeLocationName = $("#hdnConsigneeLocationName_" + i).val();
+                    var Pieces = $("#hdnPieces_" + i).val();
+                    var CourierCharge = $("#hdnCourierCharge_" + i).val();
+                    var OtherCharge = $("#hdnOtherCharge_" + i).val();
+                    var TaxPercent = $('#TaxPercent').val();
+                    var TaxAmount = $("#hdnTaxAmount_" + i).val();
+                    var NetTotal= $("#hdnNetTotal_" + i).val();
+                    var MaterialCost = $("#hdnMaterialCost_" + i).val();
+                    var Weight = parseFloat($("#hdnWeight_" + i).val()).toFixed(3);
+                    var ParcelTypeId = $('#hdnParcelTypeId_' + i).val();
+                    var PaymentTypeId = $("#hdnPaymentModeId_" + i).val();
+                    var PickUpLocation = $('#hdnPickupLocation_' + i).val();
+                    var DeliveryLocation = $('#hdnDeliveryLocation_' + i).val();
+                    var ItemDescription = $('#hdnCargoDescription_' + i).val();
+                    var AssignedEmployeeID = $('#hdnAssignedEmployeeID_' + i).val(); // Assigned for collection
+                    var AssignedDate = $('#hdnAssignedDate_' + i).val();
+                    var PickedUpEmpID = $('#hdnPickedUpEmpID_' + i).val(); //collected by
+                    var PickedupDate = $('#hdnPickedupDate_' + i).val();
+                    var ProductTypeID = $('#hdnProductTypeID_' + i).val();
+                    var MovementID = $('#hdnMovementID_' + i).val();
+                    var OriginPlaceID = $('#hdnOriginPlaceID_' + i).val();
+                    var DestinationPlaceID = $('#hdnDestinationPlaceID_' + i).val();
+                    var PickupSubLocality = $('#hdnPickupSubLocality_' + i).val();
+                    var DeliverySubLocality = $('#hdnDeliverySubLocality_' + i).val();
+                    var DepotReceivedBy = $('#hdnDepotReceivedBy_' + i).val(); //employee name
+                    var ReceivedDate = $('#hdnReceivedDate_' + i).val(); //employee name
+                    var CollectedBy = $('#hdnCollectedBy_' + i).val();
+                    var ReceivedBy = $('#hdnReceivedBy_' + i).val();
+                    var OutScanDelivery = $('#hdnOutScanDelivery_' +i).val();
+                    var DeliveryAttempted = $('#hdnDeliveryAttempted_' +i).val();
+                    var Delivered = $('#hdnDelivered_' + i).val();
+                    var OutScanDeliveredID = $('#hdnOutScanDeliveredID_' + i).val()
+                    var OutScanDate = $('#hdnOutScanDate_' + i).val()
+                    var DeliveryAttemptedBy = $('#hdnDeliveryAttemptedBy_'+i).val()
+                    var DelieveryAttemptDate = $('#hdnDelieveryAttemptDate_'+i).val()
+                    var DeliveredBy = $('#hdnDeliveredBy_' + i).val()
+                    var DeliveredDate = $('#hdnDeliveredDate_' + i).val()
+                    var AssignedForCollection = $('#hdnAssignedForCollection_' + i).val()
+                    var ConsignorMobileNo = $('#hdnConsignorMobileNo_' + i).val();
+                    var ConsigneeMobileNo = $('#hdnConsigneeMobileNo_' + i).val();
+                    var InscanVehicleID = $('#hdnInscanVehicleId_' + i).val();
+                    var OutScanVehicleID = $('#hdnOutscanVehicleId_' + i).val();
+                    var Remarks = $('#hdnRemarks_' + i).val();
+                    var DocumentTypeId = 1;
+                    var IsEnquiry = true;
+                    var RequestSource = "";
+                    var SpecialInstructions = $('#hdnSpecialInstructions_' + i).val();
+                    var item = {
+                        InScanID : InScanID,
+                        AWBNo: AWBNo,
+                        CustomerID: CustomerID,
+                        Consignor: Shipper,
+                        ConsignorContact: ConsignorContact,
+                        ConsignorAddress1_Building: ConsignorAddress1,
+                        ConsignorAddress2_Street: ConsignorAddress2,
+                        ConsignorAddress3_PinCode: ConsignorAddress3,
+                        ConsignorPhone: ConsignorPhone,
+                        ConsignorCountryName: ConsignorCountryName,
+                        ConsignorCityName: ConsignorCityName,
+                        ConsignorLocationName: ConsignorLocationName,
+                        Consignee: Receiver,
+                        ConsigneeContact: ConsigneeContact,
+                        ConsigneeAddress1_Building: ConsigneeAddress1,
+                        ConsigneeAddress2_Street: ConsigneeAddress2,
+                        ConsigneeAddress3_PinCode: ConsigneeAddress3,
+                        ConsigneePhone: ConsigneePhone,
+                        ConsigneeCountryName: ConsigneeCountryName,
+                        ConsigneeCityName: ConsigneeCityName,
+                        ConsigneeLocationName: ConsigneeLocationName,
+                        AssignedEmployeeID: AssignedEmployeeID,
+                        CourierCharge: CourierCharge,
+                        OtherCharge: OtherCharge,
+                        TaxPercent: TaxPercent,
+                        TaxAmount: TaxAmount,
+                        PickedUpEmpID: PickedUpEmpID,
+                        PickedupDate: PickedupDate,
+                        Pieces: Pieces,
+                        Weight: Weight,
+                        CargoDescription: ItemDescription,
+                        MovementID: MovementID,
+                        ProductTypeID: ProductTypeID,
+                        TransactionDate: AWBDate,
+                        NetTotal: NetTotal,
+                        ParcelTypeId: ParcelTypeId,
+                        MaterialCost: MaterialCost,
+                        PaymentModeId: PaymentTypeId,
+                        DepotReceivedBy: DepotReceivedBy,
+                        DocumentTypeId: DocumentTypeId,
+                        OriginPlaceID: OriginPlaceID,
+                        DestinationPlaceID: DestinationPlaceID,
+                        PickupLocation: PickUpLocation,
+                        DeliveryLocation: DeliveryLocation,
+                        PickupSubLocality: PickupSubLocality,
+                        DeliverySubLocality: DeliverySubLocality,
+                        ConsignorMobileNo: ConsignorMobileNo,
+                        ConsigneeMobileNo: ConsigneeMobileNo,
+                        AssignedDate: AssignedDate,
+                        AssignedForCollection: AssignedForCollection,
+                        CollectedBy: CollectedBy,
+                        ReceivedBy: ReceivedBy,
+                        OutScanDelivery: OutScanDelivery,
+                        DeliveryAttempted: DeliveryAttempted,
+                        Delivered: Delivered,
+                        ReceivedDate: ReceivedDate,
+                        OutScanDeliveredID: OutScanDeliveredID,
+                        OutScanDate: OutScanDate,
+                        DeliveryAttemptedBy: DeliveryAttemptedBy,
+                        DelieveryAttemptDate: DelieveryAttemptDate,
+                        DeliveredBy: DeliveredBy,
+                        DeliveredDate: DeliveredDate,
+                        InscanVehicleId: InscanVehicleID,
+                        OutscanVehicleId: OutScanVehicleID,
+                        SpecialInstructions: SpecialInstructions,
+                        IsEnquiry: IsEnquiry,
+                        RequestSource: RequestSource,
+                        PickupRequestDate: checkDate($('#BatchDate')),
+                        Remarks :Remarks
+                    }
+
+                    obj.push(item);
+                }
+
+                if (maxrow == (i + 1)) {
+
+                    $.ajax({
+                        type: "POST",
+                        url: "/AWBBatch/UpdateBatch",
+                        datatype: "Json",
+                        data: { BatchId: $('#ID').val(),Details: JSON.stringify(obj) },
+                        success: function (response) {
+                            if (response == "Ok") {
+                                $.notify("Batch Saved Succesfully!", "success");
+                                $('#btnSave').removeAttr('disabled');
+                                @*location.href = '@Url.Action("Index","DRSReconc")';*@
+                                window.location.href = "/AWBBatch/Index?id=1";
+                            }
+                            else {
+
+                                $.notify(response, "error");
+                                $('#btnSave').removeAttr('disabled');
+                                //$.notify(response.message, "warning");
+                                return false;
+                            }
+                        },
+                        error: function (err) {
+                            console.log(err);
+                        }
+                    });
+                }
+            }
+        });
+
+        LoadAWB();
+    });
+</script>
+<section class="content-header">
+    <div class="row">
+        <div class="col-md-5 pull-left">
+            <h1 class="headingfont">AWB Batch - Modify</h1>
+        </div>
+    </div>
+</section>
+
+
+<!-- Main content -->
+<section class="content">
+    @using (Html.BeginForm("Edit", "AWBBatch", FormMethod.Post, new { @id = "FormReceipt" }))
+    {
+        @Html.ValidationSummary(true)
+
+        @Html.HiddenFor(model => model.ID)
+        <div class="row no-margin" style="padding-top:10px">
+            <div class="col-xs-12 col-sm-2">
+                <label class="headinglabel">Batch No.</label>
+                @Html.TextBoxFor(model => model.BatchNumber, new { @class = "form-control", @readonly = "readonly" })
+                @Html.HiddenFor(mode => Model.ID)
+            </div>
+            <div class="col-xs-12 col-sm-2">
+                <label class="headinglabel">Batch Date</label>
+                @Html.TextBoxFor(model => model.BatchDate, new { @class = "form-control text-right", @required = true })
+            </div>
+
+            <div class="col-sm-8 text-right" style="margin-top:32px;">
+                <input type="submit" class="btn btn-primary  btnwidth" value="Save " name="Command" id="btnSave" />
+                <a href='@Url.Action("Index", "AWBBatch", new { id = 1 })' class="btn btn-danger  btnwidth">Cancel</a>
+
+            </div>
+        </div>
+
+        <div class="row  searchMc hide">
+
+
+            <h4>AWB Status</h4>
+            <div class="col-xs-2 col-sm-2">
+                <div class="flex">
+
+                    <div class="checkboxdesign no-padding  text-right">
+                        @Html.CheckBox("AssignedForCollection", new { @name = "AssignedForCollection" }) &nbsp
+                        <label class="headinglabel" style="color:#07a7e3!important;padding-left: 0!important"></label>
+                    </div>
+                    <label class="headinglabel required">Assigned for Collection</label>
+                </div>
+                @Html.TextBoxFor(model => model.AssignedDate, new { @class = "form-control text-right", @required = true })
+                @Html.DropDownListFor(model => model.AssignedEmployeeID, new SelectList(ViewBag.Employee, "EmployeeID", "EmployeeName"), "Select", new { @class = "form-control" })
+            </div>
+            <div class="col-xs-12 col-sm-2">
+                <div class="flex">
+                    <div class="checkboxdesign no-padding  ">
+                        @Html.CheckBox("CollectedBy", new { @name = "CollectedBy" }) &nbsp
+                        <label class="headinglabel" style="color:#07a7e3!important;padding-left: 0!important"></label>
+                    </div>
+                    <label class="headinglabel required">CollectedBy</label>
+
+                </div>
+                @Html.TextBoxFor(model => model.PickedupDate, new { @class = "form-control text-right" })
+                @Html.DropDownListFor(model => model.PickedUpEmpID, new SelectList(ViewBag.Employee, "EmployeeID", "EmployeeName"), "Select", new { @class = "form-control" })
+            </div>
+            <div class="col-xs-12 col-sm-2">
+                <div class="flex">
+                    <div class="checkboxdesign no-padding  text-right" style="float:right">
+                        @Html.CheckBox("ReceivedBy", new { @name = "ReceivedBy" }) &nbsp
+                        <label class="headinglabel" style="color:#07a7e3!important;padding-left: 0!important"></label>
+                    </div>
+                    <label class="headinglabel required">Received at Store</label>
+
+                </div>
+                @Html.TextBoxFor(model => model.ReceivedDate, new { @class = "form-control text-right" })
+                @Html.DropDownListFor(model => model.DepotReceivedBy, new SelectList(ViewBag.Employee, "EmployeeID", "EmployeeName"), "Select", new { @class = "form-control" })
+                @Html.DropDownListFor(model => model.InscanVehicleId, new SelectList(ViewBag.Vehicle, "VehicleID", "VehicleDescription"), "Select Vehicle", new { @class = "form-control" })
+
+            </div>
+            <div class="col-xs-12 col-sm-2">
+                <div class="flex">
+                    <div class="checkboxdesign no-padding  ">
+                        @Html.CheckBox("OutScanDelivery", new { @name = "OutScanDelivery" }) &nbsp
+                        <label class="headinglabel" style="color:#07a7e3!important;padding-left: 0!important"></label>
+                    </div>
+                    <label class="headinglabel required">Out for Delivery</label>
+
+                </div>
+                @Html.TextBoxFor(model => model.OutScanDate, new { @class = "form-control text-right" })
+                @Html.DropDownListFor(model => model.OutScanDeliveredID, new SelectList(ViewBag.Employee, "EmployeeID", "EmployeeName"), "Select", new { @class = "form-control" })
+                @Html.DropDownListFor(model => model.OutscanVehicleId, new SelectList(ViewBag.Vehicle, "VehicleID", "VehicleDescription"), "Select Vehicle", new { @class = "form-control" })
+
+            </div>
+            <div class="col-xs-12 col-sm-2">
+                <div class="flex">
+                    <div class="checkboxdesign no-padding  text-right">
+                        @Html.CheckBox("DeliveryAttempted", new { @name = "DeliveryAttempted" }) &nbsp
+                        <label class="headinglabel" style="color:#07a7e3!important;padding-left: 0!important"></label>
+                    </div>
+                    <label class="headinglabel required">DeliveryAttempted</label>
+
+                </div>
+                @Html.TextBoxFor(model => model.DelieveryAttemptDate, new { @class = "form-control text-right" })
+                @Html.DropDownListFor(model => model.DeliveryAttemptedBy, new SelectList(ViewBag.Employee, "EmployeeID", "EmployeeName"), "Select", new { @class = "form-control" })
+            </div>
+            <div class="col-xs-12 col-sm-2">
+                <div class="flex">
+                    <div class="checkboxdesign no-padding  text-right">
+                        @Html.CheckBox("Delivered", new { @name = "Delivered" }) &nbsp
+                        <label class="headinglabel" style="color:#07a7e3!important;padding-left: 0!important"></label>
+                    </div>
+                    <label class="headinglabel required">Delivered</label>
+
+                </div>
+                @Html.TextBoxFor(model => model.DeliveredDate, new { @class = "form-control text-right" })
+                @Html.DropDownListFor(model => model.DeliveredBy, new SelectList(ViewBag.Employee, "EmployeeID", "EmployeeName"), "Select", new { @class = "form-control" })
+            </div>
+
+
+        </div>
+        <div class="row no-margin" style="padding-top:10px">
+            <div class="col-md-5">
+                <div class="row no-margin" style="padding-top:10px">
+                    <div class="col-xs-12 col-sm-4">
+                        <label class=" required ratelabel">Movement Type</label>
+                        @Html.DropDownListFor(model => model.MovementID, new SelectList(@ViewBag.Movement, "MovementID", "MovementType"), "Select", new { @class = "form-control", @required = "true" })
+                    </div>
+                    <div class="col-xs-12 col-sm-4">
+                        <label class="ratelabel required">Product Type</label>
+                        @Html.DropDownListFor(model => model.ProductTypeID, new SelectList(ViewBag.ProductType, "ProductTypeID", "ProductName"), "Select", new { @class = "form-control" })
+                    </div>
+                    <div class="col-xs-12 col-sm-4">
+                        <label class="headinglabel required">Parcel Type</label>
+                        @Html.DropDownListFor(model => model.ParcelTypeID, new SelectList(ViewBag.parceltype, "ID", "ParcelType1"), "Select", new { @class = "form-control" })
+                    </div>
+                </div>
+                <div class="row no-margin" style="padding-top:10px">
+                    <div class="col-xs-12 col-sm-4">
+                        <label class="headinglabel">AWB Date</label>
+                        @Html.TextBoxFor(model => model.AWBDate, new { @class = "form-control text-right", @autocomplete = "off" })
+                        <input type="hidden" id="hdnEditRow" value="0" />
+                    </div>
+                    <div class="col-xs-12 col-sm-4">
+                        <label class="headinglabel">Air Waybill</label>
+                        @Html.TextBoxFor(model => model.AWBNo, new { @class = "form-control", @autocomplete = "off" })
+                    </div>
+                    <div class="col-xs-12 col-sm-4">
+                        <label class="ratelabel">Type</label>
+                        @Html.DropDownListFor(model => model.PaymentTypeId, new SelectList(@ViewBag.PaymentMode, "ID", "PaymentModeCode"), "Select", new { @class = "form-control", @required = "true" })
+                    </div>
+
+                </div>
+                <div class="row">
+                    <div class="col-xs-12 col-sm-12">
+                        <label class="ratelabel">Customer</label>
+                        @Html.TextBoxFor(model => model.CustomerName, new { @class = "form-control", @autocomplete = "off" })
+                        @Html.HiddenFor(model => model.TaxPercent)
+                        @Html.HiddenFor(model => model.BranchLocation)
+                        @Html.HiddenFor(model => model.BranchCountry)
+                        @Html.HiddenFor(model => model.BranchCity)
+                    </div>
+                </div>
+                <div class="row">
+                    <div class="col-xs-12 col-sm-6">
+                        <div class="flex">
+                            <div class="checkboxdesign no-padding  ">
+                                <a id="btnaddress1" class="headinglabel hyperlink" onclick="showshipperaddress()">Shipper <span class="red">( Alt + S ) </span></a>
+                                @*<label class="headinglabel">Shipper</label>*@
+                            </div>
+
+
+                        </div>
+                        @Html.TextBoxFor(model => model.Shipper, new { @class = "form-control", @autocomplete = "off" })
+                        @Html.HiddenFor(model => model.ConsignorContact)
+                        @Html.HiddenFor(model => model.ConsignorAddress1_Building)
+                        @Html.HiddenFor(model => model.ConsignorAddress2_Street)
+                        @Html.HiddenFor(model => model.ConsignorAddress3_PinCode)
+                        @Html.HiddenFor(model => model.ConsignorLocationName)
+                        @Html.HiddenFor(model => model.ConsignorCountryName)
+                        @Html.HiddenFor(model => model.ConsignorCityName)
+                        @Html.HiddenFor(model => model.ConsignorPhone)
+                        @Html.HiddenFor(model => model.ConsignorMobileNo)
+                    </div>
+                    <div class="col-xs-12 col-sm-6">
+                        <label class="ratelabel">Pickup Location</label>
+                        @Html.TextBoxFor(model => model.PickUpLocation, new { @class = "form-control" })
+                        @Html.HiddenFor(model => model.PickupSubLocality)
+                        @Html.HiddenFor(model => model.OriginPlaceID)
+                        @Html.HiddenFor(model => model.OriginCity)
+                        @Html.HiddenFor(model => model.OriginCountry)
+                    </div>
+
+
+
+
+
+                </div>
+                <div class="row">
+                    <div class="col-xs-12 col-sm-6">
+                        <div class="checkboxdesign no-padding  ">
+                            <a id="btnaddress1" class="headinglabel hyperlink" onclick="showreceiveraddress()">Receiver <span class="red">( Alt + R )</span>    </a>
+                            @*<label class="headinglabel">Receiver</label>*@
+                        </div>
+                        @Html.TextBoxFor(model => model.Consignee, new { @class = "form-control", @autocomplete = "off" })
+                        @Html.HiddenFor(model => model.ConsigneeContact)
+                        @Html.HiddenFor(model => model.ConsigneeAddress1_Building)
+                        @Html.HiddenFor(model => model.ConsigneeAddress2_Street)
+                        @Html.HiddenFor(model => model.ConsigneeAddress3_PinCode)
+                        @Html.HiddenFor(model => model.ConsigneeLocationName)
+                        @Html.HiddenFor(model => model.ConsigneeCountryName)
+                        @Html.HiddenFor(model => model.ConsigneeCityName)
+                        @Html.HiddenFor(model => model.ConsigneePhone)
+                        @Html.HiddenFor(model => model.ConsigneeMobileNo)
+                    </div>
+                    <div class="col-xs-12 col-sm-6">
+                        <label class="ratelabel">Delivery Location</label>
+                        @Html.TextBoxFor(model => model.DeliveryLocation, new { @class = "form-control" })
+                        @Html.HiddenFor(model => model.DeliverySubLocality, new { @class = "form-control" })
+                        @Html.HiddenFor(model => model.DestinationPlaceID)
+                        @Html.HiddenFor(model => model.DeliveryCity)
+                        @Html.HiddenFor(model => model.DeliveryCountry)
+                    </div>
+
+                </div>
+                <div class="row">
+                    <div class="col-xs-12 col-sm-6">
+                        <label class="ratelabel">Forwarding Agent</label>
+                        @Html.TextBoxFor(model => model.FAgentName, new { @class = "form-control", @autocomplete = "off", @AgentName = Model.FAgentName, @AgentID = Model.FAgentID })
+                        @Html.HiddenFor(model => model.FAgentID)
+                    </div>
+                    <div class="col-xs-12 col-sm-6">
+                        <label class="ratelabel">Rate Type</label>
+                        @Html.TextBoxFor(model => model.CustomerRateType, new { @class = "form-control", @autocomplete = "off" })
+                        @Html.HiddenFor(model => model.CustomerRateTypeID)
+                    </div>
+                </div>
+                <div class="row">
+                    <div class="col-sm-3">
+                        <label class="headinglabel">Pieces</label>
+                        @Html.TextBoxFor(model => model.Pieces, new { @class = "form-control text-right", @autocomplete = "off" })
+                    </div>
+
+                    <div class="col-xs-12 col-sm-3">
+                        <label class="ratelabel">Weight</label>
+                        @Html.TextBoxFor(model => model.Weight, new { @class = "form-control text-right", @autocomplete = "off" })
+                    </div>
+
+                    <div class="col-xs-12 col-sm-3">
+                        <label class="headinglabel">C. Charge</label>
+                        @Html.TextBoxFor(model => model.CourierCharge, new { @class = "form-control text-right", @autocomplete = "off", @onchange = "CalculateTax()" })
+                    </div>
+                    <div class="col-xs-12 col-sm-3">
+                        <label class="headinglabel">Other Charges</label>
+                        @Html.TextBoxFor(model => model.OtherCharge, new { @class = "form-control text-right", @autocomplete = "off", @onchange = "CalculateTax()" })
+                    </div>
+
+                </div>
+                <div class="row">
+                    <div class="col-xs-12 col-sm-3">
+                        <div class="flexTitle">
+                            @*<label class="headinglabel required">Tax</label>*@
+                            <label class="headinglabel red" id="lblTaxPercent">Tax @Model.TaxPercent %</label>
+                            <div class="checkboxdesign no-padding text-right" style="float:right">
+                                @Html.CheckBox("ChkTaxPercent", new { @name = "ChkTaxPercent", @onchange = "CalculateTax()", @checked = "checked" }) &nbsp
+                                <label class="headinglabel" style="color:#07a7e3!important;padding-left: 0!important">Tax</label>
+                            </div>
+                        </div>
+                        @Html.TextBoxFor(model => model.TaxAmount, new { @class = "form-control text-right", @autocomplete = "off", @readonly = "true" })
+                    </div>
+                    <div class="col-xs-12 col-sm-3">
+                        <label class="headinglabel">Total Charges</label>
+                        @Html.TextBoxFor(model => model.NetTotal, new { @class = "form-control text-right", @autocomplete = "off" })
+                    </div>
+                    <div class="col-xs-12 col-sm-3">
+                        <label class="headinglabel">Mat. Cost</label>
+                        @Html.TextBoxFor(model => model.MaterialCost, new { @class = "form-control text-right", @autocomplete = "off" })
+                    </div>
+                    <div class="col-xs-12 col-sm-3">
+                        <label class="headinglabel">Shpr. Notes</label>
+                        <select id="SpecialInstructions" name="Specialnstructions" multiple="multiple" class="form-control">
+                            <option value="1" selected>NCND</option>
+                            <option value="2">Cash Only</option>
+                            <option value="3">Cheque Only</option>
+                            <option value="4">Collect Material</option>
+                            <option value="5">DO Copy Back</option>
+                        </select>
+                        @Html.HiddenFor(model => model.InScanID)
+                        @Html.HiddenFor(model => model.CustomerID)
+                        @Html.HiddenFor(model => model.CASHCustomerId)
+                        @Html.HiddenFor(model => model.CODCustomerID)
+                        @Html.HiddenFor(model => model.CODCustomerName)
+                        @Html.HiddenFor(model => model.CASHCustomerName)
+                        @Html.HiddenFor(model => model.FOCCustomerName)
+                        @Html.HiddenFor(model => model.FOCCustomerID)
+                    </div>
+                </div>
+                <div class="row">
+                    <div class="col-xs-12 col-sm-6">
+                        <label class="headinglabel">Item Desc.</label>
+                        @Html.TextBoxFor(model => model.ItemDescription, new { @class = "form-control", @autocomplete = "off" })
+                        @Html.HiddenFor(model => model.CustomerID)
+                        @Html.HiddenFor(model => model.CASHCustomerId)
+                        @Html.HiddenFor(model => model.CODCustomerID)
+                    </div>
+                    <div class="col-xs-12 col-sm-6">
+                        <label class="headinglabel">Remarks</label>
+                        @Html.TextBoxFor(model => model.Remarks, new { @class = "form-control", @autocomplete = "off" })
+                    </div>
+
+                </div>
+                <div class="row">
+                    <div class="col-md-6 flex justify-between" style="">
+                        <ul class="list-unstyled show-error" id="ulerr">
+                            <li id="lierr"> </li>
+                        </ul>
+
+                    </div>
+                    <div class="col-md-6 d-flex" style="margin-top:30px">
+                        @*<input type="button" class="btn btn-primary  btnwidth" value="Update" name="Command" id="btnAdd" />*@
+                        <a id="btnAdd" class="btn btn-primary  btnwidth">Upd<strong style="text-decoration:underline">a</strong>te</a>
+                    </div>
+                </div>
+            </div>
+                <div class="col-md-7  ">
+                    <div class="row no-margin" style="padding-top:20px">
+                        <div class="col-xs-12 no-padding for-device ">
+                            <div class="data-table payment-div scrolling_list">
+                                <div class="data">
+                                    <table border="1" style="margin-top: 15px; " class="table table-bordered table-responsive">
+                                        <thead style="background:transparent;">
+                                            <tr style="font-weight: bold; background:#07a7e3;">
+                                                <th>
+                                                    S.No
+                                                </th>
+                                                <th> AWB No.</th>
+                                                <th>Type</th>
+                                                <th style="width:25%">Shipper</th>
+                                                <th style="width:25%">Receiver</th>
+                                                <th>Charge</th>
+                                                <th>MCost</th>
+                                                <th></th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="tbl1" >
+                                        </tbody>
+
+                                    </table>
+
+
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+    }
+</section>
+
+<div class="modal fade" id="shipperpopup" role="dialog" aria-labelledby="exampleModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content" style="border-radius:5px">
+            <div class="modal-header">
+                <button type="button" class="close" data-dismiss="modal" aria-label="Close"><span aria-hidden="true">&times;</span></button>
+                <h4 class="modal-title" id="exampleModalLabel">
+                    Shipper Address
+                </h4>
+            </div>
+
+            <div class="modal-body">
+                <div class="container-fluid" id="listContainer">
+
+                </div>
+            </div>
+            <div class="modal-footer" style="padding-top: 5px">
+                <button type="button" class="btn btn-primary" onclick="saveshipperaddress()">Save</button>
+                <button type="button" class="btn btn-danger" data-dismiss="modal">Close</button>
+            </div>
+        </div>
+    </div>
+</div>
+<div class="modal fade" id="receiverpopup" role="dialog" aria-labelledby="exampleModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content" style="border-radius:5px">
+            <div class="modal-header">
+                <button type="button" class="close" data-dismiss="modal" aria-label="Close"><span aria-hidden="true">&times;</span></button>
+                <h4 class="modal-title" id="exampleModalLabel">
+                    Receiver Address
+                </h4>
+            </div>
+
+            <div class="modal-body" id="listcontainer1">
+
+            </div>
+            <div class="modal-footer" style="padding-top: 5px">
+                <button type="button" class="btn btn-primary" onclick="savereceiveraddress()">Save</button>
+                <button type="button" class="btn btn-danger" data-dismiss="modal">Close</button>
+            </div>
+        </div>
+    </div>
+</div>
+<script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyAKwJ15dRInM0Vi1IAvv6C4V4vVM5HVnMc&libraries=places&callback=initAutocomplete" async defer></script>

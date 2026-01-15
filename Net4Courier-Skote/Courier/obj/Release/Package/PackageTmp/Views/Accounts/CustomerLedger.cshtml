@@ -1,0 +1,186 @@
+﻿@model Net4Courier.Models.CustomerLedgerReportParam
+
+@{
+    Layout = "~/Views/Shared/_Layout.cshtml";
+}
+<script src="~/Content/NewCSS/plugins/jQuery/moment.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/bootstrap-datetimepicker/4.17.43/js/bootstrap-datetimepicker.min.js"></script>
+
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap-datetimepicker/4.17.43/css/bootstrap-datetimepicker.min.css" />
+
+<script type="text/javascript">
+    //$(function () {
+    //    $('#FromDate').datetimepicker({ format: 'DD-MM-YYYY' });
+
+    //});
+
+    //$(function () {
+    //    $('#ToDate').datetimepicker({ format: 'DD-MM-YYYY' });
+
+    //});
+
+    $(document).ready(function () {
+         var startdate = '@Session["FyearFrom"].ToString()';
+        var enddate = '@Session["FyearTo"].ToString()';
+        var sd = new Date(startdate.split('-')[1] + '-' + startdate.split('-')[0] + '-' + startdate.split('-')[2]);
+        var ed = new Date(enddate.split('-')[1] + '-' + enddate.split('-')[0] + '-' + enddate.split('-')[2]);
+
+        $(function () {
+            $('#FromDate').datetimepicker({
+                maxDate: ed,
+                minDate: sd,
+                format: 'DD-MM-YYYY',
+            });
+
+        });
+
+        $(function () {
+            $('#ToDate').datetimepicker({
+                maxDate: ed,
+                minDate: sd,
+                format: 'DD-MM-YYYY',
+            });
+        });
+        @*if (@ViewBag.ReportId == '1') {
+            $("#divreport3").addClass('hide');
+            $("#divreport2").addClass('hide');
+        }
+        else if (@ViewBag.ReportId == '2') {
+
+            //$("#divreport1").addClass('hide');
+            $("#divreport1").addClass('hide');
+            $("#divreport3").addClass('hide');
+        }
+        else if (@ViewBag.ReportId == '3') {
+
+            $("#divreport2").addClass('hide');
+            $('#divachead1').addClass('hide');
+            $('#AcHeadName').removeAttr('required');
+
+
+        }*@
+        $('#ReportType').change(function () {
+            if ($('#ReportType').val() == "OutStanding") {
+                $("#CustomerName").val('');
+                $("#CustomerName").attr('readonly', 'readonly');
+                $("#CustomerName").removeAttr('required');
+                $('#lblcustomername').removeClass('required');
+            }
+            else if ($('#ReportType').val() == "AWBOutStanding") {
+                $("#CustomerName").val('');
+                $("#CustomerName").removeAttr('readonly');
+                $("#CustomerName").removeAttr('required');
+                $('#lblcustomername').removeClass('required');
+            }
+            else {
+                $("#CustomerName").removeAttr('readonly');
+                $('#lblcustomername').addClass('required');
+            }
+        });
+        $("#CustomerName").autocomplete({
+            source: function (request, response) {
+                $.ajax({
+                    url: '/CustomerReceipt/GetCustomerName',
+                    datatype: "json",
+                    data: {
+                        term: request.term
+                    },
+                    success: function (data) {
+                        response($.map(data, function (val, item) {
+                            return {
+                                label: val.CustomerName,
+                                value: val.CustomerName,
+                                ID: val.CustomerID,
+                                type: val.CustomerType
+                            }
+                        }))
+                    }
+                })
+            },
+            minLength: 1,
+            autoFocus: true,
+            select: function (e, i) {
+                e.preventDefault();
+                $("#CustomerName").val(i.item.label);
+                $('#CustomerId').val(i.item.ID);
+                //$('#hdnCustomerType').val(i.item.type);
+                //if ($('#hdnCustomerType').val() == "CR") {
+                //    $("#Consignor1").css('color', 'blue');
+                //}
+                //else if ($('#hdnCustomerType').val() == "CS") {
+                //    $("#Consignor1").css('color', 'red');
+                //}
+                //else {
+                //    $("#Consignor1").css('color', 'black');
+                //}
+
+            },
+
+        });
+        $('#ReportType').trigger('change');
+    });
+</script>
+
+<section class="content-header">
+    <h1 class="headingfont">@ViewBag.ReportName</h1>
+</section>
+@using (Html.BeginForm("CustomerLedger", "Accounts", FormMethod.Post, new { @id = "customerledger" }))
+{
+    @Html.AntiForgeryToken()
+
+    @Html.ValidationSummary(true, "", new { @class = "text-danger" })
+    <div class="row no-margin d-flex">
+        <div class="col-md-5 ">
+            <div class="form-group">
+                <div class="row">
+                    <div class="col-md-6">
+                        <label class="headinglabel required ">From Date</label>
+                        @Html.TextBoxFor(model => model.FromDate, new { @class = "form-control text-right", @required = "true" })
+                    </div>
+                    <div class="col-md-6">
+                        <label class="headinglabel required">To Date</label>
+                        @Html.TextBoxFor(model => model.ToDate, new { @class = "form-control text-right", @required = "true" })
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-12" id="divachead1">
+                <div id="divachead">
+                    <label class="headinglabel required" id="lblcustomername" >Customer Name</label>
+                    @Html.TextBoxFor(model => model.CustomerName, new { @class = "form-control", @autocomplete = "off", @required = "true" })
+                    @Html.HiddenFor(model => model.CustomerId)
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-6 col-md-offset-1">
+            <div class="col-md-5">
+                <label class="headinglabel  required">Output</label>
+                @Html.DropDownList("Output", new List<SelectListItem>
+                {
+                    new SelectListItem{ Text="PDF", Value = "PDF" },
+                    new SelectListItem{ Text="EXCEL", Value = "EXCEL" },
+                    new SelectListItem{ Text="WORD", Value = "WORD" },
+
+                 }, "Select", new { @class = "form-control", @value = "PDF", @required = "true" })
+            </div>         
+            <div class="col-md-5">
+                <label class="headinglabel">Report Type</label>
+                @Html.DropDownList("ReportType", new List<SelectListItem>
+               {
+                   new SelectListItem{ Text="Ledger", Value = "Ledger" },                   
+                   new SelectListItem{ Text="OutStanding", Value = "OutStanding" },
+                   new SelectListItem{ Text="AWB OutStanding", Value = "AWBOutStanding" }
+                }, "Select", new { @class = "form-control" })
+            </div>
+            <div class="col-md-2">
+                <button class="btn btn-primary" id="btnreport" type="submit" style="margin-top:30px;width: 60px!Important;min-width: 50px!important;"><i class="fa fa-refresh" aria-hidden="true"></i></button>
+            </div>
+        </div>
+    </div>
+
+
+}
+<div class="row no-margin" style="padding-top:10px">
+    @{ Html.RenderAction("ReportFrame", "Accounts");}
+
+</div>

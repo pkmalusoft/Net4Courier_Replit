@@ -1,0 +1,760 @@
+﻿@model Net4Courier.Models.CODReceiptVM
+@{
+    ViewBag.Title = "Create";
+    ViewBag.pTitle = "Manifest Receipt";
+    ViewBag.pageTitle = "Manifest Receipt";
+    Layout = "~/Views/Shared/_Layout.cshtml";
+    var staffmodel = ViewBag.StaffNoteModel as IEnumerable<Net4Courier.Models.StaffNoteModel>;
+    var spath = "";// System.Configuration.ConfigurationManager.AppSettings["spath"].ToString();
+    var CustomerNotification = ViewBag.CustomerNotification as IEnumerable<Net4Courier.Models.CustomerNotificationModel>;
+    var CustomerDetails = ViewBag.CustomerDetail; /*as  Net4Courier.Models.CustomerMaster()*/
+    var _decimal = @Session["Decimal"].ToString();
+}
+@section styles{
+    <link href="~/assets/libs/select2/css/select2.min.css" rel="stylesheet" type="text/css"   />
+
+}
+@*<script src="@Url.Content("~/Scripts/angular.js")"></script>
+    <script src="@Url.Content("~/MyJsFiles/CustomerReceiptJS.js")"></script>*@
+<style>
+    .form_field {
+        background-color: #fff;
+        border-radius: 10px;
+        box-shadow: 0 9px 23px rgba(0, 0, 0, 0.09), 0 5px 5px rgba(0, 0, 0, 0.06) !important;
+        padding: 16px;
+        margin-top: 21px;
+    }
+
+
+
+    #staffmodelbody {
+        max-height: calc(100vh - 200px);
+        overflow-y: auto;
+    }
+
+    .multiselect-container {
+    }
+
+    .multiselect {
+        align-items: center;
+        display: flex !Important;
+        justify-content: space-around;
+    }
+
+    #movementid + .btn-group button, #movementid + .btn-group {
+        display: block;
+        width: 100%;
+    }
+</style>
+<script type="text/javascript">
+    //$('#ReceiptDate').datetimepicker({ format: 'DD-MM-YYYY HH:mm' });
+</script>
+<script type="text/javascript">
+
+    $(document).ready(function () {
+
+         var startdate = '@Session["FyearFrom"].ToString()';
+        var enddate = '@Session["FyearTo"].ToString()';
+        var sd = new Date(startdate.split('-')[1] + '-' + startdate.split('-')[0] + '-' + startdate.split('-')[2]);
+        var ed = new Date(enddate.split('-')[1] + '-' + enddate.split('-')[0] + '-' + enddate.split('-')[2]);
+        $('#ReceiptDate').datepicker({
+            maxDate: ed,
+            minDate: sd,
+            dateFormat: 'dd-mm-yy'
+        });
+        $('#ChequeDate').datepicker({
+            maxDate: ed,
+            minDate: sd,
+            dateFormat: 'dd-mm-yy'
+        });
+        var d = new Date();
+        var curr_date = d.getDate();
+        var curr_month = d.getMonth() + 1;
+        var curr_year = d.getFullYear();
+
+        var reqdate = curr_date + "-" + curr_month + "-" + curr_year + ' ' + d.getHours() + ':' + d.getMinutes();
+        if ($("#ReceiptID").val()==0)
+            $('#ReceiptDate').val(reqdate);
+
+        $("#InvoiceNo").autocomplete({
+            source: function (request, response) {
+                $.ajax({
+                    url: '/ManifestReceipt/GetTaxInvoice',
+                    datatype: "json",
+                    data: {
+                        term: request.term, AgentId: $('#AgentID').val()
+                    },
+                    success: function (data) {
+                        response($.map(data, function (val, item) {
+                            return {
+                                label: val.InvoiceNo,
+                                value: val.ShipmentInvoiceID
+                            }
+                        }))
+                    }
+                })
+            },
+            minLength: 0,
+            autoFocus: false,
+            focus: function (e, i) {
+                $("#InvoiceNo").val(i.item.label);
+                $('#ShipmentInvoiceID').val(i.item.value);
+            },
+            select: function (e, i) {
+                e.preventDefault();
+                $("#InvoiceNo").val(i.item.label);
+                $('#ShipmentInvoiceID').val(i.item.value);
+            }
+        });
+         $('#btnaddall').click(function () {
+
+             if ($("#InvoiceNo").val().trim() == '' || $('#ShipmentInvoiceID').val() == '' || $('#ShipmentInvoiceID').val() == '0') {
+                 $("#InvoiceNo").focus();
+                return;
+            }
+            else {
+                $('#btnaddall').attr('disabled', 'disabled');
+            }
+
+             $.ajax({
+                type: "Get",
+                 url: "/ManifestReceipt/GetInvoiceDetail",
+                datatype: "Json",
+                 data: {
+                     ShipmentInvoiceID: $("#ShipmentInvoiceID").val()},
+                 success: function (response) {
+                     if (response.status == "ok") {
+                         $.ajax({
+                             type: 'POST',
+                             url: '@Url.Action("ShowAWBList", "ManifestReceipt")',
+                             datatype: "html",
+                             success: function (data) {
+                                 $("#listContainer").html(data);
+                                 $('#btnaddall').removeAttr('disabled');
+
+                                 calculatetotal();
+
+                             },
+                             error: function (err) {
+                                 console.log(err);
+                             }
+                         });
+                     }
+                 }
+            });
+         });
+
+        $('#btnsave').click(function () {
+            debugger;
+
+
+
+            var obj = [];
+            var maxrow = $('#listbody > tr').length;
+
+            if (maxrow == 1) {
+                Swal.fire('Data Validation','AWB Not listed,Could not Save!');
+                return false;
+            }
+            $('#btnsave').attr('disabled', 'disabled');
+            var checkedcount = 0;
+            for (i = 0; i < maxrow; i++) {
+                //var deleted = $('#hdndeleted_' + i).val();
+                var checked = $('#hdnawbchecked_' + i).prop('checked');
+
+                if (checked == true) {
+                    checkedcount = checkedcount + 1;
+                    var item = {
+                        InboundShipmentID: $('#hdnShipmentId_' + i).val(),
+                        AWBNo: $('#hdnawbchecked_' + i).attr('awb'), //$('#hdnAWbNo_' + i).val(),
+                        AWBChecked: checked,
+                        COD: $('#hdnCOD_' + i).val(),
+
+                    }
+                    obj.push(item);
+                }
+                if (maxrow == (i + 1)) {
+
+                    if (checkedcount == 0) {
+
+                        Swal.fire("Data Validation!", "AWB are not added,Could not proceed save!", "error");
+                        $('#btnsave').removeAttr('disabled');
+                        return false;
+                    }
+
+                    var acheadid = 0;
+                    if ($('#StatusEntry').val() == 'CS')
+                        acheadid = $('#AcCashHeadId').val();
+                    else
+                        acheadid = $('#AcBankHeadId').val();
+
+                    var saveobj = {
+                        ReceiptID: $('#ReceiptID').val(),
+                        InvoiceNo: $('#InvoiceNo').val(),
+                        ReceiptDate: $('#ReceiptDate').val(),
+                        ReceiptNo: $('#ReceiptNo').val(),
+                        AgentID: $("#AgentID").val(),
+                        Amount: $('#Amount').val(),
+                        ChequeNo: $('#ChequeNo').val(),
+                        ChequeDate: $('#ChequeDate').val(),
+                        AcHeadID: acheadid,
+                        StatusEntry: $('#StatusEntry').val(),                        
+                        Remarks: $('#Remarks').val(),
+                        ShipmentInvoiceID:$('#ShipmentInvoiceID').val()
+                       
+
+                    }
+
+                    $.ajax({
+                        type: "POST",
+                        url: "/ManifestReceipt/SaveReceipt",
+                        datatype: "Json",
+                        data: {
+                            model: saveobj, Details: JSON.stringify(obj)
+                        },
+                        success: function (response) {
+                            Swal.fire("Save Status", "Manifest Receipt Saved Succesfully!", "success");
+
+                            $('#btnsave').removeAttr('disabled');
+                            window.location = "/ManifestReceipt/Index";
+                        }
+                    });
+                }
+            }
+
+        });
+        PaymentModeChange();
+
+        //$("#FMoney").attr("readonly", false);
+
+        @*if ('@Model.ReceiptID' == null) {
+            $("#divCash").css({ "display": "none" });
+            $("#divBank").css({ "display": "block" });
+
+            $("#CurrencyId").val('@Session["BaseCurrencyId"]');
+            $("#EXRate").val('1.00');
+
+        } else {
+
+            if ('@Model.ChequeNo' == null || '@Model.ChequeNo' == '') {
+                $("#divCash").css({ "display": "block" });
+                $("#divBank").css({ "display": "none" });
+                $("#ChequeNo").attr({ "disabled": true })
+                $("#ChequeDate").attr({ "disabled": true })
+                $("#PaymentMode").val(2);
+
+            } else {
+                $("#divCash").css({ "display": "none" });
+                $("#divBank").css({ "display": "block" });
+
+            }
+        }*@
+        var wt = $("#EXRate").val();
+        if (wt == null || wt == "") {
+            $("#EXRate").val("0.00");
+        } else {
+            $("#EXRate").val(parseFloat(wt).toFixed(2));
+        }
+
+        $("#EXRate").blur(function () {
+            var wt = $(this).val();
+            $("#EXRate").val(parseFloat(wt).toFixed(2));
+
+        });
+
+
+
+       ////edit mode
+       // if ($("#ReceiptID").val() > 0 && $('#ManifestID') != "") {
+
+       //     $.ajax({
+       //         type: "POST",
+       //         url: "/CODReceipt/GetManifest",
+       //         datatype: "Json",
+       //         data: { id: $('#AgentID').val() },
+       //         success: function (response) {
+       //             debugger;
+       //             var data = response.data;
+       //             $('#movementid').multiselect('destroy');
+       //             $('#movementid').empty();
+
+       //             $.each(data, function (index, value) {
+       //                 var flag = 0;
+       //                 if ($("#ManifestID").val() !== undefined) {
+       //                     var o_st = $("#ManifestID").val().split(",");
+
+       //                     for (var j = 0; j < o_st.length; j++) {
+       //                         debugger;
+       //                         if (o_st[j] == value.ID) {
+       //                             flag = 1;
+       //                             break;
+       //                         }
+
+       //                     }
+       //                 }
+
+
+       //                 if (flag == 1) {
+       //                     $('#movementid').append('<option value="' + value.ID + '" selected=true>' + value.ManifestNumber + '</option>');
+       //                 }
+       //                 else {
+       //                     $('#movementid').append('<option value="' + value.ID + '">' + value.ManifestNumber + '</option>');
+       //                 }
+
+       //             });
+
+
+
+       //             $('#movementid').multiselect({
+       //                 nonSelectedText: 'Select',
+       //                 enableClickableOptGroups: true,
+       //                 enableCollapsibleOptGroups: true,
+       //                 enableFiltering: false,
+       //                 includeSelectAllOption: true,
+       //                 enableCaseInsensitiveFiltering: false
+       //             });
+
+
+       //         }
+       //     });
+       // }
+
+        $("#btnrefresh").on("click", function () {
+            debugger;
+            if ($("#AgentID").val() == 0) {
+                alert('Select Agent!');
+                $("#AgentID").focus();
+                return;
+            }
+            else if ($('#movementid').val() == null || $('#movementid').val() == undefined) {
+                alert('Select minimum one Manifest Number!');
+                $('#movementid').focus();
+                return;
+            }
+            else  {
+                var amount = parseFloat($("#Amount").val());
+                if (amount == 0) {
+                    alert('Enter the received amount!');
+                    $("#Amount").focus();
+                    return;
+                }
+            }
+            var fullform = $('#codreceipt').serializeArray();
+            $.ajax({
+                type: 'POST',
+                url: '@Url.Action("GetInvoiceDetail", "ManifestReceipt")',
+                datatype: "html",
+                data: fullform,
+                success: function (data) {
+
+                }
+            });
+        });
+
+
+        if ($("#ReceiptID").val() > 0) {
+            if ($("#StatusEntry").val() == "BK") {
+                $("#Bank").prop('checked', true);
+                $("#Cash").prop('checked', false);
+                $("#Bank").trigger("click");
+            }
+            else if ($("#StatusEntry").val() == "CS") {
+                $("#Cash").prop('checked', true);
+                $("#Bank").prop('checked', false);
+                $("#Cash").trigger("click");
+            }
+
+            var money = parseFloat($("#Amount").val());
+            $("#Amount").val(money.toFixed(2));
+
+            var exrate = parseFloat($("#EXRate").val());
+            $("#ExRate").val(exrate.toFixed(2));
+        }
+
+        $('.txtNum').blur(function () {
+            if (isNaN(parseInt($(this).val()))) {
+                $(this).val('0.00');
+            } else {
+                var amt = parseFloat($(this).val());
+                $(this).val(amt.toFixed(2));
+            }
+        });
+
+        function ValidateTotal() {
+            var TotalAmount = 0;
+            $('#tbl1 tr').not(':first').each(function (i, obj) {
+                var AmountToBeRecieved = parseFloat($(obj).find('.AmountToBeRecieved').val());
+                var AmountReceived = parseFloat($(obj).find('.AmountReceived').val());
+
+
+                if (isNaN(AmountToBeRecieved) == false && isNaN(AmountReceived) == false) {
+                    if (AmountReceived > AmountToBeRecieved) {
+                        $('#msg1').show();
+                        $('#msg1').text('Amount cannot be greater than Invoice Amount.');
+                        return false;
+                    } else {
+                        $('#msg1').hide();
+                    }
+                }
+
+                if (isNaN(AmountReceived) == false) {
+                    TotalAmount = TotalAmount + AmountReceived;
+                }
+            });
+
+            var TotalInvoiceAmount = parseFloat($('.TotalInvoiceAmount').val());
+            if (TotalAmount > TotalInvoiceAmount) {
+                $('#msg1').show();
+                $('#msg1').text('Sum of Amount cannot be greater than Total Invoice Amount');
+                return false;
+            } else {
+                return true;
+            }
+        }
+        $('#tbl1').on('blur', '.amt', function () {
+            var result = ValidateTotal();
+        });
+
+        $('form').submit(function (e) {
+            debugger;
+            gettotal();
+            var totalamt = parseFloat($("#txttotalamountcollected").val());
+            var disctotal = parseFloat($("#txttotaldiscount").val());
+            var amtreceived = $("#Amount").val();
+            var amount = parseFloat($("#Amount").val());
+            if (amount == 0) {
+                alert('Enter the received amount!');
+                $("#Amount").focus();
+                return false;
+            }
+            else if (totalamt==0) {
+                alert('Invalid Receipt Details,Click Refresh button to get AWB Details!');
+                e.preventDefault();
+                $('#movementid').focus();
+                return false;
+            }
+            else if ((totalamt + disctotal) > amtreceived) {
+                alert('Allocated Amount + Discount should not be exceed than the Amount Received!');
+                e.preventDefault();
+                    return false;
+            }
+            else if ((totalamt + disctotal) < amtreceived)
+             {
+                    alert('Amount Received exceed than Allocated Amount + Discount,Please Check !');
+                    e.preventDefault();
+                    return false;
+            }
+
+        });
+
+    });
+</script>
+
+<script>
+
+
+    function Comma(Num) { //function to add commas to textboxes
+        Num += '';
+        Num = Num.replace(',', ''); Num = Num.replace(',', ''); Num = Num.replace(',', '');
+        Num = Num.replace(',', ''); Num = Num.replace(',', ''); Num = Num.replace(',', '');
+        x = Num.split('.');
+        x1 = x[0];
+        x2 = x.length > 1 ? '.' + x[1] : '';
+        var rgx = /(\d+)(\d{3})/;
+        while (rgx.test(x1))
+            x1 = x1.replace(rgx, '$1' + ',' + '$2');
+        $(".aeamt").val(x1 + x2);
+    }
+</script>
+
+<script type="text/javascript">
+    function calculatetotal() {
+        debugger;
+        var maxrow = $('#listbody > tr').length;
+        var idtext = 'hdnawbchecked_';
+        var totalcod = 0;
+
+        for (i = 0; i < maxrow; i++) {
+            var checked = $('#hdnawbchecked_' + i).prop('checked');
+            if (checked == true) {
+                debugger;
+                var Tax = $('#hdnCOD_' + i).val();
+
+                if (Tax == '')
+                    Tax = 0;
+
+                totalcod = parseFloat(totalcod) + parseFloat(Tax);
+
+            }
+            $('#spantotcod').html(parseFloat(totalcod).toFixed(2));
+            $('#Amount').val(parseFloat(totalcod).toFixed(2))
+
+        }
+    }
+    function setTwoNumberDecimal(obj) {
+        debugger;
+        if ($(obj).val() == "")
+            $(obj).val(0);
+       $(obj).val(parseFloat($(obj).val()).toFixed(@_decimal));
+    }
+
+
+    function PaymentModeChange() {
+        var val = $("#PaymentMode").val();
+        
+        if (val == 1) {
+            $("#divCash").css({ "display": "none" });
+            $("#divBank").css({ "display": "block" });
+            $("#ChequeNo").attr({ "disabled": false })
+            $("#ChequeDate").attr({ "disabled": false })
+            $('#StatusEntry').val('BK');
+             
+            $("#AcBankHeadId").attr("required", "required");
+            $("#AcCashHeadId").removeAttr("required");
+        } else {
+            $("#divBank").css({ "display": "none" });
+            $("#divCash").css({ "display": "block" });
+            $("#ChequeNo").attr({ "disabled": true })
+            $("#ChequeDate").attr({ "disabled": true })
+            $('#StatusEntry').val('CS');
+            $("#AcCashHeadId").attr("required", "required");
+            $("#AcBankHeadId").removeAttr("required");
+        }
+
+    }
+</script>
+
+
+
+<section class="content-header d-none">
+    <div class="row">
+
+        <div class="col-md-12 pull-right text-right">
+            <h2 class="awb" id="h2awb"><strong>@ViewBag.AWBNo</strong></h2>
+            @*<h5>Delivered</h5>*@
+            <h4 class="text-right" id="h4statustype" style='color:#07a7e3!important'>@ViewBag.StatusType</h4><h5 class="pull-right" id="h4courierstatus" style='color:red'>@ViewBag.CourierStatus</h5>
+        </div>
+
+    </div>
+    <div class="row hide">
+        <div class="pull-right setting">
+            <div class="navbar-custom-menu" id="divsetting">
+                <ul class="nav navbar-nav">
+
+                    <!-- User Account Menu -->
+                    <li class="dropdown user user-menu">
+                        <!-- Menu Toggle Button -->
+
+                        <ul class="dropdown-menu extended logout" style="top:0%!important">
+                            <li><a style="color:#35b8eb;cursor:pointer" onclick="Printreceipt(1)">Print</a></li>
+                            <li><a style="color:#35b8eb;cursor:pointer" onclick="ShowStaffNotes()">Staff Notes</a></li>
+                            <li><a style="color:#35b8eb;cursor:pointer" onclick="ShowCustomerNotification()">Customer Notification</a></li>
+                        </ul>
+                        <a href="#" class="dropdown-toggle" data-toggle="dropdown">
+                            <i style="font-size: 30px;color:#35b8eb;padding-top: 11px;" class="fa fa-cog"></i>
+                        </a>
+                    </li>
+                </ul>
+            </div>
+        </div>
+    </div>
+</section>
+
+<!-- Main content -->
+
+@using (Html.BeginForm("Create", "ManifestReceipt", FormMethod.Post, new { @id = "codreceipt" }))
+{
+    @Html.AntiForgeryToken()
+    @Html.ValidationSummary(true)
+
+    @Html.HiddenFor(model => model.ReceiptID)
+
+    @Html.HiddenFor(model => model.AcJournalID)
+    @Html.HiddenFor(model => model.CurrencyID)
+    @Html.HiddenFor(model => model.EXRate)
+    @Html.HiddenFor(model => model.ShipmentInvoiceID)
+    @Html.HiddenFor(model => model.StatusEntry)
+    <div class="card">
+        <div class="card-body">
+
+            <div class="row">
+                <div class="col-md-12 text-md-end">
+                    @if (Model.ReceiptID > 0)
+                    {
+                        <input type="button" id="btnsave" class="btn btn-success" value="Update" />
+                    }
+                    else
+                    {
+                        <input type="button" id="btnsave" class="btn btn-success" value="Save" name="Command" />
+                    }
+                    <a href='@Url.Action("Index", "ManifestReceipt")' class="btn btn-secondary">Cancel</a>
+                </div>
+
+                <div class="col-xs-12 col-sm-2">
+                    <div class="mb-2">
+                        <label class="col-form-label">COD Receipt No.</label>
+                        @Html.TextBoxFor(model => model.ReceiptNo, new { @class = "form-control", @readonly = "readonly" })
+
+                    </div>
+                </div>
+
+                <div class="col-md-2">
+                    <div class="mb-2">
+                        <label class="col-form-label"> Date</label>
+                        <div class="docs-datepicker">
+                            <div class="input-group">
+                                <input type="text" class="form-control docs-date" name="ReceiptDate" id="ReceiptDate" data-date-format="dd/MM/yyyy" data-date-autoclose="true" data-provide="datepicker" value="@Model.ReceiptDate.ToShortDateString()"
+                                       placeholder="Pick a date" autocomplete="off">
+                                <button type="button" class="btn btn-secondary docs-datepicker-trigger" disabled>
+                                    <i class="mdi mdi-calendar" aria-hidden="true"></i>
+                                </button>
+                            </div>
+                            <div class="docs-datepicker-container"></div>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-xs-12 col-md-2">
+                    <div class="mb-2">
+                        <label class="col-form-label">Payment Mode</label>
+                        <select id="PaymentMode" class="form-select" onchange="PaymentModeChange()">
+                            <option value="1">Bank</option>
+                            <option selected value="2">Cash</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="col-xs-12 col-md-2">
+                    <div class="mb-2">
+                        <div id="divCash">
+                            <label class=" required col-form-label">Cash</label>
+                            @Html.DropDownListFor(model => model.AcHeadID, new SelectList(@ViewBag.achead, "AcHeadID", "AcHead"), "Select", new { @class = "form-select", @required = "true", @id = "AcCashHeadId" })
+
+                        </div>
+                        <div id="divBank">
+                            <div class="form-title">
+                                <label class=" required col-form-label">Bank</label>
+                            </div>
+                            <div class="form-field">
+                                @Html.DropDownListFor(model => model.AcHeadID, new SelectList(@ViewBag.acheadbank, "AcHeadID", "AcHead"), "Select", new { @class = "form-select", @id = "AcBankHeadId", @required = "true" })
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="col-xs-12 col-md-2">
+                    <div class="mb-2">
+                        <label class=" required col-form-label">Cheque No</label>
+                        @Html.TextBoxFor(model => model.ChequeNo, new { @class = "form-control textright" })
+
+                    </div>
+                </div>
+                <div class="col-md-2">
+                    <div class="mb-2">
+                        <label class="col-form-label">Cheque Date</label>
+                        <div class="docs-datepicker">
+                            <div class="input-group">
+                                <input type="text" class="form-control docs-date" name="ChequeDate" id="ChequeDate" data-date-format="dd/MM/yyyy" data-date-autoclose="true" data-provide="datepicker" value="@Model.ChequeDate"
+                                       placeholder="Pick a date" autocomplete="off">
+                                <button type="button" class="btn btn-secondary docs-datepicker-trigger" disabled>
+                                    <i class="mdi mdi-calendar" aria-hidden="true"></i>
+                                </button>
+                            </div>
+                            <div class="docs-datepicker-container"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="col-xs-12 col-sm-2">
+                    <div class="mb-2">
+                        <label class=" required col-form-label">Agent</label>
+                        @Html.DropDownListFor(model => model.AgentID, new SelectList(@ViewBag.Agents, "SupplierID", "SupplierName"), "Select", new { @class = "form-select", @required = "true" })
+                        @Html.ValidationMessageFor(model => model.AgentID, "", new { @class = "text-danger" })
+                    </div>
+
+                </div>
+                <div class="col-xs-12 col-md-2">
+                    <div class="mb-2">
+                        <label class="required col-form-label">VAT Invoice</label>
+                        <div class="input-group d-flex">
+
+                            @Html.TextBoxFor(model => model.InvoiceNo, new { @class = "form-control", @required = "true" })
+
+                            <button type="button" class="btn btn-success waves-effect waves-light filter" id="btnaddall">
+                                <i class="bx bx-search mt-1" style="font-size: 21px;"></i>
+                            </button>
+
+                        </div>
+
+                    </div>
+                </div>
+                <div class="col-xs-12 col-md-2">
+                    <div class="mb-2">
+                        <label class=" required col-form-label">Amount Received</label>
+
+                        @Html.TextBoxFor(model => model.Amount, new { @class = "form-control amt textright TotalInvoiceAmount", @required = "true", @onchange = "setTwoNumberDecimal(this)" })
+
+                    </div>
+                </div>
+
+
+                <div class="col-xs-12 col-sm-4">
+                    <div class="mb-2">
+                        <label class="col-form-label">Remarks</label>
+                        @Html.TextAreaFor(model => model.Remarks, new { @class = "form-control txttarget", @rows = "1" })
+                    </div>
+                </div>
+
+
+
+
+            </div>
+
+        </div>
+    </div>
+    <div class="card">
+        <div class="card-body" id="listContainer">
+
+
+
+            @{Html.RenderPartial("ReceiptDetail", Model);}
+
+
+        </div>
+    </div>
+
+}
+
+
+
+
+
+
+
+<script type="text/javascript">
+    // When the document is ready
+    $(document).ready(function () {
+        var startdate = '@Session["FyearFrom"].ToString()';
+        var enddate = '@Session["FyearTo"].ToString()';
+        var sd = new Date(startdate);
+        var ed = new Date(enddate);
+        $('#RecPayDate').datepicker({
+
+            dateFormat: 'dd-M-yy',
+            minDate: sd,
+            maxDate: ed,
+            changeYear: true, changeMonth: true,
+        });
+
+
+        $('#ChequeDate').datepicker({
+            dateFormat: 'dd-M-yy',
+            minDate: sd,
+            maxDate: ed,
+            changeYear: true, changeMonth: true
+        });
+        $('#RecPayDate').datepicker("setDate", new Date());
+        //$('#ChequeDate').datepicker("setDate", sd);
+
+    });
+
+</script>
+<script src="~/assets/libs/select2/js/select2.min.js"></script>

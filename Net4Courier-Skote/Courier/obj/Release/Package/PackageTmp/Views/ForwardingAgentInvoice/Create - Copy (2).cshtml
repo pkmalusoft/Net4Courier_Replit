@@ -1,0 +1,311 @@
+﻿@model Net4Courier.Models.SupplierInvoiceVM
+
+@{
+   
+    Layout = "~/Views/Shared/_Layout.cshtml";
+}
+<link href="/Content/Multiselect/bootstrap-multiselect.css" rel="stylesheet" />
+<script src="/Content/Multiselect/bootstrap-multiselect.js"></script>
+<script src="~/Content/NewCSS/plugins/jQuery/moment.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/bootstrap-datetimepicker/4.17.43/js/bootstrap-datetimepicker.min.js"></script>
+
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap-datetimepicker/4.17.43/css/bootstrap-datetimepicker.min.css" />
+<script type="text/javascript">
+
+    function ValidateTotal() {
+        var idtext = 'txtnetvalue_';
+        var amt = 0;
+        var max = $('#details > tbody > tr').length - 7;
+        $('#lbltotalcharge').html(0);
+        $('[id^=' + idtext + ']').each(function (index, item) {
+
+            if ($(item).val() == "" || $(item).val() == null) {
+                $(item).val(0);
+            }
+            var itemval = $(item).val();
+            itemval = itemval.replace(',', '');
+
+            var invamount = parseFloat(itemval);
+            amt = parseFloat(amt) + parseFloat(invamount);
+            $('#InvoiceTotal').val(parseFloat(amt).toFixed(2));
+
+        });
+    }
+    $(document).ready(function () {
+        $(":text").css({ "border-radius": "5px" });
+        $("select").css({ "border-radius": "5px" });
+         var startdate = '@Session["FyearFrom"].ToString()';
+        var enddate = '@Session["FyearTo"].ToString()';
+        var sd = new Date(startdate.split('-')[1] + '-' + startdate.split('-')[0] + '-' + startdate.split('-')[2]);
+        var ed = new Date(enddate.split('-')[1] + '-' + enddate.split('-')[0] + '-' + enddate.split('-')[2]);
+        $('#FromDate').datetimepicker({
+            maxDate: ed,
+            minDate: sd,
+            format: 'DD-MM-YYYY'
+        });
+
+        $('#ToDate').datetimepicker({
+            maxDate: ed,
+            minDate: sd,
+            format: 'DD-MM-YYYY'
+        });
+
+        $('#InvoiceDate').datetimepicker({
+            maxDate: ed,
+            minDate: sd,
+            format: 'DD-MM-YYYY HH:mm'
+        });
+        $('#btnsearch').click(function () {
+
+            if ($('#SupplierID').val() == 0 || $('#SupplierID').val() == '' || $('#SupplierID').val() == null) {
+                $('#SupplierName').focus();
+                return false;
+            }
+            else if ($('#SelectedValues').val() == null) {
+                $('#SelectedValues').focus();
+                alert('Select Courier type!')
+                return false;
+            }
+            $('#loaderpopup').modal('show')
+            $.ajax({
+                type: 'POST',
+                url: '@Url.Action("ShowItemList", "ForwardingAgentInvoice")',
+                datatype: "html",
+                data: {
+                    SupplierId: $('#SupplierID').val(), FromDate: $('#FromDate').val(), ToDate: $('#ToDate').val(), MovementId: $('#SelectedValues').val()
+                },
+                success: function (data) {
+                    debugger;
+                    $('#loaderpopup').modal('hide')
+                    $("#listContainer").html(data);
+                    $("#SupplierName").attr('SupplierId', $('#SupplierID').val());
+                    $('#btnsave1').removeAttr('disabled');
+                    var max = $('#detailsbody > tr').length;
+
+                    if (max == 0) {
+                        $('#loaderpopup').modal('hide');
+                        $.notify("AWB are not available!", "error");
+                    }
+                    else {
+                        SetDecimal();
+                        $('#loaderpopup').modal('hide');
+                        ValidateTotal();
+                    }
+
+                },
+                error: function (response) {
+                    $('#loaderpopup').modal('hide');
+                }
+            });
+
+        });
+        $.ajax({
+            type: "Get",
+            url: "/CustomerInvoice/GetCourierType",
+            datatype: "Json",
+            success: function (response) {
+
+                var data = response.data;
+                $('#SelectedValues').empty();
+
+                $.each(data, function (index, value) {
+
+                    var o_st = $("#MovementId").val().split(",");
+
+                    var flag = 0;
+                    for (var j = 0; j < o_st.length; j++) {
+                        debugger;
+                        if (o_st[j] == value.MovementID) {
+                            flag = 1;
+                            break;
+                        }
+
+                    }
+
+                    if (flag == 1) {
+                        $('#SelectedValues').append('<option value="' + value.MovementID + '" selected=true>' + value.MovementType + '</option>');
+                    }
+                    else {
+                        $('#SelectedValues').append('<option value="' + value.MovementID + '">' + value.MovementType + '</option>');
+                    }
+
+                });
+
+
+
+                $('#SelectedValues').multiselect({
+                    nonSelectedText: 'Select',
+                    enableClickableOptGroups: true,
+                    enableCollapsibleOptGroups: true,
+                    enableFiltering: false,
+                    includeSelectAllOption: true,
+                    enableCaseInsensitiveFiltering: false,
+                    selectAllValue: 'multiselect-all'
+                });
+
+
+            }
+        });
+
+
+        $("#SupplierName").autocomplete({
+            source: function (request, response) {
+                $.ajax({
+                    url: '/ForwardingAgentInvoice/GetSupplierName',
+                    datatype: "json",
+                    data: {
+                        term: request.term
+                    },
+                    success: function (data) {
+                        response($.map(data, function (val, item) {
+                            return {
+                                label: val.SupplierName,
+                                value: val.SupplierID
+                            }
+                        }))
+                    }
+                })
+            },
+            minLength: 1,
+            autoFocus: false,
+            focus: function (e, ui) {
+                e.preventDefault();
+                $("#SupplierName").val(ui.item.label);
+                $('#SupplierID').val(ui.item.value);
+            },
+            select: function (e, i) {
+                e.preventDefault();
+                $("#SupplierName").val(i.item.label);
+                $('#SupplierID').val(i.item.value);
+            }
+
+        });
+    });
+</script>
+
+<section class="content-header">
+    <h1 class="headingfont">@ViewBag.Title</h1>
+
+</section>
+
+<section class="content">
+
+    @using (Html.BeginForm())
+    {
+        @Html.AntiForgeryToken()
+        @Html.ValidationSummary(true)
+
+
+        <fieldset>
+            @using (Html.BeginForm("Create", "ForwardingAgentInvoice", FormMethod.Post, new { @id = "customerInvoice" }))
+            {
+                @Html.AntiForgeryToken()
+                @Html.ValidationSummary(true)
+
+                <div class="row no-margin ">
+                    <div class="col-md-4">
+                        <label class="headinglabel required ">Supplier</label>
+                        @Html.HiddenFor(model => model.SupplierInvoiceID)
+                        @Html.HiddenFor(model => model.SupplierID)
+                        @Html.TextBoxFor(model => model.SupplierName, new { @class = "form-control" })
+                        @Html.ValidationMessageFor(model => model.SupplierName)
+                    </div>
+                    <div class="col-md-1">
+                        @Html.HiddenFor(model => model.MovementId)
+                        <label class="headinglabel required ">From Date</label>
+                        @Html.TextBoxFor(model => model.FromDate, new { @class = "form-control text-right" })
+                    </div>
+
+                    <div class="col-md-1">
+                        <label class="headinglabel required">To Date</label>
+                        @Html.TextBoxFor(model => model.ToDate, new { @class = "form-control text-right" })
+                    </div>
+                    <div class="col-md-2">
+                        <label class="headinglabel required ">Courier Type</label>
+                        <div>
+                            <select id="SelectedValues" name="SelectedValues" multiple="multiple" class="form-control">
+                                <option value=""></option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="col-md-1">
+                        <button class="btn btn-success" type="button" id="btnsearch" style="margin-top:30px;width: 60px!Important;min-width: 50px!important;"><i class="fa fa-refresh" aria-hidden="true"></i></button>
+                    </div>
+                    <div class="col-md-3" style="padding-top:30px">
+                        <input type="submit" value="Save" id="btnsave" class="btn btn-primary btnwidth " />&nbsp;&nbsp;                        
+                        @Html.ActionLink("Cancel", "Index", null, new { @class = "btn btn-danger btnwidth float-right" })
+                    </div>
+                </div>
+                <div class="row no-margin" style="padding-top:10px">
+
+
+                    <div class="col-md-2">
+                        <label class="headinglabel required "> Invoice No</label>
+                        @Html.TextBoxFor(model => model.InvoiceNo, new { @class = "form-control txttarget", @required = "true", @readonly = "true" })
+                        @Html.ValidationMessageFor(model => model.InvoiceNo)
+                    </div>
+                    <div class="col-md-2">
+                        <label class="headinglabel required "> Invoice Date</label>
+                        @Html.TextBoxFor(model => model.InvoiceDate, new { @class = "form-control text-right txttarget", @required = "true" })
+                        @Html.ValidationMessageFor(model => model.InvoiceDate)
+
+                    </div>
+                    <div class="col-md-4">
+                        <label class="headinglabel required ">Remarks</label>
+                        @Html.TextBoxFor(model => model.Remarks, new { @class = "form-control txttarget", @required = "true" })
+                        @Html.ValidationMessageFor(model => model.Remarks)
+
+                    </div>
+                    <div class="col-md-3">
+                        <label class="headinglabel required ">Invoice Total</label>
+                        @Html.TextBoxFor(model => model.InvoiceTotal , new { @class = "form-control text-right", @required = "true",@readonly="readonly" })
+                        @Html.ValidationMessageFor(model => model.InvoiceTotal)
+
+                    </div>
+
+                </div>
+                <div class="row no-margin" style="padding-top: 10px">
+                    <div class="col-md-12" id="listContainer">
+
+                        @{Html.RenderPartial("InvoiceList", Model);}
+
+
+                    </div>
+                </div>
+
+
+            }
+        </fieldset>
+    }
+</section>
+
+<div class="modal fade" id="loaderpopup" role="dialog" aria-labelledby="exampleModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content" style="border-radius:5px">
+            <div class="modal-header">
+                @*<button type="button" class="close" data-dismiss="modal" aria-label="Close"><span aria-hidden="true">&times;</span></button>*@
+                <h4 class="modal-title" id="LoaderModalLabel">
+                    AWB Cost Calculating
+                </h4>
+            </div>
+            <div class="modal-body">
+                <div class="row">
+                    <div class="col-md-12" style="text-align:center">
+                        <h2>Processing...</h2>
+                        <img src="~/Content/img/loading-gif-free-download-6.gif" id="imgloader" class="" style="padding-left:15px;height:60px;width:60px;" />
+                    </div>
+
+                </div>
+                <div class="row">
+                    <div class="col-md-12" style="text-align:center" id="divProcessStatus">
+
+                    </div>
+                </div>
+            </div>
+            @*<div class="modal-footer" style="padding-top: 5px">
+                    <button type="button" class="btn btn-primary" onclick="savefixation()">Save</button>
+                    <button type="button" class="btn btn-danger" data-dismiss="modal">Close</button>
+                </div>*@
+        </div>
+    </div>
+</div>
