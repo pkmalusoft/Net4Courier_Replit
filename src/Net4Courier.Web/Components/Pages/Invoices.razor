@@ -1,0 +1,147 @@
+@page "/invoices"
+@using Net4Courier.Finance.Entities
+@using Net4Courier.Infrastructure.Data
+@using Net4Courier.Kernel.Enums
+@using Microsoft.EntityFrameworkCore
+@inject ApplicationDbContext DbContext
+@inject NavigationManager NavigationManager
+@inject ISnackbar Snackbar
+
+<PageTitle>Invoices - Net4Courier</PageTitle>
+
+<MudPaper Class="pa-4">
+    <MudStack Row="true" AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween" Class="mb-4">
+        <MudText Typo="Typo.h5">Invoices</MudText>
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add"
+                   OnClick="CreateNew">New Invoice</MudButton>
+    </MudStack>
+
+    <MudStack Row="true" Spacing="3" Class="mb-4">
+        <MudDatePicker @bind-Date="filterFromDate" Label="From Date" DateFormat="dd-MMM-yyyy" />
+        <MudDatePicker @bind-Date="filterToDate" Label="To Date" DateFormat="dd-MMM-yyyy" />
+        <MudSelect T="InvoiceStatus?" @bind-Value="filterStatus" Label="Status" Clearable="true">
+            @foreach (var status in Enum.GetValues<InvoiceStatus>())
+            {
+                <MudSelectItem Value="@((InvoiceStatus?)status)">@status</MudSelectItem>
+            }
+        </MudSelect>
+        <MudTextField @bind-Value="searchText" Label="Search" Immediate="true" 
+                      Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Filled.Search" />
+        <MudButton Variant="Variant.Outlined" Color="Color.Primary" OnClick="LoadInvoices">Filter</MudButton>
+    </MudStack>
+
+    <MudTable Items="@invoices" Hover="true" Striped="true" Dense="true" Loading="@isLoading">
+        <HeaderContent>
+            <MudTh>Invoice No</MudTh>
+            <MudTh>Date</MudTh>
+            <MudTh>Customer</MudTh>
+            <MudTh>AWBs</MudTh>
+            <MudTh Style="text-align:right">Net Total</MudTh>
+            <MudTh Style="text-align:right">Paid</MudTh>
+            <MudTh Style="text-align:right">Balance</MudTh>
+            <MudTh>Status</MudTh>
+            <MudTh Style="width:120px">Actions</MudTh>
+        </HeaderContent>
+        <RowTemplate>
+            <MudTd>@context.InvoiceNo</MudTd>
+            <MudTd>@context.InvoiceDate.ToString("dd-MMM-yyyy")</MudTd>
+            <MudTd>@context.CustomerName</MudTd>
+            <MudTd>@context.TotalAWBs</MudTd>
+            <MudTd Style="text-align:right">@context.NetTotal?.ToString("N2")</MudTd>
+            <MudTd Style="text-align:right">@context.PaidAmount?.ToString("N2")</MudTd>
+            <MudTd Style="text-align:right">@context.BalanceAmount?.ToString("N2")</MudTd>
+            <MudTd>
+                <MudChip T="string" Size="Size.Small" Color="@GetStatusColor(context.Status)">
+                    @context.Status
+                </MudChip>
+            </MudTd>
+            <MudTd>
+                <MudIconButton Icon="@Icons.Material.Filled.Edit" Size="Size.Small" 
+                               OnClick="() => EditInvoice(context.Id)" />
+                <MudIconButton Icon="@Icons.Material.Filled.Print" Size="Size.Small" 
+                               Color="Color.Primary" OnClick="() => PrintInvoice(context.Id)" />
+            </MudTd>
+        </RowTemplate>
+        <NoRecordsContent>
+            <MudText>No invoices found</MudText>
+        </NoRecordsContent>
+    </MudTable>
+</MudPaper>
+
+@code {
+    private List<Invoice> invoices = new();
+    private bool isLoading = true;
+    private DateTime? filterFromDate = DateTime.Today.AddMonths(-1);
+    private DateTime? filterToDate = DateTime.Today;
+    private InvoiceStatus? filterStatus;
+    private string searchText = "";
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadInvoices();
+    }
+
+    private async Task LoadInvoices()
+    {
+        isLoading = true;
+        try
+        {
+            var query = DbContext.Invoices.AsQueryable();
+
+            if (filterFromDate.HasValue)
+                query = query.Where(i => i.InvoiceDate >= filterFromDate.Value);
+
+            if (filterToDate.HasValue)
+                query = query.Where(i => i.InvoiceDate <= filterToDate.Value);
+
+            if (filterStatus.HasValue)
+                query = query.Where(i => i.Status == filterStatus.Value);
+
+            if (!string.IsNullOrWhiteSpace(searchText))
+            {
+                var search = searchText.ToLower();
+                query = query.Where(i => 
+                    i.InvoiceNo.ToLower().Contains(search) ||
+                    (i.CustomerName != null && i.CustomerName.ToLower().Contains(search)));
+            }
+
+            invoices = await query.OrderByDescending(i => i.InvoiceDate)
+                                  .ThenByDescending(i => i.InvoiceNo)
+                                  .Take(100)
+                                  .ToListAsync();
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private void CreateNew()
+    {
+        NavigationManager.NavigateTo("/invoice/new");
+    }
+
+    private void EditInvoice(long id)
+    {
+        NavigationManager.NavigateTo($"/invoice/{id}");
+    }
+
+    private void PrintInvoice(long id)
+    {
+        Snackbar.Add("Print functionality coming soon", Severity.Info);
+    }
+
+    private Color GetStatusColor(InvoiceStatus status)
+    {
+        return status switch
+        {
+            InvoiceStatus.Draft => Color.Default,
+            InvoiceStatus.Generated => Color.Info,
+            InvoiceStatus.Sent => Color.Primary,
+            InvoiceStatus.PartiallyPaid => Color.Warning,
+            InvoiceStatus.Paid => Color.Success,
+            InvoiceStatus.Cancelled => Color.Error,
+            _ => Color.Default
+        };
+    }
+}

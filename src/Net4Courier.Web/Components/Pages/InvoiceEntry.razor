@@ -1,0 +1,315 @@
+@page "/invoice/{Id:long?}"
+@page "/invoice/new"
+@using Net4Courier.Finance.Entities
+@using Net4Courier.Infrastructure.Data
+@using Net4Courier.Masters.Entities
+@using Net4Courier.Kernel.Enums
+@using Microsoft.EntityFrameworkCore
+@inject ApplicationDbContext DbContext
+@inject NavigationManager NavigationManager
+@inject ISnackbar Snackbar
+
+<PageTitle>@(Id.HasValue ? "Edit Invoice" : "New Invoice") - Net4Courier</PageTitle>
+
+<MudPaper Class="pa-4">
+    <MudStack Row="true" AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween" Class="mb-4">
+        <MudText Typo="Typo.h5">@(Id.HasValue ? "Edit Invoice" : "New Invoice")</MudText>
+        <MudButton Variant="Variant.Outlined" OnClick="GoBack">Back to List</MudButton>
+    </MudStack>
+
+    <EditForm Model="@invoice" OnValidSubmit="SaveInvoice">
+        <DataAnnotationsValidator />
+        
+        <MudGrid Spacing="3">
+            <MudItem xs="12" md="3">
+                <MudTextField @bind-Value="invoice.InvoiceNo" Label="Invoice No*" Required="true" 
+                              ReadOnly="@Id.HasValue" />
+            </MudItem>
+            <MudItem xs="12" md="3">
+                <MudDatePicker @bind-Date="invoiceDate" Label="Invoice Date*" Required="true" 
+                               DateFormat="dd-MMM-yyyy" />
+            </MudItem>
+            <MudItem xs="12" md="3">
+                <MudDatePicker @bind-Date="dueDate" Label="Due Date" DateFormat="dd-MMM-yyyy" />
+            </MudItem>
+            <MudItem xs="12" md="3">
+                <MudSelect T="InvoiceStatus" @bind-Value="invoice.Status" Label="Status">
+                    @foreach (var status in Enum.GetValues<InvoiceStatus>())
+                    {
+                        <MudSelectItem Value="@status">@status</MudSelectItem>
+                    }
+                </MudSelect>
+            </MudItem>
+
+            <MudItem xs="12" md="6">
+                <MudAutocomplete T="Party" Label="Customer*" @bind-Value="selectedCustomer"
+                                 SearchFunc="SearchCustomers" ToStringFunc="@(p => p?.Name ?? "")"
+                                 Required="true" OnBlur="OnCustomerSelected" />
+            </MudItem>
+            <MudItem xs="12" md="6">
+                <MudTextField @bind-Value="invoice.CustomerAddress" Label="Customer Address" 
+                              Lines="2" />
+            </MudItem>
+
+            <MudItem xs="12" md="4">
+                <MudTextField @bind-Value="invoice.CustomerTaxNo" Label="Tax/GST No" />
+            </MudItem>
+            <MudItem xs="12" md="4">
+                <MudDatePicker @bind-Date="periodFrom" Label="Period From" DateFormat="dd-MMM-yyyy" />
+            </MudItem>
+            <MudItem xs="12" md="4">
+                <MudDatePicker @bind-Date="periodTo" Label="Period To" DateFormat="dd-MMM-yyyy" />
+            </MudItem>
+        </MudGrid>
+
+        <MudDivider Class="my-4" />
+        <MudText Typo="Typo.h6" Class="mb-3">Invoice Details</MudText>
+
+        <MudTable Items="@invoice.Details.ToList()" Hover="true" Dense="true" Context="detail">
+            <HeaderContent>
+                <MudTh>AWB No</MudTh>
+                <MudTh>Date</MudTh>
+                <MudTh>Origin</MudTh>
+                <MudTh>Destination</MudTh>
+                <MudTh>Pcs</MudTh>
+                <MudTh>Weight</MudTh>
+                <MudTh Style="text-align:right">Courier</MudTh>
+                <MudTh Style="text-align:right">Other</MudTh>
+                <MudTh Style="text-align:right">Tax</MudTh>
+                <MudTh Style="text-align:right">Total</MudTh>
+                <MudTh Style="width:50px"></MudTh>
+            </HeaderContent>
+            <RowTemplate>
+                <MudTd>@detail.AWBNo</MudTd>
+                <MudTd>@detail.AWBDate?.ToString("dd-MMM")</MudTd>
+                <MudTd>@detail.Origin</MudTd>
+                <MudTd>@detail.Destination</MudTd>
+                <MudTd>@detail.Pieces</MudTd>
+                <MudTd>@detail.Weight</MudTd>
+                <MudTd Style="text-align:right">@detail.CourierCharge?.ToString("N2")</MudTd>
+                <MudTd Style="text-align:right">@detail.OtherCharge?.ToString("N2")</MudTd>
+                <MudTd Style="text-align:right">@detail.TaxAmount?.ToString("N2")</MudTd>
+                <MudTd Style="text-align:right">@detail.Total?.ToString("N2")</MudTd>
+                <MudTd>
+                    <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" 
+                                   Color="Color.Error" OnClick="() => RemoveDetail(detail)" />
+                </MudTd>
+            </RowTemplate>
+            <NoRecordsContent>
+                <MudText Class="pa-4">No AWB details added. Use the button below to add unbilled AWBs.</MudText>
+            </NoRecordsContent>
+        </MudTable>
+
+        <MudButton Variant="Variant.Outlined" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add"
+                   Class="mt-3" OnClick="LoadUnbilledAWBs" Disabled="@(selectedCustomer == null)">
+            Add Unbilled AWBs
+        </MudButton>
+
+        <MudDivider Class="my-4" />
+
+        <MudGrid Spacing="3">
+            <MudItem xs="12" md="8">
+                <MudTextField @bind-Value="invoice.Remarks" Label="Remarks" Lines="2" />
+            </MudItem>
+            <MudItem xs="12" md="4">
+                <MudStack Spacing="2">
+                    <MudStack Row="true" Justify="Justify.SpaceBetween">
+                        <MudText>Sub Total:</MudText>
+                        <MudText Typo="Typo.body1">@invoice.SubTotal?.ToString("N2")</MudText>
+                    </MudStack>
+                    <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
+                        <MudNumericField @bind-Value="invoice.TaxPercent" Label="Tax %" Style="width:80px"
+                                         T="decimal?" Immediate="true" OnBlur="CalculateTotals" />
+                        <MudText>@invoice.TaxAmount?.ToString("N2")</MudText>
+                    </MudStack>
+                    <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
+                        <MudNumericField @bind-Value="invoice.DiscountAmount" Label="Discount" Style="width:80px"
+                                         T="decimal?" Immediate="true" OnBlur="CalculateTotals" />
+                        <MudText>-@invoice.DiscountAmount?.ToString("N2")</MudText>
+                    </MudStack>
+                    <MudDivider />
+                    <MudStack Row="true" Justify="Justify.SpaceBetween">
+                        <MudText Typo="Typo.h6">Net Total:</MudText>
+                        <MudText Typo="Typo.h6" Color="Color.Primary">@invoice.NetTotal?.ToString("N2")</MudText>
+                    </MudStack>
+                </MudStack>
+            </MudItem>
+        </MudGrid>
+
+        <MudStack Row="true" Justify="Justify.FlexEnd" Spacing="2" Class="mt-4">
+            <MudButton Variant="Variant.Outlined" OnClick="GoBack">Cancel</MudButton>
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" ButtonType="ButtonType.Submit"
+                       Disabled="@isSaving">
+                @(isSaving ? "Saving..." : "Save Invoice")
+            </MudButton>
+        </MudStack>
+    </EditForm>
+</MudPaper>
+
+@code {
+    [Parameter] public long? Id { get; set; }
+
+    private Invoice invoice = new() { InvoiceDate = DateTime.Today };
+    private Party? selectedCustomer;
+    private List<Party> customers = new();
+    private DateTime? invoiceDate;
+    private DateTime? dueDate;
+    private DateTime? periodFrom;
+    private DateTime? periodTo;
+    private bool isSaving;
+
+    protected override async Task OnInitializedAsync()
+    {
+        customers = await DbContext.Parties.Where(p => p.IsActive).ToListAsync();
+
+        if (Id.HasValue)
+        {
+            var existing = await DbContext.Invoices
+                .Include(i => i.Details)
+                .FirstOrDefaultAsync(i => i.Id == Id.Value);
+
+            if (existing != null)
+            {
+                invoice = existing;
+                invoiceDate = existing.InvoiceDate;
+                dueDate = existing.DueDate;
+                periodFrom = existing.PeriodFrom;
+                periodTo = existing.PeriodTo;
+                selectedCustomer = await DbContext.Parties.FindAsync(existing.CustomerId);
+            }
+        }
+        else
+        {
+            invoiceDate = DateTime.Today;
+            dueDate = DateTime.Today.AddDays(30);
+            invoice.InvoiceNo = await GenerateInvoiceNo();
+        }
+    }
+
+    private async Task<string> GenerateInvoiceNo()
+    {
+        var prefix = $"INV-{DateTime.Today:yyMM}-";
+        var lastInvoice = await DbContext.Invoices
+            .Where(i => i.InvoiceNo.StartsWith(prefix))
+            .OrderByDescending(i => i.InvoiceNo)
+            .FirstOrDefaultAsync();
+
+        var nextNum = 1;
+        if (lastInvoice != null)
+        {
+            var lastNumStr = lastInvoice.InvoiceNo.Replace(prefix, "");
+            if (int.TryParse(lastNumStr, out var lastNum))
+                nextNum = lastNum + 1;
+        }
+        return $"{prefix}{nextNum:D4}";
+    }
+
+    private Task<IEnumerable<Party>> SearchCustomers(string value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return Task.FromResult(customers.Take(20));
+
+        return Task.FromResult(customers.Where(c => c.Name.Contains(value, StringComparison.OrdinalIgnoreCase))
+                       .Take(20));
+    }
+
+    private void OnCustomerSelected()
+    {
+        if (selectedCustomer != null)
+        {
+            invoice.CustomerId = selectedCustomer.Id;
+            invoice.CustomerName = selectedCustomer.Name;
+            invoice.CustomerTaxNo = selectedCustomer.TaxNumber;
+        }
+    }
+
+    private async Task LoadUnbilledAWBs()
+    {
+        if (selectedCustomer == null) return;
+
+        var unbilledAwbs = await DbContext.InscanMasters
+            .Where(a => a.CustomerId == selectedCustomer.Id)
+            .Where(a => a.CourierStatusId >= CourierStatus.Delivered)
+            .Where(a => !DbContext.Set<InvoiceDetail>().Any(d => d.InscanId == a.Id))
+            .OrderBy(a => a.TransactionDate)
+            .Take(50)
+            .ToListAsync();
+
+        foreach (var awb in unbilledAwbs)
+        {
+            var detail = new InvoiceDetail
+            {
+                InscanId = awb.Id,
+                AWBNo = awb.AWBNo,
+                AWBDate = awb.TransactionDate,
+                Origin = awb.ConsignorCity,
+                Destination = awb.ConsigneeCity,
+                Pieces = awb.Pieces ?? 1,
+                Weight = awb.Weight,
+                CourierCharge = awb.CourierCharge ?? 0,
+                OtherCharge = (awb.OtherCharge ?? 0) + (awb.CODAmount ?? 0),
+                TaxAmount = awb.TaxAmount ?? 0,
+                Total = (awb.CourierCharge ?? 0) + (awb.OtherCharge ?? 0) + (awb.CODAmount ?? 0) + (awb.TaxAmount ?? 0)
+            };
+            invoice.Details.Add(detail);
+        }
+
+        CalculateTotals();
+        Snackbar.Add($"Added {unbilledAwbs.Count} unbilled AWBs", Severity.Success);
+    }
+
+    private void RemoveDetail(InvoiceDetail detail)
+    {
+        invoice.Details.Remove(detail);
+        CalculateTotals();
+    }
+
+    private void CalculateTotals()
+    {
+        invoice.TotalAWBs = invoice.Details.Count;
+        invoice.SubTotal = invoice.Details.Sum(d => d.Total ?? 0);
+        invoice.TaxAmount = (invoice.SubTotal ?? 0) * (invoice.TaxPercent ?? 0) / 100;
+        invoice.NetTotal = (invoice.SubTotal ?? 0) + (invoice.TaxAmount ?? 0) - (invoice.DiscountAmount ?? 0);
+        invoice.BalanceAmount = (invoice.NetTotal ?? 0) - (invoice.PaidAmount ?? 0);
+    }
+
+    private async Task SaveInvoice()
+    {
+        isSaving = true;
+        try
+        {
+            invoice.InvoiceDate = invoiceDate ?? DateTime.Today;
+            invoice.DueDate = dueDate;
+            invoice.PeriodFrom = periodFrom;
+            invoice.PeriodTo = periodTo;
+
+            CalculateTotals();
+
+            if (Id.HasValue)
+            {
+                DbContext.Invoices.Update(invoice);
+            }
+            else
+            {
+                DbContext.Invoices.Add(invoice);
+            }
+
+            await DbContext.SaveChangesAsync();
+            Snackbar.Add("Invoice saved successfully", Severity.Success);
+            NavigationManager.NavigateTo("/invoices");
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error saving invoice: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            isSaving = false;
+        }
+    }
+
+    private void GoBack()
+    {
+        NavigationManager.NavigateTo("/invoices");
+    }
+}

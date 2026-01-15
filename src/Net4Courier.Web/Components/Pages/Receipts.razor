@@ -1,0 +1,137 @@
+@page "/receipts"
+@using Net4Courier.Finance.Entities
+@using Net4Courier.Infrastructure.Data
+@using Microsoft.EntityFrameworkCore
+@inject ApplicationDbContext DbContext
+@inject NavigationManager NavigationManager
+@inject ISnackbar Snackbar
+
+<PageTitle>Receipts - Net4Courier</PageTitle>
+
+<MudPaper Class="pa-4">
+    <MudStack Row="true" AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween" Class="mb-4">
+        <MudText Typo="Typo.h5">Receipts</MudText>
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add"
+                   OnClick="CreateNew">New Receipt</MudButton>
+    </MudStack>
+
+    <MudStack Row="true" Spacing="3" Class="mb-4">
+        <MudDatePicker @bind-Date="filterFromDate" Label="From Date" DateFormat="dd-MMM-yyyy" />
+        <MudDatePicker @bind-Date="filterToDate" Label="To Date" DateFormat="dd-MMM-yyyy" />
+        <MudSelect T="string" @bind-Value="filterPaymentMode" Label="Payment Mode" Clearable="true">
+            <MudSelectItem Value="@("Cash")">Cash</MudSelectItem>
+            <MudSelectItem Value="@("Cheque")">Cheque</MudSelectItem>
+            <MudSelectItem Value="@("Bank Transfer")">Bank Transfer</MudSelectItem>
+            <MudSelectItem Value="@("Online")">Online</MudSelectItem>
+        </MudSelect>
+        <MudTextField @bind-Value="searchText" Label="Search" Immediate="true" 
+                      Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Filled.Search" />
+        <MudButton Variant="Variant.Outlined" Color="Color.Primary" OnClick="LoadReceipts">Filter</MudButton>
+    </MudStack>
+
+    <MudTable Items="@receipts" Hover="true" Striped="true" Dense="true" Loading="@isLoading">
+        <HeaderContent>
+            <MudTh>Receipt No</MudTh>
+            <MudTh>Date</MudTh>
+            <MudTh>Customer</MudTh>
+            <MudTh Style="text-align:right">Amount</MudTh>
+            <MudTh>Payment Mode</MudTh>
+            <MudTh>Reference</MudTh>
+            <MudTh>Allocated</MudTh>
+            <MudTh Style="width:120px">Actions</MudTh>
+        </HeaderContent>
+        <RowTemplate>
+            <MudTd>@context.ReceiptNo</MudTd>
+            <MudTd>@context.ReceiptDate.ToString("dd-MMM-yyyy")</MudTd>
+            <MudTd>@context.CustomerName</MudTd>
+            <MudTd Style="text-align:right">@context.Amount?.ToString("N2")</MudTd>
+            <MudTd>@context.PaymentMode</MudTd>
+            <MudTd>@(context.ChequeNo ?? context.TransactionRef)</MudTd>
+            <MudTd>
+                @if (context.IsAllocated)
+                {
+                    <MudIcon Icon="@Icons.Material.Filled.CheckCircle" Color="Color.Success" Size="Size.Small" />
+                }
+                else
+                {
+                    <MudIcon Icon="@Icons.Material.Filled.RadioButtonUnchecked" Color="Color.Default" Size="Size.Small" />
+                }
+            </MudTd>
+            <MudTd>
+                <MudIconButton Icon="@Icons.Material.Filled.Edit" Size="Size.Small" 
+                               OnClick="() => EditReceipt(context.Id)" />
+                <MudIconButton Icon="@Icons.Material.Filled.Print" Size="Size.Small" 
+                               Color="Color.Primary" OnClick="() => PrintReceipt(context.Id)" />
+            </MudTd>
+        </RowTemplate>
+        <NoRecordsContent>
+            <MudText>No receipts found</MudText>
+        </NoRecordsContent>
+    </MudTable>
+</MudPaper>
+
+@code {
+    private List<Receipt> receipts = new();
+    private bool isLoading = true;
+    private DateTime? filterFromDate = DateTime.Today.AddMonths(-1);
+    private DateTime? filterToDate = DateTime.Today;
+    private string? filterPaymentMode;
+    private string searchText = "";
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadReceipts();
+    }
+
+    private async Task LoadReceipts()
+    {
+        isLoading = true;
+        try
+        {
+            var query = DbContext.Receipts.AsQueryable();
+
+            if (filterFromDate.HasValue)
+                query = query.Where(r => r.ReceiptDate >= filterFromDate.Value);
+
+            if (filterToDate.HasValue)
+                query = query.Where(r => r.ReceiptDate <= filterToDate.Value);
+
+            if (!string.IsNullOrWhiteSpace(filterPaymentMode))
+                query = query.Where(r => r.PaymentMode == filterPaymentMode);
+
+            if (!string.IsNullOrWhiteSpace(searchText))
+            {
+                var search = searchText.ToLower();
+                query = query.Where(r => 
+                    r.ReceiptNo.ToLower().Contains(search) ||
+                    (r.CustomerName != null && r.CustomerName.ToLower().Contains(search)) ||
+                    (r.ChequeNo != null && r.ChequeNo.ToLower().Contains(search)) ||
+                    (r.TransactionRef != null && r.TransactionRef.ToLower().Contains(search)));
+            }
+
+            receipts = await query.OrderByDescending(r => r.ReceiptDate)
+                                  .ThenByDescending(r => r.ReceiptNo)
+                                  .Take(100)
+                                  .ToListAsync();
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private void CreateNew()
+    {
+        NavigationManager.NavigateTo("/receipt/new");
+    }
+
+    private void EditReceipt(long id)
+    {
+        NavigationManager.NavigateTo($"/receipt/{id}");
+    }
+
+    private void PrintReceipt(long id)
+    {
+        Snackbar.Add("Print functionality coming soon", Severity.Info);
+    }
+}

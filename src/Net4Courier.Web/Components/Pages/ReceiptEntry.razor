@@ -1,0 +1,294 @@
+@page "/receipt/{Id:long?}"
+@page "/receipt/new"
+@using Net4Courier.Finance.Entities
+@using Net4Courier.Infrastructure.Data
+@using Net4Courier.Masters.Entities
+@using Net4Courier.Kernel.Enums
+@using Microsoft.EntityFrameworkCore
+@inject ApplicationDbContext DbContext
+@inject NavigationManager NavigationManager
+@inject ISnackbar Snackbar
+
+<PageTitle>@(Id.HasValue ? "Edit Receipt" : "New Receipt") - Net4Courier</PageTitle>
+
+<MudPaper Class="pa-4">
+    <MudStack Row="true" AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween" Class="mb-4">
+        <MudText Typo="Typo.h5">@(Id.HasValue ? "Edit Receipt" : "New Receipt")</MudText>
+        <MudButton Variant="Variant.Outlined" OnClick="GoBack">Back to List</MudButton>
+    </MudStack>
+
+    <EditForm Model="@receipt" OnValidSubmit="SaveReceipt">
+        <DataAnnotationsValidator />
+        
+        <MudGrid Spacing="3">
+            <MudItem xs="12" md="3">
+                <MudTextField @bind-Value="receipt.ReceiptNo" Label="Receipt No*" Required="true" 
+                              ReadOnly="@Id.HasValue" />
+            </MudItem>
+            <MudItem xs="12" md="3">
+                <MudDatePicker @bind-Date="receiptDate" Label="Receipt Date*" Required="true" 
+                               DateFormat="dd-MMM-yyyy" />
+            </MudItem>
+            <MudItem xs="12" md="3">
+                <MudNumericField @bind-Value="receipt.Amount" Label="Amount*" Required="true" 
+                                 T="decimal?" Format="N2" />
+            </MudItem>
+            <MudItem xs="12" md="3">
+                <MudSelect T="string" @bind-Value="receipt.PaymentMode" Label="Payment Mode*" Required="true">
+                    <MudSelectItem Value="@("Cash")">Cash</MudSelectItem>
+                    <MudSelectItem Value="@("Cheque")">Cheque</MudSelectItem>
+                    <MudSelectItem Value="@("Bank Transfer")">Bank Transfer</MudSelectItem>
+                    <MudSelectItem Value="@("Online")">Online</MudSelectItem>
+                    <MudSelectItem Value="@("UPI")">UPI</MudSelectItem>
+                </MudSelect>
+            </MudItem>
+
+            <MudItem xs="12" md="6">
+                <MudAutocomplete T="Party" Label="Customer*" @bind-Value="selectedCustomer"
+                                 SearchFunc="SearchCustomers" ToStringFunc="@(p => p?.Name ?? "")"
+                                 Required="true" OnBlur="OnCustomerSelected" />
+            </MudItem>
+            <MudItem xs="12" md="6">
+                <MudTextField @bind-Value="receipt.BankName" Label="Bank Name" />
+            </MudItem>
+
+            @if (receipt.PaymentMode == "Cheque")
+            {
+                <MudItem xs="12" md="4">
+                    <MudTextField @bind-Value="receipt.ChequeNo" Label="Cheque No" />
+                </MudItem>
+                <MudItem xs="12" md="4">
+                    <MudDatePicker @bind-Date="chequeDate" Label="Cheque Date" DateFormat="dd-MMM-yyyy" />
+                </MudItem>
+            }
+            else
+            {
+                <MudItem xs="12" md="4">
+                    <MudTextField @bind-Value="receipt.TransactionRef" Label="Transaction Reference" />
+                </MudItem>
+            }
+
+            <MudItem xs="12" md="4">
+                <MudTextField @bind-Value="receipt.Remarks" Label="Remarks" />
+            </MudItem>
+        </MudGrid>
+
+        <MudDivider Class="my-4" />
+        <MudText Typo="Typo.h6" Class="mb-3">Allocate to Invoices</MudText>
+
+        <MudTable Items="@pendingInvoices" Hover="true" Dense="true" Context="inv">
+            <HeaderContent>
+                <MudTh Style="width:50px">Select</MudTh>
+                <MudTh>Invoice No</MudTh>
+                <MudTh>Date</MudTh>
+                <MudTh Style="text-align:right">Invoice Amount</MudTh>
+                <MudTh Style="text-align:right">Balance</MudTh>
+                <MudTh Style="text-align:right; width:150px">Allocate</MudTh>
+            </HeaderContent>
+            <RowTemplate>
+                <MudTd>
+                    <MudCheckBox T="bool" Value="@IsInvoiceSelected(inv)" 
+                                 ValueChanged="@(v => ToggleInvoice(inv, v))" />
+                </MudTd>
+                <MudTd>@inv.InvoiceNo</MudTd>
+                <MudTd>@inv.InvoiceDate.ToString("dd-MMM-yyyy")</MudTd>
+                <MudTd Style="text-align:right">@inv.NetTotal?.ToString("N2")</MudTd>
+                <MudTd Style="text-align:right">@inv.BalanceAmount?.ToString("N2")</MudTd>
+                <MudTd Style="text-align:right">
+                    @{
+                        var allocation = receipt.Allocations.FirstOrDefault(a => a.InvoiceId == inv.Id);
+                    }
+                    @if (allocation != null)
+                    {
+                        <MudNumericField @bind-Value="allocation.AllocatedAmount" T="decimal?" Format="N2"
+                                         Dense="true" Margin="Margin.Dense" />
+                    }
+                </MudTd>
+            </RowTemplate>
+            <NoRecordsContent>
+                <MudText Class="pa-4">@(selectedCustomer == null ? "Select a customer to see pending invoices" : "No pending invoices")</MudText>
+            </NoRecordsContent>
+        </MudTable>
+
+        <MudStack Row="true" Justify="Justify.SpaceBetween" Class="mt-3">
+            <MudText>
+                Total Allocated: <strong>@receipt.Allocations.Sum(a => a.AllocatedAmount ?? 0).ToString("N2")</strong>
+            </MudText>
+            <MudText>
+                Remaining: <strong>@((receipt.Amount ?? 0) - receipt.Allocations.Sum(a => a.AllocatedAmount ?? 0)).ToString("N2")</strong>
+            </MudText>
+        </MudStack>
+
+        <MudStack Row="true" Justify="Justify.FlexEnd" Spacing="2" Class="mt-4">
+            <MudButton Variant="Variant.Outlined" OnClick="GoBack">Cancel</MudButton>
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" ButtonType="ButtonType.Submit"
+                       Disabled="@isSaving">
+                @(isSaving ? "Saving..." : "Save Receipt")
+            </MudButton>
+        </MudStack>
+    </EditForm>
+</MudPaper>
+
+@code {
+    [Parameter] public long? Id { get; set; }
+
+    private Receipt receipt = new() { ReceiptDate = DateTime.Today, PaymentMode = "Cash" };
+    private Party? selectedCustomer;
+    private List<Party> customers = new();
+    private List<Invoice> pendingInvoices = new();
+    private DateTime? receiptDate;
+    private DateTime? chequeDate;
+    private bool isSaving;
+
+    protected override async Task OnInitializedAsync()
+    {
+        customers = await DbContext.Parties.Where(p => p.IsActive).ToListAsync();
+
+        if (Id.HasValue)
+        {
+            var existing = await DbContext.Receipts
+                .Include(r => r.Allocations)
+                .FirstOrDefaultAsync(r => r.Id == Id.Value);
+
+            if (existing != null)
+            {
+                receipt = existing;
+                receiptDate = existing.ReceiptDate;
+                chequeDate = existing.ChequeDate;
+                selectedCustomer = await DbContext.Parties.FindAsync(existing.CustomerId);
+                if (selectedCustomer != null)
+                    await LoadPendingInvoices();
+            }
+        }
+        else
+        {
+            receiptDate = DateTime.Today;
+            receipt.ReceiptNo = await GenerateReceiptNo();
+        }
+    }
+
+    private async Task<string> GenerateReceiptNo()
+    {
+        var prefix = $"RCP-{DateTime.Today:yyMM}-";
+        var lastReceipt = await DbContext.Receipts
+            .Where(r => r.ReceiptNo.StartsWith(prefix))
+            .OrderByDescending(r => r.ReceiptNo)
+            .FirstOrDefaultAsync();
+
+        var nextNum = 1;
+        if (lastReceipt != null)
+        {
+            var lastNumStr = lastReceipt.ReceiptNo.Replace(prefix, "");
+            if (int.TryParse(lastNumStr, out var lastNum))
+                nextNum = lastNum + 1;
+        }
+        return $"{prefix}{nextNum:D4}";
+    }
+
+    private Task<IEnumerable<Party>> SearchCustomers(string value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return Task.FromResult(customers.Take(20));
+
+        return Task.FromResult(customers.Where(c => c.Name.Contains(value, StringComparison.OrdinalIgnoreCase))
+                       .Take(20));
+    }
+
+    private async Task OnCustomerSelected()
+    {
+        if (selectedCustomer != null)
+        {
+            receipt.CustomerId = selectedCustomer.Id;
+            receipt.CustomerName = selectedCustomer.Name;
+            await LoadPendingInvoices();
+        }
+    }
+
+    private async Task LoadPendingInvoices()
+    {
+        if (selectedCustomer == null) return;
+
+        pendingInvoices = await DbContext.Invoices
+            .Where(i => i.CustomerId == selectedCustomer.Id)
+            .Where(i => i.Status != InvoiceStatus.Cancelled && i.Status != InvoiceStatus.Paid)
+            .Where(i => i.BalanceAmount > 0)
+            .OrderBy(i => i.InvoiceDate)
+            .ToListAsync();
+    }
+
+    private bool IsInvoiceSelected(Invoice invoice)
+    {
+        return receipt.Allocations.Any(a => a.InvoiceId == invoice.Id);
+    }
+
+    private void ToggleInvoice(Invoice invoice, bool selected)
+    {
+        if (selected)
+        {
+            receipt.Allocations.Add(new ReceiptAllocation
+            {
+                InvoiceId = invoice.Id,
+                AllocatedAmount = invoice.BalanceAmount
+            });
+        }
+        else
+        {
+            var allocation = receipt.Allocations.FirstOrDefault(a => a.InvoiceId == invoice.Id);
+            if (allocation != null)
+                receipt.Allocations.Remove(allocation);
+        }
+    }
+
+    private async Task SaveReceipt()
+    {
+        isSaving = true;
+        try
+        {
+            receipt.ReceiptDate = receiptDate ?? DateTime.Today;
+            receipt.ChequeDate = chequeDate;
+            receipt.IsAllocated = receipt.Allocations.Any();
+
+            if (Id.HasValue)
+            {
+                DbContext.Receipts.Update(receipt);
+            }
+            else
+            {
+                DbContext.Receipts.Add(receipt);
+            }
+
+            await DbContext.SaveChangesAsync();
+
+            foreach (var allocation in receipt.Allocations)
+            {
+                var invoice = await DbContext.Invoices.FindAsync(allocation.InvoiceId);
+                if (invoice != null)
+                {
+                    invoice.PaidAmount = (invoice.PaidAmount ?? 0) + (allocation.AllocatedAmount ?? 0);
+                    invoice.BalanceAmount = (invoice.NetTotal ?? 0) - (invoice.PaidAmount ?? 0);
+                    if (invoice.BalanceAmount <= 0)
+                        invoice.Status = InvoiceStatus.Paid;
+                    else if (invoice.PaidAmount > 0)
+                        invoice.Status = InvoiceStatus.PartiallyPaid;
+                }
+            }
+            await DbContext.SaveChangesAsync();
+
+            Snackbar.Add("Receipt saved successfully", Severity.Success);
+            NavigationManager.NavigateTo("/receipts");
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error saving receipt: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            isSaving = false;
+        }
+    }
+
+    private void GoBack()
+    {
+        NavigationManager.NavigateTo("/receipts");
+    }
+}

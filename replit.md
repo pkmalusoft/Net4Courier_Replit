@@ -88,7 +88,7 @@ cd src/Net4Courier.Web && dotnet run --urls http://0.0.0.0:5000
 12. [x] AWB Tracking (timeline history with status updates)
 13. [x] Authentication/Login UI (custom AuthenticationStateProvider, redirect to login)
 14. [x] PostgreSQL table partitioning (PartitioningService created, SQL templates ready)
-15. [ ] Finance modules (Invoices, Receipts)
+15. [x] Finance modules - Invoices and Receipts CRUD (with customer autocomplete, AWB billing, receipt allocation)
 16. [ ] Reporting (QuestPDF for Linux compatibility)
 
 ## PostgreSQL Partitioning Notes

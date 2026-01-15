@@ -44,7 +44,7 @@ public class PartitioningService
     public async Task CreateFiscalYearPartitionsAsync()
     {
         var financialYears = await _context.FinancialYears
-            .Where(fy => fy.IsActive)
+            .Where(fy => !fy.IsClosed)
             .ToListAsync();
 
         foreach (var fy in financialYears)
