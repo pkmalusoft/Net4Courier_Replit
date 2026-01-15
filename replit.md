@@ -1,43 +1,71 @@
 # Net4Courier - Blazor Server Migration
 
 ## Overview
-Net4Courier is a comprehensive courier/logistics management system being migrated from ASP.NET MVC 5 (.NET Framework 4.7.2) to .NET 8 Blazor Server. The application manages courier operations including shipments (AWB), customers, branches, financial transactions, and reporting.
+Net4Courier is a comprehensive courier/logistics management system migrated from ASP.NET MVC 5 (.NET Framework 4.7.2) to .NET 8 Blazor Server. The application manages courier operations including shipments (AWB), customers, branches, financial transactions, and reporting.
 
 ## Current State
 - **Framework**: .NET 8 Blazor Server with MudBlazor UI components
-- **Database**: PostgreSQL (Replit hosted)
-- **Status**: Core infrastructure complete, master data modules in progress
+- **Database**: PostgreSQL (Replit hosted) with 22 tables
+- **Status**: Modular architecture complete, database schema created
 
-## Project Structure
+## Project Structure (Modular)
 ```
 src/
-├── Net4Courier.Web/           # Blazor Server frontend
+├── Net4Courier.Web/              # Blazor Server frontend (Port 5000)
 │   ├── Components/
-│   │   ├── Layout/            # MainLayout, NavMenu
-│   │   └── Pages/             # Dashboard, Companies, Branches, etc.
-│   ├── Services/              # AuthService, MenuService
-│   └── Program.cs             # Application entry point
-├── Net4Courier.Shared/        # Shared class library
-│   ├── Data/                  # ApplicationDbContext
-│   ├── Entities/              # EF Core entities
-│   └── Migrations/            # EF Core migrations
+│   │   ├── Layout/               # MainLayout, NavMenu
+│   │   └── Pages/                # Dashboard, Companies, Branches, etc.
+│   ├── Services/                 # AuthService, MenuService
+│   └── Program.cs                # Application entry point
+├── Net4Courier.Infrastructure/   # DbContext, Services, Migrations
+│   ├── Data/ApplicationDbContext.cs
+│   └── Services/AuthService.cs
+├── Net4Courier.Kernel/           # Base entities, enums
+│   └── Entities/BaseEntity.cs
+├── Net4Courier.Masters/          # Master data entities
+│   └── Entities/                 # Company, Branch, User, Role, Party
+├── Net4Courier.Operations/       # Operations entities
+│   └── Entities/                 # InscanMaster, AWBTracking, DRS, Manifest
+├── Net4Courier.Finance/          # Finance entities
+│   └── Entities/                 # Invoice, Receipt, Journal, AccountHead
+└── Net4Courier.Shared/           # Legacy (being phased out)
 ```
 
-## Key Entities
+## Module Dependencies
+- Web → Infrastructure → Kernel + Masters + Operations + Finance
+- Each module can be built independently to reduce memory usage
+
+## Key Entity Groups
+
+### Masters Module
 - **Company**: Multi-tenant company management
-- **Branch**: Company branches with fiscal year support
+- **Branch**: Company branches with fiscal year support  
 - **User**: System users with role-based access
-- **Role**: User roles and permissions
-- **FinancialYear**: Fiscal year definitions for data partitioning
-- **Menu**: Navigation menu structure
+- **Role/RolePermission**: User roles and permissions
+- **Party/PartyAddress**: Customers, agents, vendors (normalized)
+- **FinancialYear**: Fiscal year definitions
+
+### Operations Module
+- **InscanMaster**: Main shipment table (139 fields, legacy compatible)
+- **InscanMasterItem**: Package items within shipment
+- **AWBTracking**: Shipment status history events
+- **DRS/DRSDetails**: Delivery Run Sheet for last-mile
+- **Manifest**: Grouping shipments for dispatch
+- **QuickInscanMaster**: Bulk inscan sheet
+
+### Finance Module
+- **Invoice/InvoiceDetail**: Customer billing
+- **Receipt/ReceiptAllocation**: Payment collection
+- **Journal/JournalEntry**: Accounting entries
+- **AccountHead**: Chart of accounts (self-referential)
 
 ## Database Configuration
-- Connection string is parsed from `DATABASE_URL` environment variable
-- PostgreSQL connection without SSL for Replit internal network
-- EF Core migrations run automatically on startup
+- Connection: `DATABASE_URL` environment variable
+- PostgreSQL with EF Core
+- Tables auto-created on startup via EnsureCreatedAsync
 
 ## Authentication
-- Admin user seeded on first run: `admin` / `Admin@123`
+- Admin user seeded: `admin` / `Admin@123`
 - Password hashing using BCrypt
 
 ## Running the Application
@@ -46,26 +74,30 @@ cd src/Net4Courier.Web && dotnet run --urls http://0.0.0.0:5000
 ```
 
 ## Migration Progress
-1. [x] Solution structure setup
-2. [x] EF Core DbContext and entities
+1. [x] Modular solution structure (6 modules)
+2. [x] EF Core DbContext with all entities (22 tables)
 3. [x] MudBlazor dashboard layout
 4. [x] Company management CRUD
 5. [x] Branch management CRUD
-6. [ ] User management
-7. [ ] Role management
+6. [ ] User management UI
+7. [ ] Role management UI
 8. [ ] Financial Year management
 9. [ ] Authentication/Login UI
-10. [ ] Database partitioning by fiscal year
-11. [ ] Operations modules (AWB, Shipments)
+10. [ ] PostgreSQL table partitioning by fiscal year
+11. [ ] Operations modules (AWB Entry, Tracking)
 12. [ ] Finance modules (Invoices, Receipts)
-13. [ ] Reporting (QuestPDF replacement for Crystal Reports)
+13. [ ] Reporting (QuestPDF for Linux compatibility)
 
 ## User Preferences
-- Use MudBlazor for all UI components
-- PostgreSQL for database (Replit compatible)
-- Database partitioning by fiscal year for performance
+- MudBlazor for all UI components
+- Modular architecture like TrueBookserp pattern
+- PostgreSQL partitioning by TransactionDate for performance
+- Party/PartyAddress normalization for storage efficiency
 
 ## Recent Changes (Jan 15, 2026)
-- Fixed DATABASE_URL connection string parsing
-- Fixed MudPopoverProvider duplicate warning
-- Enabled detailed error logging for development
+- Implemented modular architecture with 6 separate modules
+- Created complete InscanMaster entity (139 fields, legacy compatible)
+- Added separate AWBTracking table for status history
+- Created Party/PartyAddress normalized structure
+- Full Finance module with Invoice, Receipt, Journal entities
+- Successfully created 22 database tables

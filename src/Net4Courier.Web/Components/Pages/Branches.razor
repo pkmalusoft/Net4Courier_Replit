@@ -3,6 +3,8 @@
 @inject IDialogService DialogService
 @inject ISnackbar Snackbar
 @using Microsoft.EntityFrameworkCore
+@using Net4Courier.Infrastructure.Data
+@using Net4Courier.Masters.Entities
 
 <PageTitle>Branches - Net4Courier</PageTitle>
 
@@ -24,7 +26,7 @@
         <HeaderContent>
             <MudTh><MudTableSortLabel SortBy="new Func<Branch, object>(x => x.Name)">Name</MudTableSortLabel></MudTh>
             <MudTh>Company</MudTh>
-            <MudTh>Prefix</MudTh>
+            <MudTh>Code</MudTh>
             <MudTh>Email</MudTh>
             <MudTh>Phone</MudTh>
             <MudTh>VAT %</MudTh>
@@ -34,10 +36,10 @@
         <RowTemplate>
             <MudTd DataLabel="Name">@context.Name</MudTd>
             <MudTd DataLabel="Company">@context.Company?.Name</MudTd>
-            <MudTd DataLabel="Prefix">@context.BranchPrefix</MudTd>
+            <MudTd DataLabel="Code">@context.Code</MudTd>
             <MudTd DataLabel="Email">@context.Email</MudTd>
             <MudTd DataLabel="Phone">@context.Phone</MudTd>
-            <MudTd DataLabel="VAT %">@context.VATPercent?.ToString("N2")</MudTd>
+            <MudTd DataLabel="VAT %">@context.VatPercentage?.ToString("N2")</MudTd>
             <MudTd DataLabel="Status">
                 <MudChip T="string" Color="@(context.IsActive ? Color.Success : Color.Error)" Size="Size.Small">
                     @(context.IsActive ? "Active" : "Inactive")
@@ -67,7 +69,7 @@
     private async Task LoadBranches()
     {
         _loading = true;
-        _branches = await DbContext.Branches.Include(b => b.Company).OrderBy(b => b.Name).ToListAsync();
+        _branches = await DbContext.Branches.Include(b => b.Company).Where(b => !b.IsDeleted).OrderBy(b => b.Name).ToListAsync();
         _loading = false;
     }
 
@@ -78,12 +80,12 @@
         
         return branch.Name.Contains(_searchString, StringComparison.OrdinalIgnoreCase) ||
                (branch.Email?.Contains(_searchString, StringComparison.OrdinalIgnoreCase) ?? false) ||
-               (branch.BranchPrefix?.Contains(_searchString, StringComparison.OrdinalIgnoreCase) ?? false);
+               (branch.Code?.Contains(_searchString, StringComparison.OrdinalIgnoreCase) ?? false);
     }
 
     private async Task OpenCreateDialog()
     {
-        var companies = await DbContext.Companies.Where(c => c.IsActive).ToListAsync();
+        var companies = await DbContext.Companies.Where(c => c.IsActive && !c.IsDeleted).ToListAsync();
         var parameters = new DialogParameters<BranchDialog> { { x => x.Branch, new Branch() }, { x => x.IsNew, true }, { x => x.Companies, companies } };
         var dialog = await DialogService.ShowAsync<BranchDialog>("Add Branch", parameters, new DialogOptions { MaxWidth = MaxWidth.Medium, FullWidth = true });
         var result = await dialog.Result;
@@ -97,7 +99,7 @@
 
     private async Task OpenEditDialog(Branch branch)
     {
-        var companies = await DbContext.Companies.Where(c => c.IsActive).ToListAsync();
+        var companies = await DbContext.Companies.Where(c => c.IsActive && !c.IsDeleted).ToListAsync();
         var parameters = new DialogParameters<BranchDialog> { { x => x.Branch, branch }, { x => x.IsNew, false }, { x => x.Companies, companies } };
         var dialog = await DialogService.ShowAsync<BranchDialog>("Edit Branch", parameters, new DialogOptions { MaxWidth = MaxWidth.Medium, FullWidth = true });
         var result = await dialog.Result;
@@ -115,7 +117,7 @@
         
         if (confirm == true)
         {
-            DbContext.Branches.Remove(branch);
+            branch.IsDeleted = true;
             await DbContext.SaveChangesAsync();
             await LoadBranches();
             Snackbar.Add("Branch deleted successfully", Severity.Success);

@@ -1,0 +1,44 @@
+using Net4Courier.Kernel.Entities;
+
+namespace Net4Courier.Operations.Entities;
+
+public class DRS : BaseEntity
+{
+    public string DRSNo { get; set; } = string.Empty;
+    public DateTime DRSDate { get; set; }
+    public long? CompanyId { get; set; }
+    public long? BranchId { get; set; }
+    public long? FinancialYearId { get; set; }
+    public int? DeliveryEmployeeId { get; set; }
+    public string? DeliveryEmployeeName { get; set; }
+    public int? VehicleId { get; set; }
+    public string? VehicleNo { get; set; }
+    public int? TotalAWBs { get; set; }
+    public int? DeliveredCount { get; set; }
+    public int? PendingCount { get; set; }
+    public int? ReturnedCount { get; set; }
+    public decimal? TotalCOD { get; set; }
+    public decimal? CollectedCOD { get; set; }
+    public string? Remarks { get; set; }
+    public int? DRSStatus { get; set; }
+    public DateTime? ClosedAt { get; set; }
+    public int? ClosedBy { get; set; }
+}
+
+public class DRSDetail : BaseEntity
+{
+    public long DRSId { get; set; }
+    public long InscanId { get; set; }
+    public int? Sequence { get; set; }
+    public int? AttemptNo { get; set; }
+    public string? Status { get; set; }
+    public string? Remarks { get; set; }
+    public DateTime? AttemptedAt { get; set; }
+    public decimal? CODAmount { get; set; }
+    public decimal? CollectedAmount { get; set; }
+    public string? ReceivedBy { get; set; }
+    public string? Relation { get; set; }
+    
+    public virtual DRS DRS { get; set; } = null!;
+    public virtual InscanMaster Inscan { get; set; } = null!;
+}

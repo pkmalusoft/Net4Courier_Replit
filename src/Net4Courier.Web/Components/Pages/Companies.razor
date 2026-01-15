@@ -3,6 +3,8 @@
 @inject IDialogService DialogService
 @inject ISnackbar Snackbar
 @using Microsoft.EntityFrameworkCore
+@using Net4Courier.Infrastructure.Data
+@using Net4Courier.Masters.Entities
 
 <PageTitle>Companies - Net4Courier</PageTitle>
 
@@ -23,7 +25,7 @@
               Filter="new Func<Company, bool>(FilterFunc)">
         <HeaderContent>
             <MudTh><MudTableSortLabel SortBy="new Func<Company, object>(x => x.Name)">Name</MudTableSortLabel></MudTh>
-            <MudTh>Prefix</MudTh>
+            <MudTh>Code</MudTh>
             <MudTh>Email</MudTh>
             <MudTh>Phone</MudTh>
             <MudTh>Status</MudTh>
@@ -31,7 +33,7 @@
         </HeaderContent>
         <RowTemplate>
             <MudTd DataLabel="Name">@context.Name</MudTd>
-            <MudTd DataLabel="Prefix">@context.CompanyPrefix</MudTd>
+            <MudTd DataLabel="Code">@context.Code</MudTd>
             <MudTd DataLabel="Email">@context.Email</MudTd>
             <MudTd DataLabel="Phone">@context.Phone</MudTd>
             <MudTd DataLabel="Status">
@@ -63,7 +65,7 @@
     private async Task LoadCompanies()
     {
         _loading = true;
-        _companies = await DbContext.Companies.OrderBy(c => c.Name).ToListAsync();
+        _companies = await DbContext.Companies.Where(c => !c.IsDeleted).OrderBy(c => c.Name).ToListAsync();
         _loading = false;
     }
 
@@ -74,7 +76,7 @@
         
         return company.Name.Contains(_searchString, StringComparison.OrdinalIgnoreCase) ||
                (company.Email?.Contains(_searchString, StringComparison.OrdinalIgnoreCase) ?? false) ||
-               (company.CompanyPrefix?.Contains(_searchString, StringComparison.OrdinalIgnoreCase) ?? false);
+               (company.Code?.Contains(_searchString, StringComparison.OrdinalIgnoreCase) ?? false);
     }
 
     private async Task OpenCreateDialog()
@@ -109,7 +111,7 @@
         
         if (confirm == true)
         {
-            DbContext.Companies.Remove(company);
+            company.IsDeleted = true;
             await DbContext.SaveChangesAsync();
             await LoadCompanies();
             Snackbar.Add("Company deleted successfully", Severity.Success);

@@ -1,8 +1,8 @@
 using Microsoft.EntityFrameworkCore;
 using MudBlazor.Services;
-using Net4Courier.Shared.Data;
+using Net4Courier.Infrastructure.Data;
+using Net4Courier.Infrastructure.Services;
 using Net4Courier.Web.Components;
-using Net4Courier.Web.Services;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -38,7 +38,6 @@ builder.Services.AddDbContext<ApplicationDbContext>(options =>
     options.UseNpgsql(connectionString));
 
 builder.Services.AddScoped<AuthService>();
-builder.Services.AddScoped<MenuService>();
 
 var app = builder.Build();
 
@@ -54,10 +53,18 @@ app.UseAntiforgery();
 using (var scope = app.Services.CreateScope())
 {
     var dbContext = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
-    await dbContext.Database.MigrateAsync();
     
-    var authService = scope.ServiceProvider.GetRequiredService<AuthService>();
-    await authService.SeedAdminUserAsync();
+    try
+    {
+        await dbContext.Database.EnsureCreatedAsync();
+        
+        var authService = scope.ServiceProvider.GetRequiredService<AuthService>();
+        await authService.SeedAdminUserAsync();
+    }
+    catch (Exception ex)
+    {
+        Console.WriteLine($"Database initialization error: {ex.Message}");
+    }
 }
 
 app.MapRazorComponents<App>()
