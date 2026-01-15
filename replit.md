@@ -111,3 +111,7 @@ cd src/Net4Courier.Web && dotnet run --urls http://0.0.0.0:5000
 - Created Party/PartyAddress normalized structure
 - Full Finance module with Invoice, Receipt, Journal entities
 - Successfully created 22 database tables
+- Fixed MudBlazor static assets for production deployment (local files in wwwroot/lib/mudblazor/)
+
+## MudBlazor Deployment Note
+MudBlazor static assets are stored locally in `wwwroot/lib/mudblazor/` for Replit compatibility. Do not use `_content/MudBlazor/` paths as they don't work in Replit's production environment.
