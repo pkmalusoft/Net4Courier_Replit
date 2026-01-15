@@ -1,0 +1,140 @@
+@page "/roles"
+@inject ApplicationDbContext DbContext
+@inject IDialogService DialogService
+@inject ISnackbar Snackbar
+@using Microsoft.EntityFrameworkCore
+@using Net4Courier.Infrastructure.Data
+@using Net4Courier.Masters.Entities
+
+<PageTitle>Roles - Net4Courier</PageTitle>
+
+<MudText Typo="Typo.h4" GutterBottom="true">Roles</MudText>
+
+<MudPaper Class="pa-4 mb-4" Elevation="2">
+    <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
+        <MudTextField @bind-Value="_searchString" Placeholder="Search roles..." Adornment="Adornment.Start" 
+                      AdornmentIcon="@Icons.Material.Filled.Search" IconSize="Size.Medium" Class="mt-0" Immediate="true" />
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add" OnClick="OpenCreateDialog">
+            Add Role
+        </MudButton>
+    </MudStack>
+</MudPaper>
+
+<MudPaper Elevation="2">
+    <MudTable Items="@_roles" Hover="true" Striped="true" Loading="@_loading" LoadingProgressColor="Color.Primary"
+              Filter="new Func<Role, bool>(FilterFunc)">
+        <HeaderContent>
+            <MudTh><MudTableSortLabel SortBy="new Func<Role, object>(x => x.Name)">Name</MudTableSortLabel></MudTh>
+            <MudTh>Description</MudTh>
+            <MudTh>Users</MudTh>
+            <MudTh>Status</MudTh>
+            <MudTh Style="width: 150px;">Actions</MudTh>
+        </HeaderContent>
+        <RowTemplate>
+            <MudTd DataLabel="Name">@context.Name</MudTd>
+            <MudTd DataLabel="Description">@context.Description</MudTd>
+            <MudTd DataLabel="Users">@context.Users.Count</MudTd>
+            <MudTd DataLabel="Status">
+                <MudChip T="string" Color="@(context.IsActive ? Color.Success : Color.Error)" Size="Size.Small">
+                    @(context.IsActive ? "Active" : "Inactive")
+                </MudChip>
+            </MudTd>
+            <MudTd>
+                <MudIconButton Icon="@Icons.Material.Filled.Edit" Size="Size.Small" Color="Color.Primary" OnClick="@(() => OpenEditDialog(context))" />
+                <MudIconButton Icon="@Icons.Material.Filled.Security" Size="Size.Small" Color="Color.Info" OnClick="@(() => OpenPermissionsDialog(context))" Title="Permissions" />
+                <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" Color="Color.Error" OnClick="@(() => DeleteRole(context))" />
+            </MudTd>
+        </RowTemplate>
+        <NoRecordsContent>
+            <MudText>No roles found.</MudText>
+        </NoRecordsContent>
+    </MudTable>
+</MudPaper>
+
+@code {
+    private List<Role> _roles = new();
+    private bool _loading = true;
+    private string _searchString = "";
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadRoles();
+    }
+
+    private async Task LoadRoles()
+    {
+        _loading = true;
+        _roles = await DbContext.Roles
+            .Include(r => r.Users)
+            .Where(r => !r.IsDeleted)
+            .OrderBy(r => r.Name)
+            .ToListAsync();
+        _loading = false;
+    }
+
+    private bool FilterFunc(Role role)
+    {
+        if (string.IsNullOrWhiteSpace(_searchString))
+            return true;
+        
+        return role.Name.Contains(_searchString, StringComparison.OrdinalIgnoreCase) ||
+               (role.Description?.Contains(_searchString, StringComparison.OrdinalIgnoreCase) ?? false);
+    }
+
+    private async Task OpenCreateDialog()
+    {
+        var parameters = new DialogParameters<RoleDialog> { { x => x.Role, new Role() }, { x => x.IsNew, true } };
+        var dialog = await DialogService.ShowAsync<RoleDialog>("Add Role", parameters, new DialogOptions { MaxWidth = MaxWidth.Small, FullWidth = true });
+        var result = await dialog.Result;
+        
+        if (!result!.Canceled)
+        {
+            await LoadRoles();
+            Snackbar.Add("Role created successfully", Severity.Success);
+        }
+    }
+
+    private async Task OpenEditDialog(Role role)
+    {
+        var parameters = new DialogParameters<RoleDialog> { { x => x.Role, role }, { x => x.IsNew, false } };
+        var dialog = await DialogService.ShowAsync<RoleDialog>("Edit Role", parameters, new DialogOptions { MaxWidth = MaxWidth.Small, FullWidth = true });
+        var result = await dialog.Result;
+        
+        if (!result!.Canceled)
+        {
+            await LoadRoles();
+            Snackbar.Add("Role updated successfully", Severity.Success);
+        }
+    }
+
+    private async Task OpenPermissionsDialog(Role role)
+    {
+        var parameters = new DialogParameters<RolePermissionsDialog> { { x => x.Role, role } };
+        var dialog = await DialogService.ShowAsync<RolePermissionsDialog>("Role Permissions", parameters, new DialogOptions { MaxWidth = MaxWidth.Large, FullWidth = true });
+        var result = await dialog.Result;
+        
+        if (!result!.Canceled)
+        {
+            Snackbar.Add("Permissions updated successfully", Severity.Success);
+        }
+    }
+
+    private async Task DeleteRole(Role role)
+    {
+        if (role.Users.Any())
+        {
+            Snackbar.Add("Cannot delete role with assigned users", Severity.Warning);
+            return;
+        }
+
+        var confirm = await DialogService.ShowMessageBox("Confirm Delete", $"Are you sure you want to delete {role.Name}?", yesText: "Delete", cancelText: "Cancel");
+        
+        if (confirm == true)
+        {
+            role.IsDeleted = true;
+            await DbContext.SaveChangesAsync();
+            await LoadRoles();
+            Snackbar.Add("Role deleted successfully", Severity.Success);
+        }
+    }
+}

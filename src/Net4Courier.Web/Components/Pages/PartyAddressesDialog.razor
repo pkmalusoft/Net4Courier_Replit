@@ -1,0 +1,124 @@
+@inject ApplicationDbContext DbContext
+@inject ISnackbar Snackbar
+@using Microsoft.EntityFrameworkCore
+@using Net4Courier.Infrastructure.Data
+@using Net4Courier.Masters.Entities
+
+<MudDialog>
+    <TitleContent>
+        <MudText Typo="Typo.h6">
+            <MudIcon Icon="@Icons.Material.Filled.LocationOn" Class="mr-2" />
+            Addresses for @Party.Name
+        </MudText>
+    </TitleContent>
+    <DialogContent>
+        <MudStack Spacing="4">
+            @foreach (var address in _addresses)
+            {
+                <MudPaper Class="pa-4" Elevation="1">
+                    <MudGrid>
+                        <MudItem xs="12" md="3">
+                            <MudTextField @bind-Value="address.AddressType" Label="Type" Variant="Variant.Outlined" />
+                        </MudItem>
+                        <MudItem xs="12" md="9">
+                            <MudTextField @bind-Value="address.BuildingName" Label="Building/Company" Variant="Variant.Outlined" />
+                        </MudItem>
+                        <MudItem xs="12" md="6">
+                            <MudTextField @bind-Value="address.Street" Label="Street" Variant="Variant.Outlined" />
+                        </MudItem>
+                        <MudItem xs="12" md="6">
+                            <MudTextField @bind-Value="address.Area" Label="Area" Variant="Variant.Outlined" />
+                        </MudItem>
+                        <MudItem xs="12" md="3">
+                            <MudTextField @bind-Value="address.City" Label="City" Variant="Variant.Outlined" />
+                        </MudItem>
+                        <MudItem xs="12" md="3">
+                            <MudTextField @bind-Value="address.State" Label="State" Variant="Variant.Outlined" />
+                        </MudItem>
+                        <MudItem xs="12" md="3">
+                            <MudTextField @bind-Value="address.Country" Label="Country" Variant="Variant.Outlined" />
+                        </MudItem>
+                        <MudItem xs="12" md="3">
+                            <MudTextField @bind-Value="address.PostalCode" Label="Postal Code" Variant="Variant.Outlined" />
+                        </MudItem>
+                        <MudItem xs="12" md="6">
+                            <MudTextField @bind-Value="address.Landmark" Label="Landmark" Variant="Variant.Outlined" />
+                        </MudItem>
+                        <MudItem xs="12" md="3">
+                            <MudSwitch @bind-Value="address.IsDefault" Label="Default" Color="Color.Primary" />
+                        </MudItem>
+                        <MudItem xs="12" md="3">
+                            <MudIconButton Icon="@Icons.Material.Filled.Delete" Color="Color.Error" OnClick="@(() => RemoveAddress(address))" />
+                        </MudItem>
+                    </MudGrid>
+                </MudPaper>
+            }
+            <MudButton Variant="Variant.Outlined" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add" OnClick="AddAddress">
+                Add Address
+            </MudButton>
+        </MudStack>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Cancel">Cancel</MudButton>
+        <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="Save">Save All</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] MudDialogInstance MudDialog { get; set; } = null!;
+    [Parameter] public Party Party { get; set; } = new();
+
+    private List<PartyAddress> _addresses = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        _addresses = await DbContext.PartyAddresses
+            .Where(a => a.PartyId == Party.Id && !a.IsDeleted)
+            .ToListAsync();
+    }
+
+    private void AddAddress()
+    {
+        _addresses.Add(new PartyAddress
+        {
+            PartyId = Party.Id,
+            AddressType = "Primary",
+            IsDefault = !_addresses.Any()
+        });
+    }
+
+    private void RemoveAddress(PartyAddress address)
+    {
+        if (address.Id > 0)
+        {
+            address.IsDeleted = true;
+        }
+        else
+        {
+            _addresses.Remove(address);
+        }
+    }
+
+    private async Task Save()
+    {
+        foreach (var address in _addresses)
+        {
+            if (address.Id == 0)
+            {
+                address.CreatedAt = DateTime.UtcNow;
+                DbContext.PartyAddresses.Add(address);
+            }
+            else
+            {
+                address.ModifiedAt = DateTime.UtcNow;
+                DbContext.PartyAddresses.Update(address);
+            }
+        }
+
+        await DbContext.SaveChangesAsync();
+        Snackbar.Add("Addresses saved successfully", Severity.Success);
+        MudDialog.Close(DialogResult.Ok(true));
+    }
+
+    private void Cancel() => MudDialog.Cancel();
+}

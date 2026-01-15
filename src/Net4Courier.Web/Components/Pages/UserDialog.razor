@@ -1,0 +1,116 @@
+@inject ApplicationDbContext DbContext
+@using Microsoft.EntityFrameworkCore
+@using Net4Courier.Infrastructure.Data
+@using Net4Courier.Infrastructure.Services
+@using Net4Courier.Masters.Entities
+@inject AuthService AuthService
+
+<MudDialog>
+    <TitleContent>
+        <MudText Typo="Typo.h6">
+            <MudIcon Icon="@Icons.Material.Filled.Person" Class="mr-2" />
+            @(IsNew ? "Add New User" : "Edit User")
+        </MudText>
+    </TitleContent>
+    <DialogContent>
+        <MudForm @ref="_form" @bind-IsValid="_formIsValid">
+            <MudGrid>
+                <MudItem xs="12" md="6">
+                    <MudTextField @bind-Value="User.Username" Label="Username" Required="true" RequiredError="Username is required"
+                                  Variant="Variant.Outlined" Disabled="!IsNew" />
+                </MudItem>
+                <MudItem xs="12" md="6">
+                    <MudTextField @bind-Value="User.FullName" Label="Full Name" Variant="Variant.Outlined" />
+                </MudItem>
+                @if (IsNew)
+                {
+                    <MudItem xs="12" md="6">
+                        <MudTextField @bind-Value="_password" Label="Password" InputType="InputType.Password" 
+                                      Required="true" RequiredError="Password is required" Variant="Variant.Outlined" />
+                    </MudItem>
+                    <MudItem xs="12" md="6">
+                        <MudTextField @bind-Value="_confirmPassword" Label="Confirm Password" InputType="InputType.Password" 
+                                      Required="true" RequiredError="Confirm password is required" Variant="Variant.Outlined" />
+                    </MudItem>
+                }
+                <MudItem xs="12" md="6">
+                    <MudTextField @bind-Value="User.Email" Label="Email" InputType="InputType.Email" Variant="Variant.Outlined" />
+                </MudItem>
+                <MudItem xs="12" md="6">
+                    <MudTextField @bind-Value="User.Phone" Label="Phone" Variant="Variant.Outlined" />
+                </MudItem>
+                <MudItem xs="12" md="6">
+                    <MudSelect T="long?" @bind-Value="User.RoleId" Label="Role" Variant="Variant.Outlined" AnchorOrigin="Origin.BottomCenter">
+                        <MudSelectItem T="long?" Value="@((long?)null)">-- Select Role --</MudSelectItem>
+                        @foreach (var role in _roles)
+                        {
+                            <MudSelectItem T="long?" Value="@role.Id">@role.Name</MudSelectItem>
+                        }
+                    </MudSelect>
+                </MudItem>
+                <MudItem xs="12" md="6">
+                    <MudSelect T="long?" @bind-Value="User.BranchId" Label="Branch" Variant="Variant.Outlined" AnchorOrigin="Origin.BottomCenter">
+                        <MudSelectItem T="long?" Value="@((long?)null)">-- Select Branch --</MudSelectItem>
+                        @foreach (var branch in _branches)
+                        {
+                            <MudSelectItem T="long?" Value="@branch.Id">@branch.Name</MudSelectItem>
+                        }
+                    </MudSelect>
+                </MudItem>
+                <MudItem xs="12" md="6">
+                    <MudSwitch @bind-Value="User.IsActive" Label="Active" Color="Color.Primary" />
+                </MudItem>
+            </MudGrid>
+        </MudForm>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Cancel">Cancel</MudButton>
+        <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="Save" Disabled="!_formIsValid">Save</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] MudDialogInstance MudDialog { get; set; } = null!;
+    [Parameter] public User User { get; set; } = new();
+    [Parameter] public bool IsNew { get; set; }
+
+    private MudForm _form = null!;
+    private bool _formIsValid;
+    private string _password = "";
+    private string _confirmPassword = "";
+    private List<Role> _roles = new();
+    private List<Branch> _branches = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        _roles = await DbContext.Roles.Where(r => r.IsActive && !r.IsDeleted).OrderBy(r => r.Name).ToListAsync();
+        _branches = await DbContext.Branches.Where(b => b.IsActive && !b.IsDeleted).OrderBy(b => b.Name).ToListAsync();
+    }
+
+    private async Task Save()
+    {
+        await _form.Validate();
+        if (!_formIsValid) return;
+
+        if (IsNew)
+        {
+            if (_password != _confirmPassword)
+            {
+                return;
+            }
+            User.PasswordHash = AuthService.HashPassword(_password);
+            User.CreatedAt = DateTime.UtcNow;
+            DbContext.Users.Add(User);
+        }
+        else
+        {
+            User.ModifiedAt = DateTime.UtcNow;
+            DbContext.Users.Update(User);
+        }
+
+        await DbContext.SaveChangesAsync();
+        MudDialog.Close(DialogResult.Ok(User));
+    }
+
+    private void Cancel() => MudDialog.Cancel();
+}

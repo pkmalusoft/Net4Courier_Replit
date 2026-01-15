@@ -1,0 +1,129 @@
+@page "/users"
+@inject ApplicationDbContext DbContext
+@inject IDialogService DialogService
+@inject ISnackbar Snackbar
+@using Microsoft.EntityFrameworkCore
+@using Net4Courier.Infrastructure.Data
+@using Net4Courier.Masters.Entities
+
+<PageTitle>Users - Net4Courier</PageTitle>
+
+<MudText Typo="Typo.h4" GutterBottom="true">Users</MudText>
+
+<MudPaper Class="pa-4 mb-4" Elevation="2">
+    <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
+        <MudTextField @bind-Value="_searchString" Placeholder="Search users..." Adornment="Adornment.Start" 
+                      AdornmentIcon="@Icons.Material.Filled.Search" IconSize="Size.Medium" Class="mt-0" Immediate="true" />
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add" OnClick="OpenCreateDialog">
+            Add User
+        </MudButton>
+    </MudStack>
+</MudPaper>
+
+<MudPaper Elevation="2">
+    <MudTable Items="@_users" Hover="true" Striped="true" Loading="@_loading" LoadingProgressColor="Color.Primary"
+              Filter="new Func<User, bool>(FilterFunc)">
+        <HeaderContent>
+            <MudTh><MudTableSortLabel SortBy="new Func<User, object>(x => x.Username)">Username</MudTableSortLabel></MudTh>
+            <MudTh>Full Name</MudTh>
+            <MudTh>Email</MudTh>
+            <MudTh>Role</MudTh>
+            <MudTh>Branch</MudTh>
+            <MudTh>Status</MudTh>
+            <MudTh>Last Login</MudTh>
+            <MudTh Style="width: 150px;">Actions</MudTh>
+        </HeaderContent>
+        <RowTemplate>
+            <MudTd DataLabel="Username">@context.Username</MudTd>
+            <MudTd DataLabel="Full Name">@context.FullName</MudTd>
+            <MudTd DataLabel="Email">@context.Email</MudTd>
+            <MudTd DataLabel="Role">@(context.Role?.Name ?? "-")</MudTd>
+            <MudTd DataLabel="Branch">@(context.Branch?.Name ?? "-")</MudTd>
+            <MudTd DataLabel="Status">
+                <MudChip T="string" Color="@(context.IsActive ? Color.Success : Color.Error)" Size="Size.Small">
+                    @(context.IsActive ? "Active" : "Inactive")
+                </MudChip>
+            </MudTd>
+            <MudTd DataLabel="Last Login">@(context.LastLoginAt?.ToString("dd/MM/yyyy HH:mm") ?? "Never")</MudTd>
+            <MudTd>
+                <MudIconButton Icon="@Icons.Material.Filled.Edit" Size="Size.Small" Color="Color.Primary" OnClick="@(() => OpenEditDialog(context))" />
+                <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" Color="Color.Error" OnClick="@(() => DeleteUser(context))" />
+            </MudTd>
+        </RowTemplate>
+        <NoRecordsContent>
+            <MudText>No users found.</MudText>
+        </NoRecordsContent>
+    </MudTable>
+</MudPaper>
+
+@code {
+    private List<User> _users = new();
+    private bool _loading = true;
+    private string _searchString = "";
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadUsers();
+    }
+
+    private async Task LoadUsers()
+    {
+        _loading = true;
+        _users = await DbContext.Users
+            .Include(u => u.Role)
+            .Include(u => u.Branch)
+            .Where(u => !u.IsDeleted)
+            .OrderBy(u => u.Username)
+            .ToListAsync();
+        _loading = false;
+    }
+
+    private bool FilterFunc(User user)
+    {
+        if (string.IsNullOrWhiteSpace(_searchString))
+            return true;
+        
+        return user.Username.Contains(_searchString, StringComparison.OrdinalIgnoreCase) ||
+               (user.FullName?.Contains(_searchString, StringComparison.OrdinalIgnoreCase) ?? false) ||
+               (user.Email?.Contains(_searchString, StringComparison.OrdinalIgnoreCase) ?? false);
+    }
+
+    private async Task OpenCreateDialog()
+    {
+        var parameters = new DialogParameters<UserDialog> { { x => x.User, new User() }, { x => x.IsNew, true } };
+        var dialog = await DialogService.ShowAsync<UserDialog>("Add User", parameters, new DialogOptions { MaxWidth = MaxWidth.Medium, FullWidth = true });
+        var result = await dialog.Result;
+        
+        if (!result!.Canceled)
+        {
+            await LoadUsers();
+            Snackbar.Add("User created successfully", Severity.Success);
+        }
+    }
+
+    private async Task OpenEditDialog(User user)
+    {
+        var parameters = new DialogParameters<UserDialog> { { x => x.User, user }, { x => x.IsNew, false } };
+        var dialog = await DialogService.ShowAsync<UserDialog>("Edit User", parameters, new DialogOptions { MaxWidth = MaxWidth.Medium, FullWidth = true });
+        var result = await dialog.Result;
+        
+        if (!result!.Canceled)
+        {
+            await LoadUsers();
+            Snackbar.Add("User updated successfully", Severity.Success);
+        }
+    }
+
+    private async Task DeleteUser(User user)
+    {
+        var confirm = await DialogService.ShowMessageBox("Confirm Delete", $"Are you sure you want to delete {user.Username}?", yesText: "Delete", cancelText: "Cancel");
+        
+        if (confirm == true)
+        {
+            user.IsDeleted = true;
+            await DbContext.SaveChangesAsync();
+            await LoadUsers();
+            Snackbar.Add("User deleted successfully", Severity.Success);
+        }
+    }
+}

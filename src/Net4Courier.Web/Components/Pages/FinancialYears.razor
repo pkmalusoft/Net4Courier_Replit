@@ -1,0 +1,152 @@
+@page "/financial-years"
+@inject ApplicationDbContext DbContext
+@inject IDialogService DialogService
+@inject ISnackbar Snackbar
+@using Microsoft.EntityFrameworkCore
+@using Net4Courier.Infrastructure.Data
+@using Net4Courier.Masters.Entities
+
+<PageTitle>Financial Years - Net4Courier</PageTitle>
+
+<MudText Typo="Typo.h4" GutterBottom="true">Financial Years</MudText>
+
+<MudPaper Class="pa-4 mb-4" Elevation="2">
+    <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
+        <MudTextField @bind-Value="_searchString" Placeholder="Search financial years..." Adornment="Adornment.Start" 
+                      AdornmentIcon="@Icons.Material.Filled.Search" IconSize="Size.Medium" Class="mt-0" Immediate="true" />
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add" OnClick="OpenCreateDialog">
+            Add Financial Year
+        </MudButton>
+    </MudStack>
+</MudPaper>
+
+<MudPaper Elevation="2">
+    <MudTable Items="@_financialYears" Hover="true" Striped="true" Loading="@_loading" LoadingProgressColor="Color.Primary"
+              Filter="new Func<FinancialYear, bool>(FilterFunc)">
+        <HeaderContent>
+            <MudTh><MudTableSortLabel SortBy="new Func<FinancialYear, object>(x => x.Name)">Name</MudTableSortLabel></MudTh>
+            <MudTh>Company</MudTh>
+            <MudTh>Start Date</MudTh>
+            <MudTh>End Date</MudTh>
+            <MudTh>Current</MudTh>
+            <MudTh>Status</MudTh>
+            <MudTh Style="width: 150px;">Actions</MudTh>
+        </HeaderContent>
+        <RowTemplate>
+            <MudTd DataLabel="Name">@context.Name</MudTd>
+            <MudTd DataLabel="Company">@(context.Company?.Name ?? "-")</MudTd>
+            <MudTd DataLabel="Start Date">@context.StartDate.ToString("dd/MM/yyyy")</MudTd>
+            <MudTd DataLabel="End Date">@context.EndDate.ToString("dd/MM/yyyy")</MudTd>
+            <MudTd DataLabel="Current">
+                @if (context.IsCurrent)
+                {
+                    <MudChip T="string" Color="Color.Primary" Size="Size.Small">Current</MudChip>
+                }
+            </MudTd>
+            <MudTd DataLabel="Status">
+                <MudChip T="string" Color="@(context.IsClosed ? Color.Error : Color.Success)" Size="Size.Small">
+                    @(context.IsClosed ? "Closed" : "Open")
+                </MudChip>
+            </MudTd>
+            <MudTd>
+                <MudIconButton Icon="@Icons.Material.Filled.Edit" Size="Size.Small" Color="Color.Primary" OnClick="@(() => OpenEditDialog(context))" />
+                @if (!context.IsCurrent)
+                {
+                    <MudIconButton Icon="@Icons.Material.Filled.CheckCircle" Size="Size.Small" Color="Color.Success" OnClick="@(() => SetAsCurrent(context))" Title="Set as Current" />
+                }
+                <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" Color="Color.Error" OnClick="@(() => DeleteFinancialYear(context))" />
+            </MudTd>
+        </RowTemplate>
+        <NoRecordsContent>
+            <MudText>No financial years found.</MudText>
+        </NoRecordsContent>
+    </MudTable>
+</MudPaper>
+
+@code {
+    private List<FinancialYear> _financialYears = new();
+    private bool _loading = true;
+    private string _searchString = "";
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadFinancialYears();
+    }
+
+    private async Task LoadFinancialYears()
+    {
+        _loading = true;
+        _financialYears = await DbContext.FinancialYears
+            .Include(f => f.Company)
+            .Where(f => !f.IsDeleted)
+            .OrderByDescending(f => f.StartDate)
+            .ToListAsync();
+        _loading = false;
+    }
+
+    private bool FilterFunc(FinancialYear fy)
+    {
+        if (string.IsNullOrWhiteSpace(_searchString))
+            return true;
+        
+        return fy.Name.Contains(_searchString, StringComparison.OrdinalIgnoreCase) ||
+               (fy.Company?.Name.Contains(_searchString, StringComparison.OrdinalIgnoreCase) ?? false);
+    }
+
+    private async Task OpenCreateDialog()
+    {
+        var parameters = new DialogParameters<FinancialYearDialog> { { x => x.FinancialYear, new FinancialYear() }, { x => x.IsNew, true } };
+        var dialog = await DialogService.ShowAsync<FinancialYearDialog>("Add Financial Year", parameters, new DialogOptions { MaxWidth = MaxWidth.Small, FullWidth = true });
+        var result = await dialog.Result;
+        
+        if (!result!.Canceled)
+        {
+            await LoadFinancialYears();
+            Snackbar.Add("Financial Year created successfully", Severity.Success);
+        }
+    }
+
+    private async Task OpenEditDialog(FinancialYear fy)
+    {
+        var parameters = new DialogParameters<FinancialYearDialog> { { x => x.FinancialYear, fy }, { x => x.IsNew, false } };
+        var dialog = await DialogService.ShowAsync<FinancialYearDialog>("Edit Financial Year", parameters, new DialogOptions { MaxWidth = MaxWidth.Small, FullWidth = true });
+        var result = await dialog.Result;
+        
+        if (!result!.Canceled)
+        {
+            await LoadFinancialYears();
+            Snackbar.Add("Financial Year updated successfully", Severity.Success);
+        }
+    }
+
+    private async Task SetAsCurrent(FinancialYear fy)
+    {
+        foreach (var f in _financialYears.Where(x => x.CompanyId == fy.CompanyId))
+        {
+            f.IsCurrent = false;
+        }
+        fy.IsCurrent = true;
+        await DbContext.SaveChangesAsync();
+        await LoadFinancialYears();
+        Snackbar.Add($"{fy.Name} is now the current financial year", Severity.Success);
+    }
+
+    private async Task DeleteFinancialYear(FinancialYear fy)
+    {
+        if (fy.IsCurrent)
+        {
+            Snackbar.Add("Cannot delete the current financial year", Severity.Warning);
+            return;
+        }
+
+        var confirm = await DialogService.ShowMessageBox("Confirm Delete", $"Are you sure you want to delete {fy.Name}?", yesText: "Delete", cancelText: "Cancel");
+        
+        if (confirm == true)
+        {
+            fy.IsDeleted = true;
+            await DbContext.SaveChangesAsync();
+            await LoadFinancialYears();
+            Snackbar.Add("Financial Year deleted successfully", Severity.Success);
+        }
+    }
+}

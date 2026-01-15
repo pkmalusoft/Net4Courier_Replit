@@ -1,0 +1,161 @@
+@page "/parties"
+@inject ApplicationDbContext DbContext
+@inject IDialogService DialogService
+@inject ISnackbar Snackbar
+@using Microsoft.EntityFrameworkCore
+@using Net4Courier.Infrastructure.Data
+@using Net4Courier.Masters.Entities
+
+<PageTitle>Customers & Agents - Net4Courier</PageTitle>
+
+<MudText Typo="Typo.h4" GutterBottom="true">Customers & Agents</MudText>
+
+<MudPaper Class="pa-4 mb-4" Elevation="2">
+    <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
+        <MudStack Row="true" Spacing="2">
+            <MudTextField @bind-Value="_searchString" Placeholder="Search..." Adornment="Adornment.Start" 
+                          AdornmentIcon="@Icons.Material.Filled.Search" IconSize="Size.Medium" Class="mt-0" Immediate="true" Style="width:300px" />
+            <MudSelect T="PartyType?" @bind-Value="_filterType" Label="Type" Variant="Variant.Outlined" Style="width:150px" AnchorOrigin="Origin.BottomCenter">
+                <MudSelectItem T="PartyType?" Value="@((PartyType?)null)">All Types</MudSelectItem>
+                <MudSelectItem T="PartyType?" Value="@PartyType.Customer">Customer</MudSelectItem>
+                <MudSelectItem T="PartyType?" Value="@PartyType.Agent">Agent</MudSelectItem>
+                <MudSelectItem T="PartyType?" Value="@PartyType.Supplier">Supplier</MudSelectItem>
+                <MudSelectItem T="PartyType?" Value="@PartyType.ForwardingAgent">Forwarding Agent</MudSelectItem>
+            </MudSelect>
+        </MudStack>
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add" OnClick="OpenCreateDialog">
+            Add Party
+        </MudButton>
+    </MudStack>
+</MudPaper>
+
+<MudPaper Elevation="2">
+    <MudTable Items="@FilteredParties" Hover="true" Striped="true" Loading="@_loading" LoadingProgressColor="Color.Primary">
+        <HeaderContent>
+            <MudTh><MudTableSortLabel SortBy="new Func<Party, object>(x => x.Name)">Name</MudTableSortLabel></MudTh>
+            <MudTh>Code</MudTh>
+            <MudTh>Type</MudTh>
+            <MudTh>Contact</MudTh>
+            <MudTh>Phone</MudTh>
+            <MudTh>Credit Limit</MudTh>
+            <MudTh>Status</MudTh>
+            <MudTh Style="width: 150px;">Actions</MudTh>
+        </HeaderContent>
+        <RowTemplate>
+            <MudTd DataLabel="Name">@context.Name</MudTd>
+            <MudTd DataLabel="Code">@context.Code</MudTd>
+            <MudTd DataLabel="Type">
+                <MudChip T="string" Color="@GetTypeColor(context.PartyType)" Size="Size.Small">@context.PartyType</MudChip>
+            </MudTd>
+            <MudTd DataLabel="Contact">@context.ContactPerson</MudTd>
+            <MudTd DataLabel="Phone">@(context.Mobile ?? context.Phone)</MudTd>
+            <MudTd DataLabel="Credit Limit">@context.CreditLimit.ToString("N0")</MudTd>
+            <MudTd DataLabel="Status">
+                <MudChip T="string" Color="@(context.IsActive ? Color.Success : Color.Error)" Size="Size.Small">
+                    @(context.IsActive ? "Active" : "Inactive")
+                </MudChip>
+            </MudTd>
+            <MudTd>
+                <MudIconButton Icon="@Icons.Material.Filled.Edit" Size="Size.Small" Color="Color.Primary" OnClick="@(() => OpenEditDialog(context))" />
+                <MudIconButton Icon="@Icons.Material.Filled.LocationOn" Size="Size.Small" Color="Color.Info" OnClick="@(() => OpenAddressesDialog(context))" Title="Addresses" />
+                <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" Color="Color.Error" OnClick="@(() => DeleteParty(context))" />
+            </MudTd>
+        </RowTemplate>
+        <NoRecordsContent>
+            <MudText>No parties found.</MudText>
+        </NoRecordsContent>
+    </MudTable>
+</MudPaper>
+
+@code {
+    private List<Party> _parties = new();
+    private bool _loading = true;
+    private string _searchString = "";
+    private PartyType? _filterType;
+
+    private IEnumerable<Party> FilteredParties => _parties.Where(FilterFunc);
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadParties();
+    }
+
+    private async Task LoadParties()
+    {
+        _loading = true;
+        _parties = await DbContext.Parties
+            .Include(p => p.Company)
+            .Where(p => !p.IsDeleted)
+            .OrderBy(p => p.Name)
+            .ToListAsync();
+        _loading = false;
+    }
+
+    private bool FilterFunc(Party party)
+    {
+        if (_filterType.HasValue && party.PartyType != _filterType.Value)
+            return false;
+            
+        if (string.IsNullOrWhiteSpace(_searchString))
+            return true;
+        
+        return party.Name.Contains(_searchString, StringComparison.OrdinalIgnoreCase) ||
+               (party.Code?.Contains(_searchString, StringComparison.OrdinalIgnoreCase) ?? false) ||
+               (party.ContactPerson?.Contains(_searchString, StringComparison.OrdinalIgnoreCase) ?? false);
+    }
+
+    private Color GetTypeColor(PartyType type) => type switch
+    {
+        PartyType.Customer => Color.Primary,
+        PartyType.Agent => Color.Secondary,
+        PartyType.Supplier => Color.Warning,
+        PartyType.ForwardingAgent => Color.Info,
+        _ => Color.Default
+    };
+
+    private async Task OpenCreateDialog()
+    {
+        var parameters = new DialogParameters<PartyDialog> { { x => x.Party, new Party() }, { x => x.IsNew, true } };
+        var dialog = await DialogService.ShowAsync<PartyDialog>("Add Party", parameters, new DialogOptions { MaxWidth = MaxWidth.Medium, FullWidth = true });
+        var result = await dialog.Result;
+        
+        if (!result!.Canceled)
+        {
+            await LoadParties();
+            Snackbar.Add("Party created successfully", Severity.Success);
+        }
+    }
+
+    private async Task OpenEditDialog(Party party)
+    {
+        var parameters = new DialogParameters<PartyDialog> { { x => x.Party, party }, { x => x.IsNew, false } };
+        var dialog = await DialogService.ShowAsync<PartyDialog>("Edit Party", parameters, new DialogOptions { MaxWidth = MaxWidth.Medium, FullWidth = true });
+        var result = await dialog.Result;
+        
+        if (!result!.Canceled)
+        {
+            await LoadParties();
+            Snackbar.Add("Party updated successfully", Severity.Success);
+        }
+    }
+
+    private async Task OpenAddressesDialog(Party party)
+    {
+        var parameters = new DialogParameters<PartyAddressesDialog> { { x => x.Party, party } };
+        var dialog = await DialogService.ShowAsync<PartyAddressesDialog>("Party Addresses", parameters, new DialogOptions { MaxWidth = MaxWidth.Large, FullWidth = true });
+        await dialog.Result;
+    }
+
+    private async Task DeleteParty(Party party)
+    {
+        var confirm = await DialogService.ShowMessageBox("Confirm Delete", $"Are you sure you want to delete {party.Name}?", yesText: "Delete", cancelText: "Cancel");
+        
+        if (confirm == true)
+        {
+            party.IsDeleted = true;
+            await DbContext.SaveChangesAsync();
+            await LoadParties();
+            Snackbar.Add("Party deleted successfully", Severity.Success);
+        }
+    }
+}

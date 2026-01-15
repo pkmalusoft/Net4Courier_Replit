@@ -1,0 +1,161 @@
+@page "/awb-list"
+@inject ApplicationDbContext DbContext
+@inject NavigationManager NavigationManager
+@inject IDialogService DialogService
+@inject ISnackbar Snackbar
+@using Microsoft.EntityFrameworkCore
+@using Net4Courier.Infrastructure.Data
+@using Net4Courier.Operations.Entities
+@using Net4Courier.Kernel.Enums
+
+<PageTitle>AWB List - Net4Courier</PageTitle>
+
+<MudText Typo="Typo.h4" GutterBottom="true">AWB List</MudText>
+
+<MudPaper Class="pa-4 mb-4" Elevation="2">
+    <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
+        <MudStack Row="true" Spacing="2">
+            <MudTextField @bind-Value="_searchString" Placeholder="Search AWB..." Adornment="Adornment.Start" 
+                          AdornmentIcon="@Icons.Material.Filled.Search" IconSize="Size.Medium" Class="mt-0" Immediate="true" Style="width:200px" />
+            <MudDatePicker @bind-Date="_fromDate" Label="From" Variant="Variant.Outlined" DateFormat="dd/MM/yyyy" Style="width:150px" />
+            <MudDatePicker @bind-Date="_toDate" Label="To" Variant="Variant.Outlined" DateFormat="dd/MM/yyyy" Style="width:150px" />
+            <MudSelect T="CourierStatus?" @bind-Value="_statusFilter" Label="Status" Variant="Variant.Outlined" Style="width:150px" AnchorOrigin="Origin.BottomCenter">
+                <MudSelectItem T="CourierStatus?" Value="@((CourierStatus?)null)">All Status</MudSelectItem>
+                <MudSelectItem T="CourierStatus?" Value="@CourierStatus.Pending">Pending</MudSelectItem>
+                <MudSelectItem T="CourierStatus?" Value="@CourierStatus.InTransit">In Transit</MudSelectItem>
+                <MudSelectItem T="CourierStatus?" Value="@CourierStatus.OutForDelivery">Out for Delivery</MudSelectItem>
+                <MudSelectItem T="CourierStatus?" Value="@CourierStatus.Delivered">Delivered</MudSelectItem>
+                <MudSelectItem T="CourierStatus?" Value="@CourierStatus.Returned">Returned</MudSelectItem>
+            </MudSelect>
+            <MudButton Variant="Variant.Outlined" Color="Color.Primary" OnClick="Search">Search</MudButton>
+        </MudStack>
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add" Href="/awb-entry">
+            New AWB
+        </MudButton>
+    </MudStack>
+</MudPaper>
+
+<MudPaper Elevation="2">
+    <MudTable Items="@_shipments" Hover="true" Striped="true" Loading="@_loading" LoadingProgressColor="Color.Primary">
+        <HeaderContent>
+            <MudTh><MudTableSortLabel SortBy="new Func<InscanMaster, object>(x => x.AWBNo)">AWB No</MudTableSortLabel></MudTh>
+            <MudTh>Date</MudTh>
+            <MudTh>Consignor</MudTh>
+            <MudTh>Consignee</MudTh>
+            <MudTh>Destination</MudTh>
+            <MudTh>Weight</MudTh>
+            <MudTh>Status</MudTh>
+            <MudTh>Amount</MudTh>
+            <MudTh Style="width: 180px;">Actions</MudTh>
+        </HeaderContent>
+        <RowTemplate>
+            <MudTd DataLabel="AWB No">
+                <MudLink Href="@($"/awb-entry/{context.Id}")">@context.AWBNo</MudLink>
+            </MudTd>
+            <MudTd DataLabel="Date">@context.TransactionDate.ToString("dd/MM/yyyy")</MudTd>
+            <MudTd DataLabel="Consignor">@context.Consignor</MudTd>
+            <MudTd DataLabel="Consignee">@context.Consignee</MudTd>
+            <MudTd DataLabel="Destination">@context.ConsigneeCity</MudTd>
+            <MudTd DataLabel="Weight">@context.ChargeableWeight?.ToString("N2") kg</MudTd>
+            <MudTd DataLabel="Status">
+                <MudChip T="string" Color="@GetStatusColor(context.CourierStatusId)" Size="Size.Small">@context.CourierStatusId</MudChip>
+            </MudTd>
+            <MudTd DataLabel="Amount">@context.NetTotal?.ToString("N2")</MudTd>
+            <MudTd>
+                <MudIconButton Icon="@Icons.Material.Filled.Edit" Size="Size.Small" Color="Color.Primary" Href="@($"/awb-entry/{context.Id}")" />
+                <MudIconButton Icon="@Icons.Material.Filled.LocalShipping" Size="Size.Small" Color="Color.Info" OnClick="@(() => OpenTrackingDialog(context))" Title="Track" />
+                <MudIconButton Icon="@Icons.Material.Filled.Print" Size="Size.Small" Color="Color.Default" Title="Print" />
+                <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" Color="Color.Error" OnClick="@(() => DeleteAWB(context))" />
+            </MudTd>
+        </RowTemplate>
+        <NoRecordsContent>
+            <MudText>No shipments found.</MudText>
+        </NoRecordsContent>
+        <PagerContent>
+            <MudTablePager PageSizeOptions="new int[] { 10, 25, 50, 100 }" />
+        </PagerContent>
+    </MudTable>
+</MudPaper>
+
+@code {
+    private List<InscanMaster> _shipments = new();
+    private bool _loading = true;
+    private string _searchString = "";
+    private DateTime? _fromDate = DateTime.Today.AddDays(-30);
+    private DateTime? _toDate = DateTime.Today;
+    private CourierStatus? _statusFilter;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await Search();
+    }
+
+    private async Task Search()
+    {
+        _loading = true;
+        var query = DbContext.InscanMasters.Where(i => !i.IsDeleted).AsQueryable();
+
+        if (!string.IsNullOrWhiteSpace(_searchString))
+        {
+            query = query.Where(i => i.AWBNo.Contains(_searchString) || 
+                                     (i.Consignor != null && i.Consignor.Contains(_searchString)) ||
+                                     (i.Consignee != null && i.Consignee.Contains(_searchString)));
+        }
+
+        if (_fromDate.HasValue)
+        {
+            var from = DateTime.SpecifyKind(_fromDate.Value, DateTimeKind.Utc);
+            query = query.Where(i => i.TransactionDate >= from);
+        }
+
+        if (_toDate.HasValue)
+        {
+            var to = DateTime.SpecifyKind(_toDate.Value.AddDays(1), DateTimeKind.Utc);
+            query = query.Where(i => i.TransactionDate < to);
+        }
+
+        if (_statusFilter.HasValue)
+        {
+            query = query.Where(i => i.CourierStatusId == _statusFilter.Value);
+        }
+
+        _shipments = await query.OrderByDescending(i => i.TransactionDate).ThenByDescending(i => i.Id).Take(500).ToListAsync();
+        _loading = false;
+    }
+
+    private Color GetStatusColor(CourierStatus status) => status switch
+    {
+        CourierStatus.Pending => Color.Default,
+        CourierStatus.PickedUp => Color.Info,
+        CourierStatus.InTransit => Color.Primary,
+        CourierStatus.OutForDelivery => Color.Warning,
+        CourierStatus.Delivered => Color.Success,
+        CourierStatus.Returned => Color.Error,
+        _ => Color.Default
+    };
+
+    private async Task OpenTrackingDialog(InscanMaster shipment)
+    {
+        var parameters = new DialogParameters<AWBTrackingDialog> { { x => x.Shipment, shipment } };
+        var dialog = await DialogService.ShowAsync<AWBTrackingDialog>("AWB Tracking", parameters, new DialogOptions { MaxWidth = MaxWidth.Medium, FullWidth = true });
+        var result = await dialog.Result;
+        
+        if (!result!.Canceled)
+        {
+            await Search();
+        }
+    }
+
+    private async Task DeleteAWB(InscanMaster shipment)
+    {
+        var confirm = await DialogService.ShowMessageBox("Confirm Delete", $"Are you sure you want to delete AWB {shipment.AWBNo}?", yesText: "Delete", cancelText: "Cancel");
+        
+        if (confirm == true)
+        {
+            shipment.IsDeleted = true;
+            await DbContext.SaveChangesAsync();
+            await Search();
+            Snackbar.Add("AWB deleted successfully", Severity.Success);
+        }
+    }
+}

@@ -1,0 +1,112 @@
+@inject ApplicationDbContext DbContext
+@using Microsoft.EntityFrameworkCore
+@using Net4Courier.Infrastructure.Data
+@using Net4Courier.Masters.Entities
+
+<MudDialog>
+    <TitleContent>
+        <MudText Typo="Typo.h6">
+            <MudIcon Icon="@Icons.Material.Filled.Business" Class="mr-2" />
+            @(IsNew ? "Add New Party" : "Edit Party")
+        </MudText>
+    </TitleContent>
+    <DialogContent>
+        <MudForm @ref="_form" @bind-IsValid="_formIsValid">
+            <MudGrid>
+                <MudItem xs="12" md="6">
+                    <MudSelect T="long" @bind-Value="Party.CompanyId" Label="Company" Required="true" 
+                               RequiredError="Company is required" Variant="Variant.Outlined" AnchorOrigin="Origin.BottomCenter">
+                        @foreach (var company in _companies)
+                        {
+                            <MudSelectItem T="long" Value="@company.Id">@company.Name</MudSelectItem>
+                        }
+                    </MudSelect>
+                </MudItem>
+                <MudItem xs="12" md="6">
+                    <MudSelect T="PartyType" @bind-Value="Party.PartyType" Label="Party Type" Variant="Variant.Outlined" AnchorOrigin="Origin.BottomCenter">
+                        <MudSelectItem T="PartyType" Value="@PartyType.Customer">Customer</MudSelectItem>
+                        <MudSelectItem T="PartyType" Value="@PartyType.Agent">Agent</MudSelectItem>
+                        <MudSelectItem T="PartyType" Value="@PartyType.Supplier">Supplier</MudSelectItem>
+                        <MudSelectItem T="PartyType" Value="@PartyType.ForwardingAgent">Forwarding Agent</MudSelectItem>
+                    </MudSelect>
+                </MudItem>
+                <MudItem xs="12" md="8">
+                    <MudTextField @bind-Value="Party.Name" Label="Party Name" Required="true" RequiredError="Name is required"
+                                  Variant="Variant.Outlined" />
+                </MudItem>
+                <MudItem xs="12" md="4">
+                    <MudTextField @bind-Value="Party.Code" Label="Code" Variant="Variant.Outlined" />
+                </MudItem>
+                <MudItem xs="12" md="6">
+                    <MudTextField @bind-Value="Party.ContactPerson" Label="Contact Person" Variant="Variant.Outlined" />
+                </MudItem>
+                <MudItem xs="12" md="6">
+                    <MudTextField @bind-Value="Party.Email" Label="Email" InputType="InputType.Email" Variant="Variant.Outlined" />
+                </MudItem>
+                <MudItem xs="12" md="6">
+                    <MudTextField @bind-Value="Party.Phone" Label="Phone" Variant="Variant.Outlined" />
+                </MudItem>
+                <MudItem xs="12" md="6">
+                    <MudTextField @bind-Value="Party.Mobile" Label="Mobile" Variant="Variant.Outlined" />
+                </MudItem>
+                <MudItem xs="12" md="6">
+                    <MudTextField @bind-Value="Party.TaxNumber" Label="Tax Number (TRN/VAT)" Variant="Variant.Outlined" />
+                </MudItem>
+                <MudItem xs="12" md="3">
+                    <MudNumericField @bind-Value="Party.CreditLimit" Label="Credit Limit" Variant="Variant.Outlined" Format="N0" />
+                </MudItem>
+                <MudItem xs="12" md="3">
+                    <MudNumericField @bind-Value="Party.CreditDays" Label="Credit Days" Variant="Variant.Outlined" />
+                </MudItem>
+                <MudItem xs="12" md="6">
+                    <MudSwitch @bind-Value="Party.IsActive" Label="Active" Color="Color.Primary" />
+                </MudItem>
+            </MudGrid>
+        </MudForm>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Cancel">Cancel</MudButton>
+        <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="Save" Disabled="!_formIsValid">Save</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] MudDialogInstance MudDialog { get; set; } = null!;
+    [Parameter] public Party Party { get; set; } = new();
+    [Parameter] public bool IsNew { get; set; }
+
+    private MudForm _form = null!;
+    private bool _formIsValid;
+    private List<Company> _companies = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        _companies = await DbContext.Companies.Where(c => c.IsActive && !c.IsDeleted).OrderBy(c => c.Name).ToListAsync();
+        if (IsNew && _companies.Any())
+        {
+            Party.CompanyId = _companies.First().Id;
+        }
+    }
+
+    private async Task Save()
+    {
+        await _form.Validate();
+        if (!_formIsValid) return;
+
+        if (IsNew)
+        {
+            Party.CreatedAt = DateTime.UtcNow;
+            DbContext.Parties.Add(Party);
+        }
+        else
+        {
+            Party.ModifiedAt = DateTime.UtcNow;
+            DbContext.Parties.Update(Party);
+        }
+
+        await DbContext.SaveChangesAsync();
+        MudDialog.Close(DialogResult.Ok(Party));
+    }
+
+    private void Cancel() => MudDialog.Cancel();
+}

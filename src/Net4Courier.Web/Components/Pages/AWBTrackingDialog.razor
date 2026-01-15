@@ -1,0 +1,146 @@
+@inject ApplicationDbContext DbContext
+@inject ISnackbar Snackbar
+@using Microsoft.EntityFrameworkCore
+@using Net4Courier.Infrastructure.Data
+@using Net4Courier.Operations.Entities
+@using Net4Courier.Kernel.Enums
+
+<MudDialog>
+    <TitleContent>
+        <MudText Typo="Typo.h6">
+            <MudIcon Icon="@Icons.Material.Filled.LocalShipping" Class="mr-2" />
+            Tracking: @Shipment.AWBNo
+        </MudText>
+    </TitleContent>
+    <DialogContent>
+        <MudStack Spacing="4">
+            <MudPaper Class="pa-4" Elevation="1">
+                <MudText Typo="Typo.subtitle1" GutterBottom="true">Current Status: 
+                    <MudChip T="string" Color="@GetStatusColor(Shipment.CourierStatusId)" Size="Size.Small">@Shipment.CourierStatusId</MudChip>
+                </MudText>
+                <MudText Typo="Typo.body2">From: @Shipment.ConsignorCity → To: @Shipment.ConsigneeCity</MudText>
+            </MudPaper>
+
+            <MudText Typo="Typo.h6">Update Status</MudText>
+            <MudGrid>
+                <MudItem xs="12" md="6">
+                    <MudSelect T="CourierStatus" @bind-Value="_newStatus" Label="New Status" Variant="Variant.Outlined" AnchorOrigin="Origin.BottomCenter">
+                        <MudSelectItem T="CourierStatus" Value="@CourierStatus.PickedUp">Picked Up</MudSelectItem>
+                        <MudSelectItem T="CourierStatus" Value="@CourierStatus.InTransit">In Transit</MudSelectItem>
+                        <MudSelectItem T="CourierStatus" Value="@CourierStatus.OutForDelivery">Out for Delivery</MudSelectItem>
+                        <MudSelectItem T="CourierStatus" Value="@CourierStatus.Delivered">Delivered</MudSelectItem>
+                        <MudSelectItem T="CourierStatus" Value="@CourierStatus.Returned">Returned</MudSelectItem>
+                        <MudSelectItem T="CourierStatus" Value="@CourierStatus.OnHold">On Hold</MudSelectItem>
+                    </MudSelect>
+                </MudItem>
+                <MudItem xs="12" md="6">
+                    <MudTextField @bind-Value="_location" Label="Location" Variant="Variant.Outlined" />
+                </MudItem>
+                <MudItem xs="12">
+                    <MudTextField @bind-Value="_remarks" Label="Remarks" Variant="Variant.Outlined" Lines="2" />
+                </MudItem>
+                <MudItem xs="12">
+                    <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="AddTrackingEvent">Add Update</MudButton>
+                </MudItem>
+            </MudGrid>
+
+            <MudDivider />
+
+            <MudText Typo="Typo.h6">Tracking History</MudText>
+            <MudTimeline TimelinePosition="TimelinePosition.Start">
+                @foreach (var track in _trackingHistory)
+                {
+                    <MudTimelineItem Color="@GetStatusColor(track.StatusId)" Size="Size.Small">
+                        <ItemContent>
+                            <MudText Typo="Typo.subtitle2">@track.StatusId.ToString()</MudText>
+                            <MudText Typo="Typo.body2">@track.Location</MudText>
+                            <MudText Typo="Typo.caption" Color="Color.Default">@track.EventDateTime.ToString("dd/MM/yyyy HH:mm")</MudText>
+                            @if (!string.IsNullOrEmpty(track.Remarks))
+                            {
+                                <MudText Typo="Typo.caption">@track.Remarks</MudText>
+                            }
+                        </ItemContent>
+                    </MudTimelineItem>
+                }
+            </MudTimeline>
+        </MudStack>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Close">Close</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] MudDialogInstance MudDialog { get; set; } = null!;
+    [Parameter] public InscanMaster Shipment { get; set; } = new();
+
+    private List<AWBTracking> _trackingHistory = new();
+    private CourierStatus _newStatus = CourierStatus.InTransit;
+    private string _location = "";
+    private string _remarks = "";
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadTrackingHistory();
+    }
+
+    private async Task LoadTrackingHistory()
+    {
+        _trackingHistory = await DbContext.AWBTrackings
+            .Where(t => t.InscanId == Shipment.Id)
+            .OrderByDescending(t => t.EventDateTime)
+            .ToListAsync();
+    }
+
+    private Color GetStatusColor(CourierStatus status) => status switch
+    {
+        CourierStatus.Pending => Color.Default,
+        CourierStatus.PickedUp => Color.Info,
+        CourierStatus.InTransit => Color.Primary,
+        CourierStatus.OutForDelivery => Color.Warning,
+        CourierStatus.Delivered => Color.Success,
+        CourierStatus.Returned => Color.Error,
+        CourierStatus.OnHold => Color.Dark,
+        _ => Color.Default
+    };
+
+    private async Task AddTrackingEvent()
+    {
+        var tracking = new AWBTracking
+        {
+            InscanId = Shipment.Id,
+            StatusId = _newStatus,
+            Location = _location,
+            Remarks = _remarks,
+            EventDateTime = DateTime.UtcNow,
+            IsPublic = true,
+            CreatedAt = DateTime.UtcNow
+        };
+
+        DbContext.AWBTrackings.Add(tracking);
+        
+        Shipment.CourierStatusId = _newStatus;
+        Shipment.ModifiedAt = DateTime.UtcNow;
+        
+        if (_newStatus == CourierStatus.Delivered)
+        {
+            Shipment.DeliveredDate = DateTime.UtcNow;
+        }
+        else if (_newStatus == CourierStatus.PickedUp)
+        {
+            Shipment.PickedUpDate = DateTime.UtcNow;
+        }
+
+        await DbContext.SaveChangesAsync();
+        
+        Snackbar.Add("Status updated successfully", Severity.Success);
+        _location = "";
+        _remarks = "";
+        await LoadTrackingHistory();
+    }
+
+    private void Close()
+    {
+        MudDialog.Close(DialogResult.Ok(true));
+    }
+}

@@ -1,0 +1,98 @@
+@inject ApplicationDbContext DbContext
+@using Microsoft.EntityFrameworkCore
+@using Net4Courier.Infrastructure.Data
+@using Net4Courier.Masters.Entities
+
+<MudDialog>
+    <TitleContent>
+        <MudText Typo="Typo.h6">
+            <MudIcon Icon="@Icons.Material.Filled.Security" Class="mr-2" />
+            Permissions for @Role.Name
+        </MudText>
+    </TitleContent>
+    <DialogContent>
+        <MudTable Items="@_permissions" Hover="true" Dense="true">
+            <HeaderContent>
+                <MudTh>Module</MudTh>
+                <MudTh Style="text-align:center">View</MudTh>
+                <MudTh Style="text-align:center">Create</MudTh>
+                <MudTh Style="text-align:center">Edit</MudTh>
+                <MudTh Style="text-align:center">Delete</MudTh>
+                <MudTh Style="text-align:center">Print</MudTh>
+            </HeaderContent>
+            <RowTemplate>
+                <MudTd>@context.MenuCode</MudTd>
+                <MudTd Style="text-align:center"><MudCheckBox @bind-Value="context.CanView" Color="Color.Primary" /></MudTd>
+                <MudTd Style="text-align:center"><MudCheckBox @bind-Value="context.CanCreate" Color="Color.Success" /></MudTd>
+                <MudTd Style="text-align:center"><MudCheckBox @bind-Value="context.CanEdit" Color="Color.Warning" /></MudTd>
+                <MudTd Style="text-align:center"><MudCheckBox @bind-Value="context.CanDelete" Color="Color.Error" /></MudTd>
+                <MudTd Style="text-align:center"><MudCheckBox @bind-Value="context.CanPrint" Color="Color.Info" /></MudTd>
+            </RowTemplate>
+        </MudTable>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Cancel">Cancel</MudButton>
+        <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="Save">Save Permissions</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] MudDialogInstance MudDialog { get; set; } = null!;
+    [Parameter] public Role Role { get; set; } = new();
+
+    private List<RolePermission> _permissions = new();
+    private readonly string[] _modules = { "Dashboard", "Companies", "Branches", "Users", "Roles", "Financial Years", 
+                                           "Parties", "AWB Entry", "AWB Tracking", "DRS", "Manifests", 
+                                           "Invoices", "Receipts", "Reports" };
+
+    protected override async Task OnInitializedAsync()
+    {
+        var existingPermissions = await DbContext.RolePermissions
+            .Where(p => p.RoleId == Role.Id)
+            .ToListAsync();
+
+        foreach (var module in _modules)
+        {
+            var existing = existingPermissions.FirstOrDefault(p => p.MenuCode == module);
+            if (existing != null)
+            {
+                _permissions.Add(existing);
+            }
+            else
+            {
+                _permissions.Add(new RolePermission
+                {
+                    RoleId = Role.Id,
+                    MenuCode = module,
+                    CanView = false,
+                    CanCreate = false,
+                    CanEdit = false,
+                    CanDelete = false,
+                    CanPrint = false
+                });
+            }
+        }
+    }
+
+    private async Task Save()
+    {
+        foreach (var permission in _permissions)
+        {
+            if (permission.Id == 0)
+            {
+                permission.CreatedAt = DateTime.UtcNow;
+                DbContext.RolePermissions.Add(permission);
+            }
+            else
+            {
+                permission.ModifiedAt = DateTime.UtcNow;
+                DbContext.RolePermissions.Update(permission);
+            }
+        }
+
+        await DbContext.SaveChangesAsync();
+        MudDialog.Close(DialogResult.Ok(true));
+    }
+
+    private void Cancel() => MudDialog.Cancel();
+}
