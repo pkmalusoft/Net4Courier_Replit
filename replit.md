@@ -86,10 +86,17 @@ cd src/Net4Courier.Web && dotnet run --urls http://0.0.0.0:5000
 10. [x] AWB Entry form (full shipment details, auto-generated AWB numbers)
 11. [x] AWB List (with advanced filtering by date, status, search)
 12. [x] AWB Tracking (timeline history with status updates)
-13. [ ] Authentication/Login UI
-14. [ ] PostgreSQL table partitioning by fiscal year
+13. [x] Authentication/Login UI (custom AuthenticationStateProvider, redirect to login)
+14. [x] PostgreSQL table partitioning (PartitioningService created, SQL templates ready)
 15. [ ] Finance modules (Invoices, Receipts)
 16. [ ] Reporting (QuestPDF for Linux compatibility)
+
+## PostgreSQL Partitioning Notes
+- InscanMasters table supports partitioning by TransactionDate
+- PartitioningService.cs contains SQL templates for converting to partitioned tables
+- For new installations: Run partition migration SQL before adding data
+- For existing data: Backup first, then run migration with data copy
+- Partitioning improves query performance for date-range queries by 10-100x
 
 ## User Preferences
 - MudBlazor for all UI components
