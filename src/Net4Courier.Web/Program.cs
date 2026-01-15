@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Components.Authorization;
+using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.EntityFrameworkCore;
 using MudBlazor.Services;
 using Net4Courier.Infrastructure.Data;
@@ -17,6 +18,11 @@ builder.Services.AddRazorComponents()
 builder.Services.AddMudServices(config =>
 {
     config.PopoverOptions.ThrowOnDuplicateProvider = false;
+});
+
+builder.Services.AddAntiforgery(options =>
+{
+    options.Cookie.SameSite = SameSiteMode.Lax;
 });
 
 var databaseUrl = Environment.GetEnvironmentVariable("DATABASE_URL");
@@ -50,6 +56,11 @@ builder.Services.AddAuthorizationCore();
 builder.Services.AddCascadingAuthenticationState();
 
 var app = builder.Build();
+
+app.UseForwardedHeaders(new ForwardedHeadersOptions
+{
+    ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto
+});
 
 if (!app.Environment.IsDevelopment())
 {
