@@ -1,0 +1,124 @@
+@page "/branches"
+@inject ApplicationDbContext DbContext
+@inject IDialogService DialogService
+@inject ISnackbar Snackbar
+@using Microsoft.EntityFrameworkCore
+
+<PageTitle>Branches - Net4Courier</PageTitle>
+
+<MudText Typo="Typo.h4" GutterBottom="true">Branches</MudText>
+
+<MudPaper Class="pa-4 mb-4" Elevation="2">
+    <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
+        <MudTextField @bind-Value="_searchString" Placeholder="Search branches..." Adornment="Adornment.Start" 
+                      AdornmentIcon="@Icons.Material.Filled.Search" IconSize="Size.Medium" Class="mt-0" Immediate="true" />
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add" OnClick="OpenCreateDialog">
+            Add Branch
+        </MudButton>
+    </MudStack>
+</MudPaper>
+
+<MudPaper Elevation="2">
+    <MudTable Items="@_branches" Hover="true" Striped="true" Loading="@_loading" LoadingProgressColor="Color.Primary"
+              Filter="new Func<Branch, bool>(FilterFunc)">
+        <HeaderContent>
+            <MudTh><MudTableSortLabel SortBy="new Func<Branch, object>(x => x.Name)">Name</MudTableSortLabel></MudTh>
+            <MudTh>Company</MudTh>
+            <MudTh>Prefix</MudTh>
+            <MudTh>Email</MudTh>
+            <MudTh>Phone</MudTh>
+            <MudTh>VAT %</MudTh>
+            <MudTh>Status</MudTh>
+            <MudTh Style="width: 150px;">Actions</MudTh>
+        </HeaderContent>
+        <RowTemplate>
+            <MudTd DataLabel="Name">@context.Name</MudTd>
+            <MudTd DataLabel="Company">@context.Company?.Name</MudTd>
+            <MudTd DataLabel="Prefix">@context.BranchPrefix</MudTd>
+            <MudTd DataLabel="Email">@context.Email</MudTd>
+            <MudTd DataLabel="Phone">@context.Phone</MudTd>
+            <MudTd DataLabel="VAT %">@context.VATPercent?.ToString("N2")</MudTd>
+            <MudTd DataLabel="Status">
+                <MudChip T="string" Color="@(context.IsActive ? Color.Success : Color.Error)" Size="Size.Small">
+                    @(context.IsActive ? "Active" : "Inactive")
+                </MudChip>
+            </MudTd>
+            <MudTd>
+                <MudIconButton Icon="@Icons.Material.Filled.Edit" Size="Size.Small" Color="Color.Primary" OnClick="@(() => OpenEditDialog(context))" />
+                <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" Color="Color.Error" OnClick="@(() => DeleteBranch(context))" />
+            </MudTd>
+        </RowTemplate>
+        <NoRecordsContent>
+            <MudText>No branches found.</MudText>
+        </NoRecordsContent>
+    </MudTable>
+</MudPaper>
+
+@code {
+    private List<Branch> _branches = new();
+    private bool _loading = true;
+    private string _searchString = "";
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadBranches();
+    }
+
+    private async Task LoadBranches()
+    {
+        _loading = true;
+        _branches = await DbContext.Branches.Include(b => b.Company).OrderBy(b => b.Name).ToListAsync();
+        _loading = false;
+    }
+
+    private bool FilterFunc(Branch branch)
+    {
+        if (string.IsNullOrWhiteSpace(_searchString))
+            return true;
+        
+        return branch.Name.Contains(_searchString, StringComparison.OrdinalIgnoreCase) ||
+               (branch.Email?.Contains(_searchString, StringComparison.OrdinalIgnoreCase) ?? false) ||
+               (branch.BranchPrefix?.Contains(_searchString, StringComparison.OrdinalIgnoreCase) ?? false);
+    }
+
+    private async Task OpenCreateDialog()
+    {
+        var companies = await DbContext.Companies.Where(c => c.IsActive).ToListAsync();
+        var parameters = new DialogParameters<BranchDialog> { { x => x.Branch, new Branch() }, { x => x.IsNew, true }, { x => x.Companies, companies } };
+        var dialog = await DialogService.ShowAsync<BranchDialog>("Add Branch", parameters, new DialogOptions { MaxWidth = MaxWidth.Medium, FullWidth = true });
+        var result = await dialog.Result;
+        
+        if (!result!.Canceled)
+        {
+            await LoadBranches();
+            Snackbar.Add("Branch created successfully", Severity.Success);
+        }
+    }
+
+    private async Task OpenEditDialog(Branch branch)
+    {
+        var companies = await DbContext.Companies.Where(c => c.IsActive).ToListAsync();
+        var parameters = new DialogParameters<BranchDialog> { { x => x.Branch, branch }, { x => x.IsNew, false }, { x => x.Companies, companies } };
+        var dialog = await DialogService.ShowAsync<BranchDialog>("Edit Branch", parameters, new DialogOptions { MaxWidth = MaxWidth.Medium, FullWidth = true });
+        var result = await dialog.Result;
+        
+        if (!result!.Canceled)
+        {
+            await LoadBranches();
+            Snackbar.Add("Branch updated successfully", Severity.Success);
+        }
+    }
+
+    private async Task DeleteBranch(Branch branch)
+    {
+        var confirm = await DialogService.ShowMessageBox("Confirm Delete", $"Are you sure you want to delete {branch.Name}?", yesText: "Delete", cancelText: "Cancel");
+        
+        if (confirm == true)
+        {
+            DbContext.Branches.Remove(branch);
+            await DbContext.SaveChangesAsync();
+            await LoadBranches();
+            Snackbar.Add("Branch deleted successfully", Severity.Success);
+        }
+    }
+}

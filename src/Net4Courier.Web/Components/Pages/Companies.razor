@@ -1,0 +1,118 @@
+@page "/companies"
+@inject ApplicationDbContext DbContext
+@inject IDialogService DialogService
+@inject ISnackbar Snackbar
+@using Microsoft.EntityFrameworkCore
+
+<PageTitle>Companies - Net4Courier</PageTitle>
+
+<MudText Typo="Typo.h4" GutterBottom="true">Companies</MudText>
+
+<MudPaper Class="pa-4 mb-4" Elevation="2">
+    <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
+        <MudTextField @bind-Value="_searchString" Placeholder="Search companies..." Adornment="Adornment.Start" 
+                      AdornmentIcon="@Icons.Material.Filled.Search" IconSize="Size.Medium" Class="mt-0" Immediate="true" />
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add" OnClick="OpenCreateDialog">
+            Add Company
+        </MudButton>
+    </MudStack>
+</MudPaper>
+
+<MudPaper Elevation="2">
+    <MudTable Items="@_companies" Hover="true" Striped="true" Loading="@_loading" LoadingProgressColor="Color.Primary"
+              Filter="new Func<Company, bool>(FilterFunc)">
+        <HeaderContent>
+            <MudTh><MudTableSortLabel SortBy="new Func<Company, object>(x => x.Name)">Name</MudTableSortLabel></MudTh>
+            <MudTh>Prefix</MudTh>
+            <MudTh>Email</MudTh>
+            <MudTh>Phone</MudTh>
+            <MudTh>Status</MudTh>
+            <MudTh Style="width: 150px;">Actions</MudTh>
+        </HeaderContent>
+        <RowTemplate>
+            <MudTd DataLabel="Name">@context.Name</MudTd>
+            <MudTd DataLabel="Prefix">@context.CompanyPrefix</MudTd>
+            <MudTd DataLabel="Email">@context.Email</MudTd>
+            <MudTd DataLabel="Phone">@context.Phone</MudTd>
+            <MudTd DataLabel="Status">
+                <MudChip T="string" Color="@(context.IsActive ? Color.Success : Color.Error)" Size="Size.Small">
+                    @(context.IsActive ? "Active" : "Inactive")
+                </MudChip>
+            </MudTd>
+            <MudTd>
+                <MudIconButton Icon="@Icons.Material.Filled.Edit" Size="Size.Small" Color="Color.Primary" OnClick="@(() => OpenEditDialog(context))" />
+                <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" Color="Color.Error" OnClick="@(() => DeleteCompany(context))" />
+            </MudTd>
+        </RowTemplate>
+        <NoRecordsContent>
+            <MudText>No companies found.</MudText>
+        </NoRecordsContent>
+    </MudTable>
+</MudPaper>
+
+@code {
+    private List<Company> _companies = new();
+    private bool _loading = true;
+    private string _searchString = "";
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadCompanies();
+    }
+
+    private async Task LoadCompanies()
+    {
+        _loading = true;
+        _companies = await DbContext.Companies.OrderBy(c => c.Name).ToListAsync();
+        _loading = false;
+    }
+
+    private bool FilterFunc(Company company)
+    {
+        if (string.IsNullOrWhiteSpace(_searchString))
+            return true;
+        
+        return company.Name.Contains(_searchString, StringComparison.OrdinalIgnoreCase) ||
+               (company.Email?.Contains(_searchString, StringComparison.OrdinalIgnoreCase) ?? false) ||
+               (company.CompanyPrefix?.Contains(_searchString, StringComparison.OrdinalIgnoreCase) ?? false);
+    }
+
+    private async Task OpenCreateDialog()
+    {
+        var parameters = new DialogParameters<CompanyDialog> { { x => x.Company, new Company() }, { x => x.IsNew, true } };
+        var dialog = await DialogService.ShowAsync<CompanyDialog>("Add Company", parameters, new DialogOptions { MaxWidth = MaxWidth.Medium, FullWidth = true });
+        var result = await dialog.Result;
+        
+        if (!result!.Canceled)
+        {
+            await LoadCompanies();
+            Snackbar.Add("Company created successfully", Severity.Success);
+        }
+    }
+
+    private async Task OpenEditDialog(Company company)
+    {
+        var parameters = new DialogParameters<CompanyDialog> { { x => x.Company, company }, { x => x.IsNew, false } };
+        var dialog = await DialogService.ShowAsync<CompanyDialog>("Edit Company", parameters, new DialogOptions { MaxWidth = MaxWidth.Medium, FullWidth = true });
+        var result = await dialog.Result;
+        
+        if (!result!.Canceled)
+        {
+            await LoadCompanies();
+            Snackbar.Add("Company updated successfully", Severity.Success);
+        }
+    }
+
+    private async Task DeleteCompany(Company company)
+    {
+        var confirm = await DialogService.ShowMessageBox("Confirm Delete", $"Are you sure you want to delete {company.Name}?", yesText: "Delete", cancelText: "Cancel");
+        
+        if (confirm == true)
+        {
+            DbContext.Companies.Remove(company);
+            await DbContext.SaveChangesAsync();
+            await LoadCompanies();
+            Snackbar.Add("Company deleted successfully", Severity.Success);
+        }
+    }
+}
