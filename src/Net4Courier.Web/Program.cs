@@ -30,13 +30,13 @@ builder.Services.AddMudServices(config =>
 builder.Services.AddAntiforgery(options =>
 {
     options.Cookie.SameSite = SameSiteMode.None;
-    options.Cookie.SecurePolicy = CookieSecurePolicy.Always;
+    options.Cookie.SecurePolicy = CookieSecurePolicy.SameAsRequest;
 });
 
 builder.Services.Configure<CookiePolicyOptions>(options =>
 {
     options.MinimumSameSitePolicy = SameSiteMode.None;
-    options.Secure = CookieSecurePolicy.Always;
+    options.Secure = CookieSecurePolicy.SameAsRequest;
 });
 
 var databaseUrl = Environment.GetEnvironmentVariable("DATABASE_URL");
