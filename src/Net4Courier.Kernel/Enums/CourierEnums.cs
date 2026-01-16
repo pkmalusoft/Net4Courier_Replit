@@ -14,10 +14,11 @@ public enum CourierStatus
 
 public enum PaymentMode
 {
-    Prepaid = 1,
-    ToPay = 2,
-    COD = 3,
-    Credit = 4
+    PickupCash = 1,
+    COD = 2,
+    Account = 3,
+    Prepaid = 4,
+    CAD = 5
 }
 
 public enum MovementType
