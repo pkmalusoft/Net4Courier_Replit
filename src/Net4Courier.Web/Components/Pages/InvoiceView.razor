@@ -1,0 +1,249 @@
+@page "/invoice/{InvoiceId:long}"
+@using Net4Courier.Infrastructure.Data
+@using Net4Courier.Finance.Entities
+@using Net4Courier.Web.Services
+@using Net4Courier.Kernel.Enums
+@using Microsoft.EntityFrameworkCore
+@inject ApplicationDbContext Context
+@inject InvoicingService InvoicingService
+@inject ISnackbar Snackbar
+@inject NavigationManager Navigation
+@rendermode InteractiveServer
+
+<PageTitle>Invoice - @(_invoice?.InvoiceNo ?? "Loading")</PageTitle>
+
+@if (_loading)
+{
+    <MudProgressCircular Indeterminate="true" />
+}
+else if (_invoice == null)
+{
+    <MudAlert Severity="Severity.Error">Invoice not found</MudAlert>
+}
+else
+{
+    <MudContainer MaxWidth="MaxWidth.Large" Class="py-4">
+        <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center" Class="mb-4">
+            <MudStack Spacing="0">
+                <MudText Typo="Typo.h5">Invoice @_invoice.InvoiceNo</MudText>
+                <MudChip T="string" Size="Size.Small" Color="@GetStatusColor(_invoice.Status)">@_invoice.Status</MudChip>
+            </MudStack>
+            <MudStack Row="true" Spacing="2">
+                @if (_invoice.Status == InvoiceStatus.Draft)
+                {
+                    <MudButton Variant="Variant.Filled" Color="Color.Success" StartIcon="@Icons.Material.Filled.Check"
+                               OnClick="PostInvoice">
+                        Post Invoice
+                    </MudButton>
+                }
+                <MudButton Variant="Variant.Outlined" Color="Color.Info" StartIcon="@Icons.Material.Filled.Print"
+                           Href="@($"/api/report/invoice/{InvoiceId}")" Target="_blank">
+                    Print PDF
+                </MudButton>
+                <MudButton Variant="Variant.Outlined" Color="Color.Default" StartIcon="@Icons.Material.Filled.ArrowBack"
+                           Href="/invoices">
+                    Back to List
+                </MudButton>
+            </MudStack>
+        </MudStack>
+
+        <MudGrid>
+            <MudItem xs="12" md="6">
+                <MudPaper Class="pa-4">
+                    <MudText Typo="Typo.subtitle1" Class="mb-2"><strong>Customer Details</strong></MudText>
+                    <MudText>@_invoice.CustomerName</MudText>
+                    <MudText Typo="Typo.body2" Color="Color.Secondary">@_invoice.CustomerAddress</MudText>
+                    @if (!string.IsNullOrEmpty(_invoice.CustomerTaxNo))
+                    {
+                        <MudText Typo="Typo.body2">Tax No: @_invoice.CustomerTaxNo</MudText>
+                    }
+                </MudPaper>
+            </MudItem>
+            <MudItem xs="12" md="6">
+                <MudPaper Class="pa-4">
+                    <MudText Typo="Typo.subtitle1" Class="mb-2"><strong>Invoice Details</strong></MudText>
+                    <MudGrid>
+                        <MudItem xs="6">
+                            <MudText Typo="Typo.caption">Invoice Date</MudText>
+                            <MudText>@_invoice.InvoiceDate.ToString("dd-MMM-yyyy")</MudText>
+                        </MudItem>
+                        <MudItem xs="6">
+                            <MudText Typo="Typo.caption">Due Date</MudText>
+                            <MudText>@_invoice.DueDate?.ToString("dd-MMM-yyyy")</MudText>
+                        </MudItem>
+                        <MudItem xs="6">
+                            <MudText Typo="Typo.caption">Period</MudText>
+                            <MudText>@_invoice.PeriodFrom?.ToString("dd-MMM") - @_invoice.PeriodTo?.ToString("dd-MMM-yyyy")</MudText>
+                        </MudItem>
+                        <MudItem xs="6">
+                            <MudText Typo="Typo.caption">Total AWBs</MudText>
+                            <MudText>@_invoice.TotalAWBs</MudText>
+                        </MudItem>
+                    </MudGrid>
+                </MudPaper>
+            </MudItem>
+        </MudGrid>
+
+        <MudPaper Class="pa-4 mt-4">
+            <MudText Typo="Typo.subtitle1" Class="mb-2"><strong>AWB Details</strong></MudText>
+            <MudTable Items="@_invoice.Details" Dense="true" Hover="true">
+                <HeaderContent>
+                    <MudTh>AWB No</MudTh>
+                    <MudTh>Date</MudTh>
+                    <MudTh>Origin</MudTh>
+                    <MudTh>Destination</MudTh>
+                    <MudTh>Pcs</MudTh>
+                    <MudTh>Weight</MudTh>
+                    <MudTh Style="text-align:right">Freight</MudTh>
+                    <MudTh Style="text-align:right">Other</MudTh>
+                    <MudTh Style="text-align:right">Total</MudTh>
+                </HeaderContent>
+                <RowTemplate>
+                    <MudTd>@context.AWBNo</MudTd>
+                    <MudTd>@context.AWBDate?.ToString("dd-MMM")</MudTd>
+                    <MudTd>@context.Origin</MudTd>
+                    <MudTd>@context.Destination</MudTd>
+                    <MudTd>@context.Pieces</MudTd>
+                    <MudTd>@context.Weight?.ToString("N2")</MudTd>
+                    <MudTd Style="text-align:right">₹@context.CourierCharge?.ToString("N2")</MudTd>
+                    <MudTd Style="text-align:right">₹@context.OtherCharge?.ToString("N2")</MudTd>
+                    <MudTd Style="text-align:right"><strong>₹@context.Total?.ToString("N2")</strong></MudTd>
+                </RowTemplate>
+            </MudTable>
+        </MudPaper>
+
+        @if (_invoice.SpecialCharges.Any())
+        {
+            <MudPaper Class="pa-4 mt-4" Style="background-color: #e3f2fd;">
+                <MudText Typo="Typo.subtitle1" Class="mb-2"><strong>Special Charges</strong></MudText>
+                <MudTable Items="@_invoice.SpecialCharges" Dense="true">
+                    <HeaderContent>
+                        <MudTh>Charge Name</MudTh>
+                        <MudTh>Type</MudTh>
+                        <MudTh Style="text-align:right">Value</MudTh>
+                        <MudTh Style="text-align:right">Amount</MudTh>
+                        <MudTh Style="text-align:right">Tax</MudTh>
+                        <MudTh Style="text-align:right">Total</MudTh>
+                    </HeaderContent>
+                    <RowTemplate>
+                        <MudTd>@context.ChargeName</MudTd>
+                        <MudTd>
+                            @if (context.ChargeType == ChargeType.Percentage)
+                            {
+                                <MudChip T="string" Size="Size.Small" Color="Color.Info">%</MudChip>
+                            }
+                            else
+                            {
+                                <MudChip T="string" Size="Size.Small" Color="Color.Default">Flat</MudChip>
+                            }
+                        </MudTd>
+                        <MudTd Style="text-align:right">
+                            @(context.ChargeType == ChargeType.Percentage ? $"{context.ChargeValue:N2}%" : $"₹{context.ChargeValue:N2}")
+                        </MudTd>
+                        <MudTd Style="text-align:right">₹@context.CalculatedAmount.ToString("N2")</MudTd>
+                        <MudTd Style="text-align:right">₹@context.TaxAmount.ToString("N2")</MudTd>
+                        <MudTd Style="text-align:right"><strong>₹@context.TotalAmount.ToString("N2")</strong></MudTd>
+                    </RowTemplate>
+                </MudTable>
+            </MudPaper>
+        }
+
+        <MudPaper Class="pa-4 mt-4" Style="background-color: #f5f5f5;">
+            <MudGrid>
+                <MudItem xs="12" md="6">
+                </MudItem>
+                <MudItem xs="12" md="6">
+                    <MudStack Spacing="1">
+                        <MudStack Row="true" Justify="Justify.SpaceBetween">
+                            <MudText>Sub Total:</MudText>
+                            <MudText>₹@_invoice.SubTotal?.ToString("N2")</MudText>
+                        </MudStack>
+                        <MudStack Row="true" Justify="Justify.SpaceBetween">
+                            <MudText>Tax (@_invoice.TaxPercent%):</MudText>
+                            <MudText>₹@_invoice.TaxAmount?.ToString("N2")</MudText>
+                        </MudStack>
+                        @if (_invoice.SpecialChargesTotal > 0)
+                        {
+                            <MudStack Row="true" Justify="Justify.SpaceBetween">
+                                <MudText>Special Charges:</MudText>
+                                <MudText>₹@_invoice.SpecialChargesTotal?.ToString("N2")</MudText>
+                            </MudStack>
+                            <MudStack Row="true" Justify="Justify.SpaceBetween">
+                                <MudText>Special Charges Tax:</MudText>
+                                <MudText>₹@_invoice.SpecialChargesTax?.ToString("N2")</MudText>
+                            </MudStack>
+                        }
+                        <MudDivider Class="my-2" />
+                        <MudStack Row="true" Justify="Justify.SpaceBetween">
+                            <MudText Typo="Typo.h6">Net Total:</MudText>
+                            <MudText Typo="Typo.h6" Color="Color.Primary">₹@_invoice.NetTotal?.ToString("N2")</MudText>
+                        </MudStack>
+                        <MudStack Row="true" Justify="Justify.SpaceBetween">
+                            <MudText>Paid Amount:</MudText>
+                            <MudText Color="Color.Success">₹@_invoice.PaidAmount?.ToString("N2")</MudText>
+                        </MudStack>
+                        <MudStack Row="true" Justify="Justify.SpaceBetween">
+                            <MudText Typo="Typo.subtitle1"><strong>Balance Due:</strong></MudText>
+                            <MudText Typo="Typo.subtitle1" Color="Color.Error"><strong>₹@_invoice.BalanceAmount?.ToString("N2")</strong></MudText>
+                        </MudStack>
+                    </MudStack>
+                </MudItem>
+            </MudGrid>
+        </MudPaper>
+    </MudContainer>
+}
+
+@code {
+    [Parameter] public long InvoiceId { get; set; }
+
+    private bool _loading = true;
+    private Invoice? _invoice;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadInvoice();
+    }
+
+    private async Task LoadInvoice()
+    {
+        _loading = true;
+        StateHasChanged();
+
+        try
+        {
+            _invoice = await Context.Invoices
+                .Include(i => i.Details)
+                .Include(i => i.SpecialCharges)
+                .FirstOrDefaultAsync(i => i.Id == InvoiceId);
+        }
+        finally
+        {
+            _loading = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task PostInvoice()
+    {
+        try
+        {
+            await InvoicingService.PostInvoice(InvoiceId);
+            Snackbar.Add("Invoice posted successfully", Severity.Success);
+            await LoadInvoice();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error posting invoice: {ex.Message}", Severity.Error);
+        }
+    }
+
+    private Color GetStatusColor(InvoiceStatus status) => status switch
+    {
+        InvoiceStatus.Draft => Color.Default,
+        InvoiceStatus.Generated => Color.Success,
+        InvoiceStatus.PartiallyPaid => Color.Warning,
+        InvoiceStatus.Paid => Color.Info,
+        InvoiceStatus.Cancelled => Color.Error,
+        _ => Color.Default
+    };
+}

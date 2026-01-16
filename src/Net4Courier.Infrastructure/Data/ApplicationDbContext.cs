@@ -44,6 +44,8 @@ public class ApplicationDbContext : DbContext
     
     public DbSet<Invoice> Invoices => Set<Invoice>();
     public DbSet<InvoiceDetail> InvoiceDetails => Set<InvoiceDetail>();
+    public DbSet<SpecialCharge> SpecialCharges => Set<SpecialCharge>();
+    public DbSet<InvoiceSpecialCharge> InvoiceSpecialCharges => Set<InvoiceSpecialCharge>();
     public DbSet<Receipt> Receipts => Set<Receipt>();
     public DbSet<ReceiptAllocation> ReceiptAllocations => Set<ReceiptAllocation>();
     public DbSet<Journal> Journals => Set<Journal>();
@@ -503,6 +505,26 @@ public class ApplicationDbContext : DbContext
             entity.ToTable("InvoiceDetails");
             entity.HasKey(e => e.Id);
             entity.HasOne(e => e.Invoice).WithMany(i => i.Details).HasForeignKey(e => e.InvoiceId);
+        });
+
+        modelBuilder.Entity<SpecialCharge>(entity =>
+        {
+            entity.ToTable("SpecialCharges");
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.ChargeName).HasMaxLength(100).IsRequired();
+            entity.Property(e => e.ChargeCode).HasMaxLength(20);
+            entity.HasIndex(e => new { e.CompanyId, e.CustomerId, e.FromDate, e.ToDate });
+            entity.HasIndex(e => e.Status);
+        });
+
+        modelBuilder.Entity<InvoiceSpecialCharge>(entity =>
+        {
+            entity.ToTable("InvoiceSpecialCharges");
+            entity.HasKey(e => e.Id);
+            entity.HasOne(e => e.Invoice).WithMany(i => i.SpecialCharges).HasForeignKey(e => e.InvoiceId)
+                  .OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne(e => e.SpecialCharge).WithMany().HasForeignKey(e => e.SpecialChargeId)
+                  .OnDelete(DeleteBehavior.Restrict);
         });
 
         modelBuilder.Entity<Receipt>(entity =>

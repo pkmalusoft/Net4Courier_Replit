@@ -1,0 +1,308 @@
+@page "/customer-invoicing"
+@using Net4Courier.Infrastructure.Data
+@using Net4Courier.Finance.Entities
+@using Net4Courier.Masters.Entities
+@using Net4Courier.Operations.Entities
+@using Net4Courier.Web.Services
+@using Microsoft.EntityFrameworkCore
+@inject ApplicationDbContext Context
+@inject InvoicingService InvoicingService
+@inject ISnackbar Snackbar
+@inject IDialogService DialogService
+@inject NavigationManager Navigation
+@rendermode InteractiveServer
+
+<PageTitle>Customer Invoicing</PageTitle>
+
+<MudContainer MaxWidth="MaxWidth.ExtraLarge" Class="py-4">
+    <MudText Typo="Typo.h5" Class="mb-4">Customer Invoicing</MudText>
+
+    <MudPaper Class="pa-4 mb-4">
+        <MudGrid>
+            <MudItem xs="12" md="4">
+                <MudAutocomplete T="Party" Label="Customer" @bind-Value="_selectedCustomer"
+                                 SearchFunc="SearchCustomers" ToStringFunc="@(p => p?.Name ?? "")"
+                                 Variant="Variant.Outlined" Dense="true" Required="true" />
+            </MudItem>
+            <MudItem xs="12" md="2">
+                <MudDatePicker Label="Period From" @bind-Date="_periodFrom" DateFormat="dd-MMM-yyyy"
+                               Variant="Variant.Outlined" />
+            </MudItem>
+            <MudItem xs="12" md="2">
+                <MudDatePicker Label="Period To" @bind-Date="_periodTo" DateFormat="dd-MMM-yyyy"
+                               Variant="Variant.Outlined" />
+            </MudItem>
+            <MudItem xs="12" md="2">
+                <MudDatePicker Label="Invoice Date" @bind-Date="_invoiceDate" DateFormat="dd-MMM-yyyy"
+                               Variant="Variant.Outlined" />
+            </MudItem>
+            <MudItem xs="12" md="2">
+                <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="FetchUnbilledAWBs"
+                           Disabled="@(_selectedCustomer == null)" Class="mt-2" FullWidth="true">
+                    Fetch AWBs
+                </MudButton>
+            </MudItem>
+        </MudGrid>
+    </MudPaper>
+
+    @if (_loading)
+    {
+        <MudProgressLinear Indeterminate="true" />
+    }
+    else if (_preview != null)
+    {
+        <MudGrid>
+            <MudItem xs="12" md="8">
+                <MudPaper Class="pa-4 mb-4">
+                    <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center" Class="mb-4">
+                        <MudText Typo="Typo.h6">AWB Details (@_preview.Details.Count AWBs)</MudText>
+                    </MudStack>
+
+                    <MudTable Items="@_preview.Details" Dense="true" Hover="true" FixedHeader="true" Height="400px">
+                        <HeaderContent>
+                            <MudTh>AWB No</MudTh>
+                            <MudTh>Date</MudTh>
+                            <MudTh>Origin</MudTh>
+                            <MudTh>Destination</MudTh>
+                            <MudTh>Pcs</MudTh>
+                            <MudTh>Weight</MudTh>
+                            <MudTh Style="text-align:right">Freight</MudTh>
+                            <MudTh Style="text-align:right">Other</MudTh>
+                            <MudTh Style="text-align:right">Total</MudTh>
+                        </HeaderContent>
+                        <RowTemplate>
+                            <MudTd>@context.AWBNo</MudTd>
+                            <MudTd>@context.AWBDate.ToString("dd-MMM")</MudTd>
+                            <MudTd>@context.Origin</MudTd>
+                            <MudTd>@context.Destination</MudTd>
+                            <MudTd>@context.Pieces</MudTd>
+                            <MudTd>@context.Weight.ToString("N2")</MudTd>
+                            <MudTd Style="text-align:right">₹@context.CourierCharge.ToString("N2")</MudTd>
+                            <MudTd Style="text-align:right">₹@context.OtherCharge.ToString("N2")</MudTd>
+                            <MudTd Style="text-align:right"><strong>₹@context.Total.ToString("N2")</strong></MudTd>
+                        </RowTemplate>
+                        <NoRecordsContent>
+                            <MudText>No unbilled AWBs found for the selected period</MudText>
+                        </NoRecordsContent>
+                    </MudTable>
+                </MudPaper>
+            </MudItem>
+
+            <MudItem xs="12" md="4">
+                <MudPaper Class="pa-4 mb-4" Style="background-color: #f5f5f5;">
+                    <MudText Typo="Typo.h6" Class="mb-4">Invoice Summary</MudText>
+
+                    <MudStack Spacing="2">
+                        <MudStack Row="true" Justify="Justify.SpaceBetween">
+                            <MudText>Customer:</MudText>
+                            <MudText><strong>@_preview.CustomerName</strong></MudText>
+                        </MudStack>
+                        <MudStack Row="true" Justify="Justify.SpaceBetween">
+                            <MudText>Period:</MudText>
+                            <MudText>@_preview.PeriodFrom.ToString("dd-MMM") - @_preview.PeriodTo.ToString("dd-MMM-yyyy")</MudText>
+                        </MudStack>
+                        <MudStack Row="true" Justify="Justify.SpaceBetween">
+                            <MudText>Total AWBs:</MudText>
+                            <MudText>@_preview.Details.Count</MudText>
+                        </MudStack>
+
+                        <MudDivider Class="my-2" />
+
+                        <MudStack Row="true" Justify="Justify.SpaceBetween">
+                            <MudText>Sub Total:</MudText>
+                            <MudText>₹@_preview.SubTotal.ToString("N2")</MudText>
+                        </MudStack>
+                        <MudStack Row="true" Justify="Justify.SpaceBetween">
+                            <MudText>Tax (@_preview.TaxPercent%):</MudText>
+                            <MudText>₹@_preview.TaxAmount.ToString("N2")</MudText>
+                        </MudStack>
+
+                        @if (_preview.SpecialCharges.Any())
+                        {
+                            <MudDivider Class="my-2" />
+                            <MudText Typo="Typo.subtitle2" Color="Color.Primary">Special Charges (Read-Only)</MudText>
+
+                            @foreach (var charge in _preview.SpecialCharges)
+                            {
+                                <MudPaper Class="pa-2" Elevation="0" Style="background-color: #e3f2fd;">
+                                    <MudStack Row="true" Justify="Justify.SpaceBetween">
+                                        <MudText Typo="Typo.body2">@charge.ChargeName</MudText>
+                                        <MudText Typo="Typo.body2">₹@charge.CalculatedAmount.ToString("N2")</MudText>
+                                    </MudStack>
+                                    @if (charge.IsTaxApplicable)
+                                    {
+                                        <MudStack Row="true" Justify="Justify.SpaceBetween">
+                                            <MudText Typo="Typo.caption" Color="Color.Secondary">Tax (@charge.TaxPercent%)</MudText>
+                                            <MudText Typo="Typo.caption" Color="Color.Secondary">₹@charge.TaxAmount.ToString("N2")</MudText>
+                                        </MudStack>
+                                    }
+                                </MudPaper>
+                            }
+
+                            <MudStack Row="true" Justify="Justify.SpaceBetween">
+                                <MudText>Special Charges Total:</MudText>
+                                <MudText>₹@((_preview.SpecialChargesTotal + _preview.SpecialChargesTax).ToString("N2"))</MudText>
+                            </MudStack>
+                        }
+
+                        <MudDivider Class="my-2" />
+
+                        <MudStack Row="true" Justify="Justify.SpaceBetween">
+                            <MudText Typo="Typo.h6">Net Total:</MudText>
+                            <MudText Typo="Typo.h6" Color="Color.Primary">₹@_preview.NetTotal.ToString("N2")</MudText>
+                        </MudStack>
+                    </MudStack>
+
+                    <MudStack Row="true" Spacing="2" Class="mt-4">
+                        <MudButton Variant="Variant.Outlined" Color="Color.Default" OnClick="ClearPreview" FullWidth="true">
+                            Clear
+                        </MudButton>
+                        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="GenerateInvoice" 
+                                   Disabled="@(!_preview.Details.Any())" FullWidth="true">
+                            Generate Invoice
+                        </MudButton>
+                    </MudStack>
+                </MudPaper>
+            </MudItem>
+        </MudGrid>
+    }
+    else
+    {
+        <MudPaper Class="pa-8" Elevation="1">
+            <MudStack AlignItems="AlignItems.Center" Spacing="4">
+                <MudIcon Icon="@Icons.Material.Filled.Receipt" Size="Size.Large" Color="Color.Secondary" />
+                <MudText Typo="Typo.h6" Color="Color.Secondary">Select a Customer and Period</MudText>
+                <MudText Typo="Typo.body2" Color="Color.Secondary">
+                    Choose a customer and billing period, then click "Fetch AWBs" to generate an invoice preview.
+                </MudText>
+            </MudStack>
+        </MudPaper>
+    }
+</MudContainer>
+
+@code {
+    private bool _loading;
+    private Party? _selectedCustomer;
+    private DateTime? _periodFrom;
+    private DateTime? _periodTo;
+    private DateTime? _invoiceDate;
+    private InvoicePreviewModel? _preview;
+
+    protected override void OnInitialized()
+    {
+        _periodFrom = new DateTime(DateTime.Today.Year, DateTime.Today.Month, 1);
+        _periodTo = DateTime.Today;
+        _invoiceDate = DateTime.Today;
+    }
+
+    private async Task<IEnumerable<Party>> SearchCustomers(string value)
+    {
+        if (string.IsNullOrEmpty(value))
+            return await Context.Parties
+                .Where(p => p.PartyType == PartyType.Customer && p.IsActive && !p.IsDeleted)
+                .Take(20).ToListAsync();
+
+        return await Context.Parties
+            .Where(p => p.PartyType == PartyType.Customer && p.IsActive && !p.IsDeleted &&
+                   (p.Name.Contains(value) || (p.Code != null && p.Code.Contains(value))))
+            .Take(20).ToListAsync();
+    }
+
+    private async Task FetchUnbilledAWBs()
+    {
+        if (_selectedCustomer == null)
+        {
+            Snackbar.Add("Please select a customer", Severity.Warning);
+            return;
+        }
+
+        _loading = true;
+        StateHasChanged();
+
+        try
+        {
+            var fromDate = DateTime.SpecifyKind(_periodFrom?.Date ?? DateTime.Today.AddMonths(-1), DateTimeKind.Utc);
+            var toDate = DateTime.SpecifyKind(_periodTo?.Date ?? DateTime.Today, DateTimeKind.Utc);
+            var invoiceDate = _invoiceDate?.Date ?? DateTime.Today;
+
+            var awbs = await InvoicingService.GetUnbilledAWBs(_selectedCustomer.Id, fromDate, toDate);
+            var specialCharges = await InvoicingService.GetApplicableSpecialCharges(_selectedCustomer.Id, invoiceDate);
+
+            var address = await Context.PartyAddresses
+                .Where(a => a.PartyId == _selectedCustomer.Id && a.IsDefault)
+                .FirstOrDefaultAsync();
+
+            var fullAddress = address != null
+                ? $"{address.Street}, {address.Area}, {address.City}, {address.State} {address.PostalCode}"
+                : null;
+
+            _preview = InvoicingService.GenerateInvoicePreview(
+                _selectedCustomer.Id,
+                _selectedCustomer.Name,
+                fullAddress,
+                _selectedCustomer.TaxNumber,
+                invoiceDate,
+                fromDate,
+                toDate,
+                awbs,
+                specialCharges
+            );
+
+            if (!awbs.Any())
+            {
+                Snackbar.Add("No unbilled AWBs found for the selected period", Severity.Info);
+            }
+            else
+            {
+                Snackbar.Add($"Found {awbs.Count} unbilled AWBs", Severity.Success);
+            }
+        }
+        finally
+        {
+            _loading = false;
+            StateHasChanged();
+        }
+    }
+
+    private void ClearPreview()
+    {
+        _preview = null;
+    }
+
+    private async Task GenerateInvoice()
+    {
+        if (_preview == null || !_preview.Details.Any())
+        {
+            Snackbar.Add("No AWBs to invoice", Severity.Warning);
+            return;
+        }
+
+        var confirmed = await DialogService.ShowMessageBox(
+            "Generate Invoice",
+            $"Generate invoice for {_preview.Details.Count} AWBs totaling ₹{_preview.NetTotal:N2}?",
+            yesText: "Generate", cancelText: "Cancel");
+
+        if (confirmed == true)
+        {
+            _loading = true;
+            StateHasChanged();
+
+            try
+            {
+                var invoice = await InvoicingService.CreateInvoice(_preview);
+                Snackbar.Add($"Invoice {invoice.InvoiceNo} created successfully", Severity.Success);
+                _preview = null;
+                Navigation.NavigateTo($"/invoice/{invoice.Id}");
+            }
+            catch (Exception ex)
+            {
+                Snackbar.Add($"Error creating invoice: {ex.Message}", Severity.Error);
+            }
+            finally
+            {
+                _loading = false;
+                StateHasChanged();
+            }
+        }
+    }
+}

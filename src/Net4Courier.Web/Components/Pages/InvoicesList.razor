@@ -1,0 +1,205 @@
+@page "/invoices"
+@using Net4Courier.Infrastructure.Data
+@using Net4Courier.Finance.Entities
+@using Net4Courier.Masters.Entities
+@using Net4Courier.Kernel.Enums
+@using Microsoft.EntityFrameworkCore
+@inject ApplicationDbContext Context
+@inject NavigationManager Navigation
+@inject ISnackbar Snackbar
+@rendermode InteractiveServer
+
+<PageTitle>Invoices</PageTitle>
+
+<MudContainer MaxWidth="MaxWidth.ExtraLarge" Class="py-4">
+    <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center" Class="mb-4">
+        <MudText Typo="Typo.h5">Invoices</MudText>
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add"
+                   Href="/customer-invoicing">
+            Create Invoice
+        </MudButton>
+    </MudStack>
+
+    <MudPaper Class="pa-4 mb-4">
+        <MudGrid>
+            <MudItem xs="12" md="3">
+                <MudAutocomplete T="Party" Label="Customer" @bind-Value="_filterCustomer"
+                                 SearchFunc="SearchCustomers" ToStringFunc="@(p => p?.Name ?? "")"
+                                 Clearable="true" Variant="Variant.Outlined" Dense="true" />
+            </MudItem>
+            <MudItem xs="12" md="2">
+                <MudSelect T="InvoiceStatus?" Label="Status" @bind-Value="_filterStatus"
+                           Clearable="true" Variant="Variant.Outlined" Dense="true">
+                    @foreach (var status in Enum.GetValues<InvoiceStatus>())
+                    {
+                        <MudSelectItem Value="@((InvoiceStatus?)status)">@status</MudSelectItem>
+                    }
+                </MudSelect>
+            </MudItem>
+            <MudItem xs="12" md="2">
+                <MudDatePicker Label="From Date" @bind-Date="_fromDate" DateFormat="dd-MMM-yyyy"
+                               Variant="Variant.Outlined" />
+            </MudItem>
+            <MudItem xs="12" md="2">
+                <MudDatePicker Label="To Date" @bind-Date="_toDate" DateFormat="dd-MMM-yyyy"
+                               Variant="Variant.Outlined" />
+            </MudItem>
+            <MudItem xs="12" md="2">
+                <MudButton Variant="Variant.Outlined" Color="Color.Primary" OnClick="LoadInvoices" Class="mt-2">
+                    Search
+                </MudButton>
+            </MudItem>
+        </MudGrid>
+    </MudPaper>
+
+    @if (_loading)
+    {
+        <MudProgressLinear Indeterminate="true" />
+    }
+    else
+    {
+        <MudTable Items="@_invoices" Dense="true" Hover="true" Striped="true"
+                  OnRowClick="@((TableRowClickEventArgs<Invoice> args) => ViewInvoice(args.Item))">
+            <HeaderContent>
+                <MudTh>Invoice No</MudTh>
+                <MudTh>Date</MudTh>
+                <MudTh>Customer</MudTh>
+                <MudTh>Period</MudTh>
+                <MudTh Style="text-align:center">AWBs</MudTh>
+                <MudTh Style="text-align:right">Net Total</MudTh>
+                <MudTh Style="text-align:right">Balance</MudTh>
+                <MudTh>Status</MudTh>
+            </HeaderContent>
+            <RowTemplate>
+                <MudTd>
+                    <MudLink Href="@($"/invoice/{context.Id}")">@context.InvoiceNo</MudLink>
+                </MudTd>
+                <MudTd>@context.InvoiceDate.ToString("dd-MMM-yyyy")</MudTd>
+                <MudTd>@context.CustomerName</MudTd>
+                <MudTd>@context.PeriodFrom?.ToString("dd-MMM") - @context.PeriodTo?.ToString("dd-MMM")</MudTd>
+                <MudTd Style="text-align:center">@context.TotalAWBs</MudTd>
+                <MudTd Style="text-align:right">₹@context.NetTotal?.ToString("N2")</MudTd>
+                <MudTd Style="text-align:right">
+                    <span style="@(context.BalanceAmount > 0 ? "color: red;" : "color: green;")">
+                        ₹@context.BalanceAmount?.ToString("N2")
+                    </span>
+                </MudTd>
+                <MudTd>
+                    <MudChip T="string" Size="Size.Small" Color="@GetStatusColor(context.Status)">
+                        @context.Status
+                    </MudChip>
+                </MudTd>
+            </RowTemplate>
+            <NoRecordsContent>
+                <MudText>No invoices found</MudText>
+            </NoRecordsContent>
+        </MudTable>
+
+        <MudPaper Class="pa-4 mt-4" Elevation="2" Style="background-color: #e8f5e9;">
+            <MudStack Row="true" Justify="Justify.SpaceAround">
+                <MudStack Spacing="0" AlignItems="AlignItems.Center">
+                    <MudText Typo="Typo.h4" Color="Color.Primary">@_invoices.Count</MudText>
+                    <MudText Typo="Typo.caption">Total Invoices</MudText>
+                </MudStack>
+                <MudDivider Vertical="true" FlexItem="true" />
+                <MudStack Spacing="0" AlignItems="AlignItems.Center">
+                    <MudText Typo="Typo.h4" Color="Color.Success">₹@_invoices.Sum(i => i.NetTotal ?? 0).ToString("N0")</MudText>
+                    <MudText Typo="Typo.caption">Total Value</MudText>
+                </MudStack>
+                <MudDivider Vertical="true" FlexItem="true" />
+                <MudStack Spacing="0" AlignItems="AlignItems.Center">
+                    <MudText Typo="Typo.h4" Color="Color.Error">₹@_invoices.Sum(i => i.BalanceAmount ?? 0).ToString("N0")</MudText>
+                    <MudText Typo="Typo.caption">Outstanding</MudText>
+                </MudStack>
+            </MudStack>
+        </MudPaper>
+    }
+</MudContainer>
+
+@code {
+    private bool _loading;
+    private List<Invoice> _invoices = new();
+    private Party? _filterCustomer;
+    private InvoiceStatus? _filterStatus;
+    private DateTime? _fromDate;
+    private DateTime? _toDate;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _fromDate = new DateTime(DateTime.Today.Year, DateTime.Today.Month, 1);
+        _toDate = DateTime.Today;
+        await LoadInvoices();
+    }
+
+    private async Task LoadInvoices()
+    {
+        _loading = true;
+        StateHasChanged();
+
+        try
+        {
+            var query = Context.Invoices.Where(i => i.IsActive && !i.IsDeleted);
+
+            if (_filterCustomer != null)
+            {
+                query = query.Where(i => i.CustomerId == _filterCustomer.Id);
+            }
+
+            if (_filterStatus.HasValue)
+            {
+                query = query.Where(i => i.Status == _filterStatus.Value);
+            }
+
+            if (_fromDate.HasValue)
+            {
+                var fromUtc = DateTime.SpecifyKind(_fromDate.Value.Date, DateTimeKind.Utc);
+                query = query.Where(i => i.InvoiceDate >= fromUtc);
+            }
+
+            if (_toDate.HasValue)
+            {
+                var toUtc = DateTime.SpecifyKind(_toDate.Value.Date.AddDays(1), DateTimeKind.Utc);
+                query = query.Where(i => i.InvoiceDate < toUtc);
+            }
+
+            _invoices = await query
+                .OrderByDescending(i => i.InvoiceDate)
+                .ThenByDescending(i => i.Id)
+                .Take(100)
+                .ToListAsync();
+        }
+        finally
+        {
+            _loading = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task<IEnumerable<Party>> SearchCustomers(string value)
+    {
+        if (string.IsNullOrEmpty(value))
+            return await Context.Parties
+                .Where(p => p.PartyType == PartyType.Customer && p.IsActive && !p.IsDeleted)
+                .Take(20).ToListAsync();
+
+        return await Context.Parties
+            .Where(p => p.PartyType == PartyType.Customer && p.IsActive && !p.IsDeleted &&
+                   (p.Name.Contains(value) || (p.Code != null && p.Code.Contains(value))))
+            .Take(20).ToListAsync();
+    }
+
+    private void ViewInvoice(Invoice invoice)
+    {
+        Navigation.NavigateTo($"/invoice/{invoice.Id}");
+    }
+
+    private Color GetStatusColor(InvoiceStatus status) => status switch
+    {
+        InvoiceStatus.Draft => Color.Default,
+        InvoiceStatus.Generated => Color.Success,
+        InvoiceStatus.PartiallyPaid => Color.Warning,
+        InvoiceStatus.Paid => Color.Info,
+        InvoiceStatus.Cancelled => Color.Error,
+        _ => Color.Default
+    };
+}

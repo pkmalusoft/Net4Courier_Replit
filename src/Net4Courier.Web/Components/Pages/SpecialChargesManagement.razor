@@ -1,0 +1,361 @@
+@page "/special-charges"
+@using Net4Courier.Infrastructure.Data
+@using Net4Courier.Finance.Entities
+@using Net4Courier.Masters.Entities
+@using Microsoft.EntityFrameworkCore
+@using Microsoft.AspNetCore.Components.Authorization
+@inject ApplicationDbContext Context
+@inject ISnackbar Snackbar
+@inject IDialogService DialogService
+@inject AuthenticationStateProvider AuthStateProvider
+@rendermode InteractiveServer
+
+<PageTitle>Special Charges Management</PageTitle>
+
+<MudContainer MaxWidth="MaxWidth.ExtraLarge" Class="py-4">
+    <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center" Class="mb-4">
+        <MudText Typo="Typo.h5">Special Charges Management</MudText>
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add"
+                   OnClick="OpenCreateDialog">
+            Add Charge
+        </MudButton>
+    </MudStack>
+
+    <MudPaper Class="pa-4 mb-4">
+        <MudGrid>
+            <MudItem xs="12" md="3">
+                <MudAutocomplete T="Party" Label="Customer" @bind-Value="_filterCustomer"
+                                 SearchFunc="SearchCustomers" ToStringFunc="@(p => p?.Name ?? "")"
+                                 Clearable="true" Variant="Variant.Outlined" Dense="true" />
+            </MudItem>
+            <MudItem xs="12" md="2">
+                <MudSelect T="SpecialChargeStatus?" Label="Status" @bind-Value="_filterStatus"
+                           Clearable="true" Variant="Variant.Outlined" Dense="true">
+                    @foreach (var status in Enum.GetValues<SpecialChargeStatus>())
+                    {
+                        <MudSelectItem Value="@((SpecialChargeStatus?)status)">@status</MudSelectItem>
+                    }
+                </MudSelect>
+            </MudItem>
+            <MudItem xs="12" md="2">
+                <MudButton Variant="Variant.Outlined" Color="Color.Primary" OnClick="LoadCharges" Class="mt-2">
+                    Search
+                </MudButton>
+            </MudItem>
+        </MudGrid>
+    </MudPaper>
+
+    @if (_loading)
+    {
+        <MudProgressLinear Indeterminate="true" />
+    }
+    else
+    {
+        <MudTable Items="@_charges" Dense="true" Hover="true" Striped="true">
+            <HeaderContent>
+                <MudTh>Code</MudTh>
+                <MudTh>Charge Name</MudTh>
+                <MudTh>Customer</MudTh>
+                <MudTh>Type</MudTh>
+                <MudTh Style="text-align:right">Value</MudTh>
+                <MudTh>Period</MudTh>
+                <MudTh>Tax</MudTh>
+                <MudTh>Status</MudTh>
+                <MudTh>Actions</MudTh>
+            </HeaderContent>
+            <RowTemplate>
+                <MudTd>@context.ChargeCode</MudTd>
+                <MudTd>@context.ChargeName</MudTd>
+                <MudTd>@(context.CustomerName ?? "All Customers")</MudTd>
+                <MudTd>
+                    @if (context.ChargeType == ChargeType.Percentage)
+                    {
+                        <MudChip T="string" Size="Size.Small" Color="Color.Info">%</MudChip>
+                    }
+                    else
+                    {
+                        <MudChip T="string" Size="Size.Small" Color="Color.Default">Flat</MudChip>
+                    }
+                </MudTd>
+                <MudTd Style="text-align:right">
+                    @if (context.ChargeType == ChargeType.Percentage)
+                    {
+                        @($"{context.ChargeValue:N2}%")
+                    }
+                    else
+                    {
+                        @($"₹{context.ChargeValue:N2}")
+                    }
+                </MudTd>
+                <MudTd>@context.FromDate.ToString("dd-MMM-yy") - @context.ToDate.ToString("dd-MMM-yy")</MudTd>
+                <MudTd>
+                    @if (context.IsTaxApplicable)
+                    {
+                        <MudChip T="string" Size="Size.Small" Color="Color.Success">@($"{context.TaxPercent ?? 0}%")</MudChip>
+                    }
+                    else
+                    {
+                        <MudText Typo="Typo.caption">N/A</MudText>
+                    }
+                </MudTd>
+                <MudTd>
+                    <MudChip T="string" Size="Size.Small" Color="@GetStatusColor(context.Status)">
+                        @context.Status
+                    </MudChip>
+                </MudTd>
+                <MudTd>
+                    <MudStack Row="true" Spacing="1">
+                        @if (context.Status == SpecialChargeStatus.Draft && !context.IsLocked)
+                        {
+                            <MudIconButton Icon="@Icons.Material.Filled.Edit" Size="Size.Small" Color="Color.Primary"
+                                           OnClick="@(() => OpenEditDialog(context))" Title="Edit" />
+                            <MudIconButton Icon="@Icons.Material.Filled.CheckCircle" Size="Size.Small" Color="Color.Success"
+                                           OnClick="@(() => ApproveCharge(context))" Title="Approve" />
+                            <MudIconButton Icon="@Icons.Material.Filled.Cancel" Size="Size.Small" Color="Color.Error"
+                                           OnClick="@(() => CancelCharge(context))" Title="Cancel" />
+                        }
+                        @if (context.Status == SpecialChargeStatus.Approved && !context.IsLocked)
+                        {
+                            <MudIconButton Icon="@Icons.Material.Filled.Block" Size="Size.Small" Color="Color.Warning"
+                                           OnClick="@(() => CancelCharge(context))" Title="Cancel" />
+                        }
+                        @if (context.IsLocked)
+                        {
+                            <MudIcon Icon="@Icons.Material.Filled.Lock" Size="Size.Small" Color="Color.Secondary" />
+                        }
+                    </MudStack>
+                </MudTd>
+            </RowTemplate>
+            <NoRecordsContent>
+                <MudText>No special charges found</MudText>
+            </NoRecordsContent>
+        </MudTable>
+    }
+</MudContainer>
+
+<MudDialog @bind-Visible="_showDialog">
+    <TitleContent>
+        <MudText Typo="Typo.h6">@(_editingCharge?.Id > 0 ? "Edit" : "Add") Special Charge</MudText>
+    </TitleContent>
+    <DialogContent>
+        @if (_editingCharge != null)
+        {
+            <MudGrid>
+                <MudItem xs="12" md="6">
+                    <MudTextField @bind-Value="_editingCharge.ChargeCode" Label="Charge Code" 
+                                  Variant="Variant.Outlined" />
+                </MudItem>
+                <MudItem xs="12" md="6">
+                    <MudTextField @bind-Value="_editingCharge.ChargeName" Label="Charge Name" Required="true"
+                                  Variant="Variant.Outlined" />
+                </MudItem>
+                <MudItem xs="12">
+                    <MudAutocomplete T="Party" Label="Customer (Leave empty for All Customers)" 
+                                     @bind-Value="_selectedCustomer"
+                                     SearchFunc="SearchCustomers" ToStringFunc="@(p => p?.Name ?? "")"
+                                     Clearable="true" Variant="Variant.Outlined" />
+                </MudItem>
+                <MudItem xs="12" md="6">
+                    <MudSelect T="ChargeType" Label="Charge Type" @bind-Value="_editingCharge.ChargeType"
+                               Variant="Variant.Outlined">
+                        <MudSelectItem Value="ChargeType.Flat">Flat Amount</MudSelectItem>
+                        <MudSelectItem Value="ChargeType.Percentage">Percentage</MudSelectItem>
+                    </MudSelect>
+                </MudItem>
+                <MudItem xs="12" md="6">
+                    <MudNumericField T="decimal" @bind-Value="_editingCharge.ChargeValue" Label="Value"
+                                     Variant="Variant.Outlined" Format="N2"
+                                     Adornment="Adornment.Start" 
+                                     AdornmentText="@(_editingCharge.ChargeType == ChargeType.Percentage ? "%" : "₹")" />
+                </MudItem>
+                <MudItem xs="12" md="6">
+                    <MudDatePicker Label="From Date" @bind-Date="_fromDate" DateFormat="dd-MMM-yyyy"
+                                   Variant="Variant.Outlined" />
+                </MudItem>
+                <MudItem xs="12" md="6">
+                    <MudDatePicker Label="To Date" @bind-Date="_toDate" DateFormat="dd-MMM-yyyy"
+                                   Variant="Variant.Outlined" />
+                </MudItem>
+                <MudItem xs="12" md="6">
+                    <MudCheckBox @bind-Value="_editingCharge.IsTaxApplicable" Label="Tax Applicable" />
+                </MudItem>
+                <MudItem xs="12" md="6">
+                    @if (_editingCharge.IsTaxApplicable)
+                    {
+                        <MudNumericField T="decimal?" @bind-Value="_editingCharge.TaxPercent" Label="Tax %"
+                                         Variant="Variant.Outlined" Format="N2" />
+                    }
+                </MudItem>
+                <MudItem xs="12">
+                    <MudTextField @bind-Value="_editingCharge.Remarks" Label="Remarks" Lines="2"
+                                  Variant="Variant.Outlined" />
+                </MudItem>
+            </MudGrid>
+        }
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="CloseDialog">Cancel</MudButton>
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="SaveCharge">Save</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    private bool _loading;
+    private bool _showDialog;
+    private List<SpecialCharge> _charges = new();
+    private SpecialCharge? _editingCharge;
+    private Party? _filterCustomer;
+    private SpecialChargeStatus? _filterStatus;
+    private Party? _selectedCustomer;
+    private DateTime? _fromDate;
+    private DateTime? _toDate;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadCharges();
+    }
+
+    private async Task LoadCharges()
+    {
+        _loading = true;
+        StateHasChanged();
+
+        try
+        {
+            var query = Context.SpecialCharges.Where(c => c.IsActive && !c.IsDeleted);
+
+            if (_filterCustomer != null)
+            {
+                query = query.Where(c => c.CustomerId == _filterCustomer.Id);
+            }
+
+            if (_filterStatus.HasValue)
+            {
+                query = query.Where(c => c.Status == _filterStatus.Value);
+            }
+
+            _charges = await query.OrderByDescending(c => c.CreatedAt).ToListAsync();
+        }
+        finally
+        {
+            _loading = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task<IEnumerable<Party>> SearchCustomers(string value)
+    {
+        if (string.IsNullOrEmpty(value))
+            return await Context.Parties
+                .Where(p => p.PartyType == PartyType.Customer && p.IsActive && !p.IsDeleted)
+                .Take(20).ToListAsync();
+
+        return await Context.Parties
+            .Where(p => p.PartyType == PartyType.Customer && p.IsActive && !p.IsDeleted && 
+                   (p.Name.Contains(value) || (p.Code != null && p.Code.Contains(value))))
+            .Take(20).ToListAsync();
+    }
+
+    private void OpenCreateDialog()
+    {
+        _editingCharge = new SpecialCharge
+        {
+            CompanyId = 1,
+            FromDate = DateTime.Today,
+            ToDate = DateTime.Today.AddMonths(1),
+            ChargeType = ChargeType.Flat,
+            Status = SpecialChargeStatus.Draft,
+            CreatedAt = DateTime.UtcNow
+        };
+        _selectedCustomer = null;
+        _fromDate = _editingCharge.FromDate;
+        _toDate = _editingCharge.ToDate;
+        _showDialog = true;
+    }
+
+    private void OpenEditDialog(SpecialCharge charge)
+    {
+        _editingCharge = charge;
+        _selectedCustomer = charge.CustomerId.HasValue
+            ? Context.Parties.FirstOrDefault(p => p.Id == charge.CustomerId)
+            : null;
+        _fromDate = charge.FromDate;
+        _toDate = charge.ToDate;
+        _showDialog = true;
+    }
+
+    private void CloseDialog()
+    {
+        _showDialog = false;
+        _editingCharge = null;
+    }
+
+    private async Task SaveCharge()
+    {
+        if (_editingCharge == null || string.IsNullOrEmpty(_editingCharge.ChargeName))
+        {
+            Snackbar.Add("Charge name is required", Severity.Warning);
+            return;
+        }
+
+        _editingCharge.CustomerId = _selectedCustomer?.Id;
+        _editingCharge.CustomerName = _selectedCustomer?.Name;
+        _editingCharge.FromDate = DateTime.SpecifyKind(_fromDate?.Date ?? DateTime.Today, DateTimeKind.Utc);
+        _editingCharge.ToDate = DateTime.SpecifyKind(_toDate?.Date ?? DateTime.Today.AddMonths(1), DateTimeKind.Utc);
+
+        if (_editingCharge.Id == 0)
+        {
+            _editingCharge.CreatedAt = DateTime.UtcNow;
+            Context.SpecialCharges.Add(_editingCharge);
+        }
+        else
+        {
+            _editingCharge.ModifiedAt = DateTime.UtcNow;
+        }
+
+        await Context.SaveChangesAsync();
+        Snackbar.Add("Charge saved successfully", Severity.Success);
+        CloseDialog();
+        await LoadCharges();
+    }
+
+    private async Task ApproveCharge(SpecialCharge charge)
+    {
+        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+        var userName = authState.User.Identity?.Name ?? "Admin";
+
+        charge.Status = SpecialChargeStatus.Approved;
+        charge.ApprovedByName = userName;
+        charge.ApprovedAt = DateTime.UtcNow;
+        charge.ModifiedAt = DateTime.UtcNow;
+
+        await Context.SaveChangesAsync();
+        Snackbar.Add($"Charge '{charge.ChargeName}' approved", Severity.Success);
+        await LoadCharges();
+    }
+
+    private async Task CancelCharge(SpecialCharge charge)
+    {
+        var confirmed = await DialogService.ShowMessageBox(
+            "Cancel Charge",
+            $"Are you sure you want to cancel '{charge.ChargeName}'?",
+            yesText: "Yes", cancelText: "No");
+
+        if (confirmed == true)
+        {
+            charge.Status = SpecialChargeStatus.Cancelled;
+            charge.ModifiedAt = DateTime.UtcNow;
+            await Context.SaveChangesAsync();
+            Snackbar.Add($"Charge '{charge.ChargeName}' cancelled", Severity.Warning);
+            await LoadCharges();
+        }
+    }
+
+    private Color GetStatusColor(SpecialChargeStatus status) => status switch
+    {
+        SpecialChargeStatus.Draft => Color.Default,
+        SpecialChargeStatus.Approved => Color.Success,
+        SpecialChargeStatus.Cancelled => Color.Error,
+        _ => Color.Default
+    };
+}

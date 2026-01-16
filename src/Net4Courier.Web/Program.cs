@@ -68,6 +68,7 @@ builder.Services.AddScoped<AuthenticationStateProvider>(sp => sp.GetRequiredServ
 builder.Services.AddScoped<ReportingService>();
 builder.Services.AddScoped<RatingEngineService>();
 builder.Services.AddScoped<DRSReconciliationService>();
+builder.Services.AddScoped<InvoicingService>();
 builder.Services.AddAuthorizationCore();
 builder.Services.AddCascadingAuthenticationState();
 
