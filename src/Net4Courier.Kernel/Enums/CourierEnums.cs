@@ -44,6 +44,14 @@ public enum DocumentType
     Cargo = 3
 }
 
+public enum ParcelType
+{
+    Document = 1,
+    Letter = 2,
+    ParcelUpto30Kg = 3,
+    ParcelAbove30Kg = 4
+}
+
 public enum InvoiceStatus
 {
     Draft = 0,
