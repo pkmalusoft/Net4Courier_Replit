@@ -103,13 +103,31 @@
                             <MudTextField @bind-Value="_inscan.ConsignorPostalCode" Label="Pincode" Dense="true" Variant="Variant.Outlined" />
                         </MudItem>
                         <MudItem xs="6">
-                            <MudTextField @bind-Value="_inscan.ConsignorLocation" Label="Origin Location" Dense="true" Variant="Variant.Outlined" />
+                            <MudSelect T="long?" Value="_originCountryId" ValueChanged="OnOriginCountryChanged" Label="Origin Country" Dense="true" 
+                                       Variant="Variant.Outlined" AnchorOrigin="Origin.BottomCenter" Clearable="true">
+                                @foreach (var country in _countries)
+                                {
+                                    <MudSelectItem T="long?" Value="@country.Id">@country.Name</MudSelectItem>
+                                }
+                            </MudSelect>
                         </MudItem>
                         <MudItem xs="6">
-                            <MudTextField @bind-Value="_inscan.ConsignorCity" Label="Origin City" Dense="true" Variant="Variant.Outlined" />
+                            <MudSelect T="long?" Value="_originCityId" ValueChanged="OnOriginCityChanged" Label="Origin City" Dense="true" 
+                                       Variant="Variant.Outlined" AnchorOrigin="Origin.BottomCenter" Clearable="true" Disabled="@(!_originCities.Any())">
+                                @foreach (var city in _originCities)
+                                {
+                                    <MudSelectItem T="long?" Value="@city.Id">@city.Name</MudSelectItem>
+                                }
+                            </MudSelect>
                         </MudItem>
                         <MudItem xs="6">
-                            <MudTextField @bind-Value="_inscan.ConsignorCountry" Label="Origin Country" Dense="true" Variant="Variant.Outlined" />
+                            <MudSelect T="string" Value="_inscan.ConsignorLocation" ValueChanged="OnOriginLocationChanged" Label="Origin Location" Dense="true" 
+                                       Variant="Variant.Outlined" AnchorOrigin="Origin.BottomCenter" Clearable="true" Disabled="@(!_originLocations.Any())">
+                                @foreach (var loc in _originLocations)
+                                {
+                                    <MudSelectItem T="string" Value="@loc.Name">@loc.Name</MudSelectItem>
+                                }
+                            </MudSelect>
                         </MudItem>
                     </MudGrid>
                 </MudCard>
@@ -135,13 +153,31 @@
                             <MudTextField @bind-Value="_inscan.ConsigneePostalCode" Label="Pincode" Dense="true" Variant="Variant.Outlined" />
                         </MudItem>
                         <MudItem xs="6">
-                            <MudTextField @bind-Value="_inscan.ConsigneeLocation" Label="Destination Location" Dense="true" Variant="Variant.Outlined" />
+                            <MudSelect T="long?" Value="_destCountryId" ValueChanged="OnDestCountryChanged" Label="Dest Country" Dense="true" 
+                                       Variant="Variant.Outlined" AnchorOrigin="Origin.BottomCenter" Clearable="true">
+                                @foreach (var country in _countries)
+                                {
+                                    <MudSelectItem T="long?" Value="@country.Id">@country.Name</MudSelectItem>
+                                }
+                            </MudSelect>
                         </MudItem>
                         <MudItem xs="6">
-                            <MudTextField @bind-Value="_inscan.ConsigneeCity" Label="Destination City" Dense="true" Variant="Variant.Outlined" />
+                            <MudSelect T="long?" Value="_destCityId" ValueChanged="OnDestCityChanged" Label="Dest City" Dense="true" 
+                                       Variant="Variant.Outlined" AnchorOrigin="Origin.BottomCenter" Clearable="true" Disabled="@(!_destCities.Any())">
+                                @foreach (var city in _destCities)
+                                {
+                                    <MudSelectItem T="long?" Value="@city.Id">@city.Name</MudSelectItem>
+                                }
+                            </MudSelect>
                         </MudItem>
                         <MudItem xs="6">
-                            <MudTextField @bind-Value="_inscan.ConsigneeCountry" Label="Destination Country" Dense="true" Variant="Variant.Outlined" />
+                            <MudSelect T="string" Value="_inscan.ConsigneeLocation" ValueChanged="OnDestLocationChanged" Label="Dest Location" Dense="true" 
+                                       Variant="Variant.Outlined" AnchorOrigin="Origin.BottomCenter" Clearable="true" Disabled="@(!_destLocations.Any())">
+                                @foreach (var loc in _destLocations)
+                                {
+                                    <MudSelectItem T="string" Value="@loc.Name">@loc.Name</MudSelectItem>
+                                }
+                            </MudSelect>
                         </MudItem>
                     </MudGrid>
                 </MudCard>
@@ -266,6 +302,15 @@
     private bool _formIsValid;
     private DateTime? _transactionDate = DateTime.Today;
     private List<Party> _customers = new();
+    private List<Country> _countries = new();
+    private List<City> _originCities = new();
+    private List<City> _destCities = new();
+    private List<Location> _originLocations = new();
+    private List<Location> _destLocations = new();
+    private long? _originCountryId;
+    private long? _originCityId;
+    private long? _destCountryId;
+    private long? _destCityId;
     private bool _isAutoAWB = true;
     private bool _copyAddress;
     private bool _applyTax;
@@ -276,6 +321,7 @@
     protected override async Task OnInitializedAsync()
     {
         _customers = await DbContext.Parties.Where(p => p.PartyType == PartyType.Customer && p.IsActive && !p.IsDeleted).OrderBy(p => p.Name).ToListAsync();
+        _countries = await DbContext.Countries.Where(c => c.IsActive && !c.IsDeleted).OrderBy(c => c.Name).ToListAsync();
 
         if (Id > 0)
         {
@@ -286,17 +332,56 @@
                 _transactionDate = _inscan.TransactionDate.ToLocalTime();
                 _isAutoAWB = _inscan.IsAutoGenerated;
                 _applyTax = (_inscan.TaxPercent ?? 0) > 0;
+                await LoadExistingGeography();
             }
         }
         else
         {
             _inscan.AWBNo = await GenerateAWBNo();
             _inscan.TransactionDate = DateTime.UtcNow;
-            _inscan.ConsignorCountry = "India";
-            _inscan.ConsigneeCountry = "India";
             _inscan.ShipmentModeId = ShipmentMode.Air;
             _inscan.IsAutoGenerated = true;
             _inscan.Currency = "INR";
+            var india = _countries.FirstOrDefault(c => c.Name == "India");
+            if (india != null)
+            {
+                _originCountryId = india.Id;
+                _destCountryId = india.Id;
+                _inscan.ConsignorCountry = india.Name;
+                _inscan.ConsigneeCountry = india.Name;
+                _originCities = await DbContext.Cities.Where(c => c.CountryId == india.Id && c.IsActive && !c.IsDeleted).OrderBy(c => c.Name).ToListAsync();
+                _destCities = _originCities;
+            }
+        }
+    }
+
+    private async Task LoadExistingGeography()
+    {
+        var originCountry = _countries.FirstOrDefault(c => c.Name == _inscan.ConsignorCountry);
+        var destCountry = _countries.FirstOrDefault(c => c.Name == _inscan.ConsigneeCountry);
+        
+        if (originCountry != null)
+        {
+            _originCountryId = originCountry.Id;
+            _originCities = await DbContext.Cities.Where(c => c.CountryId == originCountry.Id && c.IsActive && !c.IsDeleted).OrderBy(c => c.Name).ToListAsync();
+            var originCity = _originCities.FirstOrDefault(c => c.Name == _inscan.ConsignorCity);
+            if (originCity != null)
+            {
+                _originCityId = originCity.Id;
+                _originLocations = await DbContext.Locations.Where(l => l.CityId == originCity.Id && l.IsActive && !l.IsDeleted).OrderBy(l => l.Name).ToListAsync();
+            }
+        }
+        
+        if (destCountry != null)
+        {
+            _destCountryId = destCountry.Id;
+            _destCities = await DbContext.Cities.Where(c => c.CountryId == destCountry.Id && c.IsActive && !c.IsDeleted).OrderBy(c => c.Name).ToListAsync();
+            var destCity = _destCities.FirstOrDefault(c => c.Name == _inscan.ConsigneeCity);
+            if (destCity != null)
+            {
+                _destCityId = destCity.Id;
+                _destLocations = await DbContext.Locations.Where(l => l.CityId == destCity.Id && l.IsActive && !l.IsDeleted).OrderBy(l => l.Name).ToListAsync();
+            }
         }
     }
 
@@ -361,7 +446,113 @@
             _inscan.ConsignorState = address.State;
             _inscan.ConsignorCountry = address.Country ?? "India";
             _inscan.ConsignorPostalCode = address.PostalCode;
+            var country = _countries.FirstOrDefault(c => c.Name == address.Country);
+            if (country != null)
+            {
+                _originCountryId = country.Id;
+                _originCities = await DbContext.Cities.Where(c => c.CountryId == country.Id && c.IsActive && !c.IsDeleted).OrderBy(c => c.Name).ToListAsync();
+                var city = _originCities.FirstOrDefault(c => c.Name == address.City);
+                if (city != null)
+                {
+                    _originCityId = city.Id;
+                    _originLocations = await DbContext.Locations.Where(l => l.CityId == city.Id && l.IsActive && !l.IsDeleted).OrderBy(l => l.Name).ToListAsync();
+                }
+            }
         }
+    }
+
+    private async Task OnOriginCountryChanged(long? countryId)
+    {
+        _originCountryId = countryId;
+        _originCityId = null;
+        _originCities.Clear();
+        _originLocations.Clear();
+        _inscan.ConsignorCity = null;
+        _inscan.ConsignorLocation = null;
+        
+        if (countryId.HasValue)
+        {
+            var country = _countries.FirstOrDefault(c => c.Id == countryId);
+            _inscan.ConsignorCountry = country?.Name;
+            _originCities = await DbContext.Cities.Where(c => c.CountryId == countryId && c.IsActive && !c.IsDeleted).OrderBy(c => c.Name).ToListAsync();
+        }
+        else
+        {
+            _inscan.ConsignorCountry = null;
+        }
+        StateHasChanged();
+    }
+
+    private async Task OnOriginCityChanged(long? cityId)
+    {
+        _originCityId = cityId;
+        _originLocations.Clear();
+        _inscan.ConsignorLocation = null;
+        
+        if (cityId.HasValue)
+        {
+            var city = _originCities.FirstOrDefault(c => c.Id == cityId);
+            _inscan.ConsignorCity = city?.Name;
+            _originLocations = await DbContext.Locations.Where(l => l.CityId == cityId && l.IsActive && !l.IsDeleted).OrderBy(l => l.Name).ToListAsync();
+        }
+        else
+        {
+            _inscan.ConsignorCity = null;
+        }
+        StateHasChanged();
+    }
+
+    private void OnOriginLocationChanged(string? locationName)
+    {
+        _inscan.ConsignorLocation = locationName;
+        StateHasChanged();
+    }
+
+    private async Task OnDestCountryChanged(long? countryId)
+    {
+        _destCountryId = countryId;
+        _destCityId = null;
+        _destCities.Clear();
+        _destLocations.Clear();
+        _inscan.ConsigneeCity = null;
+        _inscan.ConsigneeLocation = null;
+        
+        if (countryId.HasValue)
+        {
+            var country = _countries.FirstOrDefault(c => c.Id == countryId);
+            _inscan.ConsigneeCountry = country?.Name;
+            _destCities = await DbContext.Cities.Where(c => c.CountryId == countryId && c.IsActive && !c.IsDeleted).OrderBy(c => c.Name).ToListAsync();
+        }
+        else
+        {
+            _inscan.ConsigneeCountry = null;
+        }
+        StateHasChanged();
+    }
+
+    private async Task OnDestCityChanged(long? cityId)
+    {
+        _destCityId = cityId;
+        _destLocations.Clear();
+        _inscan.ConsigneeLocation = null;
+        
+        if (cityId.HasValue)
+        {
+            var city = _destCities.FirstOrDefault(c => c.Id == cityId);
+            _inscan.ConsigneeCity = city?.Name;
+            _destLocations = await DbContext.Locations.Where(l => l.CityId == cityId && l.IsActive && !l.IsDeleted).OrderBy(l => l.Name).ToListAsync();
+        }
+        else
+        {
+            _inscan.ConsigneeCity = null;
+        }
+        StateHasChanged();
+    }
+
+    private void OnDestLocationChanged(string? locationName)
+    {
+        _inscan.ConsigneeLocation = locationName;
+        StateHasChanged();
     }
 
     private async Task Save()
