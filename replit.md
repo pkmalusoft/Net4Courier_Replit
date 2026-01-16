@@ -41,6 +41,7 @@ src/
 - **Company**: Multi-tenant company management
 - **Branch**: Company branches with fiscal year support  
 - **User**: System users with role-based access
+- **UserType**: User classification (Employee, Agent, Customer, Vendor)
 - **Role/RolePermission**: User roles and permissions
 - **Party/PartyAddress**: Customers, agents, vendors (normalized)
 - **FinancialYear**: Fiscal year definitions
@@ -90,6 +91,7 @@ cd src/Net4Courier.Web && dotnet run --urls http://0.0.0.0:5000
 14. [x] PostgreSQL table partitioning (PartitioningService created, SQL templates ready)
 15. [x] Finance modules - Invoices and Receipts CRUD (with customer autocomplete, AWB billing, receipt allocation)
 16. [x] Reporting with QuestPDF (AWB labels, Invoice PDFs, Receipt PDFs)
+17. [x] UserType management (Employee, Agent, Customer, Vendor classification)
 
 ## PostgreSQL Partitioning Notes
 - InscanMasters table supports partitioning by TransactionDate

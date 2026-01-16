@@ -19,6 +19,7 @@ public class ApplicationDbContext : DbContext
     public DbSet<FinancialYear> FinancialYears => Set<FinancialYear>();
     public DbSet<Party> Parties => Set<Party>();
     public DbSet<PartyAddress> PartyAddresses => Set<PartyAddress>();
+    public DbSet<UserType> UserTypes => Set<UserType>();
     
     public DbSet<InscanMaster> InscanMasters => Set<InscanMaster>();
     public DbSet<InscanMasterItem> InscanMasterItems => Set<InscanMasterItem>();
@@ -77,6 +78,15 @@ public class ApplicationDbContext : DbContext
             entity.HasIndex(e => e.Username).IsUnique();
             entity.HasOne(e => e.Branch).WithMany().HasForeignKey(e => e.BranchId);
             entity.HasOne(e => e.Role).WithMany(r => r.Users).HasForeignKey(e => e.RoleId);
+            entity.HasOne(e => e.UserType).WithMany(ut => ut.Users).HasForeignKey(e => e.UserTypeId);
+        });
+
+        modelBuilder.Entity<UserType>(entity =>
+        {
+            entity.ToTable("UserTypes");
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Name).HasMaxLength(100).IsRequired();
+            entity.HasIndex(e => e.Name).IsUnique();
         });
 
         modelBuilder.Entity<Role>(entity =>

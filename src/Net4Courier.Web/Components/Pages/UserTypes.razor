@@ -1,0 +1,127 @@
+@page "/usertypes"
+@using Microsoft.EntityFrameworkCore
+@using Net4Courier.Infrastructure.Data
+@using Net4Courier.Masters.Entities
+@inject ApplicationDbContext DbContext
+@inject IDialogService DialogService
+@inject ISnackbar Snackbar
+
+<PageTitle>User Types</PageTitle>
+
+<MudContainer MaxWidth="MaxWidth.Large" Class="mt-4">
+    <MudPaper Elevation="2" Class="pa-4">
+        <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center" Class="mb-4">
+            <MudText Typo="Typo.h5">User Types</MudText>
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add" OnClick="OpenCreateDialog">
+                Add User Type
+            </MudButton>
+        </MudStack>
+
+        <MudTable Items="@_userTypes" Hover="true" Striped="true" Loading="@_loading" LoadingProgressColor="Color.Primary">
+            <HeaderContent>
+                <MudTh>ID</MudTh>
+                <MudTh>Name</MudTh>
+                <MudTh>Status</MudTh>
+                <MudTh>Users Count</MudTh>
+                <MudTh Style="width: 150px;">Actions</MudTh>
+            </HeaderContent>
+            <RowTemplate>
+                <MudTd DataLabel="ID">@context.Id</MudTd>
+                <MudTd DataLabel="Name">@context.Name</MudTd>
+                <MudTd DataLabel="Status">
+                    <MudChip T="string" Color="@(context.IsActive ? Color.Success : Color.Default)" Size="Size.Small">
+                        @(context.IsActive ? "Active" : "Inactive")
+                    </MudChip>
+                </MudTd>
+                <MudTd DataLabel="Users">@context.Users.Count</MudTd>
+                <MudTd DataLabel="Actions">
+                    <MudIconButton Icon="@Icons.Material.Filled.Edit" Color="Color.Primary" Size="Size.Small" OnClick="@(() => OpenEditDialog(context))" />
+                    <MudIconButton Icon="@Icons.Material.Filled.Delete" Color="Color.Error" Size="Size.Small" OnClick="@(() => DeleteUserType(context))" />
+                </MudTd>
+            </RowTemplate>
+            <NoRecordsContent>
+                <MudText>No user types found.</MudText>
+            </NoRecordsContent>
+        </MudTable>
+    </MudPaper>
+</MudContainer>
+
+@code {
+    private List<UserType> _userTypes = new();
+    private bool _loading = true;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadUserTypes();
+    }
+
+    private async Task LoadUserTypes()
+    {
+        _loading = true;
+        _userTypes = await DbContext.UserTypes
+            .Include(ut => ut.Users)
+            .OrderBy(ut => ut.Name)
+            .ToListAsync();
+        _loading = false;
+    }
+
+    private async Task OpenCreateDialog()
+    {
+        var parameters = new DialogParameters<UserTypeDialog>
+        {
+            { x => x.UserType, new UserType() },
+            { x => x.IsNew, true }
+        };
+
+        var options = new DialogOptions { CloseOnEscapeKey = true, MaxWidth = MaxWidth.Small, FullWidth = true };
+        var dialog = await DialogService.ShowAsync<UserTypeDialog>("Add User Type", parameters, options);
+        var result = await dialog.Result;
+
+        if (result != null && !result.Canceled)
+        {
+            await LoadUserTypes();
+            Snackbar.Add("User type created successfully", Severity.Success);
+        }
+    }
+
+    private async Task OpenEditDialog(UserType userType)
+    {
+        var parameters = new DialogParameters<UserTypeDialog>
+        {
+            { x => x.UserType, userType },
+            { x => x.IsNew, false }
+        };
+
+        var options = new DialogOptions { CloseOnEscapeKey = true, MaxWidth = MaxWidth.Small, FullWidth = true };
+        var dialog = await DialogService.ShowAsync<UserTypeDialog>("Edit User Type", parameters, options);
+        var result = await dialog.Result;
+
+        if (result != null && !result.Canceled)
+        {
+            await LoadUserTypes();
+            Snackbar.Add("User type updated successfully", Severity.Success);
+        }
+    }
+
+    private async Task DeleteUserType(UserType userType)
+    {
+        if (userType.Users.Any())
+        {
+            Snackbar.Add($"Cannot delete '{userType.Name}' - it has {userType.Users.Count} users assigned", Severity.Warning);
+            return;
+        }
+
+        var confirm = await DialogService.ShowMessageBox(
+            "Confirm Delete",
+            $"Are you sure you want to delete '{userType.Name}'?",
+            yesText: "Delete", cancelText: "Cancel");
+
+        if (confirm == true)
+        {
+            DbContext.UserTypes.Remove(userType);
+            await DbContext.SaveChangesAsync();
+            await LoadUserTypes();
+            Snackbar.Add("User type deleted successfully", Severity.Success);
+        }
+    }
+}
