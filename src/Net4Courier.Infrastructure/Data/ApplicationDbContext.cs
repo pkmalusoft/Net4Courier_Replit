@@ -37,6 +37,7 @@ public class ApplicationDbContext : DbContext
     public DbSet<AWBOtherCharge> AWBOtherCharges => Set<AWBOtherCharge>();
     public DbSet<PickupRequest> PickupRequests => Set<PickupRequest>();
     public DbSet<PickupRequestShipment> PickupRequestShipments => Set<PickupRequestShipment>();
+    public DbSet<Vehicle> Vehicles => Set<Vehicle>();
     
     public DbSet<Invoice> Invoices => Set<Invoice>();
     public DbSet<InvoiceDetail> InvoiceDetails => Set<InvoiceDetail>();
@@ -318,6 +319,14 @@ public class ApplicationDbContext : DbContext
                   .WithMany(p => p.Shipments)
                   .HasForeignKey(e => e.PickupRequestId)
                   .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<Vehicle>(entity =>
+        {
+            entity.ToTable("Vehicles");
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.VehicleNo).HasMaxLength(50).IsRequired();
+            entity.HasIndex(e => e.VehicleNo);
         });
     }
 

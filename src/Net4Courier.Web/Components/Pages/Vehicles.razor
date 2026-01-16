@@ -1,0 +1,184 @@
+@page "/vehicles"
+@inject ApplicationDbContext DbContext
+@inject IDialogService DialogService
+@inject ISnackbar Snackbar
+@using Microsoft.EntityFrameworkCore
+@using Net4Courier.Infrastructure.Data
+@using Net4Courier.Operations.Entities
+
+<PageTitle>Vehicles - Net4Courier</PageTitle>
+
+<MudPaper Class="pa-4 mb-4" Elevation="2">
+    <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
+        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+            <MudText Typo="Typo.h5">Fleet Vehicles</MudText>
+            <MudChip T="string" Size="Size.Small" Color="Color.Info">@_vehicles.Count vehicles</MudChip>
+        </MudStack>
+        <MudStack Row="true" Spacing="2">
+            <MudTextField @bind-Value="_searchString" Placeholder="Search..." Adornment="Adornment.Start" 
+                          AdornmentIcon="@Icons.Material.Filled.Search" IconSize="Size.Medium" Class="mt-0" Immediate="true" Style="width:300px" />
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add" OnClick="OpenCreateDialog">
+                Add Vehicle
+            </MudButton>
+        </MudStack>
+    </MudStack>
+</MudPaper>
+
+<MudPaper Elevation="2">
+    <MudTable Items="@FilteredVehicles" Hover="true" Striped="true" Loading="@_loading" LoadingProgressColor="Color.Primary">
+        <HeaderContent>
+            <MudTh>Vehicle No</MudTh>
+            <MudTh>Type</MudTh>
+            <MudTh>Make / Model</MudTh>
+            <MudTh>Capacity (kg)</MudTh>
+            <MudTh>Driver</MudTh>
+            <MudTh>Phone</MudTh>
+            <MudTh>Status</MudTh>
+            <MudTh Style="width: 120px;">Actions</MudTh>
+        </HeaderContent>
+        <RowTemplate>
+            <MudTd DataLabel="Vehicle No">
+                <MudText Typo="Typo.body1" Style="font-weight: 600;">@context.VehicleNo</MudText>
+            </MudTd>
+            <MudTd DataLabel="Type">
+                <MudChip T="string" Size="Size.Small" Color="@GetTypeColor(context.VehicleType)">
+                    @(context.VehicleType ?? "Unknown")
+                </MudChip>
+            </MudTd>
+            <MudTd DataLabel="Make / Model">@context.Make @context.Model</MudTd>
+            <MudTd DataLabel="Capacity">@(context.Capacity?.ToString("N0") ?? "-")</MudTd>
+            <MudTd DataLabel="Driver">@(context.DriverName ?? "-")</MudTd>
+            <MudTd DataLabel="Phone">@(context.DriverPhone ?? "-")</MudTd>
+            <MudTd DataLabel="Status">
+                <MudChip T="string" Color="@(context.IsActive ? Color.Success : Color.Error)" Size="Size.Small">
+                    @(context.IsActive ? "Active" : "Inactive")
+                </MudChip>
+            </MudTd>
+            <MudTd>
+                <MudIconButton Icon="@Icons.Material.Filled.Edit" Size="Size.Small" Color="Color.Primary" OnClick="@(() => OpenEditDialog(context))" />
+                <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" Color="Color.Error" OnClick="@(() => DeleteVehicle(context))" />
+            </MudTd>
+        </RowTemplate>
+        <NoRecordsContent>
+            <MudText>No vehicles found.</MudText>
+        </NoRecordsContent>
+    </MudTable>
+</MudPaper>
+
+<MudPaper Class="pa-4 mt-4" Elevation="2" Style="background-color: #e3f2fd;">
+    <MudStack Row="true" Justify="Justify.SpaceAround">
+        <MudStack Spacing="0" AlignItems="AlignItems.Center">
+            <MudText Typo="Typo.h4" Color="Color.Primary">@_vehicles.Count(v => v.VehicleType == "Van")</MudText>
+            <MudText Typo="Typo.caption">Vans</MudText>
+        </MudStack>
+        <MudDivider Vertical="true" FlexItem="true" />
+        <MudStack Spacing="0" AlignItems="AlignItems.Center">
+            <MudText Typo="Typo.h4" Color="Color.Secondary">@_vehicles.Count(v => v.VehicleType == "Motorcycle")</MudText>
+            <MudText Typo="Typo.caption">Motorcycles</MudText>
+        </MudStack>
+        <MudDivider Vertical="true" FlexItem="true" />
+        <MudStack Spacing="0" AlignItems="AlignItems.Center">
+            <MudText Typo="Typo.h4" Color="Color.Tertiary">@_vehicles.Count(v => v.VehicleType == "Truck")</MudText>
+            <MudText Typo="Typo.caption">Trucks</MudText>
+        </MudStack>
+        <MudDivider Vertical="true" FlexItem="true" />
+        <MudStack Spacing="0" AlignItems="AlignItems.Center">
+            <MudText Typo="Typo.h4" Color="Color.Success">@_vehicles.Count(v => v.IsActive)</MudText>
+            <MudText Typo="Typo.caption">Active</MudText>
+        </MudStack>
+    </MudStack>
+</MudPaper>
+
+@code {
+    private List<Vehicle> _vehicles = new();
+    private bool _loading = true;
+    private string _searchString = "";
+
+    private IEnumerable<Vehicle> FilteredVehicles => _vehicles.Where(FilterFunc);
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadVehicles();
+    }
+
+    private async Task LoadVehicles()
+    {
+        _loading = true;
+        _vehicles = await DbContext.Set<Vehicle>()
+            .Where(v => !v.IsDeleted)
+            .OrderBy(v => v.VehicleNo)
+            .ToListAsync();
+        _loading = false;
+    }
+
+    private bool FilterFunc(Vehicle vehicle)
+    {
+        if (string.IsNullOrWhiteSpace(_searchString))
+            return true;
+        
+        return vehicle.VehicleNo.Contains(_searchString, StringComparison.OrdinalIgnoreCase) ||
+               (vehicle.VehicleType?.Contains(_searchString, StringComparison.OrdinalIgnoreCase) ?? false) ||
+               (vehicle.Make?.Contains(_searchString, StringComparison.OrdinalIgnoreCase) ?? false) ||
+               (vehicle.Model?.Contains(_searchString, StringComparison.OrdinalIgnoreCase) ?? false) ||
+               (vehicle.DriverName?.Contains(_searchString, StringComparison.OrdinalIgnoreCase) ?? false);
+    }
+
+    private Color GetTypeColor(string? type) => type switch
+    {
+        "Van" => Color.Primary,
+        "Motorcycle" => Color.Secondary,
+        "Truck" => Color.Tertiary,
+        "Car" => Color.Info,
+        _ => Color.Default
+    };
+
+    private async Task OpenCreateDialog()
+    {
+        var parameters = new DialogParameters<VehicleDialog>();
+        parameters.Add(x => x.Vehicle, new Vehicle { IsActive = true });
+        parameters.Add(x => x.IsNew, true);
+
+        var options = new DialogOptions { CloseButton = true, MaxWidth = MaxWidth.Small, FullWidth = true };
+        var dialog = await DialogService.ShowAsync<VehicleDialog>("Add Vehicle", parameters, options);
+        var result = await dialog.Result;
+
+        if (result != null && !result.Canceled)
+        {
+            await LoadVehicles();
+            Snackbar.Add("Vehicle added successfully", Severity.Success);
+        }
+    }
+
+    private async Task OpenEditDialog(Vehicle vehicle)
+    {
+        var parameters = new DialogParameters<VehicleDialog>();
+        parameters.Add(x => x.Vehicle, vehicle);
+        parameters.Add(x => x.IsNew, false);
+
+        var options = new DialogOptions { CloseButton = true, MaxWidth = MaxWidth.Small, FullWidth = true };
+        var dialog = await DialogService.ShowAsync<VehicleDialog>("Edit Vehicle", parameters, options);
+        var result = await dialog.Result;
+
+        if (result != null && !result.Canceled)
+        {
+            await LoadVehicles();
+            Snackbar.Add("Vehicle updated successfully", Severity.Success);
+        }
+    }
+
+    private async Task DeleteVehicle(Vehicle vehicle)
+    {
+        bool? confirm = await DialogService.ShowMessageBox(
+            "Confirm Delete",
+            $"Are you sure you want to delete vehicle {vehicle.VehicleNo}?",
+            yesText: "Delete", cancelText: "Cancel");
+
+        if (confirm == true)
+        {
+            vehicle.IsDeleted = true;
+            await DbContext.SaveChangesAsync();
+            await LoadVehicles();
+            Snackbar.Add("Vehicle deleted", Severity.Success);
+        }
+    }
+}
