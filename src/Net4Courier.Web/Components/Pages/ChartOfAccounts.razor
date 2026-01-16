@@ -1,0 +1,140 @@
+@page "/chart-of-accounts"
+@inject ApplicationDbContext DbContext
+@inject IDialogService DialogService
+@inject ISnackbar Snackbar
+@using Microsoft.EntityFrameworkCore
+@using Net4Courier.Infrastructure.Data
+@using Net4Courier.Finance.Entities
+
+<PageTitle>Chart of Accounts - Net4Courier</PageTitle>
+
+<MudContainer MaxWidth="MaxWidth.Large" Class="mt-4">
+    <MudPaper Class="pa-4" Elevation="2">
+        <MudToolBar Dense="true" Class="pl-0">
+            <MudText Typo="Typo.h6">Chart of Accounts</MudText>
+            <MudSpacer />
+            <MudTextField @bind-Value="_searchText" Placeholder="Search..." Adornment="Adornment.Start" 
+                          AdornmentIcon="@Icons.Material.Filled.Search" IconSize="Size.Medium" Class="mr-4" 
+                          Immediate="true" DebounceInterval="300" Style="width: 250px;" />
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add" OnClick="AddAccount">
+                Add Account
+            </MudButton>
+        </MudToolBar>
+
+        <MudTable Items="@FilteredAccounts" Dense="true" Hover="true" Bordered="true" Striped="true" Class="mt-4"
+                  Loading="_loading" LoadingProgressColor="Color.Primary">
+            <HeaderContent>
+                <MudTh Style="width: 100px;">Code</MudTh>
+                <MudTh>Account Name</MudTh>
+                <MudTh Style="width: 120px;">Type</MudTh>
+                <MudTh Style="width: 150px;">Group</MudTh>
+                <MudTh Style="width: 80px;">Group?</MudTh>
+                <MudTh Style="width: 80px;">Active</MudTh>
+                <MudTh Style="width: 100px;">Actions</MudTh>
+            </HeaderContent>
+            <RowTemplate>
+                <MudTd DataLabel="Code">@context.Code</MudTd>
+                <MudTd DataLabel="Name">@context.Name</MudTd>
+                <MudTd DataLabel="Type">@context.AccountType</MudTd>
+                <MudTd DataLabel="Group">@GetGroupLabel(context.AccountGroup)</MudTd>
+                <MudTd DataLabel="Is Group"><MudCheckBox Value="@context.IsGroup" Disabled="true" Dense="true" /></MudTd>
+                <MudTd DataLabel="Active"><MudCheckBox Value="@context.IsActive" Disabled="true" Dense="true" Color="Color.Success" /></MudTd>
+                <MudTd>
+                    <MudIconButton Icon="@Icons.Material.Filled.Edit" Size="Size.Small" OnClick="@(() => EditAccount(context))" />
+                    <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" Color="Color.Error" OnClick="@(() => DeleteAccount(context))" />
+                </MudTd>
+            </RowTemplate>
+            <NoRecordsContent>
+                <MudText>No accounts found</MudText>
+            </NoRecordsContent>
+        </MudTable>
+    </MudPaper>
+</MudContainer>
+
+@code {
+    private List<AccountHead> _accounts = new();
+    private string _searchText = string.Empty;
+    private bool _loading = true;
+
+    private IEnumerable<AccountHead> FilteredAccounts => string.IsNullOrWhiteSpace(_searchText)
+        ? _accounts
+        : _accounts.Where(a => 
+            a.Name.Contains(_searchText, StringComparison.OrdinalIgnoreCase) ||
+            a.Code.Contains(_searchText, StringComparison.OrdinalIgnoreCase));
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadAccounts();
+    }
+
+    private async Task LoadAccounts()
+    {
+        _loading = true;
+        _accounts = await DbContext.AccountHeads
+            .Where(a => !a.IsDeleted)
+            .OrderBy(a => a.AccountType)
+            .ThenBy(a => a.AccountGroup)
+            .ThenBy(a => a.Name)
+            .ToListAsync();
+        _loading = false;
+    }
+
+    private async Task AddAccount()
+    {
+        var account = new AccountHead { CompanyId = 1, IsActive = true };
+        var parameters = new DialogParameters<AccountHeadDialog> { { x => x.Account, account }, { x => x.IsNew, true } };
+        var options = new DialogOptions { MaxWidth = MaxWidth.Small, FullWidth = true };
+        var dialog = await DialogService.ShowAsync<AccountHeadDialog>("Add Account", parameters, options);
+        var result = await dialog.Result;
+        if (result != null && !result.Canceled)
+        {
+            await LoadAccounts();
+            Snackbar.Add("Account added successfully", Severity.Success);
+        }
+    }
+
+    private async Task EditAccount(AccountHead account)
+    {
+        var parameters = new DialogParameters<AccountHeadDialog> { { x => x.Account, account }, { x => x.IsNew, false } };
+        var options = new DialogOptions { MaxWidth = MaxWidth.Small, FullWidth = true };
+        var dialog = await DialogService.ShowAsync<AccountHeadDialog>("Edit Account", parameters, options);
+        var result = await dialog.Result;
+        if (result != null && !result.Canceled)
+        {
+            await LoadAccounts();
+            Snackbar.Add("Account updated successfully", Severity.Success);
+        }
+    }
+
+    private async Task DeleteAccount(AccountHead account)
+    {
+        var confirm = await DialogService.ShowMessageBox("Confirm Delete", 
+            $"Are you sure you want to delete '{account.Name}'?", yesText: "Delete", cancelText: "Cancel");
+        if (confirm == true)
+        {
+            account.IsDeleted = true;
+            account.ModifiedAt = DateTime.UtcNow;
+            await DbContext.SaveChangesAsync();
+            await LoadAccounts();
+            Snackbar.Add("Account deleted", Severity.Info);
+        }
+    }
+
+    private string GetGroupLabel(AccountGroup group) => group switch
+    {
+        AccountGroup.CurrentAsset => "Current Asset",
+        AccountGroup.FixedAsset => "Fixed Asset",
+        AccountGroup.CurrentLiability => "Current Liability",
+        AccountGroup.LongTermLiability => "Long Term Liability",
+        AccountGroup.DirectIncome => "Direct Income",
+        AccountGroup.IndirectIncome => "Indirect Income",
+        AccountGroup.DirectExpense => "Direct Expense",
+        AccountGroup.IndirectExpense => "Indirect Expense",
+        AccountGroup.Capital => "Capital",
+        AccountGroup.BankAccount => "Bank Account",
+        AccountGroup.CashAccount => "Cash Account",
+        AccountGroup.Receivable => "Receivable",
+        AccountGroup.Payable => "Payable",
+        _ => group.ToString()
+    };
+}
