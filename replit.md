@@ -184,16 +184,30 @@ Movement type is now calculated automatically based on origin/destination countr
 The Movement Type dropdown has been removed from AWBNew.razor and replaced with a color-coded chip that updates automatically when origin/destination countries change.
 
 ## Recent Changes (Jan 16, 2026)
-- **Pickup Management Workflow**: Complete pickup-to-INSCAN workflow with 6 new pages
+- **Multi-Shipment Pickup Requests**: Customers can now create multiple shipments in one pickup request
+- **PickupRequestShipment Entity**: Child entity for individual shipments with consignee, destination, dimensions, weight
+- **Pickup to Booking Conversion**: INSCAN page now converts pickup request shipments to AWB (booking) records automatically
+- **Customer Dashboard**: New dashboard with shipment statistics (requested, pending, in-transit, delivered, returned)
+- **Customer My Shipments Page**: View and filter all shipments by status with pagination
+- **Customer Tracking Page**: Track shipments by AWB number with tracking history timeline
+- **Pickup Management Workflow**: Complete pickup-to-INSCAN workflow with 8+ pages
 - Added PickupRequest entity with PickupStatus enum (PickupRequest, AssignedForCollection, ShipmentCollected, Inscanned, Cancelled)
 - Created responsive Courier Pickups page for mobile field operations
-- Created INSCAN page with barcode scanner input support
-- Added Customer Portal layout with simplified navigation
+- Created INSCAN page with barcode scanner input and AWB conversion
+- Added Customer Portal layout with Dashboard, My Pickups, My Shipments, Track navigation
 - Reorganized navigation menu into 16 major groups following ERP best practices
 - Party Type Classification: Added AccountNature (Receivable/Payable) to parties
-- Separate management pages for Customers, Delivery Agents, Co-Loaders, Forwarding Agents
 - Seeded forwarding agents: DHL Express, FedEx, Aramex, UPS, TNT
-- Added period validation to AWB entry form to prevent transactions in closed periods
+
+## Pickup to Booking Conversion
+When a pickup request is inscanned at the hub:
+1. Each PickupRequestShipment with status=Pending is converted to an InscanMaster (AWB) record
+2. AWB numbers are auto-generated (AWB + date + sequence)
+3. Consignor info comes from pickup header (customer's pickup address)
+4. Consignee info comes from each shipment line
+5. Shipment line is updated with AWBId and status=Booked
+6. Tracking history entry is created for each AWB
+7. Pickup request is marked as Converted with timestamp
 
 ## Changes (Jan 15, 2026)
 - Implemented modular architecture with 6 separate modules
