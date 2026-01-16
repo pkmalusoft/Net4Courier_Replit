@@ -84,6 +84,12 @@ The application is built on .NET 8 Blazor Server, utilizing a modular architectu
     - **Finalization Workflow**: Pre-finalize validation blocks finalization if any shipment is on-hold; status updates to MANIFESTED.
     - **Status Integration**: BAGGED, UNBAGGED, MANIFESTED, IN_TRANSIT statuses added to timeline on MAWB actions.
     - **MAWB Manifest PDF**: QuestPDF report with MAWB header, bag summary, and shipment details including weights and dimensions.
+- **Printing & Reports**:
+    - **Air Waybill Print (A5)**: Full AWB document in A5 portrait format with shipper/consignee details, dimensions, charges, and signature areas.
+    - **Manifest Labels (4x6)**: Standard shipping labels (4x6 inch) with bag/MAWB info, destination, weight, and COD indicators.
+    - **Export Manifest**: Landscape A4 report for international shipments grouped by destination country with customs values.
+    - **Domestic Manifest**: A4 report for local shipments grouped by destination region/state.
+    - **Print Integration**: Print buttons on AWB Entry page and MAWB Bagging page for quick access to all report types.
 
 ## External Dependencies
 - **Database**: PostgreSQL (hosted on Replit)

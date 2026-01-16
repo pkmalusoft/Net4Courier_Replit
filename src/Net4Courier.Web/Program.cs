@@ -121,6 +121,43 @@ app.MapGet("/api/report/mawb/{id:long}", async (long id, ReportingService report
     return Results.File(pdf, "application/pdf", $"MAWB-Manifest-{id}.pdf");
 });
 
+app.MapGet("/api/report/awb-print/{id:long}", async (long id, ApplicationDbContext db, ReportingService reportService) =>
+{
+    var awb = await db.InscanMasters.FindAsync(id);
+    if (awb == null) return Results.NotFound();
+    var pdf = reportService.GenerateAirWaybillPdf(awb);
+    return Results.File(pdf, "application/pdf", $"AirWaybill-{awb.AWBNo}.pdf");
+});
+
+app.MapGet("/api/report/manifest-label/{id:long}", async (long id, ApplicationDbContext db, ReportingService reportService) =>
+{
+    var awb = await db.InscanMasters.FindAsync(id);
+    if (awb == null) return Results.NotFound();
+    var pdf = reportService.GenerateManifestLabel(awb, awb.BagNo, awb.MAWBNo);
+    return Results.File(pdf, "application/pdf", $"Label-{awb.AWBNo}.pdf");
+});
+
+app.MapGet("/api/report/mawb-labels/{id:long}", async (long id, ReportingService reportService) =>
+{
+    var pdf = await reportService.GenerateManifestLabels(id);
+    if (pdf.Length == 0) return Results.NotFound();
+    return Results.File(pdf, "application/pdf", $"MAWB-Labels-{id}.pdf");
+});
+
+app.MapGet("/api/report/export-manifest/{id:long}", async (long id, ReportingService reportService) =>
+{
+    var pdf = await reportService.GenerateExportManifest(id);
+    if (pdf.Length == 0) return Results.NotFound();
+    return Results.File(pdf, "application/pdf", $"Export-Manifest-{id}.pdf");
+});
+
+app.MapGet("/api/report/domestic-manifest/{id:long}", async (long id, ReportingService reportService) =>
+{
+    var pdf = await reportService.GenerateDomesticManifest(id);
+    if (pdf.Length == 0) return Results.NotFound();
+    return Results.File(pdf, "application/pdf", $"Domestic-Manifest-{id}.pdf");
+});
+
 using (var scope = app.Services.CreateScope())
 {
     var dbContext = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
