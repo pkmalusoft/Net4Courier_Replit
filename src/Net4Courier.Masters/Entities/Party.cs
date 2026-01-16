@@ -8,6 +8,7 @@ public class Party : BaseEntity
     public string Name { get; set; } = string.Empty;
     public string? Code { get; set; }
     public PartyType PartyType { get; set; }
+    public PartyAccountNature AccountNature { get; set; }
     public string? ContactPerson { get; set; }
     public string? Phone { get; set; }
     public string? Mobile { get; set; }
@@ -24,9 +25,16 @@ public class Party : BaseEntity
 public enum PartyType
 {
     Customer = 1,
-    Agent = 2,
+    DeliveryAgent = 2,
     Supplier = 3,
-    ForwardingAgent = 4
+    ForwardingAgent = 4,
+    CoLoader = 5
+}
+
+public enum PartyAccountNature
+{
+    Receivable = 1,
+    Payable = 2
 }
 
 public class PartyAddress : BaseEntity

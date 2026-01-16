@@ -43,9 +43,28 @@ src/
 - **User**: System users with role-based access
 - **UserType**: User classification (Employee, Agent, Customer, Vendor)
 - **Role/RolePermission**: User roles and permissions
-- **Party/PartyAddress**: Customers, agents, vendors (normalized)
+- **Party/PartyAddress**: Party management with clear accounting classifications
 - **FinancialYear**: Fiscal year definitions
 - **FinancialPeriod**: Monthly accounting periods (auto-generated, open/close control)
+
+## Party Types and Accounting Classification
+Parties are classified by PartyType with corresponding AccountNature for proper financial tracking:
+
+| Party Type | Account Nature | Description |
+|------------|---------------|-------------|
+| **Customer** | Receivable | Pays company for courier services |
+| **DeliveryAgent** | Receivable | Delivers shipments on company's behalf |
+| **CoLoader** | Receivable | Provides shipment loads to company for delivery |
+| **Supplier** | Payable | General suppliers |
+| **ForwardingAgent** | Payable | External carriers (DHL, FedEx, Aramex) that company pays to forward shipments |
+
+Seed data includes: DHL Express, FedEx, Aramex, UPS, TNT (all as Forwarding Agents with Account Payable)
+
+Separate management pages exist for each party type:
+- `/parties` - Customers only
+- `/delivery-agents` - Delivery Agents
+- `/co-loaders` - Co-Loaders  
+- `/forwarding-agents` - Forwarding Agents (DHL, FedEx, etc.)
 
 ### Operations Module
 - **InscanMaster**: Main shipment table (139 fields, legacy compatible)

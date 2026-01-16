@@ -1,0 +1,210 @@
+@page "/co-loaders"
+@inject ApplicationDbContext DbContext
+@inject ISnackbar Snackbar
+@inject IDialogService DialogService
+@using Microsoft.EntityFrameworkCore
+@using Net4Courier.Infrastructure.Data
+@using Net4Courier.Masters.Entities
+
+<PageTitle>Co-Loaders - Net4Courier</PageTitle>
+
+<MudPaper Class="pa-4" Elevation="0">
+    <MudToolBar Dense="true" Class="pl-0">
+        <MudText Typo="Typo.h6">Co-Loaders</MudText>
+        <MudChip T="string" Size="Size.Small" Color="Color.Success" Class="ml-2">Account Receivable</MudChip>
+        <MudSpacer />
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add" OnClick="OpenAddDialog">
+            Add Co-Loader
+        </MudButton>
+    </MudToolBar>
+
+    <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-3">
+        Co-loaders provide shipment loads to the company for delivery. Company receives payment from them.
+    </MudText>
+
+    <MudTable Items="_coloaders" Hover="true" Dense="true" Loading="_loading">
+        <HeaderContent>
+            <MudTh>Code</MudTh>
+            <MudTh>Name</MudTh>
+            <MudTh>Contact Person</MudTh>
+            <MudTh>Phone</MudTh>
+            <MudTh>Email</MudTh>
+            <MudTh>Credit Limit</MudTh>
+            <MudTh>Status</MudTh>
+            <MudTh Style="width: 120px;">Actions</MudTh>
+        </HeaderContent>
+        <RowTemplate>
+            <MudTd>@context.Code</MudTd>
+            <MudTd>@context.Name</MudTd>
+            <MudTd>@context.ContactPerson</MudTd>
+            <MudTd>@context.Phone</MudTd>
+            <MudTd>@context.Email</MudTd>
+            <MudTd>@context.CreditLimit.ToString("N2")</MudTd>
+            <MudTd>
+                <MudChip T="string" Size="Size.Small" Color="@(context.IsActive ? Color.Success : Color.Default)">
+                    @(context.IsActive ? "Active" : "Inactive")
+                </MudChip>
+            </MudTd>
+            <MudTd>
+                <MudIconButton Icon="@Icons.Material.Filled.Edit" Size="Size.Small" OnClick="@(() => OpenEditDialog(context))" />
+                <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" Color="Color.Error" OnClick="@(() => DeleteCoLoader(context))" />
+            </MudTd>
+        </RowTemplate>
+        <NoRecordsContent>
+            <MudText>No co-loaders found. Click "Add Co-Loader" to create one.</MudText>
+        </NoRecordsContent>
+    </MudTable>
+</MudPaper>
+
+<MudDialog @bind-Visible="_dialogVisible" Options="new DialogOptions { MaxWidth = MaxWidth.Small, FullWidth = true }">
+    <TitleContent>
+        <MudText Typo="Typo.h6">@(_editingCoLoader.Id == 0 ? "Add Co-Loader" : "Edit Co-Loader")</MudText>
+    </TitleContent>
+    <DialogContent>
+        <MudGrid Spacing="2">
+            <MudItem xs="4">
+                <MudTextField @bind-Value="_editingCoLoader.Code" Label="Code" Variant="Variant.Outlined" />
+            </MudItem>
+            <MudItem xs="8">
+                <MudTextField @bind-Value="_editingCoLoader.Name" Label="Name*" Variant="Variant.Outlined" Required="true" />
+            </MudItem>
+            <MudItem xs="6">
+                <MudTextField @bind-Value="_editingCoLoader.ContactPerson" Label="Contact Person" Variant="Variant.Outlined" />
+            </MudItem>
+            <MudItem xs="6">
+                <MudTextField @bind-Value="_editingCoLoader.Phone" Label="Phone" Variant="Variant.Outlined" />
+            </MudItem>
+            <MudItem xs="6">
+                <MudTextField @bind-Value="_editingCoLoader.Mobile" Label="Mobile" Variant="Variant.Outlined" />
+            </MudItem>
+            <MudItem xs="6">
+                <MudTextField @bind-Value="_editingCoLoader.Email" Label="Email" Variant="Variant.Outlined" />
+            </MudItem>
+            <MudItem xs="6">
+                <MudNumericField @bind-Value="_editingCoLoader.CreditLimit" Label="Credit Limit" Variant="Variant.Outlined" Format="N2" />
+            </MudItem>
+            <MudItem xs="6">
+                <MudNumericField @bind-Value="_editingCoLoader.CreditDays" Label="Credit Days" Variant="Variant.Outlined" />
+            </MudItem>
+            <MudItem xs="12">
+                <MudSwitch @bind-Value="_editingCoLoader.IsActive" Label="Active" Color="Color.Primary" />
+            </MudItem>
+        </MudGrid>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="CloseDialog">Cancel</MudButton>
+        <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="SaveCoLoader">Save</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    private List<Party> _coloaders = new();
+    private bool _loading = true;
+    private bool _dialogVisible;
+    private Party _editingCoLoader = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadCoLoaders();
+    }
+
+    private async Task LoadCoLoaders()
+    {
+        _loading = true;
+        _coloaders = await DbContext.Parties
+            .Where(p => p.PartyType == PartyType.CoLoader && !p.IsDeleted)
+            .OrderBy(p => p.Name)
+            .ToListAsync();
+        _loading = false;
+    }
+
+    private void OpenAddDialog()
+    {
+        _editingCoLoader = new Party 
+        { 
+            PartyType = PartyType.CoLoader,
+            AccountNature = PartyAccountNature.Receivable,
+            IsActive = true,
+            CreatedAt = DateTime.UtcNow
+        };
+        _dialogVisible = true;
+    }
+
+    private void OpenEditDialog(Party coloader)
+    {
+        _editingCoLoader = new Party
+        {
+            Id = coloader.Id,
+            Code = coloader.Code,
+            Name = coloader.Name,
+            ContactPerson = coloader.ContactPerson,
+            Phone = coloader.Phone,
+            Mobile = coloader.Mobile,
+            Email = coloader.Email,
+            CreditLimit = coloader.CreditLimit,
+            CreditDays = coloader.CreditDays,
+            IsActive = coloader.IsActive,
+            PartyType = PartyType.CoLoader,
+            AccountNature = PartyAccountNature.Receivable,
+            CompanyId = coloader.CompanyId,
+            CreatedAt = coloader.CreatedAt
+        };
+        _dialogVisible = true;
+    }
+
+    private void CloseDialog() => _dialogVisible = false;
+
+    private async Task SaveCoLoader()
+    {
+        if (string.IsNullOrWhiteSpace(_editingCoLoader.Name))
+        {
+            Snackbar.Add("Name is required", Severity.Error);
+            return;
+        }
+
+        if (_editingCoLoader.Id == 0)
+        {
+            DbContext.Parties.Add(_editingCoLoader);
+            Snackbar.Add("Co-loader added successfully", Severity.Success);
+        }
+        else
+        {
+            var existing = await DbContext.Parties.FindAsync(_editingCoLoader.Id);
+            if (existing != null)
+            {
+                existing.Code = _editingCoLoader.Code;
+                existing.Name = _editingCoLoader.Name;
+                existing.ContactPerson = _editingCoLoader.ContactPerson;
+                existing.Phone = _editingCoLoader.Phone;
+                existing.Mobile = _editingCoLoader.Mobile;
+                existing.Email = _editingCoLoader.Email;
+                existing.CreditLimit = _editingCoLoader.CreditLimit;
+                existing.CreditDays = _editingCoLoader.CreditDays;
+                existing.IsActive = _editingCoLoader.IsActive;
+                existing.ModifiedAt = DateTime.UtcNow;
+            }
+            Snackbar.Add("Co-loader updated successfully", Severity.Success);
+        }
+
+        await DbContext.SaveChangesAsync();
+        _dialogVisible = false;
+        await LoadCoLoaders();
+    }
+
+    private async Task DeleteCoLoader(Party coloader)
+    {
+        bool? confirm = await DialogService.ShowMessageBox(
+            "Delete Co-Loader",
+            $"Are you sure you want to delete '{coloader.Name}'?",
+            yesText: "Delete", cancelText: "Cancel");
+
+        if (confirm == true)
+        {
+            coloader.IsDeleted = true;
+            coloader.ModifiedAt = DateTime.UtcNow;
+            await DbContext.SaveChangesAsync();
+            Snackbar.Add("Co-loader deleted", Severity.Success);
+            await LoadCoLoaders();
+        }
+    }
+}
