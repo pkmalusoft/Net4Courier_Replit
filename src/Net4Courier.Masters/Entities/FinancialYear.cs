@@ -14,4 +14,5 @@ public class FinancialYear : BaseEntity
     public int? ClosedBy { get; set; }
     
     public virtual Company Company { get; set; } = null!;
+    public virtual ICollection<FinancialPeriod> Periods { get; set; } = new List<FinancialPeriod>();
 }

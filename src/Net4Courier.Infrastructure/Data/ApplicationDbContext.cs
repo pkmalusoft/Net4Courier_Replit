@@ -17,6 +17,7 @@ public class ApplicationDbContext : DbContext
     public DbSet<Role> Roles => Set<Role>();
     public DbSet<RolePermission> RolePermissions => Set<RolePermission>();
     public DbSet<FinancialYear> FinancialYears => Set<FinancialYear>();
+    public DbSet<FinancialPeriod> FinancialPeriods => Set<FinancialPeriod>();
     public DbSet<Party> Parties => Set<Party>();
     public DbSet<PartyAddress> PartyAddresses => Set<PartyAddress>();
     public DbSet<UserType> UserTypes => Set<UserType>();
@@ -128,6 +129,16 @@ public class ApplicationDbContext : DbContext
             entity.Property(e => e.Name).HasMaxLength(50).IsRequired();
             entity.HasIndex(e => new { e.CompanyId, e.Name }).IsUnique();
             entity.HasOne(e => e.Company).WithMany(c => c.FinancialYears).HasForeignKey(e => e.CompanyId);
+        });
+
+        modelBuilder.Entity<FinancialPeriod>(entity =>
+        {
+            entity.ToTable("FinancialPeriods");
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.PeriodName).HasMaxLength(50).IsRequired();
+            entity.HasIndex(e => new { e.FinancialYearId, e.PeriodNumber }).IsUnique();
+            entity.HasOne(e => e.FinancialYear).WithMany(fy => fy.Periods).HasForeignKey(e => e.FinancialYearId)
+                  .OnDelete(DeleteBehavior.Cascade);
         });
 
         modelBuilder.Entity<Party>(entity =>
