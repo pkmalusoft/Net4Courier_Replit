@@ -1,0 +1,263 @@
+@page "/courier-ledger"
+@page "/courier-ledger/{CourierId:int}"
+@using Net4Courier.Infrastructure.Data
+@using Net4Courier.Operations.Entities
+@using Net4Courier.Kernel.Enums
+@using Net4Courier.Web.Services
+@using Net4Courier.Masters.Entities
+@using Microsoft.EntityFrameworkCore
+@inject ApplicationDbContext Context
+@inject DRSReconciliationService ReconciliationService
+@inject ISnackbar Snackbar
+@rendermode InteractiveServer
+
+<PageTitle>Courier Ledger</PageTitle>
+
+<MudContainer MaxWidth="MaxWidth.ExtraLarge" Class="py-4">
+    <MudText Typo="Typo.h5" Class="mb-4">Courier Ledger</MudText>
+
+    <MudGrid>
+        <MudItem xs="12" md="4">
+            <MudAutocomplete T="User" Label="Select Courier" @bind-Value="_selectedCourier"
+                             SearchFunc="SearchCouriers" ToStringFunc="@(u => u?.FullName ?? "")"
+                             Variant="Variant.Outlined" Dense="true" />
+        </MudItem>
+        <MudItem xs="12" md="2">
+            <MudDatePicker Label="From Date" @bind-Date="_fromDate" DateFormat="dd-MMM-yyyy" />
+        </MudItem>
+        <MudItem xs="12" md="2">
+            <MudDatePicker Label="To Date" @bind-Date="_toDate" DateFormat="dd-MMM-yyyy" />
+        </MudItem>
+        <MudItem xs="12" md="2">
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="LoadLedger" Class="mt-2">
+                Load
+            </MudButton>
+        </MudItem>
+    </MudGrid>
+
+    @if (_selectedCourier != null || CourierId > 0)
+    {
+        <MudGrid Class="mt-4">
+            <MudItem xs="12" md="3">
+                <MudPaper Class="pa-4 text-center" Elevation="0">
+                    <MudText Typo="Typo.caption">Total Debits (Shortages)</MudText>
+                    <MudText Typo="Typo.h5" Color="Color.Error">₹@_totalDebits.ToString("N2")</MudText>
+                </MudPaper>
+            </MudItem>
+            <MudItem xs="12" md="3">
+                <MudPaper Class="pa-4 text-center" Elevation="0">
+                    <MudText Typo="Typo.caption">Total Credits (Excess)</MudText>
+                    <MudText Typo="Typo.h5" Color="Color.Success">₹@_totalCredits.ToString("N2")</MudText>
+                </MudPaper>
+            </MudItem>
+            <MudItem xs="12" md="3">
+                <MudPaper Class="pa-4 text-center" Elevation="0">
+                    <MudText Typo="Typo.caption">Current Balance</MudText>
+                    <MudText Typo="Typo.h5" Color="@(_currentBalance > 0 ? Color.Error : Color.Success)">
+                        ₹@_currentBalance.ToString("N2")
+                    </MudText>
+                    <MudText Typo="Typo.caption">@(_currentBalance > 0 ? "Due from Courier" : "Due to Courier")</MudText>
+                </MudPaper>
+            </MudItem>
+            <MudItem xs="12" md="3">
+                <MudPaper Class="pa-4 text-center" Elevation="0">
+                    <MudText Typo="Typo.caption">Unsettled Entries</MudText>
+                    <MudText Typo="Typo.h5" Color="Color.Warning">@_unsettledCount</MudText>
+                </MudPaper>
+            </MudItem>
+        </MudGrid>
+
+        @if (_loading)
+        {
+            <MudProgressLinear Indeterminate="true" Class="mt-4" />
+        }
+        else
+        {
+            <MudTable Items="@_ledgerEntries" Dense="true" Hover="true" Class="mt-4">
+                <HeaderContent>
+                    <MudTh>Date</MudTh>
+                    <MudTh>Type</MudTh>
+                    <MudTh>DRS No</MudTh>
+                    <MudTh>Narration</MudTh>
+                    <MudTh Style="text-align:right">Debit</MudTh>
+                    <MudTh Style="text-align:right">Credit</MudTh>
+                    <MudTh Style="text-align:right">Balance</MudTh>
+                    <MudTh>Status</MudTh>
+                </HeaderContent>
+                <RowTemplate>
+                    <MudTd>@context.TransactionDate.ToString("dd-MMM-yyyy")</MudTd>
+                    <MudTd>
+                        <MudChip T="string" Size="Size.Small" Color="@GetEntryTypeColor(context.EntryType)">
+                            @context.EntryType
+                        </MudChip>
+                    </MudTd>
+                    <MudTd>@context.DRSNo</MudTd>
+                    <MudTd>@context.Narration</MudTd>
+                    <MudTd Class="text-right" Style="color: #d32f2f;">
+                        @(context.DebitAmount > 0 ? context.DebitAmount.ToString("N2") : "")
+                    </MudTd>
+                    <MudTd Class="text-right" Style="color: #388e3c;">
+                        @(context.CreditAmount > 0 ? context.CreditAmount.ToString("N2") : "")
+                    </MudTd>
+                    <MudTd Class="text-right" Style="@(context.RunningBalance > 0 ? "color: #d32f2f;" : "color: #388e3c;")">
+                        ₹@context.RunningBalance.ToString("N2")
+                    </MudTd>
+                    <MudTd>
+                        @if (context.IsSettled)
+                        {
+                            <MudChip T="string" Size="Size.Small" Color="Color.Success">Settled</MudChip>
+                        }
+                        else
+                        {
+                            <MudChip T="string" Size="Size.Small" Color="Color.Warning">Pending</MudChip>
+                        }
+                    </MudTd>
+                </RowTemplate>
+                <NoRecordsContent>
+                    <MudText>No ledger entries found</MudText>
+                </NoRecordsContent>
+            </MudTable>
+        }
+    }
+    else
+    {
+        <MudPaper Class="pa-4 mt-4">
+            <MudText Typo="Typo.h6" Class="mb-4">All Courier Balances</MudText>
+            
+            <MudTable Items="@_allCourierBalances" Dense="true" Hover="true"
+                      OnRowClick="@((TableRowClickEventArgs<CourierBalanceSummary> args) => SelectCourier(args.Item))">
+                <HeaderContent>
+                    <MudTh>Courier</MudTh>
+                    <MudTh Style="text-align:right">Total Debits</MudTh>
+                    <MudTh Style="text-align:right">Total Credits</MudTh>
+                    <MudTh Style="text-align:right">Balance</MudTh>
+                    <MudTh Style="text-align:center">Unsettled</MudTh>
+                </HeaderContent>
+                <RowTemplate>
+                    <MudTd>@context.CourierName</MudTd>
+                    <MudTd Class="text-right" Style="color: #d32f2f;">₹@context.TotalDebits.ToString("N2")</MudTd>
+                    <MudTd Class="text-right" Style="color: #388e3c;">₹@context.TotalCredits.ToString("N2")</MudTd>
+                    <MudTd Class="text-right" Style="@(context.Balance > 0 ? "color: #d32f2f;" : "color: #388e3c;")">
+                        ₹@context.Balance.ToString("N2")
+                    </MudTd>
+                    <MudTd Style="text-align:center">
+                        <MudChip T="string" Size="Size.Small" Color="@(context.UnsettledCount > 0 ? Color.Warning : Color.Success)">
+                            @context.UnsettledCount
+                        </MudChip>
+                    </MudTd>
+                </RowTemplate>
+                <NoRecordsContent>
+                    <MudText>No courier balances found</MudText>
+                </NoRecordsContent>
+            </MudTable>
+        </MudPaper>
+    }
+</MudContainer>
+
+@code {
+    [Parameter] public int CourierId { get; set; }
+
+    private bool _loading;
+    private User? _selectedCourier;
+    private DateTime? _fromDate;
+    private DateTime? _toDate;
+
+    private List<CourierLedger> _ledgerEntries = new();
+    private List<CourierBalanceSummary> _allCourierBalances = new();
+
+    private decimal _totalDebits;
+    private decimal _totalCredits;
+    private decimal _currentBalance;
+    private int _unsettledCount;
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (CourierId > 0)
+        {
+            _selectedCourier = await Context.Users.FirstOrDefaultAsync(u => u.Id == CourierId);
+            await LoadLedger();
+        }
+        else
+        {
+            await LoadAllBalances();
+        }
+    }
+
+    private async Task<IEnumerable<User>> SearchCouriers(string value)
+    {
+        if (string.IsNullOrEmpty(value))
+            return await Context.Users.Where(u => u.IsActive).Take(20).ToListAsync();
+
+        return await Context.Users
+            .Where(u => u.IsActive && (u.FullName.Contains(value) || u.Username.Contains(value)))
+            .Take(20)
+            .ToListAsync();
+    }
+
+    private async Task LoadLedger()
+    {
+        var courierId = _selectedCourier?.Id ?? CourierId;
+        if (courierId == 0) return;
+
+        _loading = true;
+        StateHasChanged();
+
+        try
+        {
+            var query = Context.CourierLedgers
+                .Where(l => l.CourierId == courierId);
+
+            if (_fromDate.HasValue)
+                query = query.Where(l => l.TransactionDate.Date >= _fromDate.Value.Date);
+
+            if (_toDate.HasValue)
+                query = query.Where(l => l.TransactionDate.Date <= _toDate.Value.Date);
+
+            _ledgerEntries = await query.OrderByDescending(l => l.TransactionDate)
+                .ThenByDescending(l => l.Id)
+                .ToListAsync();
+
+            _totalDebits = _ledgerEntries.Sum(l => l.DebitAmount);
+            _totalCredits = _ledgerEntries.Sum(l => l.CreditAmount);
+            _currentBalance = await ReconciliationService.GetCourierBalance(courierId);
+            _unsettledCount = _ledgerEntries.Count(l => !l.IsSettled);
+        }
+        finally
+        {
+            _loading = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task LoadAllBalances()
+    {
+        _loading = true;
+        StateHasChanged();
+
+        try
+        {
+            _allCourierBalances = await ReconciliationService.GetCourierBalances();
+        }
+        finally
+        {
+            _loading = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task SelectCourier(CourierBalanceSummary summary)
+    {
+        _selectedCourier = await Context.Users.FirstOrDefaultAsync(u => u.Id == summary.CourierId);
+        await LoadLedger();
+    }
+
+    private Color GetEntryTypeColor(LedgerEntryType type) => type switch
+    {
+        LedgerEntryType.Shortage => Color.Error,
+        LedgerEntryType.Excess => Color.Success,
+        LedgerEntryType.ExpenseReimbursement => Color.Info,
+        LedgerEntryType.SalaryDeduction => Color.Warning,
+        LedgerEntryType.Adjustment => Color.Secondary,
+        _ => Color.Default
+    };
+}

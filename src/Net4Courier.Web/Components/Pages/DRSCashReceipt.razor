@@ -1,0 +1,256 @@
+@page "/drs-cash-receipt"
+@using Net4Courier.Infrastructure.Data
+@using Net4Courier.Operations.Entities
+@using Net4Courier.Kernel.Enums
+@using Net4Courier.Web.Services
+@using Microsoft.EntityFrameworkCore
+@using Microsoft.AspNetCore.Components.Authorization
+@inject ApplicationDbContext Context
+@inject DRSReconciliationService ReconciliationService
+@inject ISnackbar Snackbar
+@inject AuthenticationStateProvider AuthStateProvider
+@rendermode InteractiveServer
+
+<PageTitle>DRS Cash Receipt</PageTitle>
+
+<MudContainer MaxWidth="MaxWidth.ExtraLarge" Class="py-4">
+    <MudText Typo="Typo.h5" Class="mb-4">DRS Cash Receipt - Accountant</MudText>
+
+    <MudGrid>
+        <MudItem xs="12" md="4">
+            <MudDatePicker Label="Date" @bind-Date="_filterDate" DateFormat="dd-MMM-yyyy" />
+        </MudItem>
+        <MudItem xs="12" md="4">
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="LoadPendingSubmissions">
+                Search
+            </MudButton>
+        </MudItem>
+    </MudGrid>
+
+    @if (_loading)
+    {
+        <MudProgressLinear Indeterminate="true" Class="mt-4" />
+    }
+    else
+    {
+        <MudTable Items="@_submissions" Dense="true" Hover="true" Class="mt-4">
+            <HeaderContent>
+                <MudTh>DRS No</MudTh>
+                <MudTh>Date</MudTh>
+                <MudTh>Courier</MudTh>
+                <MudTh>Submitted Amount</MudTh>
+                <MudTh>Submitted At</MudTh>
+                <MudTh>Status</MudTh>
+                <MudTh>Action</MudTh>
+            </HeaderContent>
+            <RowTemplate>
+                <MudTd>@context.DRS?.DRSNo</MudTd>
+                <MudTd>@context.SubmissionDate.ToString("dd-MMM-yyyy")</MudTd>
+                <MudTd>@context.CourierName</MudTd>
+                <MudTd Class="text-right">₹@context.CashSubmittedAmount.ToString("N2")</MudTd>
+                <MudTd>@context.SubmissionTime.ToString("HH:mm")</MudTd>
+                <MudTd>
+                    @if (context.IsAcknowledged)
+                    {
+                        <MudChip T="string" Size="Size.Small" Color="Color.Success">Acknowledged</MudChip>
+                    }
+                    else
+                    {
+                        <MudChip T="string" Size="Size.Small" Color="Color.Warning">Pending</MudChip>
+                    }
+                </MudTd>
+                <MudTd>
+                    @if (!context.IsAcknowledged)
+                    {
+                        <MudButton Size="Size.Small" Variant="Variant.Filled" Color="Color.Primary"
+                                   OnClick="@(() => OpenReceiptDialog(context))">
+                            Receive
+                        </MudButton>
+                    }
+                    else
+                    {
+                        <MudText Typo="Typo.caption">@context.ReceiptNo</MudText>
+                    }
+                </MudTd>
+            </RowTemplate>
+            <NoRecordsContent>
+                <MudText>No pending submissions found</MudText>
+            </NoRecordsContent>
+        </MudTable>
+
+        <MudExpansionPanels Class="mt-4">
+            <MudExpansionPanel Text="Today's Summary" IsInitiallyExpanded="true">
+                <MudGrid>
+                    <MudItem xs="6" md="3">
+                        <MudPaper Class="pa-4 text-center" Elevation="0">
+                            <MudText Typo="Typo.h4" Color="Color.Primary">@_pendingCount</MudText>
+                            <MudText Typo="Typo.caption">Pending Receipts</MudText>
+                        </MudPaper>
+                    </MudItem>
+                    <MudItem xs="6" md="3">
+                        <MudPaper Class="pa-4 text-center" Elevation="0">
+                            <MudText Typo="Typo.h4" Color="Color.Success">@_acknowledgedCount</MudText>
+                            <MudText Typo="Typo.caption">Acknowledged</MudText>
+                        </MudPaper>
+                    </MudItem>
+                    <MudItem xs="6" md="3">
+                        <MudPaper Class="pa-4 text-center" Elevation="0">
+                            <MudText Typo="Typo.h6" Color="Color.Warning">₹@_pendingAmount.ToString("N2")</MudText>
+                            <MudText Typo="Typo.caption">Pending Amount</MudText>
+                        </MudPaper>
+                    </MudItem>
+                    <MudItem xs="6" md="3">
+                        <MudPaper Class="pa-4 text-center" Elevation="0">
+                            <MudText Typo="Typo.h6" Color="Color.Success">₹@_receivedAmount.ToString("N2")</MudText>
+                            <MudText Typo="Typo.caption">Received Amount</MudText>
+                        </MudPaper>
+                    </MudItem>
+                </MudGrid>
+            </MudExpansionPanel>
+        </MudExpansionPanels>
+    }
+</MudContainer>
+
+<MudDialog @bind-Visible="_showReceiptDialog" Options="@(new DialogOptions { MaxWidth = MaxWidth.Small, FullWidth = true })">
+    <TitleContent>
+        <MudText Typo="Typo.h6">Acknowledge Cash Receipt</MudText>
+    </TitleContent>
+    <DialogContent>
+        @if (_selectedSubmission != null)
+        {
+            <MudGrid>
+                <MudItem xs="6">
+                    <MudText Typo="Typo.caption">DRS No</MudText>
+                    <MudText Typo="Typo.body1">@_selectedSubmission.DRS?.DRSNo</MudText>
+                </MudItem>
+                <MudItem xs="6">
+                    <MudText Typo="Typo.caption">Courier</MudText>
+                    <MudText Typo="Typo.body1">@_selectedSubmission.CourierName</MudText>
+                </MudItem>
+                <MudItem xs="12">
+                    <MudText Typo="Typo.caption">Submitted Amount</MudText>
+                    <MudText Typo="Typo.h5" Color="Color.Primary">₹@_selectedSubmission.CashSubmittedAmount.ToString("N2")</MudText>
+                </MudItem>
+            </MudGrid>
+
+            <MudDivider Class="my-4" />
+
+            <MudNumericField @bind-Value="_receivedCashAmount" Label="Received Amount" Format="N2"
+                             Adornment="Adornment.Start" AdornmentText="₹" Variant="Variant.Outlined" Class="mb-4" />
+
+            @if (_receivedCashAmount != _selectedSubmission.CashSubmittedAmount)
+            {
+                <MudAlert Severity="@(_receivedCashAmount < _selectedSubmission.CashSubmittedAmount ? Severity.Warning : Severity.Info)" Class="mb-4">
+                    Difference: ₹@((_receivedCashAmount - _selectedSubmission.CashSubmittedAmount).ToString("N2"))
+                </MudAlert>
+            }
+
+            <MudTextField @bind-Value="_receiptRemarks" Label="Remarks" Lines="2" Variant="Variant.Outlined" />
+        }
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="@(() => _showReceiptDialog = false)">Cancel</MudButton>
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="AcknowledgeReceipt" Disabled="@_saving">
+            @if (_saving)
+            {
+                <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" />
+            }
+            Acknowledge Receipt
+        </MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    private bool _loading;
+    private bool _saving;
+    private DateTime? _filterDate = DateTime.Today;
+    private List<CourierCashSubmission> _submissions = new();
+    
+    private int _pendingCount;
+    private int _acknowledgedCount;
+    private decimal _pendingAmount;
+    private decimal _receivedAmount;
+
+    private bool _showReceiptDialog;
+    private CourierCashSubmission? _selectedSubmission;
+    private decimal _receivedCashAmount;
+    private string? _receiptRemarks;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadPendingSubmissions();
+    }
+
+    private async Task LoadPendingSubmissions()
+    {
+        _loading = true;
+        StateHasChanged();
+
+        try
+        {
+            var query = Context.CourierCashSubmissions
+                .Include(c => c.DRS)
+                .AsQueryable();
+
+            if (_filterDate.HasValue)
+            {
+                var date = _filterDate.Value.Date;
+                query = query.Where(c => c.SubmissionDate.Date == date);
+            }
+
+            _submissions = await query.OrderByDescending(c => c.SubmissionTime).ToListAsync();
+
+            _pendingCount = _submissions.Count(s => !s.IsAcknowledged);
+            _acknowledgedCount = _submissions.Count(s => s.IsAcknowledged);
+            _pendingAmount = _submissions.Where(s => !s.IsAcknowledged).Sum(s => s.CashSubmittedAmount);
+            _receivedAmount = _submissions.Where(s => s.IsAcknowledged).Sum(s => s.ReceivedAmount ?? 0);
+        }
+        finally
+        {
+            _loading = false;
+            StateHasChanged();
+        }
+    }
+
+    private void OpenReceiptDialog(CourierCashSubmission submission)
+    {
+        _selectedSubmission = submission;
+        _receivedCashAmount = submission.CashSubmittedAmount;
+        _receiptRemarks = null;
+        _showReceiptDialog = true;
+    }
+
+    private async Task AcknowledgeReceipt()
+    {
+        if (_selectedSubmission == null) return;
+
+        _saving = true;
+        StateHasChanged();
+
+        try
+        {
+            var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+            var userName = authState.User.Identity?.Name ?? "System";
+
+            await ReconciliationService.AcknowledgeReceipt(
+                _selectedSubmission.Id,
+                0,
+                userName,
+                _receivedCashAmount
+            );
+
+            Snackbar.Add("Receipt acknowledged successfully", Severity.Success);
+            _showReceiptDialog = false;
+            await LoadPendingSubmissions();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _saving = false;
+            StateHasChanged();
+        }
+    }
+}

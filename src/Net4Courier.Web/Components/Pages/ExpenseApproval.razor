@@ -1,0 +1,312 @@
+@page "/expense-approval"
+@using Net4Courier.Infrastructure.Data
+@using Net4Courier.Operations.Entities
+@using Net4Courier.Kernel.Enums
+@using Net4Courier.Web.Services
+@using Microsoft.EntityFrameworkCore
+@using Microsoft.AspNetCore.Components.Authorization
+@inject ApplicationDbContext Context
+@inject DRSReconciliationService ReconciliationService
+@inject ISnackbar Snackbar
+@inject AuthenticationStateProvider AuthStateProvider
+@inject IDialogService DialogService
+@rendermode InteractiveServer
+
+<PageTitle>Expense Approval</PageTitle>
+
+<MudContainer MaxWidth="MaxWidth.ExtraLarge" Class="py-4">
+    <MudText Typo="Typo.h5" Class="mb-4">Expense Approval Queue</MudText>
+
+    <MudGrid>
+        <MudItem xs="12" md="3">
+            <MudSelect @bind-Value="_statusFilter" Label="Status" Variant="Variant.Outlined">
+                <MudSelectItem Value="@("all")">All</MudSelectItem>
+                <MudSelectItem Value="@("pending")">Pending</MudSelectItem>
+                <MudSelectItem Value="@("approved")">Approved</MudSelectItem>
+                <MudSelectItem Value="@("rejected")">Rejected</MudSelectItem>
+            </MudSelect>
+        </MudItem>
+        <MudItem xs="12" md="3">
+            <MudDatePicker Label="From Date" @bind-Date="_fromDate" DateFormat="dd-MMM-yyyy" />
+        </MudItem>
+        <MudItem xs="12" md="3">
+            <MudDatePicker Label="To Date" @bind-Date="_toDate" DateFormat="dd-MMM-yyyy" />
+        </MudItem>
+        <MudItem xs="12" md="3">
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="LoadExpenses" Class="mt-2">
+                Search
+            </MudButton>
+        </MudItem>
+    </MudGrid>
+
+    @if (_loading)
+    {
+        <MudProgressLinear Indeterminate="true" Class="mt-4" />
+    }
+    else
+    {
+        <MudTable Items="@_expenses" Dense="true" Hover="true" Class="mt-4" 
+                  MultiSelection="true" @bind-SelectedItems="_selectedExpenses">
+            <ToolBarContent>
+                <MudText Typo="Typo.h6">Expenses</MudText>
+                <MudSpacer />
+                @if (_selectedExpenses.Any(e => e.Status == ExpenseStatus.Pending))
+                {
+                    <MudButton Variant="Variant.Filled" Color="Color.Success" Size="Size.Small" Class="mr-2"
+                               OnClick="BulkApprove">
+                        Approve Selected (@_selectedExpenses.Count(e => e.Status == ExpenseStatus.Pending))
+                    </MudButton>
+                    <MudButton Variant="Variant.Outlined" Color="Color.Error" Size="Size.Small"
+                               OnClick="BulkReject">
+                        Reject Selected
+                    </MudButton>
+                }
+            </ToolBarContent>
+            <HeaderContent>
+                <MudTh>DRS No</MudTh>
+                <MudTh>Date</MudTh>
+                <MudTh>Courier</MudTh>
+                <MudTh>Type</MudTh>
+                <MudTh>Amount</MudTh>
+                <MudTh>Description</MudTh>
+                <MudTh>Bill</MudTh>
+                <MudTh>Status</MudTh>
+                <MudTh>Actions</MudTh>
+            </HeaderContent>
+            <RowTemplate>
+                <MudTd>@context.DRS?.DRSNo</MudTd>
+                <MudTd>@context.ExpenseDate.ToString("dd-MMM-yyyy")</MudTd>
+                <MudTd>@context.CourierName</MudTd>
+                <MudTd>@context.ExpenseType</MudTd>
+                <MudTd Class="text-right">₹@context.Amount.ToString("N2")</MudTd>
+                <MudTd>@context.Description</MudTd>
+                <MudTd>
+                    @if (!string.IsNullOrEmpty(context.BillImagePath))
+                    {
+                        <MudIconButton Icon="@Icons.Material.Filled.Image" Size="Size.Small"
+                                       OnClick="@(() => ViewBill(context.BillImagePath))" />
+                    }
+                </MudTd>
+                <MudTd>
+                    <MudChip T="string" Size="Size.Small" Color="@GetStatusColor(context.Status)">
+                        @context.Status
+                    </MudChip>
+                </MudTd>
+                <MudTd>
+                    @if (context.Status == ExpenseStatus.Pending)
+                    {
+                        <MudIconButton Icon="@Icons.Material.Filled.Check" Size="Size.Small" Color="Color.Success"
+                                       OnClick="@(() => ApproveExpense(context))" />
+                        <MudIconButton Icon="@Icons.Material.Filled.Close" Size="Size.Small" Color="Color.Error"
+                                       OnClick="@(() => RejectExpense(context))" />
+                    }
+                    else
+                    {
+                        <MudText Typo="Typo.caption">@context.ApprovedByName</MudText>
+                    }
+                </MudTd>
+            </RowTemplate>
+            <NoRecordsContent>
+                <MudText>No expenses found</MudText>
+            </NoRecordsContent>
+        </MudTable>
+
+        <MudExpansionPanels Class="mt-4">
+            <MudExpansionPanel Text="Summary" IsInitiallyExpanded="true">
+                <MudGrid>
+                    <MudItem xs="6" md="3">
+                        <MudPaper Class="pa-4 text-center" Elevation="0">
+                            <MudText Typo="Typo.h4" Color="Color.Warning">@_pendingCount</MudText>
+                            <MudText Typo="Typo.caption">Pending</MudText>
+                        </MudPaper>
+                    </MudItem>
+                    <MudItem xs="6" md="3">
+                        <MudPaper Class="pa-4 text-center" Elevation="0">
+                            <MudText Typo="Typo.h4" Color="Color.Success">@_approvedCount</MudText>
+                            <MudText Typo="Typo.caption">Approved</MudText>
+                        </MudPaper>
+                    </MudItem>
+                    <MudItem xs="6" md="3">
+                        <MudPaper Class="pa-4 text-center" Elevation="0">
+                            <MudText Typo="Typo.h6" Color="Color.Warning">₹@_pendingAmount.ToString("N2")</MudText>
+                            <MudText Typo="Typo.caption">Pending Amount</MudText>
+                        </MudPaper>
+                    </MudItem>
+                    <MudItem xs="6" md="3">
+                        <MudPaper Class="pa-4 text-center" Elevation="0">
+                            <MudText Typo="Typo.h6" Color="Color.Success">₹@_approvedAmount.ToString("N2")</MudText>
+                            <MudText Typo="Typo.caption">Approved Amount</MudText>
+                        </MudPaper>
+                    </MudItem>
+                </MudGrid>
+            </MudExpansionPanel>
+        </MudExpansionPanels>
+    }
+</MudContainer>
+
+<MudDialog @bind-Visible="_showBillDialog" Options="@(new DialogOptions { MaxWidth = MaxWidth.Medium, FullWidth = true })">
+    <TitleContent>
+        <MudText Typo="Typo.h6">View Bill</MudText>
+    </TitleContent>
+    <DialogContent>
+        <img src="@_billImageUrl" style="max-width: 100%; max-height: 500px;" alt="Bill" />
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="@(() => _showBillDialog = false)">Close</MudButton>
+    </DialogActions>
+</MudDialog>
+
+<MudDialog @bind-Visible="_showRejectDialog">
+    <TitleContent>
+        <MudText Typo="Typo.h6">Reject Expense</MudText>
+    </TitleContent>
+    <DialogContent>
+        <MudTextField @bind-Value="_rejectReason" Label="Rejection Reason" Lines="3" Variant="Variant.Outlined" />
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="@(() => _showRejectDialog = false)">Cancel</MudButton>
+        <MudButton Variant="Variant.Filled" Color="Color.Error" OnClick="ConfirmReject">Reject</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    private bool _loading;
+    private string _statusFilter = "pending";
+    private DateTime? _fromDate = DateTime.Today.AddDays(-7);
+    private DateTime? _toDate = DateTime.Today;
+    private List<CourierExpense> _expenses = new();
+    private HashSet<CourierExpense> _selectedExpenses = new();
+
+    private int _pendingCount;
+    private int _approvedCount;
+    private decimal _pendingAmount;
+    private decimal _approvedAmount;
+
+    private bool _showBillDialog;
+    private string? _billImageUrl;
+
+    private bool _showRejectDialog;
+    private CourierExpense? _expenseToReject;
+    private string? _rejectReason;
+    private bool _isBulkReject;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadExpenses();
+    }
+
+    private async Task LoadExpenses()
+    {
+        _loading = true;
+        StateHasChanged();
+
+        try
+        {
+            var query = Context.CourierExpenses
+                .Include(e => e.DRS)
+                .AsQueryable();
+
+            if (_statusFilter == "pending")
+                query = query.Where(e => e.Status == ExpenseStatus.Pending);
+            else if (_statusFilter == "approved")
+                query = query.Where(e => e.Status == ExpenseStatus.Approved);
+            else if (_statusFilter == "rejected")
+                query = query.Where(e => e.Status == ExpenseStatus.Rejected);
+
+            if (_fromDate.HasValue)
+                query = query.Where(e => e.ExpenseDate.Date >= _fromDate.Value.Date);
+
+            if (_toDate.HasValue)
+                query = query.Where(e => e.ExpenseDate.Date <= _toDate.Value.Date);
+
+            _expenses = await query.OrderByDescending(e => e.ExpenseDate).ToListAsync();
+            _selectedExpenses.Clear();
+
+            _pendingCount = _expenses.Count(e => e.Status == ExpenseStatus.Pending);
+            _approvedCount = _expenses.Count(e => e.Status == ExpenseStatus.Approved);
+            _pendingAmount = _expenses.Where(e => e.Status == ExpenseStatus.Pending).Sum(e => e.Amount);
+            _approvedAmount = _expenses.Where(e => e.Status == ExpenseStatus.Approved).Sum(e => e.Amount);
+        }
+        finally
+        {
+            _loading = false;
+            StateHasChanged();
+        }
+    }
+
+    private void ViewBill(string? path)
+    {
+        _billImageUrl = path;
+        _showBillDialog = true;
+    }
+
+    private async Task ApproveExpense(CourierExpense expense)
+    {
+        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+        var userName = authState.User.Identity?.Name ?? "System";
+
+        await ReconciliationService.ApproveExpense(expense.Id, 0, userName);
+        Snackbar.Add("Expense approved", Severity.Success);
+        await LoadExpenses();
+    }
+
+    private void RejectExpense(CourierExpense expense)
+    {
+        _expenseToReject = expense;
+        _rejectReason = null;
+        _isBulkReject = false;
+        _showRejectDialog = true;
+    }
+
+    private async Task ConfirmReject()
+    {
+        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+        var userName = authState.User.Identity?.Name ?? "System";
+
+        if (_isBulkReject)
+        {
+            foreach (var expense in _selectedExpenses.Where(e => e.Status == ExpenseStatus.Pending))
+            {
+                await ReconciliationService.RejectExpense(expense.Id, 0, userName, _rejectReason);
+            }
+            Snackbar.Add("Expenses rejected", Severity.Success);
+        }
+        else if (_expenseToReject != null)
+        {
+            await ReconciliationService.RejectExpense(_expenseToReject.Id, 0, userName, _rejectReason);
+            Snackbar.Add("Expense rejected", Severity.Success);
+        }
+
+        _showRejectDialog = false;
+        await LoadExpenses();
+    }
+
+    private async Task BulkApprove()
+    {
+        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+        var userName = authState.User.Identity?.Name ?? "System";
+
+        foreach (var expense in _selectedExpenses.Where(e => e.Status == ExpenseStatus.Pending))
+        {
+            await ReconciliationService.ApproveExpense(expense.Id, 0, userName);
+        }
+
+        Snackbar.Add($"Approved {_selectedExpenses.Count(e => e.Status == ExpenseStatus.Pending)} expenses", Severity.Success);
+        await LoadExpenses();
+    }
+
+    private void BulkReject()
+    {
+        _rejectReason = null;
+        _isBulkReject = true;
+        _showRejectDialog = true;
+    }
+
+    private Color GetStatusColor(ExpenseStatus status) => status switch
+    {
+        ExpenseStatus.Pending => Color.Warning,
+        ExpenseStatus.Approved => Color.Success,
+        ExpenseStatus.Rejected => Color.Error,
+        _ => Color.Default
+    };
+}

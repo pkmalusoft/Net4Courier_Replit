@@ -1,0 +1,282 @@
+@page "/drs-reconciliation"
+@using Net4Courier.Infrastructure.Data
+@using Net4Courier.Operations.Entities
+@using Net4Courier.Kernel.Enums
+@using Net4Courier.Web.Services
+@using Microsoft.EntityFrameworkCore
+@inject ApplicationDbContext Context
+@inject DRSReconciliationService ReconciliationService
+@inject NavigationManager Navigation
+@rendermode InteractiveServer
+
+<PageTitle>DRS Reconciliation Dashboard</PageTitle>
+
+<MudContainer MaxWidth="MaxWidth.ExtraLarge" Class="py-4">
+    <MudText Typo="Typo.h5" Class="mb-4">DRS Reconciliation Dashboard</MudText>
+
+    <MudGrid>
+        <MudItem xs="6" md="3">
+            <MudCard Outlined="true">
+                <MudCardContent Class="text-center">
+                    <MudIcon Icon="@Icons.Material.Filled.PendingActions" Size="Size.Large" Color="Color.Warning" />
+                    <MudText Typo="Typo.h4" Class="mt-2">@_openCount</MudText>
+                    <MudText Typo="Typo.caption">Open DRS</MudText>
+                </MudCardContent>
+                <MudCardActions>
+                    <MudButton Size="Size.Small" Color="Color.Warning" FullWidth="true"
+                               OnClick="@(() => FilterByStatus(DRSStatus.Open))">View</MudButton>
+                </MudCardActions>
+            </MudCard>
+        </MudItem>
+        <MudItem xs="6" md="3">
+            <MudCard Outlined="true">
+                <MudCardContent Class="text-center">
+                    <MudIcon Icon="@Icons.Material.Filled.Upload" Size="Size.Large" Color="Color.Info" />
+                    <MudText Typo="Typo.h4" Class="mt-2">@_submittedCount</MudText>
+                    <MudText Typo="Typo.caption">Submitted</MudText>
+                </MudCardContent>
+                <MudCardActions>
+                    <MudButton Size="Size.Small" Color="Color.Info" FullWidth="true"
+                               OnClick="@(() => FilterByStatus(DRSStatus.Submitted))">View</MudButton>
+                </MudCardActions>
+            </MudCard>
+        </MudItem>
+        <MudItem xs="6" md="3">
+            <MudCard Outlined="true">
+                <MudCardContent Class="text-center">
+                    <MudIcon Icon="@Icons.Material.Filled.HourglassTop" Size="Size.Large" Color="Color.Secondary" />
+                    <MudText Typo="Typo.h4" Class="mt-2">@_partialCount</MudText>
+                    <MudText Typo="Typo.caption">Partially Reconciled</MudText>
+                </MudCardContent>
+                <MudCardActions>
+                    <MudButton Size="Size.Small" Color="Color.Secondary" FullWidth="true"
+                               OnClick="@(() => FilterByStatus(DRSStatus.PartiallyReconciled))">View</MudButton>
+                </MudCardActions>
+            </MudCard>
+        </MudItem>
+        <MudItem xs="6" md="3">
+            <MudCard Outlined="true">
+                <MudCardContent Class="text-center">
+                    <MudIcon Icon="@Icons.Material.Filled.CheckCircle" Size="Size.Large" Color="Color.Success" />
+                    <MudText Typo="Typo.h4" Class="mt-2">@_reconciledCount</MudText>
+                    <MudText Typo="Typo.caption">Reconciled Today</MudText>
+                </MudCardContent>
+                <MudCardActions>
+                    <MudButton Size="Size.Small" Color="Color.Success" FullWidth="true"
+                               OnClick="@(() => FilterByStatus(DRSStatus.Reconciled))">View</MudButton>
+                </MudCardActions>
+            </MudCard>
+        </MudItem>
+    </MudGrid>
+
+    <MudGrid Class="mt-4">
+        <MudItem xs="12" md="8">
+            <MudPaper Class="pa-4">
+                <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center" Class="mb-4">
+                    <MudText Typo="Typo.h6">DRS List</MudText>
+                    <MudStack Row="true" Spacing="2">
+                        <MudDatePicker Label="Date" @bind-Date="_filterDate" DateFormat="dd-MMM-yyyy" Style="max-width:150px" />
+                        <MudButton Variant="Variant.Outlined" Size="Size.Small" OnClick="LoadDashboard">Refresh</MudButton>
+                    </MudStack>
+                </MudStack>
+
+                @if (_loading)
+                {
+                    <MudProgressLinear Indeterminate="true" />
+                }
+                else
+                {
+                    <MudTable Items="@_drsList" Dense="true" Hover="true" OnRowClick="@((TableRowClickEventArgs<DRS> args) => ViewDRS(args.Item))">
+                        <HeaderContent>
+                            <MudTh>DRS No</MudTh>
+                            <MudTh>Date</MudTh>
+                            <MudTh>Courier</MudTh>
+                            <MudTh>AWBs</MudTh>
+                            <MudTh>Expected</MudTh>
+                            <MudTh>Received</MudTh>
+                            <MudTh>Variance</MudTh>
+                            <MudTh>Status</MudTh>
+                        </HeaderContent>
+                        <RowTemplate>
+                            <MudTd>@context.DRSNo</MudTd>
+                            <MudTd>@context.DRSDate.ToString("dd-MMM")</MudTd>
+                            <MudTd>@context.DeliveryEmployeeName</MudTd>
+                            <MudTd>@context.TotalAWBs</MudTd>
+                            <MudTd Class="text-right">₹@((context.ExpectedTotal ?? 0).ToString("N0"))</MudTd>
+                            <MudTd Class="text-right">₹@((context.ActualReceived ?? 0).ToString("N0"))</MudTd>
+                            <MudTd Class="text-right">
+                                @{
+                                    var variance = context.Variance ?? 0;
+                                    var color = variance == 0 ? "" : (variance > 0 ? "color: red;" : "color: green;");
+                                }
+                                <span style="@color">₹@variance.ToString("N0")</span>
+                            </MudTd>
+                            <MudTd>
+                                <MudChip T="string" Size="Size.Small" Color="@GetStatusColor(context.Status)">
+                                    @context.Status
+                                </MudChip>
+                            </MudTd>
+                        </RowTemplate>
+                        <NoRecordsContent>
+                            <MudText>No DRS found for selected criteria</MudText>
+                        </NoRecordsContent>
+                    </MudTable>
+                }
+            </MudPaper>
+        </MudItem>
+
+        <MudItem xs="12" md="4">
+            <MudPaper Class="pa-4 mb-4">
+                <MudText Typo="Typo.h6" Class="mb-4">Courier Balances</MudText>
+                
+                @if (_courierBalances.Any())
+                {
+                    <MudList T="CourierBalanceSummary" Dense="true">
+                        @foreach (var cb in _courierBalances.Take(10))
+                        {
+                            <MudListItem T="CourierBalanceSummary" OnClick="@(() => ViewCourierLedger(cb.CourierId))">
+                                <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
+                                    <div>
+                                        <MudText Typo="Typo.body2">@cb.CourierName</MudText>
+                                        <MudText Typo="Typo.caption">@cb.UnsettledCount unsettled</MudText>
+                                    </div>
+                                    <MudText Typo="Typo.body2" 
+                                             Color="@(cb.Balance > 0 ? Color.Error : (cb.Balance < 0 ? Color.Success : Color.Default))">
+                                        ₹@cb.Balance.ToString("N0")
+                                    </MudText>
+                                </MudStack>
+                            </MudListItem>
+                        }
+                    </MudList>
+                    <MudButton Variant="Variant.Text" Color="Color.Primary" FullWidth="true" Class="mt-2"
+                               OnClick="@(() => Navigation.NavigateTo("/courier-ledger"))">
+                        View All Ledgers
+                    </MudButton>
+                }
+                else
+                {
+                    <MudText Typo="Typo.body2" Color="Color.Secondary">No balances</MudText>
+                }
+            </MudPaper>
+
+            <MudPaper Class="pa-4">
+                <MudText Typo="Typo.h6" Class="mb-4">Pending Approvals</MudText>
+                
+                <MudGrid>
+                    <MudItem xs="6">
+                        <MudPaper Class="pa-3 text-center" Elevation="0" Style="background-color: #fff8e1;">
+                            <MudText Typo="Typo.h5" Color="Color.Warning">@_pendingExpenses</MudText>
+                            <MudText Typo="Typo.caption">Expenses</MudText>
+                        </MudPaper>
+                    </MudItem>
+                    <MudItem xs="6">
+                        <MudPaper Class="pa-3 text-center" Elevation="0" Style="background-color: #e3f2fd;">
+                            <MudText Typo="Typo.h5" Color="Color.Info">@_pendingReceipts</MudText>
+                            <MudText Typo="Typo.caption">Receipts</MudText>
+                        </MudPaper>
+                    </MudItem>
+                </MudGrid>
+
+                <MudStack Class="mt-4" Spacing="2">
+                    <MudButton Variant="Variant.Outlined" Color="Color.Warning" FullWidth="true"
+                               OnClick="@(() => Navigation.NavigateTo("/expense-approval"))">
+                        Expense Approvals
+                    </MudButton>
+                    <MudButton Variant="Variant.Outlined" Color="Color.Info" FullWidth="true"
+                               OnClick="@(() => Navigation.NavigateTo("/drs-cash-receipt"))">
+                        Cash Receipts
+                    </MudButton>
+                </MudStack>
+            </MudPaper>
+        </MudItem>
+    </MudGrid>
+</MudContainer>
+
+@code {
+    private bool _loading;
+    private DateTime? _filterDate = DateTime.Today;
+    private DRSStatus? _statusFilter;
+
+    private int _openCount;
+    private int _submittedCount;
+    private int _partialCount;
+    private int _reconciledCount;
+    private int _pendingExpenses;
+    private int _pendingReceipts;
+
+    private List<DRS> _drsList = new();
+    private List<CourierBalanceSummary> _courierBalances = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadDashboard();
+    }
+
+    private async Task LoadDashboard()
+    {
+        _loading = true;
+        StateHasChanged();
+
+        try
+        {
+            var today = DateTime.UtcNow.Date;
+
+            _openCount = await Context.DRSs.CountAsync(d => d.Status == DRSStatus.Open);
+            _submittedCount = await Context.DRSs.CountAsync(d => d.Status == DRSStatus.Submitted);
+            _partialCount = await Context.DRSs.CountAsync(d => d.Status == DRSStatus.PartiallyReconciled);
+            _reconciledCount = await Context.DRSs.CountAsync(d => d.Status == DRSStatus.Reconciled && d.ReconciledAt.HasValue && d.ReconciledAt.Value.Date == today);
+
+            _pendingExpenses = await Context.CourierExpenses.CountAsync(e => e.Status == ExpenseStatus.Pending);
+            _pendingReceipts = await Context.CourierCashSubmissions.CountAsync(c => !c.IsAcknowledged);
+
+            var query = Context.DRSs.AsQueryable();
+
+            if (_statusFilter.HasValue)
+            {
+                query = query.Where(d => d.Status == _statusFilter.Value);
+            }
+
+            if (_filterDate.HasValue)
+            {
+                var date = _filterDate.Value.Date;
+                query = query.Where(d => d.DRSDate.Date == date);
+            }
+
+            _drsList = await query.OrderByDescending(d => d.DRSDate).Take(50).ToListAsync();
+
+            _courierBalances = await ReconciliationService.GetCourierBalances();
+        }
+        finally
+        {
+            _loading = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task FilterByStatus(DRSStatus status)
+    {
+        _statusFilter = status;
+        _filterDate = null;
+        await LoadDashboard();
+    }
+
+    private void ViewDRS(DRS drs)
+    {
+        Navigation.NavigateTo($"/drs-submission/{drs.Id}");
+    }
+
+    private void ViewCourierLedger(int courierId)
+    {
+        Navigation.NavigateTo($"/courier-ledger/{courierId}");
+    }
+
+    private Color GetStatusColor(DRSStatus status) => status switch
+    {
+        DRSStatus.Open => Color.Warning,
+        DRSStatus.Submitted => Color.Info,
+        DRSStatus.PartiallyReconciled => Color.Secondary,
+        DRSStatus.Reconciled => Color.Success,
+        DRSStatus.Closed => Color.Dark,
+        _ => Color.Default
+    };
+}

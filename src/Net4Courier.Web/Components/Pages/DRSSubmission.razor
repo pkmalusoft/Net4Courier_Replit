@@ -1,0 +1,473 @@
+@page "/drs-submission"
+@page "/drs-submission/{DRSId:long}"
+@using Net4Courier.Infrastructure.Data
+@using Net4Courier.Operations.Entities
+@using Net4Courier.Kernel.Enums
+@using Net4Courier.Web.Services
+@using Microsoft.EntityFrameworkCore
+@inject ApplicationDbContext Context
+@inject DRSReconciliationService ReconciliationService
+@inject ISnackbar Snackbar
+@inject NavigationManager Navigation
+@rendermode InteractiveServer
+
+<PageTitle>Courier Day-End Submission</PageTitle>
+
+<MudContainer MaxWidth="MaxWidth.Large" Class="py-4">
+    <MudText Typo="Typo.h5" Class="mb-4">Courier Day-End Submission</MudText>
+
+    @if (_loading)
+    {
+        <MudProgressLinear Indeterminate="true" />
+    }
+    else if (_drs == null)
+    {
+        <MudPaper Class="pa-4">
+            <MudText Typo="Typo.h6" Class="mb-4">Select DRS to Submit</MudText>
+            
+            <MudGrid>
+                <MudItem xs="12" md="4">
+                    <MudDatePicker Label="DRS Date" @bind-Date="_filterDate" DateFormat="dd-MMM-yyyy" />
+                </MudItem>
+                <MudItem xs="12" md="4">
+                    <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="LoadOpenDRSList">
+                        Search
+                    </MudButton>
+                </MudItem>
+            </MudGrid>
+
+            <MudTable Items="@_openDRSList" Dense="true" Hover="true" Class="mt-4">
+                <HeaderContent>
+                    <MudTh>DRS No</MudTh>
+                    <MudTh>Date</MudTh>
+                    <MudTh>Courier</MudTh>
+                    <MudTh>Total AWBs</MudTh>
+                    <MudTh>Status</MudTh>
+                    <MudTh>Action</MudTh>
+                </HeaderContent>
+                <RowTemplate>
+                    <MudTd>@context.DRSNo</MudTd>
+                    <MudTd>@context.DRSDate.ToString("dd-MMM-yyyy")</MudTd>
+                    <MudTd>@context.DeliveryEmployeeName</MudTd>
+                    <MudTd>@context.TotalAWBs</MudTd>
+                    <MudTd>
+                        <MudChip T="string" Size="Size.Small" Color="@GetStatusColor(context.Status)">
+                            @context.Status
+                        </MudChip>
+                    </MudTd>
+                    <MudTd>
+                        <MudButton Size="Size.Small" Variant="Variant.Outlined" Color="Color.Primary"
+                                   OnClick="@(() => SelectDRS(context))">
+                            Select
+                        </MudButton>
+                    </MudTd>
+                </RowTemplate>
+                <NoRecordsContent>
+                    <MudText>No open DRS found for selected date</MudText>
+                </NoRecordsContent>
+            </MudTable>
+        </MudPaper>
+    }
+    else
+    {
+        <MudGrid>
+            <MudItem xs="12" md="8">
+                <MudPaper Class="pa-4">
+                    <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center" Class="mb-4">
+                        <MudText Typo="Typo.h6">DRS: @_drs.DRSNo</MudText>
+                        <MudChip T="string" Color="@GetStatusColor(_drs.Status)">@_drs.Status</MudChip>
+                    </MudStack>
+
+                    <MudGrid>
+                        <MudItem xs="6" md="3">
+                            <MudText Typo="Typo.caption">Date</MudText>
+                            <MudText Typo="Typo.body1">@_drs.DRSDate.ToString("dd-MMM-yyyy")</MudText>
+                        </MudItem>
+                        <MudItem xs="6" md="3">
+                            <MudText Typo="Typo.caption">Courier</MudText>
+                            <MudText Typo="Typo.body1">@_drs.DeliveryEmployeeName</MudText>
+                        </MudItem>
+                        <MudItem xs="6" md="3">
+                            <MudText Typo="Typo.caption">Vehicle</MudText>
+                            <MudText Typo="Typo.body1">@_drs.VehicleNo</MudText>
+                        </MudItem>
+                        <MudItem xs="6" md="3">
+                            <MudText Typo="Typo.caption">Total AWBs</MudText>
+                            <MudText Typo="Typo.body1">@_summary.TotalAWBs</MudText>
+                        </MudItem>
+                    </MudGrid>
+
+                    <MudDivider Class="my-4" />
+
+                    <MudText Typo="Typo.subtitle1" Class="mb-2">Delivery Summary</MudText>
+                    <MudGrid>
+                        <MudItem xs="4">
+                            <MudPaper Class="pa-3 text-center" Elevation="0" Style="background-color: #e8f5e9;">
+                                <MudText Typo="Typo.h5" Color="Color.Success">@_summary.DeliveredCount</MudText>
+                                <MudText Typo="Typo.caption">Delivered</MudText>
+                            </MudPaper>
+                        </MudItem>
+                        <MudItem xs="4">
+                            <MudPaper Class="pa-3 text-center" Elevation="0" Style="background-color: #fff3e0;">
+                                <MudText Typo="Typo.h5" Color="Color.Warning">@_summary.PendingCount</MudText>
+                                <MudText Typo="Typo.caption">Pending</MudText>
+                            </MudPaper>
+                        </MudItem>
+                        <MudItem xs="4">
+                            <MudPaper Class="pa-3 text-center" Elevation="0" Style="background-color: #ffebee;">
+                                <MudText Typo="Typo.h5" Color="Color.Error">@_summary.ReturnedCount</MudText>
+                                <MudText Typo="Typo.caption">Returned</MudText>
+                            </MudPaper>
+                        </MudItem>
+                    </MudGrid>
+
+                    <MudDivider Class="my-4" />
+
+                    <MudText Typo="Typo.subtitle1" Class="mb-2">Expected Collections</MudText>
+                    <MudSimpleTable Dense="true" Striped="true">
+                        <tbody>
+                            <tr>
+                                <td>COD (Material Cost)</td>
+                                <td class="text-right">@_summary.TotalMaterialCost.ToString("N2")</td>
+                            </tr>
+                            <tr>
+                                <td>Courier Charges (ToPay)</td>
+                                <td class="text-right">@_summary.TotalCourierCharges.ToString("N2")</td>
+                            </tr>
+                            <tr>
+                                <td>Pickup Cash</td>
+                                <td class="text-right">@_summary.PickupCash.ToString("N2")</td>
+                            </tr>
+                            <tr>
+                                <td>Outstanding Collected</td>
+                                <td class="text-right">@_summary.OutstandingCollected.ToString("N2")</td>
+                            </tr>
+                            <tr style="font-weight: bold; background-color: #e3f2fd;">
+                                <td>Total Expected</td>
+                                <td class="text-right">@_summary.ExpectedTotal.ToString("N2")</td>
+                            </tr>
+                        </tbody>
+                    </MudSimpleTable>
+                </MudPaper>
+            </MudItem>
+
+            <MudItem xs="12" md="4">
+                <MudPaper Class="pa-4">
+                    <MudText Typo="Typo.h6" Class="mb-4">Cash Submission</MudText>
+
+                    @if (_drs.Status == DRSStatus.Open)
+                    {
+                        <MudNumericField @bind-Value="_cashAmount" Label="Cash Amount" 
+                                         Format="N2" Adornment="Adornment.Start" AdornmentText="₹"
+                                         Variant="Variant.Outlined" Class="mb-4" />
+
+                        <MudTextField @bind-Value="_remarks" Label="Remarks" Lines="2" 
+                                      Variant="Variant.Outlined" Class="mb-4" />
+
+                        <MudButton Variant="Variant.Filled" Color="Color.Primary" FullWidth="true"
+                                   OnClick="SubmitCash" Disabled="@_saving">
+                            @if (_saving)
+                            {
+                                <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" />
+                            }
+                            Submit Cash
+                        </MudButton>
+                    }
+                    else
+                    {
+                        <MudAlert Severity="Severity.Info" Class="mb-4">
+                            Cash already submitted: ₹@_summary.CashSubmitted.ToString("N2")
+                        </MudAlert>
+                        
+                        @if (_summary.IsAcknowledged)
+                        {
+                            <MudAlert Severity="Severity.Success">
+                                Receipt acknowledged: ₹@_summary.CashReceived.ToString("N2")
+                            </MudAlert>
+                        }
+                        else
+                        {
+                            <MudAlert Severity="Severity.Warning">
+                                Awaiting accountant acknowledgement
+                            </MudAlert>
+                        }
+                    }
+                </MudPaper>
+
+                <MudPaper Class="pa-4 mt-4">
+                    <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center" Class="mb-4">
+                        <MudText Typo="Typo.h6">Expenses</MudText>
+                        @if (_drs.Status == DRSStatus.Open || _drs.Status == DRSStatus.Submitted)
+                        {
+                            <MudIconButton Icon="@Icons.Material.Filled.Add" Size="Size.Small"
+                                           OnClick="@(() => _showExpenseDialog = true)" />
+                        }
+                    </MudStack>
+
+                    @if (_expenses.Any())
+                    {
+                        <MudList T="CourierExpense" Dense="true">
+                            @foreach (var expense in _expenses)
+                            {
+                                <MudListItem T="CourierExpense">
+                                    <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
+                                        <div>
+                                            <MudText Typo="Typo.body2">@expense.ExpenseType</MudText>
+                                            <MudText Typo="Typo.caption">@expense.Description</MudText>
+                                        </div>
+                                        <div class="text-right">
+                                            <MudText Typo="Typo.body2">₹@expense.Amount.ToString("N2")</MudText>
+                                            <MudChip T="string" Size="Size.Small" Color="@GetExpenseStatusColor(expense.Status)">
+                                                @expense.Status
+                                            </MudChip>
+                                        </div>
+                                    </MudStack>
+                                </MudListItem>
+                            }
+                        </MudList>
+                        <MudDivider Class="my-2" />
+                        <MudStack Row="true" Justify="Justify.SpaceBetween">
+                            <MudText Typo="Typo.body2">Total Expenses</MudText>
+                            <MudText Typo="Typo.body2">₹@_summary.TotalExpenses.ToString("N2")</MudText>
+                        </MudStack>
+                    }
+                    else
+                    {
+                        <MudText Typo="Typo.body2" Color="Color.Secondary">No expenses declared</MudText>
+                    }
+                </MudPaper>
+            </MudItem>
+        </MudGrid>
+    }
+</MudContainer>
+
+<MudDialog @bind-Visible="_showExpenseDialog">
+    <TitleContent>
+        <MudText Typo="Typo.h6">Add Expense</MudText>
+    </TitleContent>
+    <DialogContent>
+        <MudSelect @bind-Value="_newExpense.ExpenseType" Label="Expense Type" Variant="Variant.Outlined" Class="mb-4">
+            @foreach (ExpenseType type in Enum.GetValues<ExpenseType>())
+            {
+                <MudSelectItem Value="@type">@type</MudSelectItem>
+            }
+        </MudSelect>
+        
+        <MudNumericField @bind-Value="_newExpense.Amount" Label="Amount" Format="N2"
+                         Adornment="Adornment.Start" AdornmentText="₹" Variant="Variant.Outlined" Class="mb-4" />
+        
+        <MudTextField @bind-Value="_newExpense.Description" Label="Description" 
+                      Variant="Variant.Outlined" Class="mb-4" />
+
+        <MudFileUpload T="IBrowserFile" Accept=".jpg,.jpeg,.png,.pdf" FilesChanged="OnBillFileChanged">
+            <ActivatorContent>
+                <MudButton Variant="Variant.Outlined" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Upload">
+                    Upload Bill
+                </MudButton>
+            </ActivatorContent>
+        </MudFileUpload>
+        @if (!string.IsNullOrEmpty(_billFileName))
+        {
+            <MudText Typo="Typo.caption" Class="mt-2">@_billFileName</MudText>
+        }
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="@(() => _showExpenseDialog = false)">Cancel</MudButton>
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="AddExpense">Add</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [Parameter] public long DRSId { get; set; }
+
+    private bool _loading;
+    private bool _saving;
+    private DateTime? _filterDate = DateTime.Today;
+    private List<DRS> _openDRSList = new();
+    private DRS? _drs;
+    private DRSReconciliationSummary _summary = new();
+    private List<CourierExpense> _expenses = new();
+    
+    private decimal _cashAmount;
+    private string? _remarks;
+    
+    private bool _showExpenseDialog;
+    private CourierExpense _newExpense = new();
+    private string? _billFileName;
+    private IBrowserFile? _billFile;
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (DRSId > 0)
+        {
+            await LoadDRS(DRSId);
+        }
+        else
+        {
+            await LoadOpenDRSList();
+        }
+    }
+
+    private async Task LoadOpenDRSList()
+    {
+        _loading = true;
+        StateHasChanged();
+
+        try
+        {
+            var query = Context.DRSs
+                .Where(d => d.Status == DRSStatus.Open || d.Status == DRSStatus.Submitted);
+
+            if (_filterDate.HasValue)
+            {
+                var date = _filterDate.Value.Date;
+                query = query.Where(d => d.DRSDate.Date == date);
+            }
+
+            _openDRSList = await query.OrderByDescending(d => d.DRSDate).Take(50).ToListAsync();
+        }
+        finally
+        {
+            _loading = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task SelectDRS(DRS drs)
+    {
+        await LoadDRS(drs.Id);
+    }
+
+    private async Task LoadDRS(long id)
+    {
+        _loading = true;
+        StateHasChanged();
+
+        try
+        {
+            _drs = await Context.DRSs
+                .Include(d => d.Details)
+                    .ThenInclude(d => d.Inscan)
+                .Include(d => d.CashSubmissions)
+                .Include(d => d.Expenses)
+                .FirstOrDefaultAsync(d => d.Id == id);
+
+            if (_drs != null)
+            {
+                _summary = ReconciliationService.CalculateSummary(_drs);
+                _expenses = _drs.Expenses.OrderBy(e => e.ExpenseDate).ToList();
+                _cashAmount = _summary.ExpectedTotal;
+            }
+        }
+        finally
+        {
+            _loading = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task SubmitCash()
+    {
+        if (_drs == null || _cashAmount <= 0)
+        {
+            Snackbar.Add("Please enter a valid cash amount", Severity.Warning);
+            return;
+        }
+
+        _saving = true;
+        StateHasChanged();
+
+        try
+        {
+            var submission = new CourierCashSubmission
+            {
+                DRSId = _drs.Id,
+                CourierId = _drs.DeliveryEmployeeId ?? 0,
+                CourierName = _drs.DeliveryEmployeeName,
+                SubmissionDate = DateTime.UtcNow.Date,
+                CashSubmittedAmount = _cashAmount,
+                Remarks = _remarks
+            };
+
+            await ReconciliationService.SubmitCash(submission);
+            Snackbar.Add("Cash submitted successfully", Severity.Success);
+            await LoadDRS(_drs.Id);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _saving = false;
+            StateHasChanged();
+        }
+    }
+
+    private void OnBillFileChanged(IBrowserFile file)
+    {
+        _billFile = file;
+        _billFileName = file.Name;
+    }
+
+    private async Task AddExpense()
+    {
+        if (_drs == null || _newExpense.Amount <= 0)
+        {
+            Snackbar.Add("Please enter a valid expense amount", Severity.Warning);
+            return;
+        }
+
+        try
+        {
+            _newExpense.DRSId = _drs.Id;
+            _newExpense.CourierId = _drs.DeliveryEmployeeId ?? 0;
+            _newExpense.CourierName = _drs.DeliveryEmployeeName;
+            _newExpense.ExpenseDate = DateTime.UtcNow;
+
+            if (_billFile != null)
+            {
+                var uploadsPath = Path.Combine("wwwroot", "uploads", "expenses");
+                Directory.CreateDirectory(uploadsPath);
+                var fileName = $"{Guid.NewGuid()}{Path.GetExtension(_billFile.Name)}";
+                var filePath = Path.Combine(uploadsPath, fileName);
+                
+                await using var stream = new FileStream(filePath, FileMode.Create);
+                await _billFile.OpenReadStream(maxAllowedSize: 5 * 1024 * 1024).CopyToAsync(stream);
+                _newExpense.BillImagePath = $"/uploads/expenses/{fileName}";
+            }
+
+            await ReconciliationService.AddExpense(_newExpense);
+            Snackbar.Add("Expense added successfully", Severity.Success);
+
+            _showExpenseDialog = false;
+            _newExpense = new CourierExpense();
+            _billFile = null;
+            _billFileName = null;
+
+            await LoadDRS(_drs.Id);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error: {ex.Message}", Severity.Error);
+        }
+    }
+
+    private Color GetStatusColor(DRSStatus status) => status switch
+    {
+        DRSStatus.Open => Color.Default,
+        DRSStatus.Submitted => Color.Info,
+        DRSStatus.PartiallyReconciled => Color.Warning,
+        DRSStatus.Reconciled => Color.Success,
+        DRSStatus.Closed => Color.Dark,
+        _ => Color.Default
+    };
+
+    private Color GetExpenseStatusColor(ExpenseStatus status) => status switch
+    {
+        ExpenseStatus.Pending => Color.Warning,
+        ExpenseStatus.Approved => Color.Success,
+        ExpenseStatus.Rejected => Color.Error,
+        _ => Color.Default
+    };
+}
