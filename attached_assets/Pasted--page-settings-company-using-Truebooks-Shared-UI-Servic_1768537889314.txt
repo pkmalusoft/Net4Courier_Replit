@@ -1,0 +1,227 @@
+@page "/settings/company"
+
+@using Truebooks.Shared.UI.Services
+@using Truebooks.Shared.UI.Components
+@using Truebooks.Platform.Contracts.Enums.Common
+@using System.Text.Json
+@using Microsoft.Extensions.Logging
+@inject HttpClient Http
+@inject IAuthService AuthService
+@inject ISnackbar Snackbar
+@inject JsonSerializerOptions JsonOptions
+@inject NavigationManager Navigation
+@inject ILogger<CompanySettings> Logger
+
+<PageTitle>Company Profile</PageTitle>
+
+<MudContainer MaxWidth="MaxWidth.Medium" Class="mt-4">
+    <MudText Typo="Typo.h4" Class="mb-4">Company Profile</MudText>
+    
+    @if (!string.IsNullOrEmpty(errorMessage))
+    {
+        <MudAlert Severity="Severity.Error" Class="mb-4">@errorMessage</MudAlert>
+    }
+    else if (loading)
+    {
+        <MudProgressCircular Indeterminate="true" />
+    }
+    else
+    {
+        <MudPaper Class="pa-4">
+            @if (settings.IsFieldsLocked)
+            {
+                <MudAlert Severity="Severity.Info" Class="mb-4" Icon="@Icons.Material.Filled.Lock">
+                    <strong>Note:</strong> Company Name cannot be changed because transactions exist.
+                </MudAlert>
+            }
+            
+            <MudForm @ref="form" @bind-IsValid="@isValid">
+                <MudGrid>
+                    <!-- Company Name -->
+                    <MudItem xs="12">
+                        <MudTextField @bind-Value="settings.Name" 
+                                      Label="Company Name" 
+                                      Required="true"
+                                      Immediate="true"
+                                      Disabled="@settings.IsFieldsLocked"
+                                      Variant="Variant.Outlined"
+                                      Adornment="@(settings.IsFieldsLocked ? Adornment.End : Adornment.None)"
+                                      AdornmentIcon="@(settings.IsFieldsLocked ? Icons.Material.Filled.Lock : null)" />
+                    </MudItem>
+
+                    <!-- Address (Multi-line) -->
+                    <MudItem xs="12">
+                        <MudTextField @bind-Value="settings.Address" 
+                                      Label="Address" 
+                                      Lines="3"
+                                      Immediate="true"
+                                      Variant="Variant.Outlined" />
+                    </MudItem>
+
+                    <!-- Currency Dropdown -->
+                    <MudItem xs="12" md="6">
+                        <MudSelect @bind-Value="settings.BaseCurrencyId" 
+                                   Label="Base Currency" 
+                                   Variant="Variant.Outlined"
+                                   HelperText="Default currency for transactions"
+                                   T="Guid?">
+                            <MudSelectItem Value="@((Guid?)null)">-- Select Currency --</MudSelectItem>
+                            @foreach (var currency in currencies)
+                            {
+                                <MudSelectItem Value="@((Guid?)currency.Id)">
+                                    @currency.Code - @currency.Name (@currency.Symbol)
+                                </MudSelectItem>
+                            }
+                        </MudSelect>
+                    </MudItem>
+
+                    <!-- Section Divider -->
+                    <MudItem xs="12">
+                        <MudDivider Class="my-2" />
+                        <MudText Typo="Typo.h6" Class="mb-2">Tax Configuration</MudText>
+                    </MudItem>
+
+                    <!-- Tax System Dropdown -->
+                    <MudItem xs="12" md="6">
+                        <MudSelect @bind-Value="settings.TaxSystem" 
+                                   Label="Tax System" 
+                                   Variant="Variant.Outlined"
+                                   Required="true"
+                                   HelperText="Select the tax system for your region"
+                                   T="TaxSystemType">
+                            <MudSelectItem Value="TaxSystemType.GST">GST (India)</MudSelectItem>
+                            <MudSelectItem Value="TaxSystemType.VAT">VAT (UAE)</MudSelectItem>
+                            <MudSelectItem Value="TaxSystemType.USSalesTax">US Sales Tax</MudSelectItem>
+                        </MudSelect>
+                    </MudItem>
+
+                    <!-- Info Panel -->
+                    <MudItem xs="12" Class="mt-2">
+                        <MudPaper Class="pa-3" Elevation="0" 
+                                  Style="background-color: var(--mud-palette-background-grey);">
+                            <MudText Typo="Typo.subtitle2" GutterBottom="true">
+                                <strong>Tax Rules:</strong>
+                            </MudText>
+                            <MudText Typo="Typo.body2">• Rule 1</MudText>
+                            <MudText Typo="Typo.body2">• Rule 2</MudText>
+                            <MudText Typo="Typo.caption" Class="mt-2" Style="opacity: 0.7;">
+                                Additional notes here
+                            </MudText>
+                        </MudPaper>
+                    </MudItem>
+
+                    <!-- Toggle Switch -->
+                    <MudItem xs="12">
+                        <MudPaper Class="pa-3" Elevation="0" 
+                                  Style="background-color: var(--mud-palette-background-grey);">
+                            <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
+                                <MudStack Spacing="0">
+                                    <MudText Typo="Typo.body1"><strong>Enable Feature</strong></MudText>
+                                    <MudText Typo="Typo.caption" Color="Color.Secondary">
+                                        Description of the feature
+                                    </MudText>
+                                </MudStack>
+                                <MudSwitch @bind-Value="settings.EnableMultipleCalendars" 
+                                          Color="Color.Primary"
+                                          Label="@(settings.EnableMultipleCalendars ? "Enabled" : "Disabled")" />
+                            </MudStack>
+                        </MudPaper>
+                    </MudItem>
+
+                    <!-- Action Buttons -->
+                    <MudItem xs="12" Class="mt-4">
+                        <MudStack Row="true" Spacing="2">
+                            <MudButton Variant="Variant.Filled" 
+                                       Color="Color.Primary" 
+                                       OnClick="Save" 
+                                       Disabled="@(!isValid || saving)">
+                                @if (saving)
+                                {
+                                    <MudProgressCircular Class="ms-n1" Size="MudBlazor.Size.Small" Indeterminate="true" />
+                                    <MudText Class="ms-2">Saving...</MudText>
+                                }
+                                else
+                                {
+                                    <MudText>Save Settings</MudText>
+                                }
+                            </MudButton>
+                            <MudButton Variant="Variant.Outlined" 
+                                       Color="Color.Default" 
+                                       OnClick="Close"
+                                       Disabled="@saving">
+                                Close
+                            </MudButton>
+                        </MudStack>
+                    </MudItem>
+                </MudGrid>
+            </MudForm>
+        </MudPaper>
+    }
+</MudContainer>
+
+@code {
+    private MudForm form = null!;
+    private bool isValid;
+    private bool loading = true;
+    private bool saving;
+    private string? errorMessage;
+    private CompanySettingsDto settings = new();
+    private List<CurrencyDto> currencies = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadCurrencies();
+        await LoadSettings();
+    }
+
+    private async Task LoadCurrencies()
+    {
+        // Load currencies from API
+    }
+
+    private async Task LoadSettings()
+    {
+        // Load settings from API
+    }
+
+    private async Task Save()
+    {
+        saving = true;
+        try
+        {
+            // PUT to API
+            Snackbar.Add("Settings saved successfully", Severity.Success);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            saving = false;
+        }
+    }
+
+    private void Close() => Navigation.NavigateTo("/dashboard");
+
+    // DTOs
+    public class CompanySettingsDto
+    {
+        public Guid Id { get; set; }
+        public string Name { get; set; } = string.Empty;
+        public string? Address { get; set; }
+        public Guid? BaseCurrencyId { get; set; }
+        public TaxSystemType TaxSystem { get; set; }
+        public bool IsFieldsLocked { get; set; }
+        public bool EnableMultipleCalendars { get; set; }
+    }
+
+    public class CurrencyDto
+    {
+        public Guid Id { get; set; }
+        public string Code { get; set; } = string.Empty;
+        public string Name { get; set; } = string.Empty;
+        public string Symbol { get; set; } = string.Empty;
+        public bool IsActive { get; set; }
+    }
+}
