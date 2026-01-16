@@ -1,0 +1,232 @@
+@page "/service-types"
+@inject ApplicationDbContext DbContext
+@inject ISnackbar Snackbar
+@inject IDialogService DialogService
+@using Microsoft.EntityFrameworkCore
+@using Net4Courier.Infrastructure.Data
+@using Net4Courier.Masters.Entities
+
+<PageTitle>Service Types - Net4Courier</PageTitle>
+
+<MudPaper Class="pa-4" Elevation="0">
+    <MudToolBar Dense="true" Class="pl-0">
+        <MudText Typo="Typo.h6">Service Types</MudText>
+        <MudSpacer />
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add" OnClick="OpenAddDialog">
+            Add Service Type
+        </MudButton>
+    </MudToolBar>
+
+    <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-3">
+        Configure different service types offered for shipments (Standard, Express, Overnight, etc.)
+    </MudText>
+
+    <MudTable Items="_serviceTypes" Hover="true" Dense="true" Loading="_loading">
+        <HeaderContent>
+            <MudTh>Code</MudTh>
+            <MudTh>Name</MudTh>
+            <MudTh>Transit Days</MudTh>
+            <MudTh>Express</MudTh>
+            <MudTh>Default</MudTh>
+            <MudTh>Status</MudTh>
+            <MudTh Style="width: 120px;">Actions</MudTh>
+        </HeaderContent>
+        <RowTemplate>
+            <MudTd>@context.Code</MudTd>
+            <MudTd>@context.Name</MudTd>
+            <MudTd>@(context.TransitDays?.ToString() ?? "-")</MudTd>
+            <MudTd>
+                @if (context.IsExpress)
+                {
+                    <MudIcon Icon="@Icons.Material.Filled.FlashOn" Color="Color.Warning" Size="Size.Small" />
+                }
+            </MudTd>
+            <MudTd>
+                @if (context.IsDefault)
+                {
+                    <MudIcon Icon="@Icons.Material.Filled.Star" Color="Color.Primary" Size="Size.Small" />
+                }
+            </MudTd>
+            <MudTd>
+                <MudChip T="string" Size="Size.Small" Color="@(context.IsActive ? Color.Success : Color.Default)">
+                    @(context.IsActive ? "Active" : "Inactive")
+                </MudChip>
+            </MudTd>
+            <MudTd>
+                <MudIconButton Icon="@Icons.Material.Filled.Edit" Size="Size.Small" OnClick="@(() => OpenEditDialog(context))" />
+                <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" Color="Color.Error" OnClick="@(() => DeleteServiceType(context))" />
+            </MudTd>
+        </RowTemplate>
+        <NoRecordsContent>
+            <MudText>No service types found. Click "Add Service Type" to create one.</MudText>
+        </NoRecordsContent>
+    </MudTable>
+</MudPaper>
+
+<MudDialog @bind-Visible="_dialogVisible" Options="new DialogOptions { MaxWidth = MaxWidth.Small, FullWidth = true }">
+    <TitleContent>
+        <MudText Typo="Typo.h6">@(_editingServiceType.Id == 0 ? "Add Service Type" : "Edit Service Type")</MudText>
+    </TitleContent>
+    <DialogContent>
+        <MudGrid Spacing="2">
+            <MudItem xs="4">
+                <MudTextField @bind-Value="_editingServiceType.Code" Label="Code*" Variant="Variant.Outlined" Required="true" />
+            </MudItem>
+            <MudItem xs="8">
+                <MudTextField @bind-Value="_editingServiceType.Name" Label="Name*" Variant="Variant.Outlined" Required="true" />
+            </MudItem>
+            <MudItem xs="12">
+                <MudTextField @bind-Value="_editingServiceType.Description" Label="Description" Variant="Variant.Outlined" Lines="2" />
+            </MudItem>
+            <MudItem xs="4">
+                <MudNumericField @bind-Value="_editingServiceType.TransitDays" Label="Transit Days" Variant="Variant.Outlined" Min="0" />
+            </MudItem>
+            <MudItem xs="4">
+                <MudNumericField @bind-Value="_editingServiceType.SortOrder" Label="Sort Order" Variant="Variant.Outlined" Min="0" />
+            </MudItem>
+            <MudItem xs="4" />
+            <MudItem xs="4">
+                <MudCheckBox @bind-Value="_editingServiceType.IsExpress" Label="Express Service" Color="Color.Warning" />
+            </MudItem>
+            <MudItem xs="4">
+                <MudCheckBox @bind-Value="_editingServiceType.IsDefault" Label="Default" Color="Color.Primary" />
+            </MudItem>
+            <MudItem xs="4">
+                <MudCheckBox @bind-Value="_editingServiceType.IsActive" Label="Active" Color="Color.Success" />
+            </MudItem>
+        </MudGrid>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="CloseDialog">Cancel</MudButton>
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="SaveServiceType">Save</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    private List<ServiceType> _serviceTypes = new();
+    private bool _loading = true;
+    private bool _dialogVisible;
+    private ServiceType _editingServiceType = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadData();
+    }
+
+    private async Task LoadData()
+    {
+        _loading = true;
+        _serviceTypes = await DbContext.ServiceTypes
+            .Where(s => !s.IsDeleted)
+            .OrderBy(s => s.SortOrder)
+            .ThenBy(s => s.Name)
+            .ToListAsync();
+        _loading = false;
+    }
+
+    private void OpenAddDialog()
+    {
+        _editingServiceType = new ServiceType { IsActive = true, SortOrder = _serviceTypes.Count + 1 };
+        _dialogVisible = true;
+    }
+
+    private void OpenEditDialog(ServiceType serviceType)
+    {
+        _editingServiceType = new ServiceType
+        {
+            Id = serviceType.Id,
+            Code = serviceType.Code,
+            Name = serviceType.Name,
+            Description = serviceType.Description,
+            TransitDays = serviceType.TransitDays,
+            IsExpress = serviceType.IsExpress,
+            IsDefault = serviceType.IsDefault,
+            SortOrder = serviceType.SortOrder,
+            IsActive = serviceType.IsActive
+        };
+        _dialogVisible = true;
+    }
+
+    private void CloseDialog()
+    {
+        _dialogVisible = false;
+    }
+
+    private async Task SaveServiceType()
+    {
+        if (string.IsNullOrWhiteSpace(_editingServiceType.Code) || string.IsNullOrWhiteSpace(_editingServiceType.Name))
+        {
+            Snackbar.Add("Code and Name are required", Severity.Warning);
+            return;
+        }
+
+        try
+        {
+            if (_editingServiceType.Id == 0)
+            {
+                _editingServiceType.CreatedAt = DateTime.UtcNow;
+                DbContext.ServiceTypes.Add(_editingServiceType);
+            }
+            else
+            {
+                var existing = await DbContext.ServiceTypes.FindAsync(_editingServiceType.Id);
+                if (existing != null)
+                {
+                    existing.Code = _editingServiceType.Code;
+                    existing.Name = _editingServiceType.Name;
+                    existing.Description = _editingServiceType.Description;
+                    existing.TransitDays = _editingServiceType.TransitDays;
+                    existing.IsExpress = _editingServiceType.IsExpress;
+                    existing.IsDefault = _editingServiceType.IsDefault;
+                    existing.SortOrder = _editingServiceType.SortOrder;
+                    existing.IsActive = _editingServiceType.IsActive;
+                    existing.ModifiedAt = DateTime.UtcNow;
+                }
+            }
+
+            if (_editingServiceType.IsDefault)
+            {
+                var others = await DbContext.ServiceTypes
+                    .Where(s => s.Id != _editingServiceType.Id && s.IsDefault)
+                    .ToListAsync();
+                foreach (var other in others)
+                {
+                    other.IsDefault = false;
+                }
+            }
+
+            await DbContext.SaveChangesAsync();
+            Snackbar.Add("Service type saved successfully", Severity.Success);
+            _dialogVisible = false;
+            await LoadData();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error: {ex.Message}", Severity.Error);
+        }
+    }
+
+    private async Task DeleteServiceType(ServiceType serviceType)
+    {
+        var confirmed = await DialogService.ShowMessageBox(
+            "Confirm Delete",
+            $"Are you sure you want to delete '{serviceType.Name}'?",
+            yesText: "Delete", cancelText: "Cancel");
+
+        if (confirmed == true)
+        {
+            try
+            {
+                serviceType.IsDeleted = true;
+                serviceType.ModifiedAt = DateTime.UtcNow;
+                await DbContext.SaveChangesAsync();
+                Snackbar.Add("Service type deleted", Severity.Success);
+                await LoadData();
+            }
+            catch (Exception ex)
+            {
+                Snackbar.Add($"Error: {ex.Message}", Severity.Error);
+            }
+        }
+    }
+}

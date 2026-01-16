@@ -67,6 +67,8 @@ public class ApplicationDbContext : DbContext
     public DbSet<ShipmentStatusGroup> ShipmentStatusGroups => Set<ShipmentStatusGroup>();
     public DbSet<ShipmentStatus> ShipmentStatuses => Set<ShipmentStatus>();
     public DbSet<ShipmentStatusHistory> ShipmentStatusHistories => Set<ShipmentStatusHistory>();
+    
+    public DbSet<ServiceType> ServiceTypes => Set<ServiceType>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

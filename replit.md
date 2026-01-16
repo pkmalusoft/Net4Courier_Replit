@@ -90,6 +90,13 @@ The application is built on .NET 8 Blazor Server, utilizing a modular architectu
     - **Export Manifest**: Landscape A4 report for international shipments grouped by destination country with customs values.
     - **Domestic Manifest**: A4 report for local shipments grouped by destination region/state.
     - **Print Integration**: Print buttons on AWB Entry page and MAWB Bagging page for quick access to all report types.
+- **Service Type Management**:
+    - **ServiceType Entity**: Configurable service types with code, name, description, transit days, express flag, and sort order.
+    - **Service Types Page**: Full CRUD UI at `/service-types` for managing service offerings.
+    - **Seed Data**: 8 default service types (Standard, Express, Overnight, Same Day, Economy, Document Express, Freight, COD).
+- **Party Masters Seed Data**:
+    - **Co-Loaders**: 5 sample co-loader companies (FastTrack Logistics, Global Freight Partners, Swift Cargo Solutions, TransWorld Shipping, Pacific Logistics) with Account Receivable nature.
+    - **Forwarding Agents**: 5 major carriers (DHL, FedEx, Aramex, UPS, TNT) with Account Payable nature.
 
 ## External Dependencies
 - **Database**: PostgreSQL (hosted on Replit)
