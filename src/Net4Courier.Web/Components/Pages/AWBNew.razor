@@ -697,10 +697,20 @@
             DbContext.InscanMasters.Update(_inscan);
         }
 
-        await DbContext.SaveChangesAsync();
-        
-        await SaveOtherCharges();
-        await DbContext.SaveChangesAsync();
+        using var transaction = await DbContext.Database.BeginTransactionAsync();
+        try
+        {
+            await DbContext.SaveChangesAsync();
+            await SaveOtherCharges();
+            await DbContext.SaveChangesAsync();
+            await transaction.CommitAsync();
+        }
+        catch
+        {
+            await transaction.RollbackAsync();
+            Snackbar.Add("Failed to save AWB. Please try again.", Severity.Error);
+            return;
+        }
         
         Snackbar.Add(Id > 0 ? "AWB updated successfully" : "AWB created successfully", Severity.Success);
         NavigationManager.NavigateTo("/awb-list");
@@ -762,7 +772,7 @@
             new DialogOptions { MaxWidth = MaxWidth.Small, FullWidth = true });
         var result = await dialog.Result;
 
-        if (!result!.Canceled && result.Data is List<AWBOtherCharge> selectedCharges)
+        if (result != null && !result.Canceled && result.Data is List<AWBOtherCharge> selectedCharges)
         {
             var chargeTypes = await DbContext.OtherChargeTypes.ToListAsync();
             _selectedOtherCharges = selectedCharges.Select(c => new OtherChargeSelection
@@ -792,6 +802,8 @@
                 ChargeName = c.OtherChargeType?.Name ?? "Unknown",
                 Amount = c.Amount
             }).ToList();
+
+            _inscan.OtherCharge = _selectedOtherCharges.Sum(c => c.Amount);
         }
     }
 
