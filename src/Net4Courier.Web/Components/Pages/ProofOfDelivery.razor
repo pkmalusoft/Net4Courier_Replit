@@ -1,0 +1,514 @@
+@page "/pod"
+@page "/pod/{AwbNo}"
+@using MudBlazor
+@using Microsoft.EntityFrameworkCore
+@using Net4Courier.Infrastructure.Data
+@using Net4Courier.Operations.Entities
+@using Net4Courier.Kernel.Enums
+@inject ApplicationDbContext DbContext
+@inject ISnackbar Snackbar
+@inject NavigationManager Navigation
+@inject IJSRuntime JS
+
+<PageTitle>Proof of Delivery</PageTitle>
+
+<MudContainer MaxWidth="MaxWidth.Large" Class="py-4">
+    <MudPaper Elevation="2" Class="pa-4 mb-4">
+        <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center" Class="mb-4">
+            <MudText Typo="Typo.h5">Proof of Delivery</MudText>
+            <MudStack Row="true" Spacing="2">
+                <MudButton Variant="Variant.Outlined" Color="Color.Primary" StartIcon="@Icons.Material.Filled.QrCodeScanner"
+                           OnClick="OpenScanner" Size="Size.Small">Scan AWB</MudButton>
+                <MudButton Variant="Variant.Outlined" Color="Color.Secondary" StartIcon="@Icons.Material.Filled.List"
+                           OnClick="@(() => Navigation.NavigateTo("/pod-bulk"))" Size="Size.Small">Bulk Update</MudButton>
+            </MudStack>
+        </MudStack>
+
+        <MudGrid>
+            <MudItem xs="12" md="6">
+                <MudTextField @bind-Value="_searchAwb" Label="Enter AWB Number" Variant="Variant.Outlined"
+                              Margin="Margin.Dense" Adornment="Adornment.End" AdornmentIcon="@Icons.Material.Filled.Search"
+                              OnAdornmentClick="SearchAwb" OnKeyUp="OnSearchKeyUp" Immediate="true" />
+            </MudItem>
+        </MudGrid>
+    </MudPaper>
+
+    @if (_loading)
+    {
+        <MudProgressLinear Color="Color.Primary" Indeterminate="true" Class="mb-4" />
+    }
+
+    @if (_selectedAwb != null)
+    {
+        <MudPaper Elevation="2" Class="pa-4 mb-4">
+            <MudText Typo="Typo.h6" Class="mb-3">AWB Details</MudText>
+            <MudGrid>
+                <MudItem xs="6" md="3">
+                    <MudText Typo="Typo.caption" Color="Color.Secondary">AWB Number</MudText>
+                    <MudText Typo="Typo.body1" Class="font-weight-bold">@_selectedAwb.AWBNo</MudText>
+                </MudItem>
+                <MudItem xs="6" md="3">
+                    <MudText Typo="Typo.caption" Color="Color.Secondary">Consignee</MudText>
+                    <MudText Typo="Typo.body1">@_selectedAwb.Consignee</MudText>
+                </MudItem>
+                <MudItem xs="6" md="3">
+                    <MudText Typo="Typo.caption" Color="Color.Secondary">Destination</MudText>
+                    <MudText Typo="Typo.body1">@_selectedAwb.ConsigneeCity, @_selectedAwb.ConsigneeCountry</MudText>
+                </MudItem>
+                <MudItem xs="6" md="3">
+                    <MudText Typo="Typo.caption" Color="Color.Secondary">Current Status</MudText>
+                    <MudChip T="string" Size="Size.Small" Color="@GetStatusColor(_selectedAwb.CourierStatusId)">@_selectedAwb.CourierStatusId</MudChip>
+                </MudItem>
+                <MudItem xs="12">
+                    <MudText Typo="Typo.caption" Color="Color.Secondary">Address</MudText>
+                    <MudText Typo="Typo.body2">@_selectedAwb.ConsigneeAddress1 @_selectedAwb.ConsigneeAddress2</MudText>
+                </MudItem>
+            </MudGrid>
+        </MudPaper>
+
+        <MudPaper Elevation="2" Class="pa-4 mb-4">
+            <MudText Typo="Typo.h6" Class="mb-3">Delivery Information</MudText>
+            <MudGrid>
+                <MudItem xs="12" md="6">
+                    <MudSelect T="DeliveryStatus" @bind-Value="_pod.DeliveryStatus" Label="Delivery Status*"
+                               Variant="Variant.Outlined" Margin="Margin.Dense" Required="true">
+                        <MudSelectItem T="DeliveryStatus" Value="DeliveryStatus.Delivered">Delivered</MudSelectItem>
+                        <MudSelectItem T="DeliveryStatus" Value="DeliveryStatus.PartialDelivery">Partial Delivery</MudSelectItem>
+                        <MudSelectItem T="DeliveryStatus" Value="DeliveryStatus.Refused">Refused</MudSelectItem>
+                        <MudSelectItem T="DeliveryStatus" Value="DeliveryStatus.NotDelivered">Not Delivered</MudSelectItem>
+                    </MudSelect>
+                </MudItem>
+                <MudItem xs="12" md="6">
+                    <MudDatePicker @bind-Date="_deliveryDate" Label="Delivery Date*" Variant="Variant.Outlined"
+                                   Margin="Margin.Dense" DateFormat="dd-MMM-yyyy" Required="true" />
+                </MudItem>
+
+                @if (_pod.DeliveryStatus == DeliveryStatus.Delivered || _pod.DeliveryStatus == DeliveryStatus.PartialDelivery)
+                {
+                    <MudItem xs="12" md="6">
+                        <MudTextField @bind-Value="_pod.ReceivedBy" Label="Received By*" Variant="Variant.Outlined"
+                                      Margin="Margin.Dense" Required="true" />
+                    </MudItem>
+                    <MudItem xs="12" md="6">
+                        <MudSelect T="RecipientRelation?" @bind-Value="_pod.Relation" Label="Relation*"
+                                   Variant="Variant.Outlined" Margin="Margin.Dense" Required="true">
+                            <MudSelectItem T="RecipientRelation?" Value="RecipientRelation.Self">Self</MudSelectItem>
+                            <MudSelectItem T="RecipientRelation?" Value="RecipientRelation.Family">Family</MudSelectItem>
+                            <MudSelectItem T="RecipientRelation?" Value="RecipientRelation.Colleague">Colleague</MudSelectItem>
+                            <MudSelectItem T="RecipientRelation?" Value="RecipientRelation.Security">Security</MudSelectItem>
+                            <MudSelectItem T="RecipientRelation?" Value="RecipientRelation.Reception">Reception</MudSelectItem>
+                            <MudSelectItem T="RecipientRelation?" Value="RecipientRelation.Neighbor">Neighbor</MudSelectItem>
+                            <MudSelectItem T="RecipientRelation?" Value="RecipientRelation.Other">Other</MudSelectItem>
+                        </MudSelect>
+                    </MudItem>
+                }
+
+                @if (_pod.DeliveryStatus == DeliveryStatus.NotDelivered || _pod.DeliveryStatus == DeliveryStatus.Refused)
+                {
+                    <MudItem xs="12" md="6">
+                        <MudSelect T="NonDeliveryReason?" @bind-Value="_pod.NonDeliveryReason" Label="Reason*"
+                                   Variant="Variant.Outlined" Margin="Margin.Dense" Required="true">
+                            <MudSelectItem T="NonDeliveryReason?" Value="NonDeliveryReason.AddressNotFound">Address Not Found</MudSelectItem>
+                            <MudSelectItem T="NonDeliveryReason?" Value="NonDeliveryReason.CustomerNotAvailable">Customer Not Available</MudSelectItem>
+                            <MudSelectItem T="NonDeliveryReason?" Value="NonDeliveryReason.Refused">Refused by Customer</MudSelectItem>
+                            <MudSelectItem T="NonDeliveryReason?" Value="NonDeliveryReason.PremisesClosed">Premises Closed</MudSelectItem>
+                            <MudSelectItem T="NonDeliveryReason?" Value="NonDeliveryReason.IncorrectAddress">Incorrect Address</MudSelectItem>
+                            <MudSelectItem T="NonDeliveryReason?" Value="NonDeliveryReason.CustomerRequestedReschedule">Customer Requested Reschedule</MudSelectItem>
+                            <MudSelectItem T="NonDeliveryReason?" Value="NonDeliveryReason.WeatherConditions">Weather Conditions</MudSelectItem>
+                            <MudSelectItem T="NonDeliveryReason?" Value="NonDeliveryReason.AccessRestricted">Access Restricted</MudSelectItem>
+                            <MudSelectItem T="NonDeliveryReason?" Value="NonDeliveryReason.Other">Other</MudSelectItem>
+                        </MudSelect>
+                    </MudItem>
+                }
+
+                <MudItem xs="12">
+                    <MudTextField @bind-Value="_pod.Remarks" Label="Remarks" Variant="Variant.Outlined"
+                                  Margin="Margin.Dense" Lines="2" />
+                </MudItem>
+            </MudGrid>
+        </MudPaper>
+
+        @if (_pod.DeliveryStatus == DeliveryStatus.Delivered || _pod.DeliveryStatus == DeliveryStatus.PartialDelivery)
+        {
+            <MudPaper Elevation="2" Class="pa-4 mb-4">
+                <MudText Typo="Typo.h6" Class="mb-3">Photo Evidence</MudText>
+                <MudStack Row="true" Spacing="3" Wrap="Wrap.Wrap">
+                    @for (int i = 0; i < 3; i++)
+                    {
+                        var index = i;
+                        <MudPaper Outlined="true" Class="pa-2" Style="width:150px; height:150px; display:flex; align-items:center; justify-content:center;">
+                            @if (!string.IsNullOrEmpty(GetPhotoByIndex(index)))
+                            {
+                                <MudStack AlignItems="AlignItems.Center">
+                                    <MudImage Src="@GetPhotoByIndex(index)" Alt="POD Photo" Width="120" Height="100" ObjectFit="ObjectFit.Cover" />
+                                    <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" Color="Color.Error"
+                                                   OnClick="@(() => RemovePhoto(index))" />
+                                </MudStack>
+                            }
+                            else
+                            {
+                                <MudStack AlignItems="AlignItems.Center" Spacing="1">
+                                    <MudIconButton Icon="@Icons.Material.Filled.CameraAlt" Size="Size.Large" Color="Color.Primary"
+                                                   OnClick="@(() => CapturePhoto(index))" />
+                                    <MudText Typo="Typo.caption">Add Photo</MudText>
+                                </MudStack>
+                            }
+                        </MudPaper>
+                    }
+                </MudStack>
+                <InputFile id="photoInput" OnChange="OnPhotoSelected" hidden accept="image/*" capture="environment" />
+            </MudPaper>
+
+            <MudPaper Elevation="2" Class="pa-4 mb-4">
+                <MudText Typo="Typo.h6" Class="mb-3">Signature</MudText>
+                @if (!string.IsNullOrEmpty(_pod.SignatureImage))
+                {
+                    <MudStack AlignItems="AlignItems.Start" Spacing="2">
+                        <MudImage Src="@_pod.SignatureImage" Alt="Signature" Width="300" Height="150" 
+                                  Style="border:1px solid #ccc; background:#fff;" />
+                        <MudButton Variant="Variant.Outlined" Color="Color.Warning" Size="Size.Small"
+                                   OnClick="ClearSignature">Clear Signature</MudButton>
+                    </MudStack>
+                }
+                else
+                {
+                    <MudPaper Outlined="true" Class="pa-2" Style="width:100%; max-width:400px; height:200px; background:#fff;">
+                        <canvas id="signatureCanvas" width="380" height="180" 
+                                style="border:1px dashed #ccc; touch-action:none; cursor:crosshair;"></canvas>
+                    </MudPaper>
+                    <MudStack Row="true" Spacing="2" Class="mt-2">
+                        <MudButton Variant="Variant.Outlined" Color="Color.Primary" Size="Size.Small"
+                                   OnClick="SaveSignature">Save Signature</MudButton>
+                        <MudButton Variant="Variant.Outlined" Color="Color.Secondary" Size="Size.Small"
+                                   OnClick="ClearCanvas">Clear</MudButton>
+                    </MudStack>
+                }
+            </MudPaper>
+        }
+
+        <MudPaper Elevation="2" Class="pa-4 mb-4">
+            <MudText Typo="Typo.h6" Class="mb-3">GPS Location</MudText>
+            <MudStack Row="true" Spacing="3" AlignItems="AlignItems.Center">
+                @if (_pod.Latitude.HasValue && _pod.Longitude.HasValue)
+                {
+                    <MudIcon Icon="@Icons.Material.Filled.LocationOn" Color="Color.Success" />
+                    <MudText>Lat: @_pod.Latitude?.ToString("F6"), Lng: @_pod.Longitude?.ToString("F6")</MudText>
+                    <MudButton Variant="Variant.Outlined" Size="Size.Small" OnClick="CaptureLocation">
+                        Refresh Location
+                    </MudButton>
+                }
+                else
+                {
+                    <MudButton Variant="Variant.Outlined" Color="Color.Primary" StartIcon="@Icons.Material.Filled.MyLocation"
+                               OnClick="CaptureLocation" Size="Size.Small">Capture GPS Location</MudButton>
+                }
+            </MudStack>
+        </MudPaper>
+
+        <MudStack Row="true" Justify="Justify.FlexEnd" Spacing="2">
+            <MudButton Variant="Variant.Outlined" Color="Color.Secondary" OnClick="ClearForm">Cancel</MudButton>
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Save"
+                       OnClick="SubmitPOD" Disabled="@(!IsFormValid() || _saving)">
+                @if (_saving)
+                {
+                    <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" />
+                    <text>Saving...</text>
+                }
+                else
+                {
+                    <text>Submit POD</text>
+                }
+            </MudButton>
+        </MudStack>
+    }
+    else if (!_loading && string.IsNullOrEmpty(_searchAwb))
+    {
+        <MudPaper Elevation="0" Class="pa-8 text-center">
+            <MudIcon Icon="@Icons.Material.Filled.QrCodeScanner" Size="Size.Large" Color="Color.Primary" Class="mb-4" />
+            <MudText Typo="Typo.h6">Scan or Enter AWB Number</MudText>
+            <MudText Typo="Typo.body2" Color="Color.Secondary">Use the scanner button or enter AWB number manually to capture proof of delivery</MudText>
+        </MudPaper>
+    }
+</MudContainer>
+
+@code {
+    [Parameter] public string? AwbNo { get; set; }
+
+    private string _searchAwb = "";
+    private bool _loading;
+    private bool _saving;
+    private InscanMaster? _selectedAwb;
+    private DateTime? _deliveryDate = DateTime.Today;
+    private int _currentPhotoIndex;
+    private PODModel _pod = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (!string.IsNullOrEmpty(AwbNo))
+        {
+            _searchAwb = AwbNo;
+            await SearchAwb();
+        }
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender && _selectedAwb != null)
+        {
+            await InitializeSignatureCanvas();
+        }
+    }
+
+    private async Task SearchAwb()
+    {
+        if (string.IsNullOrWhiteSpace(_searchAwb)) return;
+
+        _loading = true;
+        StateHasChanged();
+
+        try
+        {
+            _selectedAwb = await DbContext.InscanMasters
+                .FirstOrDefaultAsync(i => i.AWBNo == _searchAwb.Trim() && !i.IsDeleted);
+
+            if (_selectedAwb == null)
+            {
+                Snackbar.Add($"AWB {_searchAwb} not found", Severity.Warning);
+            }
+            else
+            {
+                _pod = new PODModel { DeliveryStatus = DeliveryStatus.Delivered };
+                await CaptureLocation();
+                await InitializeSignatureCanvas();
+            }
+        }
+        finally
+        {
+            _loading = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task OnSearchKeyUp(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter")
+        {
+            await SearchAwb();
+        }
+    }
+
+    private async Task InitializeSignatureCanvas()
+    {
+        await JS.InvokeVoidAsync("initSignatureCanvas", "signatureCanvas");
+    }
+
+    private async Task CaptureLocation()
+    {
+        try
+        {
+            var coords = await JS.InvokeAsync<double[]>("getGeolocation");
+            if (coords != null && coords.Length >= 2)
+            {
+                _pod.Latitude = (decimal)coords[0];
+                _pod.Longitude = (decimal)coords[1];
+                StateHasChanged();
+            }
+        }
+        catch
+        {
+            Snackbar.Add("Unable to capture GPS location. Please enable location services.", Severity.Warning);
+        }
+    }
+
+    private async Task CapturePhoto(int index)
+    {
+        _currentPhotoIndex = index;
+        await JS.InvokeVoidAsync("triggerFileInput", "photoInput");
+    }
+
+    private async Task OnPhotoSelected(InputFileChangeEventArgs e)
+    {
+        var file = e.File;
+        if (file == null) return;
+
+        try
+        {
+            var buffer = new byte[file.Size];
+            await file.OpenReadStream(maxAllowedSize: 10 * 1024 * 1024).ReadAsync(buffer);
+            var base64 = Convert.ToBase64String(buffer);
+            var dataUrl = $"data:{file.ContentType};base64,{base64}";
+
+            SetPhotoByIndex(_currentPhotoIndex, dataUrl);
+            StateHasChanged();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error loading photo: {ex.Message}", Severity.Error);
+        }
+    }
+
+    private string? GetPhotoByIndex(int index) => index switch
+    {
+        0 => _pod.Photo1,
+        1 => _pod.Photo2,
+        2 => _pod.Photo3,
+        _ => null
+    };
+
+    private void SetPhotoByIndex(int index, string value)
+    {
+        switch (index)
+        {
+            case 0: _pod.Photo1 = value; break;
+            case 1: _pod.Photo2 = value; break;
+            case 2: _pod.Photo3 = value; break;
+        }
+    }
+
+    private void RemovePhoto(int index)
+    {
+        SetPhotoByIndex(index, null!);
+        StateHasChanged();
+    }
+
+    private async Task SaveSignature()
+    {
+        try
+        {
+            var signature = await JS.InvokeAsync<string>("getSignatureImage", "signatureCanvas");
+            if (!string.IsNullOrEmpty(signature))
+            {
+                _pod.SignatureImage = signature;
+                StateHasChanged();
+            }
+        }
+        catch
+        {
+            Snackbar.Add("Error saving signature", Severity.Error);
+        }
+    }
+
+    private async Task ClearCanvas()
+    {
+        await JS.InvokeVoidAsync("clearSignatureCanvas", "signatureCanvas");
+    }
+
+    private void ClearSignature()
+    {
+        _pod.SignatureImage = null;
+        StateHasChanged();
+    }
+
+    private bool IsFormValid()
+    {
+        if (_selectedAwb == null) return false;
+        if (!_deliveryDate.HasValue) return false;
+
+        if (_pod.DeliveryStatus == DeliveryStatus.Delivered || _pod.DeliveryStatus == DeliveryStatus.PartialDelivery)
+        {
+            if (string.IsNullOrWhiteSpace(_pod.ReceivedBy)) return false;
+            if (_pod.Relation == null) return false;
+            if (string.IsNullOrEmpty(_pod.Photo1) && string.IsNullOrEmpty(_pod.SignatureImage)) return false;
+        }
+
+        if (_pod.DeliveryStatus == DeliveryStatus.NotDelivered || _pod.DeliveryStatus == DeliveryStatus.Refused)
+        {
+            if (_pod.NonDeliveryReason == null) return false;
+        }
+
+        return true;
+    }
+
+    private async Task SubmitPOD()
+    {
+        if (!IsFormValid()) return;
+
+        _saving = true;
+        StateHasChanged();
+
+        try
+        {
+            var tracking = new AWBTracking
+            {
+                InscanId = _selectedAwb!.Id,
+                EventDateTime = DateTime.UtcNow,
+                StatusId = _pod.DeliveryStatus == DeliveryStatus.Delivered ? CourierStatus.Delivered : 
+                           _pod.DeliveryStatus == DeliveryStatus.Refused ? CourierStatus.Returned : CourierStatus.OnHold,
+                DeliveryStatusId = _pod.DeliveryStatus,
+                DeliveryDateTime = _deliveryDate?.ToUniversalTime(),
+                ReceivedBy = _pod.ReceivedBy,
+                RelationType = _pod.Relation,
+                NonDeliveryReasonId = _pod.NonDeliveryReason,
+                PODImage = _pod.Photo1,
+                PODImage2 = _pod.Photo2,
+                PODImage3 = _pod.Photo3,
+                SignatureImage = _pod.SignatureImage,
+                Latitude = _pod.Latitude,
+                Longitude = _pod.Longitude,
+                Remarks = _pod.Remarks,
+                IsPODCaptured = true,
+                IsPublic = true
+            };
+
+            DbContext.AWBTrackings.Add(tracking);
+
+            _selectedAwb.CourierStatusId = tracking.StatusId;
+            _selectedAwb.ModifiedAt = DateTime.UtcNow;
+
+            await DbContext.SaveChangesAsync();
+
+            Snackbar.Add($"POD submitted successfully for AWB {_selectedAwb.AWBNo}", Severity.Success);
+            ClearForm();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error submitting POD: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _saving = false;
+            StateHasChanged();
+        }
+    }
+
+    private void ClearForm()
+    {
+        _selectedAwb = null;
+        _searchAwb = "";
+        _pod = new PODModel();
+        _deliveryDate = DateTime.Today;
+        StateHasChanged();
+    }
+
+    private void OpenScanner()
+    {
+        Navigation.NavigateTo("/pod-scanner");
+    }
+
+    private Color GetStatusColor(CourierStatus status) => status switch
+    {
+        CourierStatus.Delivered => Color.Success,
+        CourierStatus.Pending => Color.Warning,
+        CourierStatus.InTransit => Color.Info,
+        CourierStatus.OutForDelivery => Color.Primary,
+        CourierStatus.Returned => Color.Error,
+        CourierStatus.OnHold => Color.Secondary,
+        CourierStatus.Cancelled => Color.Dark,
+        _ => Color.Default
+    };
+
+    public class PODModel
+    {
+        public DeliveryStatus DeliveryStatus { get; set; } = DeliveryStatus.Delivered;
+        public string? ReceivedBy { get; set; }
+        public RecipientRelation? Relation { get; set; }
+        public NonDeliveryReason? NonDeliveryReason { get; set; }
+        public string? Photo1 { get; set; }
+        public string? Photo2 { get; set; }
+        public string? Photo3 { get; set; }
+        public string? SignatureImage { get; set; }
+        public decimal? Latitude { get; set; }
+        public decimal? Longitude { get; set; }
+        public string? Remarks { get; set; }
+    }
+}

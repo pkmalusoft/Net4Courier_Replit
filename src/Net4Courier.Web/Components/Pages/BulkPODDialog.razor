@@ -1,0 +1,158 @@
+@using MudBlazor
+@using Microsoft.EntityFrameworkCore
+@using Net4Courier.Infrastructure.Data
+@using Net4Courier.Operations.Entities
+@using Net4Courier.Kernel.Enums
+@inject ApplicationDbContext DbContext
+@inject ISnackbar Snackbar
+
+<MudDialog>
+    <DialogContent>
+        <MudText Class="mb-4">Update POD for @SelectedAwbs.Count AWB(s)</MudText>
+        
+        <MudStack Spacing="3">
+            <MudSelect T="DeliveryStatus" @bind-Value="_status" Label="Delivery Status*"
+                       Variant="Variant.Outlined" Margin="Margin.Dense" Required="true">
+                <MudSelectItem T="DeliveryStatus" Value="DeliveryStatus.Delivered">Delivered</MudSelectItem>
+                <MudSelectItem T="DeliveryStatus" Value="DeliveryStatus.PartialDelivery">Partial Delivery</MudSelectItem>
+                <MudSelectItem T="DeliveryStatus" Value="DeliveryStatus.Refused">Refused</MudSelectItem>
+                <MudSelectItem T="DeliveryStatus" Value="DeliveryStatus.NotDelivered">Not Delivered</MudSelectItem>
+            </MudSelect>
+
+            <MudDatePicker @bind-Date="_deliveryDate" Label="Delivery Date*" Variant="Variant.Outlined"
+                           Margin="Margin.Dense" DateFormat="dd-MMM-yyyy" Required="true" />
+
+            @if (_status == DeliveryStatus.Delivered || _status == DeliveryStatus.PartialDelivery)
+            {
+                <MudTextField @bind-Value="_receivedBy" Label="Received By*" Variant="Variant.Outlined"
+                              Margin="Margin.Dense" Required="true" />
+
+                <MudSelect T="RecipientRelation" @bind-Value="_relation" Label="Relation*"
+                           Variant="Variant.Outlined" Margin="Margin.Dense" Required="true">
+                    <MudSelectItem T="RecipientRelation" Value="RecipientRelation.Self">Self</MudSelectItem>
+                    <MudSelectItem T="RecipientRelation" Value="RecipientRelation.Family">Family</MudSelectItem>
+                    <MudSelectItem T="RecipientRelation" Value="RecipientRelation.Colleague">Colleague</MudSelectItem>
+                    <MudSelectItem T="RecipientRelation" Value="RecipientRelation.Security">Security</MudSelectItem>
+                    <MudSelectItem T="RecipientRelation" Value="RecipientRelation.Reception">Reception</MudSelectItem>
+                    <MudSelectItem T="RecipientRelation" Value="RecipientRelation.Neighbor">Neighbor</MudSelectItem>
+                    <MudSelectItem T="RecipientRelation" Value="RecipientRelation.Other">Other</MudSelectItem>
+                </MudSelect>
+            }
+
+            @if (_status == DeliveryStatus.NotDelivered || _status == DeliveryStatus.Refused)
+            {
+                <MudSelect T="NonDeliveryReason" @bind-Value="_nonDeliveryReason" Label="Reason*"
+                           Variant="Variant.Outlined" Margin="Margin.Dense" Required="true">
+                    <MudSelectItem T="NonDeliveryReason" Value="NonDeliveryReason.AddressNotFound">Address Not Found</MudSelectItem>
+                    <MudSelectItem T="NonDeliveryReason" Value="NonDeliveryReason.CustomerNotAvailable">Customer Not Available</MudSelectItem>
+                    <MudSelectItem T="NonDeliveryReason" Value="NonDeliveryReason.Refused">Refused by Customer</MudSelectItem>
+                    <MudSelectItem T="NonDeliveryReason" Value="NonDeliveryReason.PremisesClosed">Premises Closed</MudSelectItem>
+                    <MudSelectItem T="NonDeliveryReason" Value="NonDeliveryReason.IncorrectAddress">Incorrect Address</MudSelectItem>
+                    <MudSelectItem T="NonDeliveryReason" Value="NonDeliveryReason.Other">Other</MudSelectItem>
+                </MudSelect>
+            }
+
+            <MudTextField @bind-Value="_remarks" Label="Remarks" Variant="Variant.Outlined"
+                          Margin="Margin.Dense" Lines="2" />
+        </MudStack>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Cancel">Cancel</MudButton>
+        <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="Submit" 
+                   Disabled="@(!IsValid() || _saving)">
+            @if (_saving)
+            {
+                <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" />
+                <text>Updating...</text>
+            }
+            else
+            {
+                <text>Update All</text>
+            }
+        </MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] private MudDialogInstance MudDialog { get; set; } = default!;
+    [Parameter] public List<InscanMaster> SelectedAwbs { get; set; } = new();
+
+    private DeliveryStatus _status = DeliveryStatus.Delivered;
+    private DateTime? _deliveryDate = DateTime.Today;
+    private string? _receivedBy;
+    private RecipientRelation _relation = RecipientRelation.Self;
+    private NonDeliveryReason _nonDeliveryReason = NonDeliveryReason.CustomerNotAvailable;
+    private string? _remarks;
+    private bool _saving;
+
+    private bool IsValid()
+    {
+        if (!_deliveryDate.HasValue) return false;
+        
+        if (_status == DeliveryStatus.Delivered || _status == DeliveryStatus.PartialDelivery)
+        {
+            if (string.IsNullOrWhiteSpace(_receivedBy)) return false;
+        }
+        
+        return true;
+    }
+
+    private void Cancel() => MudDialog.Cancel();
+
+    private async Task Submit()
+    {
+        if (!IsValid()) return;
+
+        _saving = true;
+        StateHasChanged();
+
+        try
+        {
+            var courierStatus = _status switch
+            {
+                DeliveryStatus.Delivered => CourierStatus.Delivered,
+                DeliveryStatus.PartialDelivery => CourierStatus.OnHold,
+                DeliveryStatus.Refused => CourierStatus.Returned,
+                DeliveryStatus.NotDelivered => CourierStatus.OnHold,
+                _ => CourierStatus.OnHold
+            };
+
+            foreach (var awb in SelectedAwbs)
+            {
+                var tracking = new AWBTracking
+                {
+                    InscanId = awb.Id,
+                    EventDateTime = DateTime.UtcNow,
+                    StatusId = courierStatus,
+                    DeliveryStatusId = _status,
+                    DeliveryDateTime = _deliveryDate?.ToUniversalTime(),
+                    ReceivedBy = _receivedBy,
+                    RelationType = _relation,
+                    NonDeliveryReasonId = _status == DeliveryStatus.NotDelivered || _status == DeliveryStatus.Refused ? _nonDeliveryReason : null,
+                    Remarks = _remarks,
+                    IsPODCaptured = _status == DeliveryStatus.Delivered,
+                    IsPublic = true
+                };
+
+                DbContext.AWBTrackings.Add(tracking);
+
+                awb.CourierStatusId = courierStatus;
+                awb.ModifiedAt = DateTime.UtcNow;
+            }
+
+            await DbContext.SaveChangesAsync();
+
+            Snackbar.Add($"POD updated for {SelectedAwbs.Count} AWB(s)", Severity.Success);
+            MudDialog.Close(DialogResult.Ok(true));
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error updating POD: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _saving = false;
+            StateHasChanged();
+        }
+    }
+}

@@ -54,6 +54,15 @@ The application is built on .NET 8 Blazor Server, utilizing a modular architectu
     - **Clone Rate Card**: Duplicate existing rate cards with all zones and slab rules as Draft status.
     - **Bulk Zone Operations**: Multi-select zones to apply common settings (base weight/rate, charges, margins, tax mode).
     - **Approval Workflow**: Status transitions (Draft → Pending Approval → Active → Expired/Suspended) with color-coded indicators.
+- **Proof of Delivery (POD)**:
+    - **Mobile POD Capture**: Touch-friendly interface for delivery agents with AWB search/barcode scan.
+    - **Photo Evidence**: Camera integration for capturing up to 3 delivery photos.
+    - **Digital Signature**: Canvas-based signature capture with touch support.
+    - **GPS Location**: Automatic geolocation capture for delivery verification.
+    - **Delivery Status**: Delivered, Partial Delivery, Refused, Not Delivered options with reason codes.
+    - **Bulk POD Update**: Desktop interface for updating multiple AWBs simultaneously.
+    - **Barcode Scanner**: Device camera-based AWB barcode/QR scanning for quick lookup.
+    - **Offline Support**: IndexedDB storage for offline POD capture with sync when online.
 
 ## External Dependencies
 - **Database**: PostgreSQL (hosted on Replit)

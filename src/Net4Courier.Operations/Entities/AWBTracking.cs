@@ -20,9 +20,18 @@ public class AWBTracking : BaseEntity
     public decimal? Latitude { get; set; }
     public decimal? Longitude { get; set; }
     public string? PODImage { get; set; }
+    public string? PODImage2 { get; set; }
+    public string? PODImage3 { get; set; }
     public string? SignatureImage { get; set; }
     public string? ReceivedBy { get; set; }
     public string? Relation { get; set; }
+    public RecipientRelation? RelationType { get; set; }
+    public DeliveryStatus? DeliveryStatusId { get; set; }
+    public NonDeliveryReason? NonDeliveryReasonId { get; set; }
+    public DateTime? DeliveryDateTime { get; set; }
+    public bool IsPODCaptured { get; set; }
+    public bool IsOfflineSync { get; set; }
+    public string? OfflineSyncId { get; set; }
     public bool IsPublic { get; set; } = true;
     
     public virtual InscanMaster Inscan { get; set; } = null!;

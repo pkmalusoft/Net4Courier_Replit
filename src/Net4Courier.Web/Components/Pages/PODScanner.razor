@@ -1,0 +1,156 @@
+@page "/pod-scanner"
+@using MudBlazor
+@using Microsoft.EntityFrameworkCore
+@using Net4Courier.Infrastructure.Data
+@using Net4Courier.Operations.Entities
+@using Net4Courier.Kernel.Enums
+@inject ApplicationDbContext DbContext
+@inject ISnackbar Snackbar
+@inject NavigationManager Navigation
+@inject IJSRuntime JS
+@implements IAsyncDisposable
+
+<PageTitle>AWB Scanner</PageTitle>
+
+<MudContainer MaxWidth="MaxWidth.Small" Class="py-4">
+    <MudPaper Elevation="2" Class="pa-4 mb-4">
+        <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center" Class="mb-4">
+            <MudText Typo="Typo.h6">Scan AWB Barcode</MudText>
+            <MudIconButton Icon="@Icons.Material.Filled.Close" Size="Size.Small"
+                           OnClick="@(() => Navigation.NavigateTo("/pod"))" />
+        </MudStack>
+
+        @if (_cameraError)
+        {
+            <MudAlert Severity="Severity.Error" Class="mb-4">
+                Unable to access camera. Please ensure camera permissions are granted.
+            </MudAlert>
+            <MudButton Variant="Variant.Outlined" Color="Color.Primary" OnClick="StartScanner" FullWidth="true">
+                Retry Camera Access
+            </MudButton>
+        }
+        else if (_barcodeNotSupported)
+        {
+            <MudAlert Severity="Severity.Warning" Class="mb-4">
+                Barcode scanning is not supported on this browser. Please use the manual entry below or try a different browser (Chrome on Android recommended).
+            </MudAlert>
+        }
+        else
+        {
+            <MudPaper Outlined="true" Class="pa-2" Style="background:#000; position:relative;">
+                <video id="scannerVideo" autoplay playsinline muted 
+                       style="width:100%; max-height:300px; object-fit:cover;"></video>
+                <div style="position:absolute; top:50%; left:10%; right:10%; height:2px; background:red; opacity:0.7;"></div>
+            </MudPaper>
+            <MudText Typo="Typo.caption" Class="mt-2 text-center" Color="Color.Secondary">
+                Position the barcode within the scanner area
+            </MudText>
+        }
+    </MudPaper>
+
+    <MudPaper Elevation="2" Class="pa-4 mb-4">
+        <MudText Typo="Typo.subtitle2" Class="mb-2">Or enter AWB manually:</MudText>
+        <MudStack Row="true" Spacing="2">
+            <MudTextField @bind-Value="_manualAwb" Label="AWB Number" Variant="Variant.Outlined"
+                          Margin="Margin.Dense" Style="flex:1" />
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="GoToAwb"
+                       Disabled="@string.IsNullOrWhiteSpace(_manualAwb)">Go</MudButton>
+        </MudStack>
+    </MudPaper>
+
+    @if (_scannedAwbs.Count > 0)
+    {
+        <MudPaper Elevation="2" Class="pa-4">
+            <MudText Typo="Typo.subtitle2" Class="mb-2">Recently Scanned:</MudText>
+            <MudList T="string" Dense="true">
+                @foreach (var awb in _scannedAwbs)
+                {
+                    <MudListItem OnClick="@(() => Navigation.NavigateTo($"/pod/{awb}"))">
+                        <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
+                            <MudText>@awb</MudText>
+                            <MudIcon Icon="@Icons.Material.Filled.ChevronRight" Size="Size.Small" />
+                        </MudStack>
+                    </MudListItem>
+                }
+            </MudList>
+        </MudPaper>
+    }
+</MudContainer>
+
+@code {
+    private string _manualAwb = "";
+    private bool _cameraError;
+    private bool _barcodeNotSupported;
+    private List<string> _scannedAwbs = new();
+    private DotNetObjectReference<PODScanner>? _dotNetRef;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            await StartScanner();
+        }
+    }
+
+    private async Task StartScanner()
+    {
+        try
+        {
+            _cameraError = false;
+            _barcodeNotSupported = false;
+            StateHasChanged();
+            
+            _dotNetRef = DotNetObjectReference.Create(this);
+            var result = await JS.InvokeAsync<bool>("initBarcodeScanner", "scannerVideo", _dotNetRef);
+            if (!result)
+            {
+                _barcodeNotSupported = true;
+                StateHasChanged();
+            }
+        }
+        catch
+        {
+            _cameraError = true;
+            StateHasChanged();
+        }
+    }
+
+    [JSInvokable]
+    public void OnBarcodeDetected(string code)
+    {
+        if (!string.IsNullOrEmpty(code) && !_scannedAwbs.Contains(code))
+        {
+            _scannedAwbs.Insert(0, code);
+            if (_scannedAwbs.Count > 10) _scannedAwbs.RemoveAt(_scannedAwbs.Count - 1);
+            
+            InvokeAsync(async () =>
+            {
+                await StopScanner();
+                Navigation.NavigateTo($"/pod/{code}");
+            });
+        }
+    }
+
+    private void GoToAwb()
+    {
+        if (!string.IsNullOrWhiteSpace(_manualAwb))
+        {
+            Navigation.NavigateTo($"/pod/{_manualAwb.Trim()}");
+        }
+    }
+
+    private async Task StopScanner()
+    {
+        try
+        {
+            await JS.InvokeVoidAsync("stopBarcodeScanner");
+        }
+        catch { }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        _dotNetRef?.Dispose();
+        await StopScanner();
+    }
+}

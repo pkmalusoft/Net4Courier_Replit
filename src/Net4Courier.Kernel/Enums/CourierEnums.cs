@@ -63,3 +63,35 @@ public enum InvoiceStatus
     Paid = 4,
     Cancelled = 5
 }
+
+public enum DeliveryStatus
+{
+    Delivered = 1,
+    PartialDelivery = 2,
+    Refused = 3,
+    NotDelivered = 4
+}
+
+public enum NonDeliveryReason
+{
+    AddressNotFound = 1,
+    CustomerNotAvailable = 2,
+    Refused = 3,
+    PremisesClosed = 4,
+    IncorrectAddress = 5,
+    CustomerRequestedReschedule = 6,
+    WeatherConditions = 7,
+    AccessRestricted = 8,
+    Other = 99
+}
+
+public enum RecipientRelation
+{
+    Self = 1,
+    Family = 2,
+    Colleague = 3,
+    Security = 4,
+    Reception = 5,
+    Neighbor = 6,
+    Other = 99
+}

@@ -1,0 +1,181 @@
+@page "/pod-bulk"
+@using MudBlazor
+@using Microsoft.EntityFrameworkCore
+@using Net4Courier.Infrastructure.Data
+@using Net4Courier.Operations.Entities
+@using Net4Courier.Kernel.Enums
+@inject ApplicationDbContext DbContext
+@inject ISnackbar Snackbar
+@inject NavigationManager Navigation
+@inject IDialogService DialogService
+
+<PageTitle>Bulk POD Update</PageTitle>
+
+<MudContainer MaxWidth="MaxWidth.ExtraLarge" Class="py-4">
+    <MudPaper Elevation="2" Class="pa-4 mb-4">
+        <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center" Class="mb-4">
+            <MudText Typo="Typo.h5">Bulk POD Update</MudText>
+            <MudStack Row="true" Spacing="2">
+                <MudButton Variant="Variant.Outlined" Color="Color.Secondary" StartIcon="@Icons.Material.Filled.ArrowBack"
+                           OnClick="@(() => Navigation.NavigateTo("/pod"))" Size="Size.Small">Single POD</MudButton>
+                @if (_selectedAwbs.Count > 0)
+                {
+                    <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Update"
+                               OnClick="OpenBulkUpdateDialog" Size="Size.Small">
+                        Update @_selectedAwbs.Count AWB(s)
+                    </MudButton>
+                }
+            </MudStack>
+        </MudStack>
+
+        <MudGrid>
+            <MudItem xs="12" md="3">
+                <MudDatePicker @bind-Date="_filterFromDate" Label="From Date" Variant="Variant.Outlined"
+                               Margin="Margin.Dense" DateFormat="dd-MMM-yyyy" />
+            </MudItem>
+            <MudItem xs="12" md="3">
+                <MudDatePicker @bind-Date="_filterToDate" Label="To Date" Variant="Variant.Outlined"
+                               Margin="Margin.Dense" DateFormat="dd-MMM-yyyy" />
+            </MudItem>
+            <MudItem xs="12" md="3">
+                <MudSelect T="CourierStatus?" @bind-Value="_filterStatus" Label="Status" Variant="Variant.Outlined"
+                           Margin="Margin.Dense" Clearable="true">
+                    <MudSelectItem T="CourierStatus?" Value="CourierStatus.OutForDelivery">Out for Delivery</MudSelectItem>
+                    <MudSelectItem T="CourierStatus?" Value="CourierStatus.InTransit">In Transit</MudSelectItem>
+                    <MudSelectItem T="CourierStatus?" Value="CourierStatus.OnHold">On Hold</MudSelectItem>
+                </MudSelect>
+            </MudItem>
+            <MudItem xs="12" md="3">
+                <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Search"
+                           OnClick="LoadAwbs" FullWidth="true" Style="height:40px">Search</MudButton>
+            </MudItem>
+        </MudGrid>
+    </MudPaper>
+
+    @if (_loading)
+    {
+        <MudProgressLinear Color="Color.Primary" Indeterminate="true" Class="mb-4" />
+    }
+
+    <MudPaper Elevation="2" Class="pa-4">
+        <MudTable Items="@_awbList" Hover="true" Dense="true" MultiSelection="true" @bind-SelectedItems="_selectedAwbs"
+                  Loading="@_loading" Elevation="0" Class="border-solid border">
+            <ToolBarContent>
+                <MudText Typo="Typo.subtitle1">AWBs Pending POD</MudText>
+                <MudSpacer />
+                <MudText Typo="Typo.caption" Color="Color.Secondary">@_awbList.Count AWB(s) found</MudText>
+            </ToolBarContent>
+            <HeaderContent>
+                <MudTh>AWB No</MudTh>
+                <MudTh>Date</MudTh>
+                <MudTh>Consignee</MudTh>
+                <MudTh>Destination</MudTh>
+                <MudTh>Status</MudTh>
+                <MudTh Style="width:80px">Actions</MudTh>
+            </HeaderContent>
+            <RowTemplate>
+                <MudTd DataLabel="AWB No">
+                    <MudLink OnClick="@(() => Navigation.NavigateTo($"/pod/{context.AWBNo}"))">@context.AWBNo</MudLink>
+                </MudTd>
+                <MudTd DataLabel="Date">@context.TransactionDate.ToString("dd-MMM-yyyy")</MudTd>
+                <MudTd DataLabel="Consignee">@context.Consignee</MudTd>
+                <MudTd DataLabel="Destination">@context.ConsigneeCity</MudTd>
+                <MudTd DataLabel="Status">
+                    <MudChip T="string" Size="Size.Small" Color="@GetStatusColor(context.CourierStatusId)">
+                        @context.CourierStatusId
+                    </MudChip>
+                </MudTd>
+                <MudTd>
+                    <MudIconButton Icon="@Icons.Material.Filled.Edit" Size="Size.Small" Color="Color.Primary"
+                                   OnClick="@(() => Navigation.NavigateTo($"/pod/{context.AWBNo}"))" Title="Update POD" />
+                </MudTd>
+            </RowTemplate>
+            <NoRecordsContent>
+                <MudText Class="pa-4">No AWBs found matching the criteria.</MudText>
+            </NoRecordsContent>
+        </MudTable>
+    </MudPaper>
+</MudContainer>
+
+@code {
+    private List<InscanMaster> _awbList = new();
+    private HashSet<InscanMaster> _selectedAwbs = new();
+    private bool _loading;
+    private DateTime? _filterFromDate = DateTime.Today.AddDays(-7);
+    private DateTime? _filterToDate = DateTime.Today;
+    private CourierStatus? _filterStatus = CourierStatus.OutForDelivery;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadAwbs();
+    }
+
+    private async Task LoadAwbs()
+    {
+        _loading = true;
+        _selectedAwbs.Clear();
+        StateHasChanged();
+
+        try
+        {
+            var query = DbContext.InscanMasters
+                .Where(i => !i.IsDeleted && i.CourierStatusId != CourierStatus.Delivered && i.CourierStatusId != CourierStatus.Cancelled);
+
+            if (_filterFromDate.HasValue)
+            {
+                var fromDate = _filterFromDate.Value.Date;
+                query = query.Where(i => i.TransactionDate >= fromDate);
+            }
+
+            if (_filterToDate.HasValue)
+            {
+                var toDate = _filterToDate.Value.Date.AddDays(1);
+                query = query.Where(i => i.TransactionDate < toDate);
+            }
+
+            if (_filterStatus.HasValue)
+            {
+                query = query.Where(i => i.CourierStatusId == _filterStatus.Value);
+            }
+
+            _awbList = await query
+                .OrderByDescending(i => i.TransactionDate)
+                .Take(100)
+                .ToListAsync();
+        }
+        finally
+        {
+            _loading = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task OpenBulkUpdateDialog()
+    {
+        var parameters = new DialogParameters<BulkPODDialog>
+        {
+            { x => x.SelectedAwbs, _selectedAwbs.ToList() }
+        };
+
+        var options = new DialogOptions { MaxWidth = MaxWidth.Small, FullWidth = true };
+        var dialog = await DialogService.ShowAsync<BulkPODDialog>("Bulk POD Update", parameters, options);
+        var result = await dialog.Result;
+
+        if (result != null && !result.Canceled)
+        {
+            await LoadAwbs();
+        }
+    }
+
+    private Color GetStatusColor(CourierStatus status) => status switch
+    {
+        CourierStatus.Delivered => Color.Success,
+        CourierStatus.Pending => Color.Warning,
+        CourierStatus.InTransit => Color.Info,
+        CourierStatus.OutForDelivery => Color.Primary,
+        CourierStatus.Returned => Color.Error,
+        CourierStatus.OnHold => Color.Secondary,
+        CourierStatus.Cancelled => Color.Dark,
+        _ => Color.Default
+    };
+}
