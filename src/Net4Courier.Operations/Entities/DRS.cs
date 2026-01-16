@@ -1,4 +1,5 @@
 using Net4Courier.Kernel.Entities;
+using Net4Courier.Kernel.Enums;
 
 namespace Net4Courier.Operations.Entities;
 
@@ -20,9 +21,26 @@ public class DRS : BaseEntity
     public decimal? TotalCOD { get; set; }
     public decimal? CollectedCOD { get; set; }
     public string? Remarks { get; set; }
-    public int? DRSStatus { get; set; }
+    public DRSStatus Status { get; set; } = DRSStatus.Open;
     public DateTime? ClosedAt { get; set; }
     public int? ClosedBy { get; set; }
+    
+    public decimal? TotalCourierCharges { get; set; }
+    public decimal? TotalMaterialCost { get; set; }
+    public decimal? PickupCash { get; set; }
+    public decimal? OutstandingCollected { get; set; }
+    public decimal? ExpectedTotal { get; set; }
+    public decimal? ActualReceived { get; set; }
+    public decimal? ApprovedExpenses { get; set; }
+    public decimal? Variance { get; set; }
+    public DateTime? SubmittedAt { get; set; }
+    public DateTime? ReconciledAt { get; set; }
+    public int? ReconciledById { get; set; }
+    public string? ReconciledByName { get; set; }
+    
+    public virtual ICollection<DRSDetail> Details { get; set; } = new List<DRSDetail>();
+    public virtual ICollection<CourierCashSubmission> CashSubmissions { get; set; } = new List<CourierCashSubmission>();
+    public virtual ICollection<CourierExpense> Expenses { get; set; } = new List<CourierExpense>();
 }
 
 public class DRSDetail : BaseEntity

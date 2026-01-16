@@ -95,3 +95,38 @@ public enum RecipientRelation
     Neighbor = 6,
     Other = 99
 }
+
+public enum DRSStatus
+{
+    Open = 1,
+    Submitted = 2,
+    PartiallyReconciled = 3,
+    Reconciled = 4,
+    Closed = 5
+}
+
+public enum ExpenseType
+{
+    Fuel = 1,
+    Toll = 2,
+    Parking = 3,
+    Repair = 4,
+    Food = 5,
+    Other = 99
+}
+
+public enum ExpenseStatus
+{
+    Pending = 1,
+    Approved = 2,
+    Rejected = 3
+}
+
+public enum LedgerEntryType
+{
+    Shortage = 1,
+    Excess = 2,
+    ExpenseReimbursement = 3,
+    SalaryDeduction = 4,
+    Adjustment = 5
+}

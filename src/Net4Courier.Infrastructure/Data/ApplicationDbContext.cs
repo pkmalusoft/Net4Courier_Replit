@@ -33,6 +33,9 @@ public class ApplicationDbContext : DbContext
     public DbSet<Manifest> Manifests => Set<Manifest>();
     public DbSet<DRS> DRSs => Set<DRS>();
     public DbSet<DRSDetail> DRSDetails => Set<DRSDetail>();
+    public DbSet<CourierCashSubmission> CourierCashSubmissions => Set<CourierCashSubmission>();
+    public DbSet<CourierExpense> CourierExpenses => Set<CourierExpense>();
+    public DbSet<CourierLedger> CourierLedgers => Set<CourierLedger>();
     public DbSet<OtherChargeType> OtherChargeTypes => Set<OtherChargeType>();
     public DbSet<AWBOtherCharge> AWBOtherCharges => Set<AWBOtherCharge>();
     public DbSet<PickupRequest> PickupRequests => Set<PickupRequest>();
@@ -370,15 +373,65 @@ public class ApplicationDbContext : DbContext
             entity.ToTable("DRS");
             entity.HasKey(e => e.Id);
             entity.Property(e => e.DRSNo).HasMaxLength(50);
+            entity.Property(e => e.ExpectedTotal).HasPrecision(18, 2);
+            entity.Property(e => e.ActualReceived).HasPrecision(18, 2);
+            entity.Property(e => e.ApprovedExpenses).HasPrecision(18, 2);
+            entity.Property(e => e.Variance).HasPrecision(18, 2);
+            entity.Property(e => e.TotalCourierCharges).HasPrecision(18, 2);
+            entity.Property(e => e.TotalMaterialCost).HasPrecision(18, 2);
+            entity.Property(e => e.PickupCash).HasPrecision(18, 2);
+            entity.Property(e => e.OutstandingCollected).HasPrecision(18, 2);
             entity.HasIndex(e => e.DRSNo);
+            entity.HasIndex(e => new { e.DeliveryEmployeeId, e.DRSDate });
+            entity.HasIndex(e => new { e.Status, e.DRSDate });
         });
 
         modelBuilder.Entity<DRSDetail>(entity =>
         {
             entity.ToTable("DRSDetails");
             entity.HasKey(e => e.Id);
-            entity.HasOne(e => e.DRS).WithMany().HasForeignKey(e => e.DRSId);
+            entity.HasOne(e => e.DRS).WithMany(d => d.Details).HasForeignKey(e => e.DRSId);
             entity.HasOne(e => e.Inscan).WithMany().HasForeignKey(e => e.InscanId);
+        });
+
+        modelBuilder.Entity<CourierCashSubmission>(entity =>
+        {
+            entity.ToTable("CourierCashSubmissions");
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.CashSubmittedAmount).HasPrecision(18, 2);
+            entity.Property(e => e.ReceivedAmount).HasPrecision(18, 2);
+            entity.Property(e => e.ReceiptNo).HasMaxLength(50);
+            entity.HasIndex(e => new { e.DRSId, e.SubmissionDate });
+            entity.HasIndex(e => new { e.CourierId, e.SubmissionDate });
+            entity.HasOne(e => e.DRS).WithMany(d => d.CashSubmissions).HasForeignKey(e => e.DRSId);
+        });
+
+        modelBuilder.Entity<CourierExpense>(entity =>
+        {
+            entity.ToTable("CourierExpenses");
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Amount).HasPrecision(18, 2);
+            entity.Property(e => e.Description).HasMaxLength(500);
+            entity.Property(e => e.BillImagePath).HasMaxLength(500);
+            entity.HasIndex(e => new { e.DRSId, e.Status });
+            entity.HasIndex(e => new { e.CourierId, e.ExpenseDate });
+            entity.HasIndex(e => e.Status);
+            entity.HasOne(e => e.DRS).WithMany(d => d.Expenses).HasForeignKey(e => e.DRSId);
+        });
+
+        modelBuilder.Entity<CourierLedger>(entity =>
+        {
+            entity.ToTable("CourierLedgers");
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.DebitAmount).HasPrecision(18, 2);
+            entity.Property(e => e.CreditAmount).HasPrecision(18, 2);
+            entity.Property(e => e.RunningBalance).HasPrecision(18, 2);
+            entity.Property(e => e.DRSNo).HasMaxLength(50);
+            entity.Property(e => e.Narration).HasMaxLength(500);
+            entity.Property(e => e.Reference).HasMaxLength(100);
+            entity.HasIndex(e => new { e.CourierId, e.TransactionDate });
+            entity.HasIndex(e => new { e.CourierId, e.IsSettled });
+            entity.HasOne(e => e.DRS).WithMany().HasForeignKey(e => e.DRSId);
         });
 
         modelBuilder.Entity<OtherChargeType>(entity =>
