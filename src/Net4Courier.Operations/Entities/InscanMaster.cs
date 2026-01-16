@@ -85,9 +85,21 @@ public class InscanMaster : AuditableEntity
     public long? ForwardingAgentId { get; set; }
     public string? ForwardingAWBNo { get; set; }
     public decimal? ForwardingCharge { get; set; }
+    public decimal? SpotRate { get; set; }
+    public decimal? MarginPercent { get; set; }
+    public decimal? ManifestWeight { get; set; }
+    
+    public bool IsNCND { get; set; }
+    public bool IsCashOnly { get; set; }
+    public bool IsChequeOnly { get; set; }
+    public bool IsCollectMaterial { get; set; }
+    public bool IsDOCopyBack { get; set; }
     
     public int? AssignedEmployeeId { get; set; }
     public int? PickedUpEmployeeId { get; set; }
+    public int? ReceivedByEmployeeId { get; set; }
+    public string? PickedBy { get; set; }
+    public string? ReceivedBy { get; set; }
     public DateTime? PickupRequestDate { get; set; }
     public DateTime? PickedUpDate { get; set; }
     public DateTime? DeliveredDate { get; set; }
