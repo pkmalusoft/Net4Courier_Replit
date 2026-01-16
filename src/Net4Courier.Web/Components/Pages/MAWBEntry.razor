@@ -20,9 +20,19 @@
             <MudText Typo="Typo.h6" Class="mb-2">Route Information</MudText>
         </MudItem>
         
+        <MudItem xs="12" md="3">
+            <MudSelect T="Country" Label="Origin Country" Value="_originCountry" 
+                       Variant="Variant.Outlined" Dense="true" Required="true"
+                       ToStringFunc="@(c => c?.Name ?? "")" ValueChanged="OnOriginCountryChanged">
+                @foreach (var country in _countries)
+                {
+                    <MudSelectItem T="Country" Value="@country">@country.Name</MudSelectItem>
+                }
+            </MudSelect>
+        </MudItem>
         <MudItem xs="12" md="6">
             <MudAutocomplete T="City" Label="Origin City" @bind-Value="_originCity"
-                             SearchFunc="@SearchCities" ToStringFunc="@(c => c?.Name ?? "")"
+                             SearchFunc="@SearchOriginCities" ToStringFunc="@(c => c?.Name ?? "")"
                              Variant="Variant.Outlined" Dense="true" Required="true"
                              ResetValueOnEmptyText="true" CoerceValue="true" />
         </MudItem>
@@ -30,24 +40,26 @@
             <MudTextField @bind-Value="_mawb.OriginAirportCode" Label="Origin Airport Code" 
                           Variant="Variant.Outlined" Placeholder="e.g., DXB" />
         </MudItem>
-        <MudItem xs="12" md="3">
-            <MudTextField Value="@_originCity?.Country?.Name" Label="Origin Country" 
-                          Variant="Variant.Outlined" ReadOnly="true" />
-        </MudItem>
         
+        <MudItem xs="12" md="3">
+            <MudSelect T="Country" Label="Destination Country" Value="_destinationCountry" 
+                       Variant="Variant.Outlined" Dense="true" Required="true"
+                       ToStringFunc="@(c => c?.Name ?? "")" ValueChanged="OnDestinationCountryChanged">
+                @foreach (var country in _countries)
+                {
+                    <MudSelectItem T="Country" Value="@country">@country.Name</MudSelectItem>
+                }
+            </MudSelect>
+        </MudItem>
         <MudItem xs="12" md="6">
             <MudAutocomplete T="City" Label="Destination City" @bind-Value="_destinationCity"
-                             SearchFunc="@SearchCities" ToStringFunc="@(c => c?.Name ?? "")"
+                             SearchFunc="@SearchDestinationCities" ToStringFunc="@(c => c?.Name ?? "")"
                              Variant="Variant.Outlined" Dense="true" Required="true"
                              ResetValueOnEmptyText="true" CoerceValue="true" />
         </MudItem>
         <MudItem xs="12" md="3">
             <MudTextField @bind-Value="_mawb.DestinationAirportCode" Label="Destination Airport Code" 
                           Variant="Variant.Outlined" Placeholder="e.g., JFK" />
-        </MudItem>
-        <MudItem xs="12" md="3">
-            <MudTextField Value="@_destinationCity?.Country?.Name" Label="Destination Country" 
-                          Variant="Variant.Outlined" ReadOnly="true" />
         </MudItem>
 
         <MudItem xs="12">
@@ -144,10 +156,13 @@
 @code {
     [Parameter] public long Id { get; set; }
     
-    private MasterAirwaybill _mawb = new() { TransactionDate = DateTime.Today };
+    private MasterAirwaybill _mawb = new() { TransactionDate = DateTime.UtcNow.Date };
     private bool _isEdit => Id > 0;
     private bool _saving = false;
     
+    private List<Country> _countries = new();
+    private Country? _originCountry;
+    private Country? _destinationCountry;
     private City? _originCity;
     private City? _destinationCity;
     private Party? _coLoader;
@@ -158,6 +173,11 @@
 
     protected override async Task OnInitializedAsync()
     {
+        _countries = await DbContext.Countries
+            .Where(c => c.IsActive && !c.IsDeleted)
+            .OrderBy(c => c.Name)
+            .ToListAsync();
+
         if (_isEdit)
         {
             var mawb = await DbContext.MasterAirwaybills.FindAsync(Id);
@@ -169,6 +189,10 @@
                 _departureTime = mawb.DepartureTime;
                 _arrivalTime = mawb.ArrivalTime;
                 
+                if (mawb.OriginCountryId.HasValue)
+                    _originCountry = _countries.FirstOrDefault(c => c.Id == mawb.OriginCountryId);
+                if (mawb.DestinationCountryId.HasValue)
+                    _destinationCountry = _countries.FirstOrDefault(c => c.Id == mawb.DestinationCountryId);
                 if (mawb.OriginCityId.HasValue)
                     _originCity = await DbContext.Cities.Include(c => c.Country).FirstOrDefaultAsync(c => c.Id == mawb.OriginCityId);
                 if (mawb.DestinationCityId.HasValue)
@@ -179,16 +203,42 @@
         }
     }
 
-    private async Task<IEnumerable<City>> SearchCities(string? value)
+    private void OnOriginCountryChanged(Country country)
     {
-        if (string.IsNullOrWhiteSpace(value))
-            return await DbContext.Cities.Include(c => c.Country).Take(20).ToListAsync();
+        _originCountry = country;
+        _originCity = null;
+    }
 
-        return await DbContext.Cities
-            .Include(c => c.Country)
-            .Where(c => c.Name.Contains(value) || (c.Code != null && c.Code.Contains(value)))
-            .Take(20)
-            .ToListAsync();
+    private void OnDestinationCountryChanged(Country country)
+    {
+        _destinationCountry = country;
+        _destinationCity = null;
+    }
+
+    private async Task<IEnumerable<City>> SearchOriginCities(string? value)
+    {
+        var query = DbContext.Cities.Include(c => c.Country).AsQueryable();
+        
+        if (_originCountry != null)
+            query = query.Where(c => c.CountryId == _originCountry.Id);
+
+        if (!string.IsNullOrWhiteSpace(value))
+            query = query.Where(c => c.Name.Contains(value) || (c.Code != null && c.Code.Contains(value)));
+
+        return await query.Take(20).ToListAsync();
+    }
+
+    private async Task<IEnumerable<City>> SearchDestinationCities(string? value)
+    {
+        var query = DbContext.Cities.Include(c => c.Country).AsQueryable();
+        
+        if (_destinationCountry != null)
+            query = query.Where(c => c.CountryId == _destinationCountry.Id);
+
+        if (!string.IsNullOrWhiteSpace(value))
+            query = query.Where(c => c.Name.Contains(value) || (c.Code != null && c.Code.Contains(value)));
+
+        return await query.Take(20).ToListAsync();
     }
 
     private async Task<IEnumerable<Party>> SearchCoLoaders(string? value)
@@ -222,13 +272,13 @@
         {
             _mawb.OriginCityId = _originCity.Id;
             _mawb.OriginCityName = _originCity.Name;
-            _mawb.OriginCountryId = _originCity.CountryId;
-            _mawb.OriginCountryName = _originCity.Country?.Name;
+            _mawb.OriginCountryId = _originCountry?.Id;
+            _mawb.OriginCountryName = _originCountry?.Name;
 
             _mawb.DestinationCityId = _destinationCity.Id;
             _mawb.DestinationCityName = _destinationCity.Name;
-            _mawb.DestinationCountryId = _destinationCity.CountryId;
-            _mawb.DestinationCountryName = _destinationCity.Country?.Name;
+            _mawb.DestinationCountryId = _destinationCountry?.Id;
+            _mawb.DestinationCountryName = _destinationCountry?.Name;
 
             _mawb.CoLoaderId = _coLoader?.Id;
             _mawb.CoLoaderName = _coLoader?.Name;
