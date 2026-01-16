@@ -5,10 +5,51 @@
 @using Microsoft.EntityFrameworkCore
 @using Net4Courier.Infrastructure.Data
 @using Net4Courier.Operations.Entities
+@using Net4Courier.Masters.Entities
+@using static Net4Courier.Masters.Entities.Party
 
-<PageTitle>My Pickups - Net4Courier</PageTitle>
+<PageTitle>Courier Pickups - Net4Courier</PageTitle>
 
-<MudText Typo="Typo.h5" GutterBottom="true">My Assigned Pickups</MudText>
+<MudText Typo="Typo.h5" GutterBottom="true">Courier Pickups</MudText>
+
+<MudPaper Class="pa-4 mb-4" Elevation="2">
+    <MudGrid>
+        <MudItem xs="12" sm="6" md="4">
+            <MudSelect T="long?" Value="_selectedCourierId" ValueChanged="OnCourierChanged" 
+                       Label="Courier" Variant="Variant.Outlined" Clearable="true" Dense="true">
+                <MudSelectItem T="long?" Value="@((long?)null)">All Couriers</MudSelectItem>
+                @foreach (var courier in _couriers)
+                {
+                    <MudSelectItem T="long?" Value="@((long?)courier.Id)">@courier.Name</MudSelectItem>
+                }
+            </MudSelect>
+        </MudItem>
+        <MudItem xs="12" sm="6" md="3">
+            <MudSelect T="string" @bind-Value="_selectedPeriod" Label="Period" Variant="Variant.Outlined" Dense="true">
+                <MudSelectItem T="string" Value="@("Today")">Today</MudSelectItem>
+                <MudSelectItem T="string" Value="@("Week")">This Week</MudSelectItem>
+                <MudSelectItem T="string" Value="@("Month")">This Month</MudSelectItem>
+                <MudSelectItem T="string" Value="@("Year")">This Year</MudSelectItem>
+                <MudSelectItem T="string" Value="@("Custom")">Custom Range</MudSelectItem>
+            </MudSelect>
+        </MudItem>
+        @if (_selectedPeriod == "Custom")
+        {
+            <MudItem xs="6" sm="3" md="2">
+                <MudDatePicker @bind-Date="_fromDate" Label="From" Variant="Variant.Outlined" Dense="true" />
+            </MudItem>
+            <MudItem xs="6" sm="3" md="2">
+                <MudDatePicker @bind-Date="_toDate" Label="To" Variant="Variant.Outlined" Dense="true" />
+            </MudItem>
+        }
+        <MudItem xs="12" sm="6" md="@(_selectedPeriod == "Custom" ? 1 : 5)">
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="LoadData" 
+                       StartIcon="@Icons.Material.Filled.Search" FullWidth="true">
+                Search
+            </MudButton>
+        </MudItem>
+    </MudGrid>
+</MudPaper>
 
 <MudTabs Elevation="2" Rounded="true" ApplyEffectsToContainer="true" PanelClass="pa-4">
     <MudTabPanel Text="Assigned" BadgeData="@_assignedPickups.Count" BadgeColor="Color.Primary">
@@ -25,7 +66,13 @@
                                     <MudText Typo="Typo.body1"><strong>@pickup.CustomerName</strong></MudText>
                                     <MudText Typo="Typo.body2">@pickup.ContactPerson</MudText>
                                 </MudStack>
-                                <MudChip T="string" Color="Color.Info" Size="Size.Small">Assigned</MudChip>
+                                <MudStack Spacing="0" AlignItems="AlignItems.End">
+                                    <MudChip T="string" Color="Color.Info" Size="Size.Small">Assigned</MudChip>
+                                    @if (!string.IsNullOrEmpty(pickup.CourierName))
+                                    {
+                                        <MudText Typo="Typo.caption" Color="Color.Secondary">@pickup.CourierName</MudText>
+                                    }
+                                </MudStack>
                             </MudStack>
                             
                             <MudDivider Class="my-2" />
@@ -78,7 +125,7 @@
         }
         else
         {
-            <MudAlert Severity="Severity.Info">No pickups assigned to you</MudAlert>
+            <MudAlert Severity="Severity.Info">No assigned pickups for the selected filters</MudAlert>
         }
     </MudTabPanel>
     
@@ -95,10 +142,14 @@
                                     <MudText Typo="Typo.subtitle1"><strong>@pickup.PickupNo</strong></MudText>
                                     <MudText Typo="Typo.body2">@pickup.CustomerName</MudText>
                                     <MudText Typo="Typo.caption" Color="Color.Secondary">@pickup.City</MudText>
+                                    @if (!string.IsNullOrEmpty(pickup.CourierName))
+                                    {
+                                        <MudText Typo="Typo.caption" Color="Color.Primary">Courier: @pickup.CourierName</MudText>
+                                    }
                                 </MudStack>
                                 <MudStack Spacing="0" AlignItems="AlignItems.End">
                                     <MudChip T="string" Color="Color.Success" Size="Size.Small">Collected</MudChip>
-                                    <MudText Typo="Typo.caption">@pickup.CollectedAt?.ToString("HH:mm")</MudText>
+                                    <MudText Typo="Typo.caption">@pickup.CollectedAt?.ToString("dd MMM HH:mm")</MudText>
                                 </MudStack>
                             </MudStack>
                         </MudCardContent>
@@ -108,7 +159,41 @@
         }
         else
         {
-            <MudAlert Severity="Severity.Info">No collected pickups</MudAlert>
+            <MudAlert Severity="Severity.Info">No collected pickups for the selected filters</MudAlert>
+        }
+    </MudTabPanel>
+    
+    <MudTabPanel Text="Inscanned" BadgeData="@_inscannedPickups.Count" BadgeColor="Color.Tertiary">
+        @if (_inscannedPickups.Any())
+        {
+            <MudStack Spacing="2">
+                @foreach (var pickup in _inscannedPickups)
+                {
+                    <MudCard Outlined="true">
+                        <MudCardContent>
+                            <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
+                                <MudStack Spacing="0">
+                                    <MudText Typo="Typo.subtitle1"><strong>@pickup.PickupNo</strong></MudText>
+                                    <MudText Typo="Typo.body2">@pickup.CustomerName</MudText>
+                                    <MudText Typo="Typo.caption" Color="Color.Secondary">@pickup.City</MudText>
+                                    @if (!string.IsNullOrEmpty(pickup.CourierName))
+                                    {
+                                        <MudText Typo="Typo.caption" Color="Color.Primary">Courier: @pickup.CourierName</MudText>
+                                    }
+                                </MudStack>
+                                <MudStack Spacing="0" AlignItems="AlignItems.End">
+                                    <MudChip T="string" Color="Color.Tertiary" Size="Size.Small">Inscanned</MudChip>
+                                    <MudText Typo="Typo.caption">@pickup.InscannedAt?.ToString("dd MMM HH:mm")</MudText>
+                                </MudStack>
+                            </MudStack>
+                        </MudCardContent>
+                    </MudCard>
+                }
+            </MudStack>
+        }
+        else
+        {
+            <MudAlert Severity="Severity.Info">No inscanned pickups for the selected filters</MudAlert>
         }
     </MudTabPanel>
 </MudTabs>
@@ -117,12 +202,17 @@
     <MudStack Row="true" Justify="Justify.SpaceAround">
         <MudStack Spacing="0" AlignItems="AlignItems.Center">
             <MudText Typo="Typo.h4" Color="Color.Primary">@_assignedPickups.Count</MudText>
-            <MudText Typo="Typo.caption">Pending</MudText>
+            <MudText Typo="Typo.caption">Assigned</MudText>
         </MudStack>
         <MudDivider Vertical="true" FlexItem="true" />
         <MudStack Spacing="0" AlignItems="AlignItems.Center">
             <MudText Typo="Typo.h4" Color="Color.Success">@_collectedPickups.Count</MudText>
             <MudText Typo="Typo.caption">Collected</MudText>
+        </MudStack>
+        <MudDivider Vertical="true" FlexItem="true" />
+        <MudStack Spacing="0" AlignItems="AlignItems.Center">
+            <MudText Typo="Typo.h4" Color="Color.Tertiary">@_inscannedPickups.Count</MudText>
+            <MudText Typo="Typo.caption">Inscanned</MudText>
         </MudStack>
     </MudStack>
 </MudPaper>
@@ -133,27 +223,62 @@
 @code {
     private List<PickupRequest> _assignedPickups = new();
     private List<PickupRequest> _collectedPickups = new();
-    private long? _currentCourierId;
+    private List<PickupRequest> _inscannedPickups = new();
+    private List<Party> _couriers = new();
+    
+    private long? _selectedCourierId;
+    private string _selectedPeriod = "Today";
+    private DateTime? _fromDate;
+    private DateTime? _toDate;
 
     protected override async Task OnInitializedAsync()
     {
+        _couriers = await DbContext.Parties
+            .Where(p => p.PartyType == PartyType.DeliveryAgent && !p.IsDeleted && p.IsActive)
+            .OrderBy(p => p.Name)
+            .ToListAsync();
+            
         await LoadData();
+    }
+
+    private async Task OnCourierChanged(long? courierId)
+    {
+        _selectedCourierId = courierId;
+        await LoadData();
+    }
+
+    private (DateTime from, DateTime to) GetDateRange()
+    {
+        var today = DateTime.UtcNow.Date;
+        
+        return _selectedPeriod switch
+        {
+            "Today" => (today, today.AddDays(1)),
+            "Week" => (today.AddDays(-(int)today.DayOfWeek), today.AddDays(7 - (int)today.DayOfWeek)),
+            "Month" => (new DateTime(today.Year, today.Month, 1), new DateTime(today.Year, today.Month, 1).AddMonths(1)),
+            "Year" => (new DateTime(today.Year, 1, 1), new DateTime(today.Year + 1, 1, 1)),
+            "Custom" => (_fromDate?.Date ?? today.AddDays(-30), _toDate?.Date.AddDays(1) ?? today.AddDays(1)),
+            _ => (today, today.AddDays(1))
+        };
     }
 
     private async Task LoadData()
     {
-        var today = DateTime.UtcNow.Date;
+        var (from, to) = GetDateRange();
         
-        _assignedPickups = await DbContext.PickupRequests
-            .Where(p => p.Status == PickupStatus.AssignedForCollection && !p.IsDeleted)
-            .OrderBy(p => p.ScheduledDate)
-            .ThenBy(p => p.RequestDate)
-            .ToListAsync();
+        var query = DbContext.PickupRequests
+            .Where(p => !p.IsDeleted && p.RequestDate >= from && p.RequestDate < to);
             
-        _collectedPickups = await DbContext.PickupRequests
-            .Where(p => p.Status == PickupStatus.ShipmentCollected && !p.IsDeleted && p.CollectedAt >= today)
-            .OrderByDescending(p => p.CollectedAt)
-            .ToListAsync();
+        if (_selectedCourierId.HasValue)
+        {
+            query = query.Where(p => p.CourierId == _selectedCourierId.Value);
+        }
+        
+        var pickups = await query.OrderByDescending(p => p.RequestDate).ToListAsync();
+        
+        _assignedPickups = pickups.Where(p => p.Status == PickupStatus.AssignedForCollection).ToList();
+        _collectedPickups = pickups.Where(p => p.Status == PickupStatus.ShipmentCollected).ToList();
+        _inscannedPickups = pickups.Where(p => p.Status == PickupStatus.Inscanned).ToList();
             
         StateHasChanged();
     }
