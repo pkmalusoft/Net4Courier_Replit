@@ -49,6 +49,35 @@
                 <MudItem xs="12" md="6">
                     <MudTextField @bind-Value="Party.Mobile" Label="Mobile" Variant="Variant.Outlined" />
                 </MudItem>
+                <MudItem xs="12" md="4">
+                    <MudSelect T="long?" Value="_countryId" ValueChanged="OnCountryChanged" Label="Country" 
+                               Variant="Variant.Outlined" AnchorOrigin="Origin.BottomCenter" Clearable="true">
+                        @foreach (var country in _countries)
+                        {
+                            <MudSelectItem T="long?" Value="@country.Id">@country.Name</MudSelectItem>
+                        }
+                    </MudSelect>
+                </MudItem>
+                <MudItem xs="12" md="4">
+                    <MudSelect T="long?" Value="_cityId" ValueChanged="OnCityChanged" Label="City" 
+                               Variant="Variant.Outlined" AnchorOrigin="Origin.BottomCenter" Clearable="true"
+                               Disabled="@(!_cities.Any())">
+                        @foreach (var city in _cities)
+                        {
+                            <MudSelectItem T="long?" Value="@city.Id">@city.Name</MudSelectItem>
+                        }
+                    </MudSelect>
+                </MudItem>
+                <MudItem xs="12" md="4">
+                    <MudSelect T="string" Value="_location" ValueChanged="OnLocationChanged" Label="Location" 
+                               Variant="Variant.Outlined" AnchorOrigin="Origin.BottomCenter" Clearable="true"
+                               Disabled="@(!_locations.Any())">
+                        @foreach (var loc in _locations)
+                        {
+                            <MudSelectItem T="string" Value="@loc.Name">@loc.Name</MudSelectItem>
+                        }
+                    </MudSelect>
+                </MudItem>
                 <MudItem xs="12" md="6">
                     <MudTextField @bind-Value="Party.TaxNumber" Label="Tax Number (TRN/VAT)" Variant="Variant.Outlined" />
                 </MudItem>
@@ -78,14 +107,94 @@
     private MudForm _form = null!;
     private bool _formIsValid;
     private List<Company> _companies = new();
+    private List<Country> _countries = new();
+    private List<City> _cities = new();
+    private List<Location> _locations = new();
+    private long? _countryId;
+    private long? _cityId;
+    private string? _location;
 
     protected override async Task OnInitializedAsync()
     {
         _companies = await DbContext.Companies.Where(c => c.IsActive && !c.IsDeleted).OrderBy(c => c.Name).ToListAsync();
-        if (IsNew && _companies.Any())
+        _countries = await DbContext.Countries.Where(c => c.IsActive && !c.IsDeleted).OrderBy(c => c.Name).ToListAsync();
+
+        if (IsNew)
         {
-            Party.CompanyId = _companies.First().Id;
+            if (_companies.Any())
+                Party.CompanyId = _companies.First().Id;
+            
+            var india = _countries.FirstOrDefault(c => c.Name == "India");
+            if (india != null)
+            {
+                _countryId = india.Id;
+                _cities = await DbContext.Cities.Where(c => c.CountryId == india.Id && c.IsActive && !c.IsDeleted).OrderBy(c => c.Name).ToListAsync();
+            }
         }
+        else
+        {
+            await LoadExistingPartyAddress();
+        }
+    }
+
+    private async Task LoadExistingPartyAddress()
+    {
+        var primaryAddress = await DbContext.PartyAddresses
+            .Where(a => a.PartyId == Party.Id && !a.IsDeleted)
+            .OrderByDescending(a => a.IsDefault)
+            .FirstOrDefaultAsync();
+
+        if (primaryAddress != null)
+        {
+            var country = _countries.FirstOrDefault(c => c.Name == primaryAddress.Country);
+            if (country != null)
+            {
+                _countryId = country.Id;
+                _cities = await DbContext.Cities.Where(c => c.CountryId == country.Id && c.IsActive && !c.IsDeleted).OrderBy(c => c.Name).ToListAsync();
+
+                var city = _cities.FirstOrDefault(c => c.Name == primaryAddress.City);
+                if (city != null)
+                {
+                    _cityId = city.Id;
+                    _locations = await DbContext.Locations.Where(l => l.CityId == city.Id && l.IsActive && !l.IsDeleted).OrderBy(l => l.Name).ToListAsync();
+                    _location = primaryAddress.Landmark;
+                }
+            }
+        }
+    }
+
+    private async Task OnCountryChanged(long? countryId)
+    {
+        _countryId = countryId;
+        _cityId = null;
+        _location = null;
+        _cities.Clear();
+        _locations.Clear();
+
+        if (countryId.HasValue)
+        {
+            _cities = await DbContext.Cities.Where(c => c.CountryId == countryId && c.IsActive && !c.IsDeleted).OrderBy(c => c.Name).ToListAsync();
+        }
+        StateHasChanged();
+    }
+
+    private async Task OnCityChanged(long? cityId)
+    {
+        _cityId = cityId;
+        _location = null;
+        _locations.Clear();
+
+        if (cityId.HasValue)
+        {
+            _locations = await DbContext.Locations.Where(l => l.CityId == cityId && l.IsActive && !l.IsDeleted).OrderBy(l => l.Name).ToListAsync();
+        }
+        StateHasChanged();
+    }
+
+    private void OnLocationChanged(string? locationName)
+    {
+        _location = locationName;
+        StateHasChanged();
     }
 
     private async Task Save()
@@ -97,14 +206,60 @@
         {
             Party.CreatedAt = DateTime.UtcNow;
             DbContext.Parties.Add(Party);
+            await DbContext.SaveChangesAsync();
+
+            if (_countryId.HasValue || _cityId.HasValue || !string.IsNullOrEmpty(_location))
+            {
+                var address = new PartyAddress
+                {
+                    PartyId = Party.Id,
+                    AddressType = "Primary",
+                    IsDefault = true,
+                    Country = _countries.FirstOrDefault(c => c.Id == _countryId)?.Name,
+                    City = _cities.FirstOrDefault(c => c.Id == _cityId)?.Name,
+                    Landmark = _location,
+                    CreatedAt = DateTime.UtcNow
+                };
+                DbContext.PartyAddresses.Add(address);
+                await DbContext.SaveChangesAsync();
+            }
         }
         else
         {
             Party.ModifiedAt = DateTime.UtcNow;
             DbContext.Parties.Update(Party);
+
+            var primaryAddress = await DbContext.PartyAddresses
+                .Where(a => a.PartyId == Party.Id && !a.IsDeleted)
+                .OrderByDescending(a => a.IsDefault)
+                .FirstOrDefaultAsync();
+
+            if (primaryAddress != null)
+            {
+                primaryAddress.Country = _countries.FirstOrDefault(c => c.Id == _countryId)?.Name;
+                primaryAddress.City = _cities.FirstOrDefault(c => c.Id == _cityId)?.Name;
+                primaryAddress.Landmark = _location;
+                primaryAddress.ModifiedAt = DateTime.UtcNow;
+                DbContext.PartyAddresses.Update(primaryAddress);
+            }
+            else if (_countryId.HasValue || _cityId.HasValue || !string.IsNullOrEmpty(_location))
+            {
+                var address = new PartyAddress
+                {
+                    PartyId = Party.Id,
+                    AddressType = "Primary",
+                    IsDefault = true,
+                    Country = _countries.FirstOrDefault(c => c.Id == _countryId)?.Name,
+                    City = _cities.FirstOrDefault(c => c.Id == _cityId)?.Name,
+                    Landmark = _location,
+                    CreatedAt = DateTime.UtcNow
+                };
+                DbContext.PartyAddresses.Add(address);
+            }
+
+            await DbContext.SaveChangesAsync();
         }
 
-        await DbContext.SaveChangesAsync();
         MudDialog.Close(DialogResult.Ok(Party));
     }
 
