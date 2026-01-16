@@ -1,0 +1,225 @@
+@using Microsoft.EntityFrameworkCore
+@using Net4Courier.Masters.Entities
+@using Net4Courier.Infrastructure.Data
+@inject ApplicationDbContext DbContext
+@inject ISnackbar Snackbar
+
+<MudDialog>
+    <TitleContent>
+        <MudText Typo="Typo.h6">Zone Locations - @_zoneName</MudText>
+    </TitleContent>
+    <DialogContent>
+        <MudStack Spacing="2">
+            <MudText Typo="Typo.body2" Color="Color.Secondary">
+                Map countries, cities, or postal codes to this zone.
+            </MudText>
+
+            <MudTable Items="@_details" Hover="true" Dense="true" Elevation="0" Class="border-solid border">
+                <HeaderContent>
+                    <MudTh>Country</MudTh>
+                    <MudTh>City</MudTh>
+                    <MudTh>State</MudTh>
+                    <MudTh>Postal From</MudTh>
+                    <MudTh>Postal To</MudTh>
+                    <MudTh Style="width:60px">Actions</MudTh>
+                </HeaderContent>
+                <RowTemplate>
+                    <MudTd DataLabel="Country">@GetCountryName(context.CountryId)</MudTd>
+                    <MudTd DataLabel="City">@GetCityName(context.CityId)</MudTd>
+                    <MudTd DataLabel="State">@GetStateName(context.StateId)</MudTd>
+                    <MudTd DataLabel="Postal From">@(context.PostalCodeFrom ?? "-")</MudTd>
+                    <MudTd DataLabel="Postal To">@(context.PostalCodeTo ?? "-")</MudTd>
+                    <MudTd>
+                        <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" Color="Color.Error"
+                                       OnClick="@(() => RemoveDetail(context))" />
+                    </MudTd>
+                </RowTemplate>
+                <NoRecordsContent>
+                    <MudText Class="pa-4">No locations mapped. Add country/city mappings below.</MudText>
+                </NoRecordsContent>
+            </MudTable>
+
+            <MudDivider Class="my-2" />
+
+            <MudText Typo="Typo.subtitle2">Add Location Mapping</MudText>
+            <MudGrid>
+                <MudItem xs="12" md="4">
+                    <MudAutocomplete T="Country" @bind-Value="_newCountry" Label="Country"
+                                     SearchFunc="SearchCountries" ToStringFunc="@(c => c?.Name ?? "")"
+                                     Variant="Variant.Outlined" Margin="Margin.Dense" />
+                </MudItem>
+                <MudItem xs="12" md="4">
+                    <MudAutocomplete T="City" @bind-Value="_newCity" Label="City"
+                                     SearchFunc="SearchCities" ToStringFunc="@(c => c?.Name ?? "")"
+                                     Variant="Variant.Outlined" Margin="Margin.Dense" />
+                </MudItem>
+                <MudItem xs="12" md="4">
+                    <MudAutocomplete T="State" @bind-Value="_newState" Label="State"
+                                     SearchFunc="SearchStates" ToStringFunc="@(s => s?.Name ?? "")"
+                                     Variant="Variant.Outlined" Margin="Margin.Dense" />
+                </MudItem>
+                <MudItem xs="12" md="4">
+                    <MudTextField @bind-Value="_newPostalFrom" Label="Postal Code From"
+                                  Variant="Variant.Outlined" Margin="Margin.Dense" />
+                </MudItem>
+                <MudItem xs="12" md="4">
+                    <MudTextField @bind-Value="_newPostalTo" Label="Postal Code To"
+                                  Variant="Variant.Outlined" Margin="Margin.Dense" />
+                </MudItem>
+                <MudItem xs="12" md="4">
+                    <MudButton Variant="Variant.Outlined" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add"
+                               OnClick="AddDetail" Class="mt-1" FullWidth="true">Add</MudButton>
+                </MudItem>
+            </MudGrid>
+        </MudStack>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Cancel">Close</MudButton>
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="Save" Disabled="@_saving">Save Changes</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] private MudDialogInstance MudDialog { get; set; } = null!;
+    [Parameter] public long ZoneMatrixId { get; set; }
+
+    private List<ZoneMatrixDetail> _details = new();
+    private List<ZoneMatrixDetail> _deletedDetails = new();
+    private Dictionary<long, string> _countryNames = new();
+    private Dictionary<long, string> _cityNames = new();
+    private Dictionary<long, string> _stateNames = new();
+    private string _zoneName = "";
+    private bool _saving;
+
+    private Country? _newCountry;
+    private City? _newCity;
+    private State? _newState;
+    private string? _newPostalFrom;
+    private string? _newPostalTo;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var zone = await DbContext.ZoneMatrices
+            .Include(z => z.Details.Where(d => !d.IsDeleted))
+            .FirstOrDefaultAsync(z => z.Id == ZoneMatrixId);
+
+        if (zone != null)
+        {
+            _zoneName = $"{zone.ZoneCode} - {zone.ZoneName}";
+            _details = zone.Details.ToList();
+
+            await LoadLookups();
+        }
+    }
+
+    private async Task LoadLookups()
+    {
+        var countryIds = _details.Where(d => d.CountryId.HasValue).Select(d => d.CountryId!.Value).Distinct().ToList();
+        var cityIds = _details.Where(d => d.CityId.HasValue).Select(d => d.CityId!.Value).Distinct().ToList();
+        var stateIds = _details.Where(d => d.StateId.HasValue).Select(d => d.StateId!.Value).Distinct().ToList();
+
+        if (countryIds.Any())
+            _countryNames = await DbContext.Countries.Where(c => countryIds.Contains(c.Id)).ToDictionaryAsync(c => c.Id, c => c.Name);
+        if (cityIds.Any())
+            _cityNames = await DbContext.Cities.Where(c => cityIds.Contains(c.Id)).ToDictionaryAsync(c => c.Id, c => c.Name);
+        if (stateIds.Any())
+            _stateNames = await DbContext.States.Where(s => stateIds.Contains(s.Id)).ToDictionaryAsync(s => s.Id, s => s.Name);
+    }
+
+    private async Task<IEnumerable<Country>> SearchCountries(string value)
+    {
+        var query = DbContext.Countries.Where(c => !c.IsDeleted && c.IsActive);
+        if (!string.IsNullOrWhiteSpace(value))
+            query = query.Where(c => c.Name.ToLower().Contains(value.ToLower()));
+        return await query.OrderBy(c => c.Name).Take(20).ToListAsync();
+    }
+
+    private async Task<IEnumerable<City>> SearchCities(string value)
+    {
+        var query = DbContext.Cities.Where(c => !c.IsDeleted && c.IsActive);
+        if (_newCountry != null)
+            query = query.Where(c => c.CountryId == _newCountry.Id);
+        if (!string.IsNullOrWhiteSpace(value))
+            query = query.Where(c => c.Name.ToLower().Contains(value.ToLower()));
+        return await query.OrderBy(c => c.Name).Take(20).ToListAsync();
+    }
+
+    private async Task<IEnumerable<State>> SearchStates(string value)
+    {
+        var query = DbContext.States.Where(s => !s.IsDeleted && s.IsActive);
+        if (_newCountry != null)
+            query = query.Where(s => s.CountryId == _newCountry.Id);
+        if (!string.IsNullOrWhiteSpace(value))
+            query = query.Where(s => s.Name.ToLower().Contains(value.ToLower()));
+        return await query.OrderBy(s => s.Name).Take(20).ToListAsync();
+    }
+
+    private void AddDetail()
+    {
+        if (_newCountry == null && _newCity == null && string.IsNullOrWhiteSpace(_newPostalFrom))
+        {
+            Snackbar.Add("Please select at least a country, city, or postal code range", Severity.Warning);
+            return;
+        }
+
+        var detail = new ZoneMatrixDetail
+        {
+            ZoneMatrixId = ZoneMatrixId,
+            CountryId = _newCountry?.Id,
+            CityId = _newCity?.Id,
+            StateId = _newState?.Id,
+            PostalCodeFrom = _newPostalFrom,
+            PostalCodeTo = _newPostalTo,
+            IsActive = true,
+            CreatedAt = DateTime.UtcNow
+        };
+
+        _details.Add(detail);
+
+        if (_newCountry != null) _countryNames[_newCountry.Id] = _newCountry.Name;
+        if (_newCity != null) _cityNames[_newCity.Id] = _newCity.Name;
+        if (_newState != null) _stateNames[_newState.Id] = _newState.Name;
+
+        _newCountry = null;
+        _newCity = null;
+        _newState = null;
+        _newPostalFrom = null;
+        _newPostalTo = null;
+    }
+
+    private void RemoveDetail(ZoneMatrixDetail detail)
+    {
+        if (detail.Id > 0)
+        {
+            detail.IsDeleted = true;
+            _deletedDetails.Add(detail);
+        }
+        _details.Remove(detail);
+    }
+
+    private async Task Save()
+    {
+        _saving = true;
+        try
+        {
+            foreach (var detail in _details.Where(d => d.Id == 0))
+            {
+                DbContext.ZoneMatrixDetails.Add(detail);
+            }
+
+            await DbContext.SaveChangesAsync();
+            Snackbar.Add("Zone locations saved", Severity.Success);
+            MudDialog.Close(DialogResult.Ok(true));
+        }
+        finally
+        {
+            _saving = false;
+        }
+    }
+
+    private void Cancel() => MudDialog.Cancel();
+
+    private string GetCountryName(long? id) => id.HasValue && _countryNames.TryGetValue(id.Value, out var name) ? name : "-";
+    private string GetCityName(long? id) => id.HasValue && _cityNames.TryGetValue(id.Value, out var name) ? name : "-";
+    private string GetStateName(long? id) => id.HasValue && _stateNames.TryGetValue(id.Value, out var name) ? name : "-";
+}

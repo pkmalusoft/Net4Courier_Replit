@@ -42,6 +42,13 @@ The application is built on .NET 8 Blazor Server, utilizing a modular architectu
     - **Dynamic Other Charges**: Configurable charge types applied during AWB entry with detailed breakdown.
 - **Reporting**: Integration with QuestPDF for generating AWB labels, Invoice PDFs, and Receipt PDFs.
 - **Automatic Movement Type Calculation**: Determines shipment type (Domestic, International-Export, International-Import, Transhipment) based on origin/destination countries relative to the company's country.
+- **Rate Card Management** (NEW):
+    - **Zone Matrix**: Define zones with country/city/postal code mappings for geographic rate categorization.
+    - **Rate Cards**: Configurable pricing cards with movement type, payment mode, validity dates, and status tracking.
+    - **Slab-Based Pricing**: Rule-based weight slabs that reduce storage from 30 rows to 2-3 rules per zone.
+    - **Customer Rate Assignments**: Priority-based rate card assignments with effective date versioning.
+    - **Rating Engine Service**: Automated rate calculation with zone resolution (city > country > default), chargeable weight (actual vs volumetric), and slab calculations (PerStep/PerKg/FlatAfter modes).
+    - **Rate Simulator**: Test rate calculations before applying to live shipments.
 
 ## External Dependencies
 - **Database**: PostgreSQL (hosted on Replit)

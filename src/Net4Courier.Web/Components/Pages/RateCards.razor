@@ -1,0 +1,267 @@
+@page "/rate-cards"
+@using Microsoft.EntityFrameworkCore
+@using Net4Courier.Masters.Entities
+@using Net4Courier.Infrastructure.Data
+@using Net4Courier.Kernel.Enums
+@inject ApplicationDbContext DbContext
+@inject IDialogService DialogService
+@inject ISnackbar Snackbar
+@inject NavigationManager Navigation
+@rendermode InteractiveServer
+
+<PageTitle>Rate Card Management</PageTitle>
+
+<MudContainer MaxWidth="MaxWidth.ExtraLarge" Class="mt-4">
+    <MudPaper Class="pa-4">
+        <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center" Class="mb-4">
+            <MudText Typo="Typo.h5">Rate Card Management</MudText>
+            <MudStack Row="true" Spacing="2">
+                <MudButton Variant="Variant.Outlined" Color="Color.Secondary" StartIcon="@Icons.Material.Filled.Map"
+                           OnClick="OpenZoneMatrix">Zone Matrix</MudButton>
+                <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add"
+                           OnClick="CreateNewRateCard">New Rate Card</MudButton>
+            </MudStack>
+        </MudStack>
+
+        <MudGrid Class="mb-4">
+            <MudItem xs="12" md="3">
+                <MudTextField @bind-Value="_searchText" Label="Search" Variant="Variant.Outlined" Margin="Margin.Dense"
+                              Adornment="Adornment.End" AdornmentIcon="@Icons.Material.Filled.Search"
+                              Immediate="true" DebounceInterval="300" OnDebounceIntervalElapsed="SearchRateCards" />
+            </MudItem>
+            <MudItem xs="12" md="2">
+                <MudSelect T="RateCardStatus?" @bind-Value="_statusFilter" Label="Status" Variant="Variant.Outlined" 
+                           Margin="Margin.Dense" Clearable="true">
+                    <MudSelectItem T="RateCardStatus?" Value="RateCardStatus.Active">Active</MudSelectItem>
+                    <MudSelectItem T="RateCardStatus?" Value="RateCardStatus.Draft">Draft</MudSelectItem>
+                    <MudSelectItem T="RateCardStatus?" Value="RateCardStatus.Expired">Expired</MudSelectItem>
+                    <MudSelectItem T="RateCardStatus?" Value="RateCardStatus.Suspended">Suspended</MudSelectItem>
+                </MudSelect>
+            </MudItem>
+            <MudItem xs="12" md="2">
+                <MudSelect T="MovementType?" @bind-Value="_movementFilter" Label="Movement Type" Variant="Variant.Outlined"
+                           Margin="Margin.Dense" Clearable="true">
+                    <MudSelectItem T="MovementType?" Value="MovementType.Domestic">Domestic</MudSelectItem>
+                    <MudSelectItem T="MovementType?" Value="MovementType.InternationalExport">Export</MudSelectItem>
+                    <MudSelectItem T="MovementType?" Value="MovementType.InternationalImport">Import</MudSelectItem>
+                    <MudSelectItem T="MovementType?" Value="MovementType.Transhipment">Transhipment</MudSelectItem>
+                </MudSelect>
+            </MudItem>
+            <MudItem xs="12" md="2">
+                <MudButton Variant="Variant.Outlined" Color="Color.Primary" OnClick="ApplyFilters" FullWidth="true"
+                           Class="mt-1">Apply Filters</MudButton>
+            </MudItem>
+        </MudGrid>
+
+        <MudTable Items="@_rateCards" Hover="true" Striped="true" Loading="@_loading" Dense="true" Elevation="0"
+                  Class="border-solid border">
+            <HeaderContent>
+                <MudTh>Rate Card Name</MudTh>
+                <MudTh>Movement Type</MudTh>
+                <MudTh>Payment Mode</MudTh>
+                <MudTh>Rate Type</MudTh>
+                <MudTh>Valid From</MudTh>
+                <MudTh>Valid To</MudTh>
+                <MudTh>Status</MudTh>
+                <MudTh>Zones</MudTh>
+                <MudTh Style="width:120px">Actions</MudTh>
+            </HeaderContent>
+            <RowTemplate>
+                <MudTd DataLabel="Rate Card Name">
+                    <MudLink Href="@($"/rate-card/{context.Id}")">@context.RateCardName</MudLink>
+                </MudTd>
+                <MudTd DataLabel="Movement Type">@GetMovementTypeName(context.MovementTypeId)</MudTd>
+                <MudTd DataLabel="Payment Mode">@GetPaymentModeName(context.PaymentModeId)</MudTd>
+                <MudTd DataLabel="Rate Type">@GetRateTypeName(context.RateBasedType)</MudTd>
+                <MudTd DataLabel="Valid From">@context.ValidFrom.ToString("dd-MMM-yyyy")</MudTd>
+                <MudTd DataLabel="Valid To">@(context.ValidTo?.ToString("dd-MMM-yyyy") ?? "No Expiry")</MudTd>
+                <MudTd DataLabel="Status">
+                    <MudChip T="string" Size="Size.Small" Color="@GetStatusColor(context.Status)">@context.Status</MudChip>
+                </MudTd>
+                <MudTd DataLabel="Zones">@context.RateCardZones.Count</MudTd>
+                <MudTd>
+                    <MudIconButton Icon="@Icons.Material.Filled.Edit" Size="Size.Small" Color="Color.Primary"
+                                   OnClick="@(() => EditRateCard(context.Id))" Title="Edit" />
+                    <MudIconButton Icon="@Icons.Material.Filled.ContentCopy" Size="Size.Small" Color="Color.Secondary"
+                                   OnClick="@(() => DuplicateRateCard(context))" Title="Duplicate" />
+                    <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" Color="Color.Error"
+                                   OnClick="@(() => DeleteRateCard(context))" Title="Delete" />
+                </MudTd>
+            </RowTemplate>
+            <NoRecordsContent>
+                <MudText Class="pa-4">No rate cards found. Click "New Rate Card" to create one.</MudText>
+            </NoRecordsContent>
+            <LoadingContent>
+                <MudText>Loading rate cards...</MudText>
+            </LoadingContent>
+        </MudTable>
+    </MudPaper>
+</MudContainer>
+
+@code {
+    private List<RateCard> _rateCards = new();
+    private bool _loading = true;
+    private string _searchText = "";
+    private RateCardStatus? _statusFilter;
+    private MovementType? _movementFilter;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadRateCards();
+    }
+
+    private async Task LoadRateCards()
+    {
+        _loading = true;
+        try
+        {
+            var query = DbContext.RateCards
+                .Include(r => r.RateCardZones)
+                .Where(r => !r.IsDeleted)
+                .AsQueryable();
+
+            if (!string.IsNullOrWhiteSpace(_searchText))
+            {
+                query = query.Where(r => r.RateCardName.ToLower().Contains(_searchText.ToLower()));
+            }
+
+            if (_statusFilter.HasValue)
+            {
+                query = query.Where(r => r.Status == _statusFilter.Value);
+            }
+
+            if (_movementFilter.HasValue)
+            {
+                query = query.Where(r => r.MovementTypeId == _movementFilter.Value);
+            }
+
+            _rateCards = await query.OrderByDescending(r => r.CreatedAt).Take(100).ToListAsync();
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private async Task SearchRateCards()
+    {
+        await LoadRateCards();
+    }
+
+    private async Task ApplyFilters()
+    {
+        await LoadRateCards();
+    }
+
+    private void CreateNewRateCard()
+    {
+        Navigation.NavigateTo("/rate-card/new");
+    }
+
+    private void EditRateCard(long id)
+    {
+        Navigation.NavigateTo($"/rate-card/{id}");
+    }
+
+    private async Task DuplicateRateCard(RateCard original)
+    {
+        var parameters = new DialogParameters<ConfirmDialog>
+        {
+            { x => x.ContentText, $"Create a copy of '{original.RateCardName}'?" },
+            { x => x.ButtonText, "Duplicate" },
+            { x => x.Color, Color.Primary }
+        };
+
+        var dialog = await DialogService.ShowAsync<ConfirmDialog>("Duplicate Rate Card", parameters);
+        var result = await dialog.Result;
+
+        if (result != null && !result.Canceled)
+        {
+            var newRateCard = new RateCard
+            {
+                RateCardName = $"{original.RateCardName} (Copy)",
+                CourierServiceId = original.CourierServiceId,
+                MovementTypeId = original.MovementTypeId,
+                ZoneCategoryId = original.ZoneCategoryId,
+                PaymentModeId = original.PaymentModeId,
+                RateBasedType = original.RateBasedType,
+                ValidFrom = DateTime.UtcNow,
+                Status = RateCardStatus.Draft,
+                CompanyId = original.CompanyId,
+                ForwardingAgentId = original.ForwardingAgentId,
+                Description = original.Description,
+                CreatedAt = DateTime.UtcNow,
+                IsActive = true
+            };
+
+            DbContext.RateCards.Add(newRateCard);
+            await DbContext.SaveChangesAsync();
+
+            Snackbar.Add("Rate card duplicated successfully", Severity.Success);
+            await LoadRateCards();
+        }
+    }
+
+    private async Task DeleteRateCard(RateCard rateCard)
+    {
+        var parameters = new DialogParameters<ConfirmDialog>
+        {
+            { x => x.ContentText, $"Are you sure you want to delete '{rateCard.RateCardName}'?" },
+            { x => x.ButtonText, "Delete" },
+            { x => x.Color, Color.Error }
+        };
+
+        var dialog = await DialogService.ShowAsync<ConfirmDialog>("Delete Rate Card", parameters);
+        var result = await dialog.Result;
+
+        if (result != null && !result.Canceled)
+        {
+            rateCard.IsDeleted = true;
+            rateCard.ModifiedAt = DateTime.UtcNow;
+            await DbContext.SaveChangesAsync();
+
+            Snackbar.Add("Rate card deleted", Severity.Success);
+            await LoadRateCards();
+        }
+    }
+
+    private void OpenZoneMatrix()
+    {
+        Navigation.NavigateTo("/zone-matrix");
+    }
+
+    private string GetMovementTypeName(MovementType type) => type switch
+    {
+        MovementType.Domestic => "Domestic",
+        MovementType.InternationalExport => "Export",
+        MovementType.InternationalImport => "Import",
+        MovementType.Transhipment => "Transhipment",
+        _ => type.ToString()
+    };
+
+    private string GetPaymentModeName(PaymentMode mode) => mode switch
+    {
+        PaymentMode.Prepaid => "Prepaid",
+        PaymentMode.ToPay => "To Pay",
+        PaymentMode.Credit => "Credit",
+        PaymentMode.COD => "COD",
+        _ => mode.ToString()
+    };
+
+    private string GetRateTypeName(RateBasedType type) => type switch
+    {
+        RateBasedType.Weight => "Weight Based",
+        RateBasedType.Box => "Box Based",
+        RateBasedType.Flat => "Flat Rate",
+        _ => type.ToString()
+    };
+
+    private Color GetStatusColor(RateCardStatus status) => status switch
+    {
+        RateCardStatus.Active => Color.Success,
+        RateCardStatus.Draft => Color.Warning,
+        RateCardStatus.Expired => Color.Default,
+        RateCardStatus.Suspended => Color.Error,
+        _ => Color.Default
+    };
+}

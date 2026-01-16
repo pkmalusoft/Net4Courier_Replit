@@ -1,0 +1,113 @@
+@using Microsoft.EntityFrameworkCore
+@using Net4Courier.Masters.Entities
+@using Net4Courier.Infrastructure.Data
+@using Net4Courier.Kernel.Enums
+@inject ApplicationDbContext DbContext
+@inject ISnackbar Snackbar
+
+<MudDialog>
+    <TitleContent>
+        <MudText Typo="Typo.h6">Assign Customer to Rate Card</MudText>
+    </TitleContent>
+    <DialogContent>
+        <MudGrid>
+            <MudItem xs="12">
+                <MudAutocomplete T="Party" @bind-Value="_selectedCustomer" Label="Customer" Required="true"
+                                 SearchFunc="SearchCustomers" ToStringFunc="@(p => p != null ? $"{p.Code} - {p.Name}" : "")"
+                                 Variant="Variant.Outlined" Margin="Margin.Dense" />
+            </MudItem>
+            <MudItem xs="6">
+                <MudDatePicker @bind-Date="_effectiveFrom" Label="Effective From" Required="true"
+                               Variant="Variant.Outlined" Margin="Margin.Dense" DateFormat="dd-MMM-yyyy" />
+            </MudItem>
+            <MudItem xs="6">
+                <MudDatePicker @bind-Date="_effectiveTo" Label="Effective To (Optional)"
+                               Variant="Variant.Outlined" Margin="Margin.Dense" DateFormat="dd-MMM-yyyy" Clearable="true" />
+            </MudItem>
+            <MudItem xs="6">
+                <MudNumericField T="int" @bind-Value="_priority" Label="Priority" Required="true"
+                                 Variant="Variant.Outlined" Margin="Margin.Dense" Min="1" Max="99"
+                                 HelperText="Lower number = higher priority" />
+            </MudItem>
+            <MudItem xs="12">
+                <MudTextField @bind-Value="_remarks" Label="Remarks" Variant="Variant.Outlined"
+                              Margin="Margin.Dense" Lines="2" />
+            </MudItem>
+        </MudGrid>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Cancel">Cancel</MudButton>
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="Save" Disabled="@_saving">Assign</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] private MudDialogInstance MudDialog { get; set; } = null!;
+    [Parameter] public long RateCardId { get; set; }
+
+    private Party? _selectedCustomer;
+    private DateTime? _effectiveFrom = DateTime.Today;
+    private DateTime? _effectiveTo;
+    private int _priority = 1;
+    private string? _remarks;
+    private bool _saving;
+
+    private async Task<IEnumerable<Party>> SearchCustomers(string value)
+    {
+        var query = DbContext.Parties
+            .Where(p => p.PartyType == PartyType.Customer && !p.IsDeleted && p.IsActive);
+
+        if (!string.IsNullOrWhiteSpace(value))
+        {
+            query = query.Where(p => p.Name.ToLower().Contains(value.ToLower()) ||
+                                     (p.Code != null && p.Code.ToLower().Contains(value.ToLower())));
+        }
+
+        return await query.OrderBy(p => p.Name).Take(20).ToListAsync();
+    }
+
+    private async Task Save()
+    {
+        if (_selectedCustomer == null)
+        {
+            Snackbar.Add("Please select a customer", Severity.Error);
+            return;
+        }
+
+        if (!_effectiveFrom.HasValue)
+        {
+            Snackbar.Add("Effective from date is required", Severity.Error);
+            return;
+        }
+
+        _saving = true;
+        try
+        {
+            var assignment = new CustomerRateAssignment
+            {
+                CustomerId = _selectedCustomer.Id,
+                RateCardId = RateCardId,
+                EffectiveFrom = DateTime.SpecifyKind(_effectiveFrom.Value.Date, DateTimeKind.Utc),
+                EffectiveTo = _effectiveTo.HasValue 
+                    ? DateTime.SpecifyKind(_effectiveTo.Value.Date, DateTimeKind.Utc) 
+                    : null,
+                Priority = _priority,
+                Remarks = _remarks,
+                CreatedAt = DateTime.UtcNow,
+                IsActive = true
+            };
+
+            DbContext.CustomerRateAssignments.Add(assignment);
+            await DbContext.SaveChangesAsync();
+
+            Snackbar.Add("Customer assigned successfully", Severity.Success);
+            MudDialog.Close(DialogResult.Ok(true));
+        }
+        finally
+        {
+            _saving = false;
+        }
+    }
+
+    private void Cancel() => MudDialog.Cancel();
+}

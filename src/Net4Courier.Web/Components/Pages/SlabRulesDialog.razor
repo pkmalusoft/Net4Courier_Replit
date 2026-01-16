@@ -1,0 +1,213 @@
+@using Microsoft.EntityFrameworkCore
+@using Net4Courier.Masters.Entities
+@using Net4Courier.Infrastructure.Data
+@inject ApplicationDbContext DbContext
+@inject ISnackbar Snackbar
+
+<MudDialog>
+    <TitleContent>
+        <MudText Typo="Typo.h6">Slab Rules - @_zoneName</MudText>
+    </TitleContent>
+    <DialogContent>
+        <MudStack Spacing="2">
+            <MudText Typo="Typo.body2" Color="Color.Secondary">
+                Define weight slab rules for this zone. Formula: BaseRate + CEILING((Weight - BaseWeight) / IncrementWeight) * IncrementRate
+            </MudText>
+
+            <MudTable Items="@_slabRules" Hover="true" Dense="true" Elevation="0" Class="border-solid border">
+                <HeaderContent>
+                    <MudTh>From (kg)</MudTh>
+                    <MudTh>To (kg)</MudTh>
+                    <MudTh>Increment (kg)</MudTh>
+                    <MudTh>Rate per Increment</MudTh>
+                    <MudTh>Mode</MudTh>
+                    <MudTh Style="width:80px">Actions</MudTh>
+                </HeaderContent>
+                <RowTemplate>
+                    <MudTd DataLabel="From">
+                        <MudNumericField T="decimal" @bind-Value="context.FromWeight" Margin="Margin.Dense"
+                                         Variant="Variant.Text" HideSpinButtons="true" Format="N3" />
+                    </MudTd>
+                    <MudTd DataLabel="To">
+                        <MudNumericField T="decimal" @bind-Value="context.ToWeight" Margin="Margin.Dense"
+                                         Variant="Variant.Text" HideSpinButtons="true" Format="N3" />
+                    </MudTd>
+                    <MudTd DataLabel="Increment">
+                        <MudNumericField T="decimal" @bind-Value="context.IncrementWeight" Margin="Margin.Dense"
+                                         Variant="Variant.Text" HideSpinButtons="true" Format="N3" />
+                    </MudTd>
+                    <MudTd DataLabel="Rate">
+                        <MudNumericField T="decimal" @bind-Value="context.IncrementRate" Margin="Margin.Dense"
+                                         Variant="Variant.Text" HideSpinButtons="true" Format="N4" />
+                    </MudTd>
+                    <MudTd DataLabel="Mode">
+                        <MudSelect T="SlabCalculationMode" @bind-Value="context.CalculationMode" Margin="Margin.Dense"
+                                   Variant="Variant.Text" Dense="true">
+                            <MudSelectItem T="SlabCalculationMode" Value="SlabCalculationMode.PerStep">Per Step</MudSelectItem>
+                            <MudSelectItem T="SlabCalculationMode" Value="SlabCalculationMode.PerKg">Per Kg</MudSelectItem>
+                            <MudSelectItem T="SlabCalculationMode" Value="SlabCalculationMode.FlatAfter">Flat After</MudSelectItem>
+                        </MudSelect>
+                    </MudTd>
+                    <MudTd>
+                        <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" Color="Color.Error"
+                                       OnClick="@(() => RemoveRule(context))" />
+                    </MudTd>
+                </RowTemplate>
+                <NoRecordsContent>
+                    <MudText Class="pa-4">No slab rules defined. Click "Add Rule" to add weight slabs.</MudText>
+                </NoRecordsContent>
+            </MudTable>
+
+            <MudButton Variant="Variant.Outlined" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add"
+                       OnClick="AddRule" Size="Size.Small">Add Rule</MudButton>
+
+            <MudDivider Class="my-2" />
+
+            <MudText Typo="Typo.subtitle2">Example Calculation Preview</MudText>
+            <MudGrid>
+                <MudItem xs="4">
+                    <MudNumericField T="decimal" @bind-Value="_testWeight" Label="Test Weight (kg)"
+                                     Variant="Variant.Outlined" Margin="Margin.Dense" Format="N3" />
+                </MudItem>
+                <MudItem xs="4">
+                    <MudButton Variant="Variant.Outlined" Color="Color.Secondary" OnClick="CalculatePreview"
+                               Class="mt-1">Calculate</MudButton>
+                </MudItem>
+                <MudItem xs="4">
+                    <MudText Typo="Typo.h6" Color="Color.Primary">@_calculatedRate.ToString("N2")</MudText>
+                </MudItem>
+            </MudGrid>
+        </MudStack>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Cancel">Cancel</MudButton>
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="Save" Disabled="@_saving">Save Rules</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] private MudDialogInstance MudDialog { get; set; } = null!;
+    [Parameter] public long RateCardZoneId { get; set; }
+
+    private List<RateCardSlabRule> _slabRules = new();
+    private List<RateCardSlabRule> _deletedRules = new();
+    private string _zoneName = "";
+    private decimal _baseWeight;
+    private decimal _baseRate;
+    private decimal _testWeight = 5m;
+    private decimal _calculatedRate;
+    private bool _saving;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var zone = await DbContext.RateCardZones
+            .Include(z => z.ZoneMatrix)
+            .Include(z => z.SlabRules.Where(s => !s.IsDeleted))
+            .FirstOrDefaultAsync(z => z.Id == RateCardZoneId);
+
+        if (zone != null)
+        {
+            _zoneName = zone.ZoneMatrix?.ZoneName ?? "Unknown";
+            _baseWeight = zone.BaseWeight;
+            _baseRate = zone.BaseRate;
+            _slabRules = zone.SlabRules.OrderBy(s => s.FromWeight).ToList();
+        }
+    }
+
+    private void AddRule()
+    {
+        var lastTo = _slabRules.Any() ? _slabRules.Max(r => r.ToWeight) : _baseWeight;
+        _slabRules.Add(new RateCardSlabRule
+        {
+            RateCardZoneId = RateCardZoneId,
+            FromWeight = lastTo,
+            ToWeight = lastTo + 10,
+            IncrementWeight = 0.5m,
+            IncrementRate = 0,
+            CalculationMode = SlabCalculationMode.PerStep,
+            SortOrder = _slabRules.Count,
+            IsActive = true
+        });
+    }
+
+    private void RemoveRule(RateCardSlabRule rule)
+    {
+        if (rule.Id > 0)
+        {
+            rule.IsDeleted = true;
+            _deletedRules.Add(rule);
+        }
+        _slabRules.Remove(rule);
+    }
+
+    private void CalculatePreview()
+    {
+        _calculatedRate = CalculateRate(_testWeight);
+    }
+
+    private decimal CalculateRate(decimal weight)
+    {
+        if (weight <= _baseWeight)
+        {
+            return _baseRate;
+        }
+
+        decimal total = _baseRate;
+        decimal remainingWeight = weight - _baseWeight;
+
+        foreach (var rule in _slabRules.Where(r => !r.IsDeleted).OrderBy(r => r.FromWeight))
+        {
+            if (weight < rule.FromWeight) break;
+            if (weight > rule.ToWeight)
+            {
+                var slabWeight = Math.Min(rule.ToWeight, weight) - rule.FromWeight;
+                var steps = Math.Ceiling(slabWeight / rule.IncrementWeight);
+                total += steps * rule.IncrementRate;
+            }
+            else
+            {
+                var slabWeight = weight - Math.Max(rule.FromWeight, _baseWeight);
+                if (slabWeight > 0)
+                {
+                    var steps = Math.Ceiling(slabWeight / rule.IncrementWeight);
+                    total += steps * rule.IncrementRate;
+                }
+            }
+        }
+
+        return total;
+    }
+
+    private async Task Save()
+    {
+        _saving = true;
+        try
+        {
+            for (int i = 0; i < _slabRules.Count; i++)
+            {
+                var rule = _slabRules[i];
+                rule.SortOrder = i;
+
+                if (rule.Id == 0)
+                {
+                    rule.CreatedAt = DateTime.UtcNow;
+                    DbContext.RateCardSlabRules.Add(rule);
+                }
+                else
+                {
+                    rule.ModifiedAt = DateTime.UtcNow;
+                }
+            }
+
+            await DbContext.SaveChangesAsync();
+            Snackbar.Add("Slab rules saved successfully", Severity.Success);
+            MudDialog.Close(DialogResult.Ok(true));
+        }
+        finally
+        {
+            _saving = false;
+        }
+    }
+
+    private void Cancel() => MudDialog.Cancel();
+}

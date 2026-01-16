@@ -1,0 +1,241 @@
+@page "/rate-simulator"
+@page "/rate-simulator/{RateCardId:long}"
+@using Microsoft.EntityFrameworkCore
+@using Net4Courier.Masters.Entities
+@using Net4Courier.Infrastructure.Data
+@using Net4Courier.Kernel.Enums
+@using Net4Courier.Web.Services
+@inject ApplicationDbContext DbContext
+@inject ISnackbar Snackbar
+@inject NavigationManager Navigation
+@rendermode InteractiveServer
+
+<PageTitle>Rate Simulator</PageTitle>
+
+<MudContainer MaxWidth="MaxWidth.Large" Class="mt-4">
+    <MudPaper Class="pa-4">
+        <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center" Class="mb-4">
+            <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+                <MudIconButton Icon="@Icons.Material.Filled.ArrowBack" OnClick="GoBack" />
+                <MudText Typo="Typo.h5">Rate Simulator</MudText>
+            </MudStack>
+        </MudStack>
+
+        <MudGrid>
+            <MudItem xs="12" md="6">
+                <MudPaper Class="pa-4" Elevation="0" Outlined="true">
+                    <MudText Typo="Typo.subtitle1" Class="mb-3">Shipment Details</MudText>
+
+                    <MudGrid>
+                        <MudItem xs="12">
+                            <MudAutocomplete T="Party" @bind-Value="_selectedCustomer" Label="Customer (Optional)"
+                                             SearchFunc="SearchCustomers" ToStringFunc="@(p => p != null ? $"{p.Code} - {p.Name}" : "")"
+                                             Variant="Variant.Outlined" Margin="Margin.Dense" Clearable="true" />
+                        </MudItem>
+                        <MudItem xs="6">
+                            <MudSelect T="MovementType" @bind-Value="_movementType" Label="Movement Type"
+                                       Variant="Variant.Outlined" Margin="Margin.Dense">
+                                <MudSelectItem T="MovementType" Value="MovementType.Domestic">Domestic</MudSelectItem>
+                                <MudSelectItem T="MovementType" Value="MovementType.InternationalExport">Export</MudSelectItem>
+                                <MudSelectItem T="MovementType" Value="MovementType.InternationalImport">Import</MudSelectItem>
+                            </MudSelect>
+                        </MudItem>
+                        <MudItem xs="6">
+                            <MudSelect T="PaymentMode" @bind-Value="_paymentMode" Label="Payment Mode"
+                                       Variant="Variant.Outlined" Margin="Margin.Dense">
+                                <MudSelectItem T="PaymentMode" Value="PaymentMode.Prepaid">Prepaid</MudSelectItem>
+                                <MudSelectItem T="PaymentMode" Value="PaymentMode.ToPay">To Pay</MudSelectItem>
+                                <MudSelectItem T="PaymentMode" Value="PaymentMode.Credit">Credit</MudSelectItem>
+                            </MudSelect>
+                        </MudItem>
+                        <MudItem xs="12">
+                            <MudAutocomplete T="Country" @bind-Value="_destCountry" Label="Destination Country"
+                                             SearchFunc="SearchCountries" ToStringFunc="@(c => c?.Name ?? "")"
+                                             Variant="Variant.Outlined" Margin="Margin.Dense" />
+                        </MudItem>
+                        <MudItem xs="12">
+                            <MudAutocomplete T="City" @bind-Value="_destCity" Label="Destination City"
+                                             SearchFunc="SearchCities" ToStringFunc="@(c => c?.Name ?? "")"
+                                             Variant="Variant.Outlined" Margin="Margin.Dense" Clearable="true" />
+                        </MudItem>
+                        <MudItem xs="6">
+                            <MudNumericField T="decimal" @bind-Value="_weight" Label="Actual Weight (kg)"
+                                             Variant="Variant.Outlined" Margin="Margin.Dense" Format="N3" />
+                        </MudItem>
+                        <MudItem xs="6">
+                            <MudNumericField T="int" @bind-Value="_pieces" Label="Pieces"
+                                             Variant="Variant.Outlined" Margin="Margin.Dense" Min="1" />
+                        </MudItem>
+                        <MudItem xs="4">
+                            <MudNumericField T="decimal" @bind-Value="_length" Label="Length (cm)"
+                                             Variant="Variant.Outlined" Margin="Margin.Dense" Format="N1" />
+                        </MudItem>
+                        <MudItem xs="4">
+                            <MudNumericField T="decimal" @bind-Value="_width" Label="Width (cm)"
+                                             Variant="Variant.Outlined" Margin="Margin.Dense" Format="N1" />
+                        </MudItem>
+                        <MudItem xs="4">
+                            <MudNumericField T="decimal" @bind-Value="_height" Label="Height (cm)"
+                                             Variant="Variant.Outlined" Margin="Margin.Dense" Format="N1" />
+                        </MudItem>
+                    </MudGrid>
+
+                    <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Calculate"
+                               OnClick="CalculateRate" Class="mt-4" FullWidth="true" Disabled="@_calculating">
+                        @(_calculating ? "Calculating..." : "Calculate Rate")
+                    </MudButton>
+                </MudPaper>
+            </MudItem>
+
+            <MudItem xs="12" md="6">
+                <MudPaper Class="pa-4" Elevation="0" Outlined="true">
+                    <MudText Typo="Typo.subtitle1" Class="mb-3">Rate Calculation Result</MudText>
+
+                    @if (_result == null)
+                    {
+                        <MudText Color="Color.Secondary">Enter shipment details and click Calculate</MudText>
+                    }
+                    else if (!_result.Success)
+                    {
+                        <MudAlert Severity="Severity.Error">@_result.ErrorMessage</MudAlert>
+                    }
+                    else
+                    {
+                        <MudStack Spacing="2">
+                            <MudStack Row="true" Justify="Justify.SpaceBetween">
+                                <MudText>Rate Card:</MudText>
+                                <MudText Typo="Typo.body1"><strong>@_result.RateCardName</strong></MudText>
+                            </MudStack>
+                            <MudStack Row="true" Justify="Justify.SpaceBetween">
+                                <MudText>Zone:</MudText>
+                                <MudText>@_result.ZoneCode - @_result.ZoneName</MudText>
+                            </MudStack>
+                            <MudStack Row="true" Justify="Justify.SpaceBetween">
+                                <MudText>Chargeable Weight:</MudText>
+                                <MudText>@_result.ChargeableWeight.ToString("N3") kg</MudText>
+                            </MudStack>
+                            <MudDivider />
+
+                            <MudText Typo="Typo.subtitle2">Calculation Breakdown:</MudText>
+                            @foreach (var rule in _result.AppliedRules)
+                            {
+                                <MudText Typo="Typo.body2" Color="Color.Secondary">@rule</MudText>
+                            }
+
+                            <MudDivider />
+
+                            <MudStack Row="true" Justify="Justify.SpaceBetween">
+                                <MudText>Base Charge:</MudText>
+                                <MudText>@_result.BaseCharge.ToString("N2")</MudText>
+                            </MudStack>
+                            <MudStack Row="true" Justify="Justify.SpaceBetween">
+                                <MudText>Slab Charges:</MudText>
+                                <MudText>@_result.SlabCharge.ToString("N2")</MudText>
+                            </MudStack>
+                            <MudStack Row="true" Justify="Justify.SpaceBetween">
+                                <MudText>Sub Total:</MudText>
+                                <MudText>@_result.SubTotal.ToString("N2")</MudText>
+                            </MudStack>
+                            @if (_result.Margin > 0)
+                            {
+                                <MudStack Row="true" Justify="Justify.SpaceBetween">
+                                    <MudText>Margin:</MudText>
+                                    <MudText>@_result.Margin.ToString("N2")</MudText>
+                                </MudStack>
+                            }
+
+                            <MudDivider />
+
+                            <MudStack Row="true" Justify="Justify.SpaceBetween" Class="mt-2">
+                                <MudText Typo="Typo.h6">Total Charge:</MudText>
+                                <MudText Typo="Typo.h5" Color="Color.Primary">@_result.TotalCharge.ToString("N2")</MudText>
+                            </MudStack>
+                        </MudStack>
+                    }
+                </MudPaper>
+            </MudItem>
+        </MudGrid>
+    </MudPaper>
+</MudContainer>
+
+@code {
+    [Parameter] public long RateCardId { get; set; }
+
+    private Party? _selectedCustomer;
+    private MovementType _movementType = MovementType.Domestic;
+    private PaymentMode _paymentMode = PaymentMode.Prepaid;
+    private Country? _destCountry;
+    private City? _destCity;
+    private decimal _weight = 1m;
+    private int _pieces = 1;
+    private decimal _length;
+    private decimal _width;
+    private decimal _height;
+    private bool _calculating;
+    private RatingResult? _result;
+
+    private async Task<IEnumerable<Party>> SearchCustomers(string value)
+    {
+        var query = DbContext.Parties
+            .Where(p => p.PartyType == PartyType.Customer && !p.IsDeleted && p.IsActive);
+        if (!string.IsNullOrWhiteSpace(value))
+            query = query.Where(p => p.Name.ToLower().Contains(value.ToLower()) ||
+                                     (p.Code != null && p.Code.ToLower().Contains(value.ToLower())));
+        return await query.OrderBy(p => p.Name).Take(20).ToListAsync();
+    }
+
+    private async Task<IEnumerable<Country>> SearchCountries(string value)
+    {
+        var query = DbContext.Countries.Where(c => !c.IsDeleted && c.IsActive);
+        if (!string.IsNullOrWhiteSpace(value))
+            query = query.Where(c => c.Name.ToLower().Contains(value.ToLower()));
+        return await query.OrderBy(c => c.Name).Take(20).ToListAsync();
+    }
+
+    private async Task<IEnumerable<City>> SearchCities(string value)
+    {
+        var query = DbContext.Cities.Where(c => !c.IsDeleted && c.IsActive);
+        if (_destCountry != null)
+            query = query.Where(c => c.CountryId == _destCountry.Id);
+        if (!string.IsNullOrWhiteSpace(value))
+            query = query.Where(c => c.Name.ToLower().Contains(value.ToLower()));
+        return await query.OrderBy(c => c.Name).Take(20).ToListAsync();
+    }
+
+    private async Task CalculateRate()
+    {
+        _calculating = true;
+        try
+        {
+            var ratingService = new RatingEngineService(DbContext);
+
+            var request = new RatingRequest
+            {
+                CustomerId = _selectedCustomer?.Id,
+                MovementType = _movementType,
+                PaymentMode = _paymentMode,
+                DestinationCountryId = _destCountry?.Id,
+                DestinationCityId = _destCity?.Id,
+                ActualWeight = _weight,
+                Pieces = _pieces,
+                Length = _length,
+                Width = _width,
+                Height = _height
+            };
+
+            _result = await ratingService.CalculateRate(request);
+        }
+        finally
+        {
+            _calculating = false;
+        }
+    }
+
+    private void GoBack()
+    {
+        if (RateCardId > 0)
+            Navigation.NavigateTo($"/rate-card/{RateCardId}");
+        else
+            Navigation.NavigateTo("/rate-cards");
+    }
+}

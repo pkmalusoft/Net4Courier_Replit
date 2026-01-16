@@ -1,0 +1,198 @@
+@page "/zone-matrix"
+@using Microsoft.EntityFrameworkCore
+@using Net4Courier.Infrastructure.Data
+@using ZoneMatrixEntity = Net4Courier.Masters.Entities.ZoneMatrix
+@using Net4Courier.Masters.Entities
+@inject ApplicationDbContext DbContext
+@inject IDialogService DialogService
+@inject ISnackbar Snackbar
+@inject NavigationManager Navigation
+@rendermode InteractiveServer
+
+<PageTitle>Zone Matrix</PageTitle>
+
+<MudContainer MaxWidth="MaxWidth.ExtraLarge" Class="mt-4">
+    <MudPaper Class="pa-4">
+        <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center" Class="mb-4">
+            <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+                <MudIconButton Icon="@Icons.Material.Filled.ArrowBack" OnClick="GoBack" />
+                <MudText Typo="Typo.h5">Zone Matrix Management</MudText>
+            </MudStack>
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add"
+                       OnClick="CreateNewZone">New Zone</MudButton>
+        </MudStack>
+
+        <MudGrid Class="mb-4">
+            <MudItem xs="12" md="4">
+                <MudTextField @bind-Value="_searchText" Label="Search zones" Variant="Variant.Outlined" Margin="Margin.Dense"
+                              Adornment="Adornment.End" AdornmentIcon="@Icons.Material.Filled.Search"
+                              Immediate="true" DebounceInterval="300" OnDebounceIntervalElapsed="SearchZones" />
+            </MudItem>
+        </MudGrid>
+
+        <MudTable Items="@_zones" Hover="true" Striped="true" Loading="@_loading" Dense="true" Elevation="0"
+                  Class="border-solid border">
+            <HeaderContent>
+                <MudTh>Zone Code</MudTh>
+                <MudTh>Zone Name</MudTh>
+                <MudTh>Default Country</MudTh>
+                <MudTh>Default City</MudTh>
+                <MudTh>Mapped Locations</MudTh>
+                <MudTh>Sort Order</MudTh>
+                <MudTh Style="width:120px">Actions</MudTh>
+            </HeaderContent>
+            <RowTemplate>
+                <MudTd DataLabel="Zone Code">
+                    <MudChip T="string" Size="Size.Small" Color="Color.Primary">@context.ZoneCode</MudChip>
+                </MudTd>
+                <MudTd DataLabel="Zone Name">@context.ZoneName</MudTd>
+                <MudTd DataLabel="Country">@GetCountryName(context.CountryId)</MudTd>
+                <MudTd DataLabel="City">@GetCityName(context.CityId)</MudTd>
+                <MudTd DataLabel="Locations">
+                    <MudLink OnClick="@(() => EditZoneDetails(context))">@context.Details.Count locations</MudLink>
+                </MudTd>
+                <MudTd DataLabel="Sort">@context.SortOrder</MudTd>
+                <MudTd>
+                    <MudIconButton Icon="@Icons.Material.Filled.Edit" Size="Size.Small" Color="Color.Primary"
+                                   OnClick="@(() => EditZone(context))" Title="Edit" />
+                    <MudIconButton Icon="@Icons.Material.Filled.LocationOn" Size="Size.Small" Color="Color.Secondary"
+                                   OnClick="@(() => EditZoneDetails(context))" Title="Locations" />
+                    <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" Color="Color.Error"
+                                   OnClick="@(() => DeleteZone(context))" Title="Delete" />
+                </MudTd>
+            </RowTemplate>
+            <NoRecordsContent>
+                <MudText Class="pa-4">No zones found. Click "New Zone" to create one.</MudText>
+            </NoRecordsContent>
+            <LoadingContent>
+                <MudText>Loading zones...</MudText>
+            </LoadingContent>
+        </MudTable>
+    </MudPaper>
+</MudContainer>
+
+@code {
+    private List<ZoneMatrixEntity> _zones = new();
+    private Dictionary<long, string> _countryNames = new();
+    private Dictionary<long, string> _cityNames = new();
+    private bool _loading = true;
+    private string _searchText = "";
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadZones();
+    }
+
+    private async Task LoadZones()
+    {
+        _loading = true;
+        try
+        {
+            var query = DbContext.ZoneMatrices
+                .Include(z => z.Details)
+                .Where(z => !z.IsDeleted)
+                .AsQueryable();
+
+            if (!string.IsNullOrWhiteSpace(_searchText))
+            {
+                query = query.Where(z => z.ZoneCode.ToLower().Contains(_searchText.ToLower()) ||
+                                         z.ZoneName.ToLower().Contains(_searchText.ToLower()));
+            }
+
+            _zones = await query.OrderBy(z => z.SortOrder).ThenBy(z => z.ZoneCode).ToListAsync();
+
+            var countryIds = _zones.Where(z => z.CountryId.HasValue).Select(z => z.CountryId!.Value).Distinct().ToList();
+            var cityIds = _zones.Where(z => z.CityId.HasValue).Select(z => z.CityId!.Value).Distinct().ToList();
+
+            if (countryIds.Any())
+            {
+                _countryNames = await DbContext.Countries
+                    .Where(c => countryIds.Contains(c.Id))
+                    .ToDictionaryAsync(c => c.Id, c => c.Name);
+            }
+
+            if (cityIds.Any())
+            {
+                _cityNames = await DbContext.Cities
+                    .Where(c => cityIds.Contains(c.Id))
+                    .ToDictionaryAsync(c => c.Id, c => c.Name);
+            }
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private async Task SearchZones()
+    {
+        await LoadZones();
+    }
+
+    private async Task CreateNewZone()
+    {
+        var dialog = await DialogService.ShowAsync<ZoneMatrixDialog>("New Zone",
+            new DialogOptions { MaxWidth = MaxWidth.Small, FullWidth = true });
+
+        var result = await dialog.Result;
+        if (result != null && !result.Canceled)
+        {
+            await LoadZones();
+        }
+    }
+
+    private async Task EditZone(ZoneMatrixEntity zone)
+    {
+        var dialog = await DialogService.ShowAsync<ZoneMatrixDialog>("Edit Zone",
+            new DialogParameters<ZoneMatrixDialog> { { x => x.ZoneId, zone.Id } },
+            new DialogOptions { MaxWidth = MaxWidth.Small, FullWidth = true });
+
+        var result = await dialog.Result;
+        if (result != null && !result.Canceled)
+        {
+            await LoadZones();
+        }
+    }
+
+    private async Task EditZoneDetails(ZoneMatrixEntity zone)
+    {
+        var dialog = await DialogService.ShowAsync<ZoneMatrixDetailsDialog>("Zone Locations",
+            new DialogParameters<ZoneMatrixDetailsDialog> { { x => x.ZoneMatrixId, zone.Id } },
+            new DialogOptions { MaxWidth = MaxWidth.Large, FullWidth = true });
+
+        var result = await dialog.Result;
+        if (result != null && !result.Canceled)
+        {
+            await LoadZones();
+        }
+    }
+
+    private async Task DeleteZone(ZoneMatrixEntity zone)
+    {
+        var parameters = new DialogParameters<ConfirmDialog>
+        {
+            { x => x.ContentText, $"Delete zone '{zone.ZoneCode} - {zone.ZoneName}'?" },
+            { x => x.ButtonText, "Delete" },
+            { x => x.Color, Color.Error }
+        };
+
+        var dialog = await DialogService.ShowAsync<ConfirmDialog>("Delete Zone", parameters);
+        var result = await dialog.Result;
+
+        if (result != null && !result.Canceled)
+        {
+            zone.IsDeleted = true;
+            await DbContext.SaveChangesAsync();
+            Snackbar.Add("Zone deleted", Severity.Success);
+            await LoadZones();
+        }
+    }
+
+    private void GoBack()
+    {
+        Navigation.NavigateTo("/rate-cards");
+    }
+
+    private string GetCountryName(long? id) => id.HasValue && _countryNames.TryGetValue(id.Value, out var name) ? name : "-";
+    private string GetCityName(long? id) => id.HasValue && _cityNames.TryGetValue(id.Value, out var name) ? name : "-";
+}

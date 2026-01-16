@@ -1,0 +1,138 @@
+@using Microsoft.EntityFrameworkCore
+@using Net4Courier.Masters.Entities
+@using Net4Courier.Infrastructure.Data
+@using ZoneMatrixEntity = Net4Courier.Masters.Entities.ZoneMatrix
+@inject ApplicationDbContext DbContext
+@inject ISnackbar Snackbar
+
+<MudDialog>
+    <TitleContent>
+        <MudText Typo="Typo.h6">@(_isNew ? "Add Zone Pricing" : "Edit Zone Pricing")</MudText>
+    </TitleContent>
+    <DialogContent>
+        <MudGrid>
+            <MudItem xs="12">
+                <MudAutocomplete T="ZoneMatrixEntity" @bind-Value="_selectedZone" Label="Zone" Required="true"
+                                 SearchFunc="SearchZones" ToStringFunc="@(z => z != null ? $"{z.ZoneCode} - {z.ZoneName}" : "")"
+                                 Variant="Variant.Outlined" Margin="Margin.Dense" Disabled="@(!_isNew)" />
+            </MudItem>
+            <MudItem xs="6">
+                <MudNumericField T="decimal" @bind-Value="_zone.BaseWeight" Label="Base Weight (kg)" Required="true"
+                                 Variant="Variant.Outlined" Margin="Margin.Dense" Min="0" Format="N3" />
+            </MudItem>
+            <MudItem xs="6">
+                <MudNumericField T="decimal" @bind-Value="_zone.BaseRate" Label="Base Rate" Required="true"
+                                 Variant="Variant.Outlined" Margin="Margin.Dense" Min="0" Format="N4" />
+            </MudItem>
+            <MudItem xs="6">
+                <MudNumericField T="decimal?" @bind-Value="_zone.MinCharge" Label="Min Charge"
+                                 Variant="Variant.Outlined" Margin="Margin.Dense" Min="0" Format="N2" />
+            </MudItem>
+            <MudItem xs="6">
+                <MudNumericField T="decimal?" @bind-Value="_zone.MaxCharge" Label="Max Charge"
+                                 Variant="Variant.Outlined" Margin="Margin.Dense" Min="0" Format="N2" />
+            </MudItem>
+            <MudItem xs="6">
+                <MudSelect T="TaxMode" @bind-Value="_zone.TaxMode" Label="Tax Mode"
+                           Variant="Variant.Outlined" Margin="Margin.Dense">
+                    <MudSelectItem T="TaxMode" Value="TaxMode.Exclusive">Exclusive</MudSelectItem>
+                    <MudSelectItem T="TaxMode" Value="TaxMode.Inclusive">Inclusive</MudSelectItem>
+                    <MudSelectItem T="TaxMode" Value="TaxMode.WithTax">With Tax</MudSelectItem>
+                </MudSelect>
+            </MudItem>
+            <MudItem xs="6">
+                <MudNumericField T="decimal?" @bind-Value="_zone.MarginPercentage" Label="Margin %"
+                                 Variant="Variant.Outlined" Margin="Margin.Dense" Min="0" Max="100" Format="N2" />
+            </MudItem>
+            <MudItem xs="6">
+                <MudTextField @bind-Value="_zone.CurrencyCode" Label="Currency Code"
+                              Variant="Variant.Outlined" Margin="Margin.Dense" MaxLength="10" />
+            </MudItem>
+        </MudGrid>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Cancel">Cancel</MudButton>
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="Save" Disabled="@_saving">Save</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] private MudDialogInstance MudDialog { get; set; } = null!;
+    [Parameter] public long RateCardId { get; set; }
+    [Parameter] public long RateCardZoneId { get; set; }
+
+    private RateCardZone _zone = new();
+    private ZoneMatrixEntity? _selectedZone;
+    private bool _isNew => RateCardZoneId == 0;
+    private bool _saving;
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (!_isNew)
+        {
+            _zone = await DbContext.RateCardZones
+                .Include(z => z.ZoneMatrix)
+                .FirstOrDefaultAsync(z => z.Id == RateCardZoneId) ?? new RateCardZone();
+            _selectedZone = _zone.ZoneMatrix;
+        }
+        else
+        {
+            _zone = new RateCardZone
+            {
+                RateCardId = RateCardId,
+                BaseWeight = 0.5m,
+                BaseRate = 0,
+                TaxMode = TaxMode.Exclusive,
+                IsActive = true
+            };
+        }
+    }
+
+    private async Task<IEnumerable<ZoneMatrixEntity>> SearchZones(string value)
+    {
+        var query = DbContext.ZoneMatrices
+            .Where(z => !z.IsDeleted && z.IsActive);
+
+        if (!string.IsNullOrWhiteSpace(value))
+        {
+            query = query.Where(z => z.ZoneCode.ToLower().Contains(value.ToLower()) ||
+                                     z.ZoneName.ToLower().Contains(value.ToLower()));
+        }
+
+        return await query.OrderBy(z => z.SortOrder).ThenBy(z => z.ZoneCode).Take(20).ToListAsync();
+    }
+
+    private async Task Save()
+    {
+        if (_selectedZone == null)
+        {
+            Snackbar.Add("Please select a zone", Severity.Error);
+            return;
+        }
+
+        _saving = true;
+        try
+        {
+            _zone.ZoneMatrixId = _selectedZone.Id;
+
+            if (_isNew)
+            {
+                _zone.CreatedAt = DateTime.UtcNow;
+                DbContext.RateCardZones.Add(_zone);
+            }
+            else
+            {
+                _zone.ModifiedAt = DateTime.UtcNow;
+            }
+
+            await DbContext.SaveChangesAsync();
+            MudDialog.Close(DialogResult.Ok(true));
+        }
+        finally
+        {
+            _saving = false;
+        }
+    }
+
+    private void Cancel() => MudDialog.Cancel();
+}

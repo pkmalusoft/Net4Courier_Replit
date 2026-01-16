@@ -1,0 +1,432 @@
+@page "/rate-card/{Id:long}"
+@page "/rate-card/new"
+@using Microsoft.EntityFrameworkCore
+@using Net4Courier.Masters.Entities
+@using Net4Courier.Infrastructure.Data
+@using Net4Courier.Kernel.Enums
+@inject ApplicationDbContext DbContext
+@inject IDialogService DialogService
+@inject ISnackbar Snackbar
+@inject NavigationManager Navigation
+@rendermode InteractiveServer
+
+<PageTitle>@(_isNew ? "New Rate Card" : "Edit Rate Card")</PageTitle>
+
+<MudContainer MaxWidth="MaxWidth.ExtraLarge" Class="mt-4">
+    <MudPaper Class="pa-4">
+        <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center" Class="mb-4">
+            <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+                <MudIconButton Icon="@Icons.Material.Filled.ArrowBack" OnClick="GoBack" />
+                <MudText Typo="Typo.h5">@(_isNew ? "New Rate Card" : _rateCard.RateCardName)</MudText>
+                @if (!_isNew)
+                {
+                    <MudChip T="string" Size="Size.Small" Color="@GetStatusColor(_rateCard.Status)">@_rateCard.Status</MudChip>
+                }
+            </MudStack>
+            <MudStack Row="true" Spacing="2">
+                @if (!_isNew)
+                {
+                    <MudButton Variant="Variant.Outlined" Color="Color.Secondary" StartIcon="@Icons.Material.Filled.Calculate"
+                               OnClick="OpenRateSimulator">Test Rates</MudButton>
+                }
+                <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Save"
+                           OnClick="SaveRateCard" Disabled="@_saving">Save</MudButton>
+            </MudStack>
+        </MudStack>
+
+        <MudTabs Elevation="0" Rounded="true" ApplyEffectsToContainer="true" PanelClass="pa-4">
+            <MudTabPanel Text="General">
+                <MudGrid>
+                    <MudItem xs="12" md="6">
+                        <MudTextField @bind-Value="_rateCard.RateCardName" Label="Rate Card Name" Required="true"
+                                      Variant="Variant.Outlined" Margin="Margin.Dense" />
+                    </MudItem>
+                    <MudItem xs="12" md="6">
+                        <MudTextField @bind-Value="_rateCard.Description" Label="Description"
+                                      Variant="Variant.Outlined" Margin="Margin.Dense" />
+                    </MudItem>
+                    <MudItem xs="12" md="3">
+                        <MudSelect T="MovementType" @bind-Value="_rateCard.MovementTypeId" Label="Movement Type"
+                                   Variant="Variant.Outlined" Margin="Margin.Dense">
+                            <MudSelectItem T="MovementType" Value="MovementType.Domestic">Domestic</MudSelectItem>
+                            <MudSelectItem T="MovementType" Value="MovementType.InternationalExport">Export</MudSelectItem>
+                            <MudSelectItem T="MovementType" Value="MovementType.InternationalImport">Import</MudSelectItem>
+                            <MudSelectItem T="MovementType" Value="MovementType.Transhipment">Transhipment</MudSelectItem>
+                        </MudSelect>
+                    </MudItem>
+                    <MudItem xs="12" md="3">
+                        <MudSelect T="PaymentMode" @bind-Value="_rateCard.PaymentModeId" Label="Payment Mode"
+                                   Variant="Variant.Outlined" Margin="Margin.Dense">
+                            <MudSelectItem T="PaymentMode" Value="PaymentMode.Prepaid">Prepaid</MudSelectItem>
+                            <MudSelectItem T="PaymentMode" Value="PaymentMode.ToPay">To Pay</MudSelectItem>
+                            <MudSelectItem T="PaymentMode" Value="PaymentMode.Credit">Credit</MudSelectItem>
+                            <MudSelectItem T="PaymentMode" Value="PaymentMode.COD">COD</MudSelectItem>
+                        </MudSelect>
+                    </MudItem>
+                    <MudItem xs="12" md="3">
+                        <MudSelect T="RateBasedType" @bind-Value="_rateCard.RateBasedType" Label="Rate Based On"
+                                   Variant="Variant.Outlined" Margin="Margin.Dense">
+                            <MudSelectItem T="RateBasedType" Value="RateBasedType.Weight">Weight</MudSelectItem>
+                            <MudSelectItem T="RateBasedType" Value="RateBasedType.Box">Box</MudSelectItem>
+                            <MudSelectItem T="RateBasedType" Value="RateBasedType.Flat">Flat Rate</MudSelectItem>
+                        </MudSelect>
+                    </MudItem>
+                    <MudItem xs="12" md="3">
+                        <MudSelect T="RateCardStatus" @bind-Value="_rateCard.Status" Label="Status"
+                                   Variant="Variant.Outlined" Margin="Margin.Dense">
+                            <MudSelectItem T="RateCardStatus" Value="RateCardStatus.Draft">Draft</MudSelectItem>
+                            <MudSelectItem T="RateCardStatus" Value="RateCardStatus.Active">Active</MudSelectItem>
+                            <MudSelectItem T="RateCardStatus" Value="RateCardStatus.Suspended">Suspended</MudSelectItem>
+                            <MudSelectItem T="RateCardStatus" Value="RateCardStatus.Expired">Expired</MudSelectItem>
+                        </MudSelect>
+                    </MudItem>
+                    <MudItem xs="12" md="3">
+                        <MudDatePicker @bind-Date="_validFromDate" Label="Valid From" Variant="Variant.Outlined"
+                                       Margin="Margin.Dense" DateFormat="dd-MMM-yyyy" />
+                    </MudItem>
+                    <MudItem xs="12" md="3">
+                        <MudDatePicker @bind-Date="_validToDate" Label="Valid To (Optional)" Variant="Variant.Outlined"
+                                       Margin="Margin.Dense" DateFormat="dd-MMM-yyyy" Clearable="true" />
+                    </MudItem>
+                    <MudItem xs="12" md="3">
+                        <MudAutocomplete T="Party" @bind-Value="_selectedAgent" Label="Forwarding Agent (Optional)"
+                                         SearchFunc="SearchAgents" ToStringFunc="@(p => p?.Name ?? "")"
+                                         Variant="Variant.Outlined" Margin="Margin.Dense" Clearable="true" />
+                    </MudItem>
+                    <MudItem xs="12" md="3">
+                        <MudCheckBox @bind-Value="_rateCard.IsDefault" Label="Default Rate Card" Color="Color.Primary" />
+                    </MudItem>
+                </MudGrid>
+            </MudTabPanel>
+
+            <MudTabPanel Text="Zone Pricing" Disabled="@_isNew">
+                <MudStack Row="true" Justify="Justify.SpaceBetween" Class="mb-4">
+                    <MudText Typo="Typo.subtitle1">Zone-wise Base Pricing</MudText>
+                    <MudButton Variant="Variant.Outlined" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add"
+                               OnClick="AddZonePricing" Size="Size.Small">Add Zone</MudButton>
+                </MudStack>
+
+                <MudTable Items="@_rateCardZones" Hover="true" Dense="true" Elevation="0" Class="border-solid border">
+                    <HeaderContent>
+                        <MudTh>Zone</MudTh>
+                        <MudTh>Base Weight (kg)</MudTh>
+                        <MudTh>Base Rate</MudTh>
+                        <MudTh>Min Charge</MudTh>
+                        <MudTh>Max Charge</MudTh>
+                        <MudTh>Tax Mode</MudTh>
+                        <MudTh>Margin %</MudTh>
+                        <MudTh>Slab Rules</MudTh>
+                        <MudTh Style="width:100px">Actions</MudTh>
+                    </HeaderContent>
+                    <RowTemplate>
+                        <MudTd DataLabel="Zone">@(context.ZoneMatrix?.ZoneName ?? "N/A")</MudTd>
+                        <MudTd DataLabel="Base Weight">@context.BaseWeight.ToString("N3")</MudTd>
+                        <MudTd DataLabel="Base Rate">@context.BaseRate.ToString("N2")</MudTd>
+                        <MudTd DataLabel="Min Charge">@(context.MinCharge?.ToString("N2") ?? "-")</MudTd>
+                        <MudTd DataLabel="Max Charge">@(context.MaxCharge?.ToString("N2") ?? "-")</MudTd>
+                        <MudTd DataLabel="Tax Mode">@GetTaxModeName(context.TaxMode)</MudTd>
+                        <MudTd DataLabel="Margin">@(context.MarginPercentage?.ToString("N2") ?? "-")%</MudTd>
+                        <MudTd DataLabel="Slab Rules">
+                            <MudLink OnClick="@(() => OpenSlabRules(context))">@context.SlabRules.Count rules</MudLink>
+                        </MudTd>
+                        <MudTd>
+                            <MudIconButton Icon="@Icons.Material.Filled.Edit" Size="Size.Small" Color="Color.Primary"
+                                           OnClick="@(() => EditZonePricing(context))" Title="Edit" />
+                            <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" Color="Color.Error"
+                                           OnClick="@(() => DeleteZonePricing(context))" Title="Delete" />
+                        </MudTd>
+                    </RowTemplate>
+                    <NoRecordsContent>
+                        <MudText Class="pa-4">No zone pricing configured. Click "Add Zone" to add zone-wise rates.</MudText>
+                    </NoRecordsContent>
+                </MudTable>
+            </MudTabPanel>
+
+            <MudTabPanel Text="Customer Assignment" Disabled="@_isNew">
+                <MudStack Row="true" Justify="Justify.SpaceBetween" Class="mb-4">
+                    <MudText Typo="Typo.subtitle1">Assigned Customers</MudText>
+                    <MudButton Variant="Variant.Outlined" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add"
+                               OnClick="AddCustomerAssignment" Size="Size.Small">Assign Customer</MudButton>
+                </MudStack>
+
+                <MudTable Items="@_customerAssignments" Hover="true" Dense="true" Elevation="0" Class="border-solid border">
+                    <HeaderContent>
+                        <MudTh>Customer</MudTh>
+                        <MudTh>Effective From</MudTh>
+                        <MudTh>Effective To</MudTh>
+                        <MudTh>Priority</MudTh>
+                        <MudTh>Remarks</MudTh>
+                        <MudTh Style="width:80px">Actions</MudTh>
+                    </HeaderContent>
+                    <RowTemplate>
+                        <MudTd DataLabel="Customer">@GetCustomerName(context.CustomerId)</MudTd>
+                        <MudTd DataLabel="Effective From">@context.EffectiveFrom.ToString("dd-MMM-yyyy")</MudTd>
+                        <MudTd DataLabel="Effective To">@(context.EffectiveTo?.ToString("dd-MMM-yyyy") ?? "No Expiry")</MudTd>
+                        <MudTd DataLabel="Priority">@context.Priority</MudTd>
+                        <MudTd DataLabel="Remarks">@context.Remarks</MudTd>
+                        <MudTd>
+                            <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" Color="Color.Error"
+                                           OnClick="@(() => RemoveCustomerAssignment(context))" Title="Remove" />
+                        </MudTd>
+                    </RowTemplate>
+                    <NoRecordsContent>
+                        <MudText Class="pa-4">No customers assigned. Click "Assign Customer" to assign this rate card to customers.</MudText>
+                    </NoRecordsContent>
+                </MudTable>
+            </MudTabPanel>
+        </MudTabs>
+    </MudPaper>
+</MudContainer>
+
+@code {
+    [Parameter] public long Id { get; set; }
+
+    private RateCard _rateCard = new();
+    private List<RateCardZone> _rateCardZones = new();
+    private List<CustomerRateAssignment> _customerAssignments = new();
+    private Dictionary<long, string> _customerNames = new();
+    private bool _isNew => Id == 0;
+    private bool _saving;
+    private DateTime? _validFromDate;
+    private DateTime? _validToDate;
+    private Party? _selectedAgent;
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (!_isNew)
+        {
+            await LoadRateCard();
+        }
+        else
+        {
+            _rateCard = new RateCard
+            {
+                RateCardName = "",
+                Status = RateCardStatus.Draft,
+                ValidFrom = DateTime.UtcNow,
+                IsActive = true
+            };
+            _validFromDate = DateTime.Today;
+        }
+    }
+
+    private async Task LoadRateCard()
+    {
+        _rateCard = await DbContext.RateCards
+            .FirstOrDefaultAsync(r => r.Id == Id) ?? new RateCard();
+
+        _validFromDate = _rateCard.ValidFrom.ToLocalTime().Date;
+        _validToDate = _rateCard.ValidTo?.ToLocalTime().Date;
+
+        _rateCardZones = await DbContext.RateCardZones
+            .Include(z => z.ZoneMatrix)
+            .Include(z => z.SlabRules)
+            .Where(z => z.RateCardId == Id && !z.IsDeleted)
+            .OrderBy(z => z.ZoneMatrix!.SortOrder)
+            .ToListAsync();
+
+        _customerAssignments = await DbContext.CustomerRateAssignments
+            .Where(c => c.RateCardId == Id && !c.IsDeleted && c.IsActive)
+            .OrderBy(c => c.Priority)
+            .ToListAsync();
+
+        var customerIds = _customerAssignments.Select(c => c.CustomerId).Distinct().ToList();
+        if (customerIds.Any())
+        {
+            _customerNames = await DbContext.Parties
+                .Where(p => customerIds.Contains(p.Id))
+                .ToDictionaryAsync(p => p.Id, p => p.Name);
+        }
+
+        if (_rateCard.ForwardingAgentId.HasValue)
+        {
+            _selectedAgent = await DbContext.Parties.FindAsync(_rateCard.ForwardingAgentId.Value);
+        }
+    }
+
+    private async Task SaveRateCard()
+    {
+        if (string.IsNullOrWhiteSpace(_rateCard.RateCardName))
+        {
+            Snackbar.Add("Rate card name is required", Severity.Error);
+            return;
+        }
+
+        _saving = true;
+        try
+        {
+            _rateCard.ValidFrom = DateTime.SpecifyKind(_validFromDate?.Date ?? DateTime.Today, DateTimeKind.Utc);
+            _rateCard.ValidTo = _validToDate.HasValue 
+                ? DateTime.SpecifyKind(_validToDate.Value.Date, DateTimeKind.Utc) 
+                : null;
+            _rateCard.ForwardingAgentId = _selectedAgent?.Id;
+
+            if (_isNew)
+            {
+                _rateCard.CreatedAt = DateTime.UtcNow;
+                _rateCard.IsActive = true;
+                DbContext.RateCards.Add(_rateCard);
+            }
+            else
+            {
+                _rateCard.ModifiedAt = DateTime.UtcNow;
+            }
+
+            await DbContext.SaveChangesAsync();
+            Snackbar.Add("Rate card saved successfully", Severity.Success);
+
+            if (_isNew)
+            {
+                Navigation.NavigateTo($"/rate-card/{_rateCard.Id}");
+            }
+        }
+        finally
+        {
+            _saving = false;
+        }
+    }
+
+    private async Task<IEnumerable<Party>> SearchAgents(string value)
+    {
+        var query = DbContext.Parties
+            .Where(p => p.PartyType == PartyType.ForwardingAgent && !p.IsDeleted && p.IsActive);
+
+        if (!string.IsNullOrWhiteSpace(value))
+        {
+            query = query.Where(p => p.Name.ToLower().Contains(value.ToLower()));
+        }
+
+        return await query.Take(20).ToListAsync();
+    }
+
+    private async Task AddZonePricing()
+    {
+        var dialog = await DialogService.ShowAsync<RateCardZoneDialog>("Add Zone Pricing",
+            new DialogParameters<RateCardZoneDialog> { { x => x.RateCardId, Id } },
+            new DialogOptions { MaxWidth = MaxWidth.Medium, FullWidth = true });
+
+        var result = await dialog.Result;
+        if (result != null && !result.Canceled)
+        {
+            await LoadRateCard();
+        }
+    }
+
+    private async Task EditZonePricing(RateCardZone zone)
+    {
+        var dialog = await DialogService.ShowAsync<RateCardZoneDialog>("Edit Zone Pricing",
+            new DialogParameters<RateCardZoneDialog> 
+            { 
+                { x => x.RateCardId, Id },
+                { x => x.RateCardZoneId, zone.Id }
+            },
+            new DialogOptions { MaxWidth = MaxWidth.Medium, FullWidth = true });
+
+        var result = await dialog.Result;
+        if (result != null && !result.Canceled)
+        {
+            await LoadRateCard();
+        }
+    }
+
+    private async Task DeleteZonePricing(RateCardZone zone)
+    {
+        var parameters = new DialogParameters<ConfirmDialog>
+        {
+            { x => x.ContentText, "Delete this zone pricing and all its slab rules?" },
+            { x => x.ButtonText, "Delete" },
+            { x => x.Color, Color.Error }
+        };
+
+        var dialog = await DialogService.ShowAsync<ConfirmDialog>("Delete Zone Pricing", parameters);
+        var result = await dialog.Result;
+
+        if (result != null && !result.Canceled)
+        {
+            zone.IsDeleted = true;
+            await DbContext.SaveChangesAsync();
+            Snackbar.Add("Zone pricing deleted", Severity.Success);
+            await LoadRateCard();
+        }
+    }
+
+    private async Task OpenSlabRules(RateCardZone zone)
+    {
+        var dialog = await DialogService.ShowAsync<SlabRulesDialog>("Slab Rules",
+            new DialogParameters<SlabRulesDialog> { { x => x.RateCardZoneId, zone.Id } },
+            new DialogOptions { MaxWidth = MaxWidth.Large, FullWidth = true });
+
+        var result = await dialog.Result;
+        if (result != null && !result.Canceled)
+        {
+            await LoadRateCard();
+        }
+    }
+
+    private async Task AddCustomerAssignment()
+    {
+        var dialog = await DialogService.ShowAsync<CustomerAssignmentDialog>("Assign Customer",
+            new DialogParameters<CustomerAssignmentDialog> { { x => x.RateCardId, Id } },
+            new DialogOptions { MaxWidth = MaxWidth.Small, FullWidth = true });
+
+        var result = await dialog.Result;
+        if (result != null && !result.Canceled)
+        {
+            await LoadRateCard();
+        }
+    }
+
+    private async Task RemoveCustomerAssignment(CustomerRateAssignment assignment)
+    {
+        var parameters = new DialogParameters<ConfirmDialog>
+        {
+            { x => x.ContentText, "Remove this customer assignment?" },
+            { x => x.ButtonText, "Remove" },
+            { x => x.Color, Color.Error }
+        };
+
+        var dialog = await DialogService.ShowAsync<ConfirmDialog>("Remove Assignment", parameters);
+        var result = await dialog.Result;
+
+        if (result != null && !result.Canceled)
+        {
+            assignment.IsDeleted = true;
+            assignment.IsActive = false;
+            await DbContext.SaveChangesAsync();
+            Snackbar.Add("Customer assignment removed", Severity.Success);
+            await LoadRateCard();
+        }
+    }
+
+    private void OpenRateSimulator()
+    {
+        Navigation.NavigateTo($"/rate-simulator/{Id}");
+    }
+
+    private void GoBack()
+    {
+        Navigation.NavigateTo("/rate-cards");
+    }
+
+    private string GetCustomerName(long customerId)
+    {
+        return _customerNames.TryGetValue(customerId, out var name) ? name : $"Customer #{customerId}";
+    }
+
+    private string GetTaxModeName(TaxMode mode) => mode switch
+    {
+        TaxMode.Exclusive => "Exclusive",
+        TaxMode.Inclusive => "Inclusive",
+        TaxMode.WithTax => "With Tax",
+        _ => mode.ToString()
+    };
+
+    private Color GetStatusColor(RateCardStatus status) => status switch
+    {
+        RateCardStatus.Active => Color.Success,
+        RateCardStatus.Draft => Color.Warning,
+        RateCardStatus.Expired => Color.Default,
+        RateCardStatus.Suspended => Color.Error,
+        _ => Color.Default
+    };
+}

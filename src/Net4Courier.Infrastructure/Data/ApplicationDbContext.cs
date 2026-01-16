@@ -47,6 +47,13 @@ public class ApplicationDbContext : DbContext
     public DbSet<JournalEntry> JournalEntries => Set<JournalEntry>();
     public DbSet<AccountHead> AccountHeads => Set<AccountHead>();
     public DbSet<ControlAccountSetting> ControlAccountSettings => Set<ControlAccountSetting>();
+    
+    public DbSet<RateCard> RateCards => Set<RateCard>();
+    public DbSet<ZoneMatrix> ZoneMatrices => Set<ZoneMatrix>();
+    public DbSet<ZoneMatrixDetail> ZoneMatrixDetails => Set<ZoneMatrixDetail>();
+    public DbSet<RateCardZone> RateCardZones => Set<RateCardZone>();
+    public DbSet<RateCardSlabRule> RateCardSlabRules => Set<RateCardSlabRule>();
+    public DbSet<CustomerRateAssignment> CustomerRateAssignments => Set<CustomerRateAssignment>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -208,6 +215,75 @@ public class ApplicationDbContext : DbContext
             entity.HasOne(e => e.City).WithMany(c => c.Locations).HasForeignKey(e => e.CityId)
                   .OnDelete(DeleteBehavior.Restrict);
             entity.HasOne(e => e.Branch).WithMany().HasForeignKey(e => e.BranchId)
+                  .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        modelBuilder.Entity<RateCard>(entity =>
+        {
+            entity.ToTable("RateCards");
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.RateCardName).HasMaxLength(200).IsRequired();
+            entity.HasIndex(e => e.RateCardName);
+            entity.HasIndex(e => new { e.CompanyId, e.Status });
+            entity.HasIndex(e => new { e.MovementTypeId, e.PaymentModeId });
+        });
+
+        modelBuilder.Entity<ZoneMatrix>(entity =>
+        {
+            entity.ToTable("ZoneMatrices");
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.ZoneCode).HasMaxLength(20).IsRequired();
+            entity.Property(e => e.ZoneName).HasMaxLength(100).IsRequired();
+            entity.HasIndex(e => new { e.ZoneCategoryId, e.ZoneCode });
+            entity.HasIndex(e => new { e.CountryId, e.CityId });
+        });
+
+        modelBuilder.Entity<ZoneMatrixDetail>(entity =>
+        {
+            entity.ToTable("ZoneMatrixDetails");
+            entity.HasKey(e => e.Id);
+            entity.HasIndex(e => new { e.ZoneMatrixId, e.CountryId, e.CityId });
+            entity.HasOne(e => e.ZoneMatrix).WithMany(z => z.Details).HasForeignKey(e => e.ZoneMatrixId)
+                  .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<RateCardZone>(entity =>
+        {
+            entity.ToTable("RateCardZones");
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.BaseWeight).HasPrecision(18, 3);
+            entity.Property(e => e.BaseRate).HasPrecision(18, 4);
+            entity.Property(e => e.MarginPercentage).HasPrecision(5, 2);
+            entity.Property(e => e.MinCharge).HasPrecision(18, 4);
+            entity.Property(e => e.MaxCharge).HasPrecision(18, 4);
+            entity.HasIndex(e => new { e.RateCardId, e.ZoneMatrixId });
+            entity.HasIndex(e => new { e.RateCardId, e.ForwardingAgentId });
+            entity.HasOne(e => e.RateCard).WithMany(r => r.RateCardZones).HasForeignKey(e => e.RateCardId)
+                  .OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne(e => e.ZoneMatrix).WithMany(z => z.RateCardZones).HasForeignKey(e => e.ZoneMatrixId)
+                  .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        modelBuilder.Entity<RateCardSlabRule>(entity =>
+        {
+            entity.ToTable("RateCardSlabRules");
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.FromWeight).HasPrecision(18, 3);
+            entity.Property(e => e.ToWeight).HasPrecision(18, 3);
+            entity.Property(e => e.IncrementWeight).HasPrecision(18, 3);
+            entity.Property(e => e.IncrementRate).HasPrecision(18, 4);
+            entity.HasIndex(e => new { e.RateCardZoneId, e.FromWeight, e.ToWeight });
+            entity.HasOne(e => e.RateCardZone).WithMany(r => r.SlabRules).HasForeignKey(e => e.RateCardZoneId)
+                  .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<CustomerRateAssignment>(entity =>
+        {
+            entity.ToTable("CustomerRateAssignments");
+            entity.HasKey(e => e.Id);
+            entity.HasIndex(e => new { e.CustomerId, e.EffectiveFrom, e.Priority });
+            entity.HasIndex(e => new { e.RateCardId, e.CustomerId });
+            entity.HasOne(e => e.RateCard).WithMany(r => r.CustomerAssignments).HasForeignKey(e => e.RateCardId)
                   .OnDelete(DeleteBehavior.Restrict);
         });
     }
