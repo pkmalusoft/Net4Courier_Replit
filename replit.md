@@ -45,6 +45,7 @@ src/
 - **Role/RolePermission**: User roles and permissions
 - **Party/PartyAddress**: Customers, agents, vendors (normalized)
 - **FinancialYear**: Fiscal year definitions
+- **FinancialPeriod**: Monthly accounting periods (auto-generated, open/close control)
 
 ### Operations Module
 - **InscanMaster**: Main shipment table (139 fields, legacy compatible)
@@ -93,6 +94,14 @@ cd src/Net4Courier.Web && dotnet run --urls http://0.0.0.0:5000
 16. [x] Reporting with QuestPDF (AWB labels, Invoice PDFs, Receipt PDFs)
 17. [x] UserType management (Employee, Agent, Customer, Vendor classification)
 18. [x] Geography Masters - Country, State, City, Location with hierarchical relationships
+19. [x] Financial Period Management - Auto-generated monthly periods with open/close control
+
+## Financial Period System
+- When a Financial Year is created, 12 monthly periods are auto-generated
+- Periods can be individually closed/reopened by admin via Financial Periods page
+- AWB entry validates that the transaction date falls in an open period
+- Closed periods prevent any new transactions from being posted
+- Financial Year close also blocks all transactions in that year
 
 ## PostgreSQL Partitioning Notes
 - InscanMasters table supports partitioning by TransactionDate
@@ -108,6 +117,9 @@ cd src/Net4Courier.Web && dotnet run --urls http://0.0.0.0:5000
 - Party/PartyAddress normalization for storage efficiency
 
 ## Recent Changes (Jan 16, 2026)
+- Implemented Financial Period Management (auto-generated monthly periods, open/close control)
+- Added period validation to AWB entry form to prevent transactions in closed periods
+- Added IsActive property to BaseEntity for consistent soft-delete pattern
 - Fixed AWBNew.razor binding issues (Currency field now bound to entity, Auto AWB toggle regenerates AWB number)
 - Added Currency field to InscanMaster entity
 - Fixed date handling to properly convert to UTC
