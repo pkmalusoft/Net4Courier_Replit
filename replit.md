@@ -125,6 +125,15 @@ cd src/Net4Courier.Web && dotnet run --urls http://0.0.0.0:5000
 - PostgreSQL partitioning by TransactionDate for performance
 - Party/PartyAddress normalization for storage efficiency
 
+## Automatic Movement Type Calculation
+Movement type is now calculated automatically based on origin/destination countries vs company country:
+- **Domestic**: Origin = Company Country AND Destination = Company Country
+- **International-Export**: Origin = Company Country AND Destination ≠ Company Country
+- **International-Import**: Origin ≠ Company Country AND Destination = Company Country
+- **Transhipment**: Origin ≠ Company Country AND Destination ≠ Company Country
+
+The Movement Type dropdown has been removed from AWBNew.razor and replaced with a color-coded chip that updates automatically when origin/destination countries change.
+
 ## Recent Changes (Jan 16, 2026)
 - Implemented Financial Period Management (auto-generated monthly periods, open/close control)
 - Added period validation to AWB entry form to prevent transactions in closed periods

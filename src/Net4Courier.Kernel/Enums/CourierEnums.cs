@@ -24,9 +24,9 @@ public enum PaymentMode
 public enum MovementType
 {
     Domestic = 1,
-    International = 2,
-    Import = 3,
-    Export = 4
+    InternationalExport = 2,
+    InternationalImport = 3,
+    Transhipment = 4
 }
 
 public enum ShipmentMode
