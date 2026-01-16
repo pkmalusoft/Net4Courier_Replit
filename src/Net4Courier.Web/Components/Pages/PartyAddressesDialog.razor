@@ -13,8 +13,9 @@
     </TitleContent>
     <DialogContent>
         <MudStack Spacing="4">
-            @foreach (var address in _addresses)
+            @foreach (var address in _addresses.Where(a => !a.IsDeleted))
             {
+                var addressIndex = _addresses.IndexOf(address);
                 <MudPaper Class="pa-4" Elevation="1">
                     <MudGrid>
                         <MudItem xs="12" md="3">
@@ -30,22 +31,42 @@
                             <MudTextField @bind-Value="address.Area" Label="Area" Variant="Variant.Outlined" />
                         </MudItem>
                         <MudItem xs="12" md="3">
-                            <MudTextField @bind-Value="address.City" Label="City" Variant="Variant.Outlined" />
+                            <MudSelect T="long?" Value="@GetCountryId(addressIndex)" ValueChanged="@((long? v) => OnCountryChanged(addressIndex, v))" 
+                                       Label="Country" Variant="Variant.Outlined" AnchorOrigin="Origin.BottomCenter" Clearable="true">
+                                @foreach (var country in _countries)
+                                {
+                                    <MudSelectItem T="long?" Value="@country.Id">@country.Name</MudSelectItem>
+                                }
+                            </MudSelect>
                         </MudItem>
                         <MudItem xs="12" md="3">
-                            <MudTextField @bind-Value="address.State" Label="State" Variant="Variant.Outlined" />
+                            <MudSelect T="long?" Value="@GetCityId(addressIndex)" ValueChanged="@((long? v) => OnCityChanged(addressIndex, v))" 
+                                       Label="City" Variant="Variant.Outlined" AnchorOrigin="Origin.BottomCenter" Clearable="true"
+                                       Disabled="@(!GetCities(addressIndex).Any())">
+                                @foreach (var city in GetCities(addressIndex))
+                                {
+                                    <MudSelectItem T="long?" Value="@city.Id">@city.Name</MudSelectItem>
+                                }
+                            </MudSelect>
                         </MudItem>
                         <MudItem xs="12" md="3">
-                            <MudTextField @bind-Value="address.Country" Label="Country" Variant="Variant.Outlined" />
+                            <MudSelect T="string" Value="@address.Landmark" ValueChanged="@((string v) => OnLocationChanged(addressIndex, v))" 
+                                       Label="Location" Variant="Variant.Outlined" AnchorOrigin="Origin.BottomCenter" Clearable="true"
+                                       Disabled="@(!GetLocations(addressIndex).Any())">
+                                @foreach (var loc in GetLocations(addressIndex))
+                                {
+                                    <MudSelectItem T="string" Value="@loc.Name">@loc.Name</MudSelectItem>
+                                }
+                            </MudSelect>
                         </MudItem>
                         <MudItem xs="12" md="3">
                             <MudTextField @bind-Value="address.PostalCode" Label="Postal Code" Variant="Variant.Outlined" />
                         </MudItem>
-                        <MudItem xs="12" md="6">
-                            <MudTextField @bind-Value="address.Landmark" Label="Landmark" Variant="Variant.Outlined" />
-                        </MudItem>
                         <MudItem xs="12" md="3">
-                            <MudSwitch @bind-Value="address.IsDefault" Label="Default" Color="Color.Primary" />
+                            <MudTextField @bind-Value="address.State" Label="State" Variant="Variant.Outlined" />
+                        </MudItem>
+                        <MudItem xs="12" md="6">
+                            <MudSwitch @bind-Value="address.IsDefault" Label="Default Address" Color="Color.Primary" />
                         </MudItem>
                         <MudItem xs="12" md="3">
                             <MudIconButton Icon="@Icons.Material.Filled.Delete" Color="Color.Error" OnClick="@(() => RemoveAddress(address))" />
@@ -69,22 +90,122 @@
     [Parameter] public Party Party { get; set; } = new();
 
     private List<PartyAddress> _addresses = new();
+    private List<Country> _countries = new();
+    private Dictionary<int, List<City>> _citiesPerAddress = new();
+    private Dictionary<int, List<Location>> _locationsPerAddress = new();
+    private Dictionary<int, long?> _countryIds = new();
+    private Dictionary<int, long?> _cityIds = new();
 
     protected override async Task OnInitializedAsync()
     {
+        _countries = await DbContext.Countries.Where(c => c.IsActive && !c.IsDeleted).OrderBy(c => c.Name).ToListAsync();
         _addresses = await DbContext.PartyAddresses
             .Where(a => a.PartyId == Party.Id && !a.IsDeleted)
             .ToListAsync();
+
+        for (int i = 0; i < _addresses.Count; i++)
+        {
+            await LoadGeographyForAddress(i, _addresses[i]);
+        }
+    }
+
+    private async Task LoadGeographyForAddress(int index, PartyAddress address)
+    {
+        var country = _countries.FirstOrDefault(c => c.Name == address.Country);
+        if (country != null)
+        {
+            _countryIds[index] = country.Id;
+            var cities = await DbContext.Cities.Where(c => c.CountryId == country.Id && c.IsActive && !c.IsDeleted).OrderBy(c => c.Name).ToListAsync();
+            _citiesPerAddress[index] = cities;
+
+            var city = cities.FirstOrDefault(c => c.Name == address.City);
+            if (city != null)
+            {
+                _cityIds[index] = city.Id;
+                _locationsPerAddress[index] = await DbContext.Locations.Where(l => l.CityId == city.Id && l.IsActive && !l.IsDeleted).OrderBy(l => l.Name).ToListAsync();
+            }
+        }
+    }
+
+    private long? GetCountryId(int index) => _countryIds.TryGetValue(index, out var id) ? id : null;
+    private long? GetCityId(int index) => _cityIds.TryGetValue(index, out var id) ? id : null;
+    private List<City> GetCities(int index) => _citiesPerAddress.TryGetValue(index, out var cities) ? cities : new();
+    private List<Location> GetLocations(int index) => _locationsPerAddress.TryGetValue(index, out var locs) ? locs : new();
+
+    private async Task OnCountryChanged(int index, long? countryId)
+    {
+        _countryIds[index] = countryId;
+        _cityIds[index] = null;
+        _citiesPerAddress[index] = new();
+        _locationsPerAddress[index] = new();
+        
+        var address = _addresses[index];
+        address.City = null;
+        address.Landmark = null;
+
+        if (countryId.HasValue)
+        {
+            var country = _countries.FirstOrDefault(c => c.Id == countryId);
+            address.Country = country?.Name;
+            _citiesPerAddress[index] = await DbContext.Cities.Where(c => c.CountryId == countryId && c.IsActive && !c.IsDeleted).OrderBy(c => c.Name).ToListAsync();
+        }
+        else
+        {
+            address.Country = null;
+        }
+        StateHasChanged();
+    }
+
+    private async Task OnCityChanged(int index, long? cityId)
+    {
+        _cityIds[index] = cityId;
+        _locationsPerAddress[index] = new();
+        
+        var address = _addresses[index];
+        address.Landmark = null;
+
+        if (cityId.HasValue)
+        {
+            var cities = GetCities(index);
+            var city = cities.FirstOrDefault(c => c.Id == cityId);
+            address.City = city?.Name;
+            _locationsPerAddress[index] = await DbContext.Locations.Where(l => l.CityId == cityId && l.IsActive && !l.IsDeleted).OrderBy(l => l.Name).ToListAsync();
+        }
+        else
+        {
+            address.City = null;
+        }
+        StateHasChanged();
+    }
+
+    private void OnLocationChanged(int index, string? locationName)
+    {
+        _addresses[index].Landmark = locationName;
+        StateHasChanged();
     }
 
     private void AddAddress()
     {
-        _addresses.Add(new PartyAddress
+        var newIndex = _addresses.Count;
+        var newAddress = new PartyAddress
         {
             PartyId = Party.Id,
             AddressType = "Primary",
-            IsDefault = !_addresses.Any()
-        });
+            IsDefault = !_addresses.Any(a => !a.IsDeleted),
+            Country = "India"
+        };
+        _addresses.Add(newAddress);
+
+        var india = _countries.FirstOrDefault(c => c.Name == "India");
+        if (india != null)
+        {
+            _countryIds[newIndex] = india.Id;
+            Task.Run(async () =>
+            {
+                _citiesPerAddress[newIndex] = await DbContext.Cities.Where(c => c.CountryId == india.Id && c.IsActive && !c.IsDeleted).OrderBy(c => c.Name).ToListAsync();
+                await InvokeAsync(StateHasChanged);
+            });
+        }
     }
 
     private void RemoveAddress(PartyAddress address)
