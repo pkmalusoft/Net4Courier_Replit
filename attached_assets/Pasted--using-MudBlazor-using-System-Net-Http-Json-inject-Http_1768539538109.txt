@@ -1,0 +1,376 @@
+@using MudBlazor
+@using System.Net.Http.Json
+@inject HttpClient Http
+@inject ISnackbar Snackbar
+
+<MudGrid>
+    <!-- Country Dropdown -->
+    <MudItem xs="12" md="@(ShowInTwoColumns ? 6 : 3)">
+        <MudSelect T="Guid?" Value="@SelectedCountryId" ValueChanged="OnCountryChanged" 
+                   Label="Country" Variant="Variant.Outlined" Clearable="true" Disabled="@Disabled">
+            @foreach (var country in countries)
+            {
+                <MudSelectItem Value="@((Guid?)country.Id)">@country.Name (@country.Code)</MudSelectItem>
+            }
+        </MudSelect>
+    </MudItem>
+    
+    <!-- State Dropdown (depends on Country) -->
+    <MudItem xs="12" md="@(ShowInTwoColumns ? 6 : 3)">
+        <MudSelect T="Guid?" Value="@SelectedStateId" ValueChanged="OnStateChanged" 
+                   Label="State/Province" Variant="Variant.Outlined" Clearable="true" 
+                   Disabled="@(Disabled || SelectedCountryId == null)">
+            @foreach (var state in filteredStates)
+            {
+                <MudSelectItem Value="@((Guid?)state.Id)">@state.Name (@state.Code)</MudSelectItem>
+            }
+        </MudSelect>
+    </MudItem>
+    
+    <!-- City Dropdown (depends on State) -->
+    <MudItem xs="12" md="@(ShowInTwoColumns ? 6 : 3)">
+        <MudSelect T="Guid?" Value="@SelectedCityId" ValueChanged="OnCityChanged" 
+                   Label="City" Variant="Variant.Outlined" Clearable="true" 
+                   Disabled="@(Disabled || SelectedStateId == null)">
+            @foreach (var city in filteredCities)
+            {
+                <MudSelectItem Value="@((Guid?)city.Id)">@city.Name</MudSelectItem>
+            }
+        </MudSelect>
+    </MudItem>
+    
+    <!-- Postal Code Dropdown (depends on City) -->
+    <MudItem xs="12" md="@(ShowInTwoColumns ? 6 : 3)">
+        <MudSelect T="Guid?" Value="@SelectedPostalCodeId" ValueChanged="OnPostalCodeChanged" 
+                   Label="Postal Code" Variant="Variant.Outlined" Clearable="true" 
+                   Disabled="@(Disabled || SelectedCityId == null)">
+            @foreach (var postalCode in filteredPostalCodes)
+            {
+                <MudSelectItem Value="@((Guid?)postalCode.Id)">
+                    @postalCode.Code @(!string.IsNullOrEmpty(postalCode.AreaName) ? $"- {postalCode.AreaName}" : "")
+                </MudSelectItem>
+            }
+        </MudSelect>
+    </MudItem>
+</MudGrid>
+
+@code {
+    // ========== PARAMETERS ==========
+    
+    // ID Parameters (two-way binding)
+    [Parameter] public Guid? SelectedCountryId { get; set; }
+    [Parameter] public EventCallback<Guid?> SelectedCountryIdChanged { get; set; }
+    
+    [Parameter] public Guid? SelectedStateId { get; set; }
+    [Parameter] public EventCallback<Guid?> SelectedStateIdChanged { get; set; }
+    
+    [Parameter] public Guid? SelectedCityId { get; set; }
+    [Parameter] public EventCallback<Guid?> SelectedCityIdChanged { get; set; }
+    
+    [Parameter] public Guid? SelectedPostalCodeId { get; set; }
+    [Parameter] public EventCallback<Guid?> SelectedPostalCodeIdChanged { get; set; }
+    
+    // Name Parameters (for storing display names)
+    [Parameter] public string? CountryName { get; set; }
+    [Parameter] public EventCallback<string?> CountryNameChanged { get; set; }
+    
+    [Parameter] public string? StateName { get; set; }
+    [Parameter] public EventCallback<string?> StateNameChanged { get; set; }
+    
+    [Parameter] public string? CityName { get; set; }
+    [Parameter] public EventCallback<string?> CityNameChanged { get; set; }
+    
+    [Parameter] public string? PostalCode { get; set; }
+    [Parameter] public EventCallback<string?> PostalCodeChanged { get; set; }
+    
+    // Layout & Behavior Parameters
+    [Parameter] public bool ShowInTwoColumns { get; set; } = false;
+    [Parameter] public bool Disabled { get; set; } = false;
+    [Parameter] public Action? SetAuthHeaders { get; set; }
+
+    // ========== DATA ==========
+    
+    private List<LocationCountry> countries = new();
+    private List<LocationState> allStates = new();
+    private List<LocationCity> allCities = new();
+    private List<LocationPostalCode> allPostalCodes = new();
+    
+    // Filtered lists based on parent selection
+    private List<LocationState> filteredStates => SelectedCountryId.HasValue 
+        ? allStates.Where(s => s.CountryId == SelectedCountryId.Value).ToList() 
+        : new();
+        
+    private List<LocationCity> filteredCities => SelectedStateId.HasValue 
+        ? allCities.Where(c => c.StateId == SelectedStateId.Value).ToList() 
+        : new();
+        
+    private List<LocationPostalCode> filteredPostalCodes => SelectedCityId.HasValue 
+        ? allPostalCodes.Where(p => p.CityId == SelectedCityId.Value).ToList() 
+        : new();
+
+    // ========== INITIALIZATION ==========
+    
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadCountries();
+        
+        // Pre-load cascading data if values already set
+        if (SelectedCountryId.HasValue)
+        {
+            await LoadStates(SelectedCountryId.Value);
+            if (SelectedStateId.HasValue)
+            {
+                await LoadCities(SelectedStateId.Value);
+                if (SelectedCityId.HasValue)
+                {
+                    await LoadPostalCodes(SelectedCityId.Value);
+                }
+            }
+        }
+    }
+
+    // ========== DATA LOADING ==========
+    
+    private async Task LoadCountries()
+    {
+        try
+        {
+            SetAuthHeaders?.Invoke();
+            countries = await Http.GetFromJsonAsync<List<LocationCountry>>("api/location/countries") ?? new();
+        }
+        catch { }
+    }
+
+    private async Task LoadStates(Guid countryId)
+    {
+        try
+        {
+            SetAuthHeaders?.Invoke();
+            allStates = await Http.GetFromJsonAsync<List<LocationState>>(
+                $"api/location/countries/{countryId}/states") ?? new();
+        }
+        catch { }
+    }
+
+    private async Task LoadCities(Guid stateId)
+    {
+        try
+        {
+            SetAuthHeaders?.Invoke();
+            allCities = await Http.GetFromJsonAsync<List<LocationCity>>(
+                $"api/location/states/{stateId}/cities") ?? new();
+        }
+        catch { }
+    }
+
+    private async Task LoadPostalCodes(Guid cityId)
+    {
+        try
+        {
+            SetAuthHeaders?.Invoke();
+            allPostalCodes = await Http.GetFromJsonAsync<List<LocationPostalCode>>(
+                $"api/location/cities/{cityId}/postalcodes") ?? new();
+        }
+        catch { }
+    }
+
+    // ========== EVENT HANDLERS ==========
+    
+    private async Task OnCountryChanged(Guid? value)
+    {
+        SelectedCountryId = value;
+        await SelectedCountryIdChanged.InvokeAsync(value);
+        
+        // Update name
+        var country = countries.FirstOrDefault(c => c.Id == value);
+        await CountryNameChanged.InvokeAsync(country?.Name);
+        
+        // Clear child selections
+        SelectedStateId = null;
+        await SelectedStateIdChanged.InvokeAsync(null);
+        await StateNameChanged.InvokeAsync(null);
+        
+        SelectedCityId = null;
+        await SelectedCityIdChanged.InvokeAsync(null);
+        await CityNameChanged.InvokeAsync(null);
+        
+        SelectedPostalCodeId = null;
+        await SelectedPostalCodeIdChanged.InvokeAsync(null);
+        await PostalCodeChanged.InvokeAsync(null);
+        
+        // Clear child data
+        allStates.Clear();
+        allCities.Clear();
+        allPostalCodes.Clear();
+        
+        // Load states for selected country
+        if (value.HasValue)
+        {
+            await LoadStates(value.Value);
+        }
+    }
+
+    private async Task OnStateChanged(Guid? value)
+    {
+        SelectedStateId = value;
+        await SelectedStateIdChanged.InvokeAsync(value);
+        
+        var state = allStates.FirstOrDefault(s => s.Id == value);
+        await StateNameChanged.InvokeAsync(state?.Name);
+        
+        // Clear child selections
+        SelectedCityId = null;
+        await SelectedCityIdChanged.InvokeAsync(null);
+        await CityNameChanged.InvokeAsync(null);
+        
+        SelectedPostalCodeId = null;
+        await SelectedPostalCodeIdChanged.InvokeAsync(null);
+        await PostalCodeChanged.InvokeAsync(null);
+        
+        allCities.Clear();
+        allPostalCodes.Clear();
+        
+        if (value.HasValue)
+        {
+            await LoadCities(value.Value);
+        }
+    }
+
+    private async Task OnCityChanged(Guid? value)
+    {
+        SelectedCityId = value;
+        await SelectedCityIdChanged.InvokeAsync(value);
+        
+        var city = allCities.FirstOrDefault(c => c.Id == value);
+        await CityNameChanged.InvokeAsync(city?.Name);
+        
+        // Clear postal code
+        SelectedPostalCodeId = null;
+        await SelectedPostalCodeIdChanged.InvokeAsync(null);
+        await PostalCodeChanged.InvokeAsync(null);
+        
+        allPostalCodes.Clear();
+        
+        if (value.HasValue)
+        {
+            await LoadPostalCodes(value.Value);
+        }
+    }
+
+    private async Task OnPostalCodeChanged(Guid? value)
+    {
+        SelectedPostalCodeId = value;
+        await SelectedPostalCodeIdChanged.InvokeAsync(value);
+        
+        var postalCode = allPostalCodes.FirstOrDefault(p => p.Id == value);
+        await PostalCodeChanged.InvokeAsync(postalCode?.Code);
+    }
+
+    // ========== PUBLIC METHODS ==========
+    
+    /// <summary>
+    /// Resets all selections to null
+    /// </summary>
+    public async Task ResetSelections()
+    {
+        SelectedCountryId = null;
+        await SelectedCountryIdChanged.InvokeAsync(null);
+        await CountryNameChanged.InvokeAsync(null);
+        
+        SelectedStateId = null;
+        await SelectedStateIdChanged.InvokeAsync(null);
+        await StateNameChanged.InvokeAsync(null);
+        
+        SelectedCityId = null;
+        await SelectedCityIdChanged.InvokeAsync(null);
+        await CityNameChanged.InvokeAsync(null);
+        
+        SelectedPostalCodeId = null;
+        await SelectedPostalCodeIdChanged.InvokeAsync(null);
+        await PostalCodeChanged.InvokeAsync(null);
+        
+        allStates.Clear();
+        allCities.Clear();
+        allPostalCodes.Clear();
+        
+        StateHasChanged();
+    }
+
+    /// <summary>
+    /// Programmatically set all selections (useful for edit forms)
+    /// </summary>
+    public async Task SetSelections(Guid? countryId, Guid? stateId, Guid? cityId, string? postalCode)
+    {
+        SelectedCountryId = countryId;
+        await SelectedCountryIdChanged.InvokeAsync(countryId);
+        
+        var country = countries.FirstOrDefault(c => c.Id == countryId);
+        await CountryNameChanged.InvokeAsync(country?.Name);
+        
+        if (countryId.HasValue)
+        {
+            await LoadStates(countryId.Value);
+        }
+        
+        SelectedStateId = stateId;
+        await SelectedStateIdChanged.InvokeAsync(stateId);
+        
+        var state = allStates.FirstOrDefault(s => s.Id == stateId);
+        await StateNameChanged.InvokeAsync(state?.Name);
+        
+        if (stateId.HasValue)
+        {
+            await LoadCities(stateId.Value);
+        }
+        
+        SelectedCityId = cityId;
+        await SelectedCityIdChanged.InvokeAsync(cityId);
+        
+        var city = allCities.FirstOrDefault(c => c.Id == cityId);
+        await CityNameChanged.InvokeAsync(city?.Name);
+        
+        if (cityId.HasValue)
+        {
+            await LoadPostalCodes(cityId.Value);
+        }
+        
+        var postalCodeItem = allPostalCodes.FirstOrDefault(p => p.Code == postalCode);
+        SelectedPostalCodeId = postalCodeItem?.Id;
+        await SelectedPostalCodeIdChanged.InvokeAsync(postalCodeItem?.Id);
+        await PostalCodeChanged.InvokeAsync(postalCode);
+        
+        StateHasChanged();
+    }
+
+    // ========== DTOs ==========
+    
+    public class LocationCountry
+    {
+        public Guid Id { get; set; }
+        public string Code { get; set; } = "";
+        public string Name { get; set; } = "";
+    }
+
+    public class LocationState
+    {
+        public Guid Id { get; set; }
+        public Guid CountryId { get; set; }
+        public string Code { get; set; } = "";
+        public string Name { get; set; } = "";
+    }
+
+    public class LocationCity
+    {
+        public Guid Id { get; set; }
+        public Guid StateId { get; set; }
+        public string Name { get; set; } = "";
+    }
+
+    public class LocationPostalCode
+    {
+        public Guid Id { get; set; }
+        public Guid CityId { get; set; }
+        public string Code { get; set; } = "";
+        public string? AreaName { get; set; }
+    }
+}
