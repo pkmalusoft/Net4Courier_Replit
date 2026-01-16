@@ -7,9 +7,6 @@ public class Company : BaseEntity
     public string Name { get; set; } = string.Empty;
     public string? Code { get; set; }
     public string? Address { get; set; }
-    public string? City { get; set; }
-    public string? State { get; set; }
-    public string? Country { get; set; }
     public string? PostalCode { get; set; }
     public string? Phone { get; set; }
     public string? Email { get; set; }
@@ -18,6 +15,15 @@ public class Company : BaseEntity
     public string? RegistrationNumber { get; set; }
     public string? Logo { get; set; }
     public bool IsActive { get; set; } = true;
+    
+    public long? CountryId { get; set; }
+    public virtual Country? Country { get; set; }
+    
+    public long? StateId { get; set; }
+    public virtual State? State { get; set; }
+    
+    public long? CityId { get; set; }
+    public virtual City? City { get; set; }
     
     public virtual ICollection<Branch> Branches { get; set; } = new List<Branch>();
     public virtual ICollection<FinancialYear> FinancialYears { get; set; } = new List<FinancialYear>();

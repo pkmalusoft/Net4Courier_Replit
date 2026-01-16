@@ -59,6 +59,12 @@ public class ApplicationDbContext : DbContext
             entity.Property(e => e.Name).HasMaxLength(200).IsRequired();
             entity.Property(e => e.Code).HasMaxLength(50);
             entity.HasIndex(e => e.Code).IsUnique();
+            entity.HasOne(e => e.Country).WithMany().HasForeignKey(e => e.CountryId)
+                  .OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(e => e.State).WithMany().HasForeignKey(e => e.StateId)
+                  .OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(e => e.City).WithMany().HasForeignKey(e => e.CityId)
+                  .OnDelete(DeleteBehavior.Restrict);
         });
 
         modelBuilder.Entity<Branch>(entity =>

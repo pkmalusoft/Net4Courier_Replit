@@ -26,6 +26,7 @@
         <HeaderContent>
             <MudTh><MudTableSortLabel SortBy="new Func<Company, object>(x => x.Name)">Name</MudTableSortLabel></MudTh>
             <MudTh>Code</MudTh>
+            <MudTh>Location</MudTh>
             <MudTh>Email</MudTh>
             <MudTh>Phone</MudTh>
             <MudTh>Status</MudTh>
@@ -34,6 +35,7 @@
         <RowTemplate>
             <MudTd DataLabel="Name">@context.Name</MudTd>
             <MudTd DataLabel="Code">@context.Code</MudTd>
+            <MudTd DataLabel="Location">@GetLocationDisplay(context)</MudTd>
             <MudTd DataLabel="Email">@context.Email</MudTd>
             <MudTd DataLabel="Phone">@context.Phone</MudTd>
             <MudTd DataLabel="Status">
@@ -65,8 +67,23 @@
     private async Task LoadCompanies()
     {
         _loading = true;
-        _companies = await DbContext.Companies.Where(c => !c.IsDeleted).OrderBy(c => c.Name).ToListAsync();
+        _companies = await DbContext.Companies
+            .Include(c => c.Country)
+            .Include(c => c.State)
+            .Include(c => c.City)
+            .Where(c => !c.IsDeleted)
+            .OrderBy(c => c.Name)
+            .ToListAsync();
         _loading = false;
+    }
+
+    private string GetLocationDisplay(Company company)
+    {
+        var parts = new List<string>();
+        if (company.City != null) parts.Add(company.City.Name);
+        if (company.State != null) parts.Add(company.State.Name);
+        if (company.Country != null) parts.Add(company.Country.Name);
+        return parts.Count > 0 ? string.Join(", ", parts) : "-";
     }
 
     private bool FilterFunc(Company company)
