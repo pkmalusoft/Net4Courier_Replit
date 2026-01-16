@@ -1,0 +1,63 @@
+@using Net4Courier.Infrastructure.Data
+@using Net4Courier.Masters.Entities
+@inject ApplicationDbContext DbContext
+
+<MudDialog>
+    <DialogContent>
+        <MudForm @ref="_form" @bind-IsValid="@_isValid">
+            <MudSelect T="long" @bind-Value="State.CountryId" Label="Country" Required="true"
+                       RequiredError="Country is required" Variant="Variant.Outlined" Class="mb-3">
+                @foreach (var country in Countries)
+                {
+                    <MudSelectItem T="long" Value="@country.Id">@country.Name</MudSelectItem>
+                }
+            </MudSelect>
+            <MudTextField @bind-Value="State.Name" Label="State Name" Required="true" 
+                          RequiredError="Name is required" Variant="Variant.Outlined" Class="mb-3" />
+            <MudTextField @bind-Value="State.Code" Label="State Code" 
+                          Variant="Variant.Outlined" Class="mb-3" />
+            <MudSwitch @bind-Value="State.IsActive" Label="Active" Color="Color.Primary" />
+        </MudForm>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Cancel">Cancel</MudButton>
+        <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="Save" Disabled="@(!_isValid)">
+            @(IsNew ? "Create" : "Save")
+        </MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] private MudDialogInstance MudDialog { get; set; } = null!;
+    [Parameter] public State State { get; set; } = new();
+    [Parameter] public bool IsNew { get; set; }
+    [Parameter] public List<Country> Countries { get; set; } = new();
+
+    private MudForm? _form;
+    private bool _isValid;
+
+    private async Task Save()
+    {
+        if (_form != null)
+        {
+            await _form.Validate();
+            if (!_isValid) return;
+        }
+
+        if (IsNew)
+        {
+            State.CreatedAt = DateTime.UtcNow;
+            DbContext.States.Add(State);
+        }
+        else
+        {
+            State.ModifiedAt = DateTime.UtcNow;
+            DbContext.States.Update(State);
+        }
+
+        await DbContext.SaveChangesAsync();
+        MudDialog.Close(DialogResult.Ok(true));
+    }
+
+    private void Cancel() => MudDialog.Cancel();
+}

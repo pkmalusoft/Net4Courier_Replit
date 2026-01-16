@@ -1,0 +1,94 @@
+@using Net4Courier.Infrastructure.Data
+@using Net4Courier.Masters.Entities
+@inject ApplicationDbContext DbContext
+
+<MudDialog>
+    <DialogContent>
+        <MudForm @ref="_form" @bind-IsValid="@_isValid">
+            <MudSelect T="long?" Value="City.CountryId" Label="Country"
+                       Variant="Variant.Outlined" Class="mb-3" ValueChanged="OnCountryChanged">
+                <MudSelectItem T="long?" Value="@((long?)null)">-- Select Country --</MudSelectItem>
+                @foreach (var country in Countries)
+                {
+                    <MudSelectItem T="long?" Value="@country.Id">@country.Name</MudSelectItem>
+                }
+            </MudSelect>
+            <MudSelect T="long?" @bind-Value="City.StateId" Label="State"
+                       Variant="Variant.Outlined" Class="mb-3">
+                <MudSelectItem T="long?" Value="@((long?)null)">-- Select State --</MudSelectItem>
+                @foreach (var state in _filteredStates)
+                {
+                    <MudSelectItem T="long?" Value="@state.Id">@state.Name</MudSelectItem>
+                }
+            </MudSelect>
+            <MudTextField @bind-Value="City.Name" Label="City Name" Required="true" 
+                          RequiredError="Name is required" Variant="Variant.Outlined" Class="mb-3" />
+            <MudTextField @bind-Value="City.Code" Label="City Code" 
+                          Variant="Variant.Outlined" Class="mb-3" />
+            <MudSwitch @bind-Value="City.IsHub" Label="Is Hub City" Color="Color.Secondary" Class="mb-3" />
+            <MudSwitch @bind-Value="City.IsActive" Label="Active" Color="Color.Primary" />
+        </MudForm>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Cancel">Cancel</MudButton>
+        <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="Save" Disabled="@(!_isValid)">
+            @(IsNew ? "Create" : "Save")
+        </MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] private MudDialogInstance MudDialog { get; set; } = null!;
+    [Parameter] public City City { get; set; } = new();
+    [Parameter] public bool IsNew { get; set; }
+    [Parameter] public List<State> States { get; set; } = new();
+    [Parameter] public List<Country> Countries { get; set; } = new();
+
+    private MudForm? _form;
+    private bool _isValid;
+    private List<State> _filteredStates = new();
+
+    protected override void OnParametersSet()
+    {
+        FilterStates();
+    }
+
+    private void OnCountryChanged(long? countryId)
+    {
+        City.CountryId = countryId;
+        City.StateId = null;
+        FilterStates();
+    }
+
+    private void FilterStates()
+    {
+        _filteredStates = City.CountryId.HasValue
+            ? States.Where(s => s.CountryId == City.CountryId.Value).ToList()
+            : States;
+    }
+
+    private async Task Save()
+    {
+        if (_form != null)
+        {
+            await _form.Validate();
+            if (!_isValid) return;
+        }
+
+        if (IsNew)
+        {
+            City.CreatedAt = DateTime.UtcNow;
+            DbContext.Cities.Add(City);
+        }
+        else
+        {
+            City.ModifiedAt = DateTime.UtcNow;
+            DbContext.Cities.Update(City);
+        }
+
+        await DbContext.SaveChangesAsync();
+        MudDialog.Close(DialogResult.Ok(true));
+    }
+
+    private void Cancel() => MudDialog.Cancel();
+}

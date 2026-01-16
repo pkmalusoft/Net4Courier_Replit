@@ -92,6 +92,7 @@ cd src/Net4Courier.Web && dotnet run --urls http://0.0.0.0:5000
 15. [x] Finance modules - Invoices and Receipts CRUD (with customer autocomplete, AWB billing, receipt allocation)
 16. [x] Reporting with QuestPDF (AWB labels, Invoice PDFs, Receipt PDFs)
 17. [x] UserType management (Employee, Agent, Customer, Vendor classification)
+18. [x] Geography Masters - Country, State, City, Location with hierarchical relationships
 
 ## PostgreSQL Partitioning Notes
 - InscanMasters table supports partitioning by TransactionDate

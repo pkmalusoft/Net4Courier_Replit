@@ -1,0 +1,173 @@
+@page "/cities"
+@using Microsoft.EntityFrameworkCore
+@using Net4Courier.Infrastructure.Data
+@using Net4Courier.Masters.Entities
+@inject ApplicationDbContext DbContext
+@inject IDialogService DialogService
+@inject ISnackbar Snackbar
+
+<PageTitle>Cities</PageTitle>
+
+<MudContainer MaxWidth="MaxWidth.ExtraLarge" Class="mt-4">
+    <MudPaper Elevation="2" Class="pa-4">
+        <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center" Class="mb-4">
+            <MudText Typo="Typo.h5">Cities</MudText>
+            <MudStack Row="true" Spacing="2">
+                <MudSelect T="long?" Value="_selectedStateId" Label="Filter by State" Variant="Variant.Outlined" 
+                           Dense="true" Style="min-width: 200px;" Immediate="true" ValueChanged="OnStateFilterChanged">
+                    <MudSelectItem T="long?" Value="@((long?)null)">All States</MudSelectItem>
+                    @foreach (var state in _states)
+                    {
+                        <MudSelectItem T="long?" Value="@state.Id">@state.Name (@state.Country?.Name)</MudSelectItem>
+                    }
+                </MudSelect>
+                <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add" OnClick="OpenCreateDialog">
+                    Add City
+                </MudButton>
+            </MudStack>
+        </MudStack>
+
+        <MudTable Items="@_filteredCities" Hover="true" Striped="true" Loading="@_loading" LoadingProgressColor="Color.Primary" Dense="true">
+            <HeaderContent>
+                <MudTh>Name</MudTh>
+                <MudTh>Code</MudTh>
+                <MudTh>State</MudTh>
+                <MudTh>Country</MudTh>
+                <MudTh>Hub</MudTh>
+                <MudTh>Status</MudTh>
+                <MudTh Style="width: 120px;">Actions</MudTh>
+            </HeaderContent>
+            <RowTemplate>
+                <MudTd DataLabel="Name">@context.Name</MudTd>
+                <MudTd DataLabel="Code">@context.Code</MudTd>
+                <MudTd DataLabel="State">@context.State?.Name</MudTd>
+                <MudTd DataLabel="Country">@context.Country?.Name</MudTd>
+                <MudTd DataLabel="Hub">
+                    @if (context.IsHub)
+                    {
+                        <MudIcon Icon="@Icons.Material.Filled.Hub" Color="Color.Primary" Size="Size.Small" />
+                    }
+                </MudTd>
+                <MudTd DataLabel="Status">
+                    <MudChip T="string" Color="@(context.IsActive ? Color.Success : Color.Default)" Size="Size.Small">
+                        @(context.IsActive ? "Active" : "Inactive")
+                    </MudChip>
+                </MudTd>
+                <MudTd DataLabel="Actions">
+                    <MudIconButton Icon="@Icons.Material.Filled.Edit" Color="Color.Primary" Size="Size.Small" OnClick="@(() => OpenEditDialog(context))" />
+                    <MudIconButton Icon="@Icons.Material.Filled.Delete" Color="Color.Error" Size="Size.Small" OnClick="@(() => DeleteCity(context))" />
+                </MudTd>
+            </RowTemplate>
+            <NoRecordsContent>
+                <MudText>No cities found.</MudText>
+            </NoRecordsContent>
+        </MudTable>
+    </MudPaper>
+</MudContainer>
+
+@code {
+    private List<City> _cities = new();
+    private List<City> _filteredCities = new();
+    private List<State> _states = new();
+    private List<Country> _countries = new();
+    private long? _selectedStateId;
+    private bool _loading = true;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadData();
+    }
+
+    private async Task LoadData()
+    {
+        _loading = true;
+        _countries = await DbContext.Countries.Where(c => c.IsActive && !c.IsDeleted).OrderBy(c => c.Name).ToListAsync();
+        _states = await DbContext.States.Include(s => s.Country).Where(s => s.IsActive && !s.IsDeleted).OrderBy(s => s.Name).ToListAsync();
+        _cities = await DbContext.Cities
+            .Include(c => c.State)
+            .Include(c => c.Country)
+            .Include(c => c.Locations)
+            .Where(c => !c.IsDeleted)
+            .OrderBy(c => c.Name)
+            .ToListAsync();
+        ApplyFilter();
+        _loading = false;
+    }
+
+    private void OnStateFilterChanged(long? stateId)
+    {
+        _selectedStateId = stateId;
+        ApplyFilter();
+    }
+
+    private void ApplyFilter()
+    {
+        _filteredCities = _selectedStateId.HasValue
+            ? _cities.Where(c => c.StateId == _selectedStateId.Value).ToList()
+            : _cities;
+    }
+
+    private async Task OpenCreateDialog()
+    {
+        var parameters = new DialogParameters<CityDialog>
+        {
+            { x => x.City, new City { StateId = _selectedStateId } },
+            { x => x.IsNew, true },
+            { x => x.States, _states },
+            { x => x.Countries, _countries }
+        };
+
+        var options = new DialogOptions { CloseOnEscapeKey = true, MaxWidth = MaxWidth.Small, FullWidth = true };
+        var dialog = await DialogService.ShowAsync<CityDialog>("Add City", parameters, options);
+        var result = await dialog.Result;
+
+        if (result != null && !result.Canceled)
+        {
+            await LoadData();
+            Snackbar.Add("City created successfully", Severity.Success);
+        }
+    }
+
+    private async Task OpenEditDialog(City city)
+    {
+        var parameters = new DialogParameters<CityDialog>
+        {
+            { x => x.City, city },
+            { x => x.IsNew, false },
+            { x => x.States, _states },
+            { x => x.Countries, _countries }
+        };
+
+        var options = new DialogOptions { CloseOnEscapeKey = true, MaxWidth = MaxWidth.Small, FullWidth = true };
+        var dialog = await DialogService.ShowAsync<CityDialog>("Edit City", parameters, options);
+        var result = await dialog.Result;
+
+        if (result != null && !result.Canceled)
+        {
+            await LoadData();
+            Snackbar.Add("City updated successfully", Severity.Success);
+        }
+    }
+
+    private async Task DeleteCity(City city)
+    {
+        if (city.Locations.Any())
+        {
+            Snackbar.Add($"Cannot delete '{city.Name}' - it has {city.Locations.Count} locations", Severity.Warning);
+            return;
+        }
+
+        var confirm = await DialogService.ShowMessageBox(
+            "Confirm Delete",
+            $"Are you sure you want to delete '{city.Name}'?",
+            yesText: "Delete", cancelText: "Cancel");
+
+        if (confirm == true)
+        {
+            city.IsDeleted = true;
+            await DbContext.SaveChangesAsync();
+            await LoadData();
+            Snackbar.Add("City deleted successfully", Severity.Success);
+        }
+    }
+}

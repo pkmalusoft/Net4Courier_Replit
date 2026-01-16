@@ -20,6 +20,10 @@ public class ApplicationDbContext : DbContext
     public DbSet<Party> Parties => Set<Party>();
     public DbSet<PartyAddress> PartyAddresses => Set<PartyAddress>();
     public DbSet<UserType> UserTypes => Set<UserType>();
+    public DbSet<Country> Countries => Set<Country>();
+    public DbSet<State> States => Set<State>();
+    public DbSet<City> Cities => Set<City>();
+    public DbSet<Location> Locations => Set<Location>();
     
     public DbSet<InscanMaster> InscanMasters => Set<InscanMaster>();
     public DbSet<InscanMasterItem> InscanMasterItems => Set<InscanMasterItem>();
@@ -128,6 +132,54 @@ public class ApplicationDbContext : DbContext
             entity.ToTable("PartyAddresses");
             entity.HasKey(e => e.Id);
             entity.HasOne(e => e.Party).WithMany(p => p.Addresses).HasForeignKey(e => e.PartyId);
+        });
+
+        modelBuilder.Entity<Country>(entity =>
+        {
+            entity.ToTable("Countries");
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Name).HasMaxLength(100).IsRequired();
+            entity.Property(e => e.Code).HasMaxLength(10);
+            entity.Property(e => e.IATACode).HasMaxLength(10);
+            entity.HasIndex(e => e.Code).IsUnique();
+        });
+
+        modelBuilder.Entity<State>(entity =>
+        {
+            entity.ToTable("States");
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Name).HasMaxLength(100).IsRequired();
+            entity.Property(e => e.Code).HasMaxLength(10);
+            entity.HasIndex(e => new { e.CountryId, e.Code }).IsUnique();
+            entity.HasOne(e => e.Country).WithMany(c => c.States).HasForeignKey(e => e.CountryId)
+                  .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        modelBuilder.Entity<City>(entity =>
+        {
+            entity.ToTable("Cities");
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Name).HasMaxLength(100).IsRequired();
+            entity.Property(e => e.Code).HasMaxLength(20);
+            entity.HasIndex(e => new { e.StateId, e.Code }).IsUnique();
+            entity.HasOne(e => e.Country).WithMany(c => c.Cities).HasForeignKey(e => e.CountryId)
+                  .OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(e => e.State).WithMany(s => s.Cities).HasForeignKey(e => e.StateId)
+                  .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        modelBuilder.Entity<Location>(entity =>
+        {
+            entity.ToTable("Locations");
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Name).HasMaxLength(200).IsRequired();
+            entity.Property(e => e.Code).HasMaxLength(20);
+            entity.Property(e => e.Pincode).HasMaxLength(20);
+            entity.HasIndex(e => new { e.CityId, e.Pincode });
+            entity.HasOne(e => e.City).WithMany(c => c.Locations).HasForeignKey(e => e.CityId)
+                  .OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(e => e.Branch).WithMany().HasForeignKey(e => e.BranchId)
+                  .OnDelete(DeleteBehavior.Restrict);
         });
     }
 

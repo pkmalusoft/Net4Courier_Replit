@@ -1,0 +1,180 @@
+@page "/locations"
+@using Microsoft.EntityFrameworkCore
+@using Net4Courier.Infrastructure.Data
+@using Net4Courier.Masters.Entities
+@inject ApplicationDbContext DbContext
+@inject IDialogService DialogService
+@inject ISnackbar Snackbar
+
+<PageTitle>Locations</PageTitle>
+
+<MudContainer MaxWidth="MaxWidth.ExtraLarge" Class="mt-4">
+    <MudPaper Elevation="2" Class="pa-4">
+        <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center" Class="mb-4">
+            <MudText Typo="Typo.h5">Locations / Pincodes</MudText>
+            <MudStack Row="true" Spacing="2">
+                <MudTextField @bind-Value="_searchText" Label="Search" Variant="Variant.Outlined" 
+                              Dense="true" Style="min-width: 200px;" Immediate="true" 
+                              Adornment="Adornment.End" AdornmentIcon="@Icons.Material.Filled.Search"
+                              TextChanged="OnSearchChanged" />
+                <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add" OnClick="OpenCreateDialog">
+                    Add Location
+                </MudButton>
+            </MudStack>
+        </MudStack>
+
+        <MudTable Items="@_filteredLocations" Hover="true" Striped="true" Loading="@_loading" LoadingProgressColor="Color.Primary" Dense="true">
+            <HeaderContent>
+                <MudTh>Name</MudTh>
+                <MudTh>Code</MudTh>
+                <MudTh>Pincode</MudTh>
+                <MudTh>City</MudTh>
+                <MudTh>Branch</MudTh>
+                <MudTh>Serviceable</MudTh>
+                <MudTh>Status</MudTh>
+                <MudTh Style="width: 120px;">Actions</MudTh>
+            </HeaderContent>
+            <RowTemplate>
+                <MudTd DataLabel="Name">@context.Name</MudTd>
+                <MudTd DataLabel="Code">@context.Code</MudTd>
+                <MudTd DataLabel="Pincode">@context.Pincode</MudTd>
+                <MudTd DataLabel="City">@context.City?.Name</MudTd>
+                <MudTd DataLabel="Branch">@context.Branch?.Name</MudTd>
+                <MudTd DataLabel="Serviceable">
+                    @if (context.IsServiceable)
+                    {
+                        <MudIcon Icon="@Icons.Material.Filled.Check" Color="Color.Success" Size="Size.Small" />
+                    }
+                    else
+                    {
+                        <MudIcon Icon="@Icons.Material.Filled.Close" Color="Color.Error" Size="Size.Small" />
+                    }
+                </MudTd>
+                <MudTd DataLabel="Status">
+                    <MudChip T="string" Color="@(context.IsActive ? Color.Success : Color.Default)" Size="Size.Small">
+                        @(context.IsActive ? "Active" : "Inactive")
+                    </MudChip>
+                </MudTd>
+                <MudTd DataLabel="Actions">
+                    <MudIconButton Icon="@Icons.Material.Filled.Edit" Color="Color.Primary" Size="Size.Small" OnClick="@(() => OpenEditDialog(context))" />
+                    <MudIconButton Icon="@Icons.Material.Filled.Delete" Color="Color.Error" Size="Size.Small" OnClick="@(() => DeleteLocation(context))" />
+                </MudTd>
+            </RowTemplate>
+            <NoRecordsContent>
+                <MudText>No locations found.</MudText>
+            </NoRecordsContent>
+        </MudTable>
+    </MudPaper>
+</MudContainer>
+
+@code {
+    private List<Location> _locations = new();
+    private List<Location> _filteredLocations = new();
+    private List<City> _cities = new();
+    private List<Branch> _branches = new();
+    private string _searchText = "";
+    private bool _loading = true;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadData();
+    }
+
+    private async Task LoadData()
+    {
+        _loading = true;
+        _cities = await DbContext.Cities.Where(c => c.IsActive && !c.IsDeleted).OrderBy(c => c.Name).ToListAsync();
+        _branches = await DbContext.Branches.Where(b => b.IsActive && !b.IsDeleted).OrderBy(b => b.Name).ToListAsync();
+        _locations = await DbContext.Locations
+            .Include(l => l.City)
+            .Include(l => l.Branch)
+            .Where(l => !l.IsDeleted)
+            .OrderBy(l => l.Pincode)
+            .ThenBy(l => l.Name)
+            .ToListAsync();
+        ApplyFilter();
+        _loading = false;
+    }
+
+    private void OnSearchChanged(string text)
+    {
+        _searchText = text;
+        ApplyFilter();
+    }
+
+    private void ApplyFilter()
+    {
+        if (string.IsNullOrWhiteSpace(_searchText))
+        {
+            _filteredLocations = _locations;
+        }
+        else
+        {
+            var search = _searchText.ToLower();
+            _filteredLocations = _locations.Where(l => 
+                (l.Name?.ToLower().Contains(search) ?? false) ||
+                (l.Code?.ToLower().Contains(search) ?? false) ||
+                (l.Pincode?.ToLower().Contains(search) ?? false) ||
+                (l.City?.Name?.ToLower().Contains(search) ?? false)
+            ).ToList();
+        }
+    }
+
+    private async Task OpenCreateDialog()
+    {
+        var parameters = new DialogParameters<LocationDialog>
+        {
+            { x => x.Location, new Location() },
+            { x => x.IsNew, true },
+            { x => x.Cities, _cities },
+            { x => x.Branches, _branches }
+        };
+
+        var options = new DialogOptions { CloseOnEscapeKey = true, MaxWidth = MaxWidth.Small, FullWidth = true };
+        var dialog = await DialogService.ShowAsync<LocationDialog>("Add Location", parameters, options);
+        var result = await dialog.Result;
+
+        if (result != null && !result.Canceled)
+        {
+            await LoadData();
+            Snackbar.Add("Location created successfully", Severity.Success);
+        }
+    }
+
+    private async Task OpenEditDialog(Location location)
+    {
+        var parameters = new DialogParameters<LocationDialog>
+        {
+            { x => x.Location, location },
+            { x => x.IsNew, false },
+            { x => x.Cities, _cities },
+            { x => x.Branches, _branches }
+        };
+
+        var options = new DialogOptions { CloseOnEscapeKey = true, MaxWidth = MaxWidth.Small, FullWidth = true };
+        var dialog = await DialogService.ShowAsync<LocationDialog>("Edit Location", parameters, options);
+        var result = await dialog.Result;
+
+        if (result != null && !result.Canceled)
+        {
+            await LoadData();
+            Snackbar.Add("Location updated successfully", Severity.Success);
+        }
+    }
+
+    private async Task DeleteLocation(Location location)
+    {
+        var confirm = await DialogService.ShowMessageBox(
+            "Confirm Delete",
+            $"Are you sure you want to delete '{location.Name}'?",
+            yesText: "Delete", cancelText: "Cancel");
+
+        if (confirm == true)
+        {
+            location.IsDeleted = true;
+            await DbContext.SaveChangesAsync();
+            await LoadData();
+            Snackbar.Add("Location deleted successfully", Severity.Success);
+        }
+    }
+}

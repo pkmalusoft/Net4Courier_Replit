@@ -1,0 +1,57 @@
+@using Net4Courier.Infrastructure.Data
+@using Net4Courier.Masters.Entities
+@inject ApplicationDbContext DbContext
+
+<MudDialog>
+    <DialogContent>
+        <MudForm @ref="_form" @bind-IsValid="@_isValid">
+            <MudTextField @bind-Value="Country.Name" Label="Country Name" Required="true" 
+                          RequiredError="Name is required" Variant="Variant.Outlined" Class="mb-3" />
+            <MudTextField @bind-Value="Country.Code" Label="Country Code" 
+                          Variant="Variant.Outlined" Class="mb-3" HelperText="e.g., IN, US, UK" />
+            <MudTextField @bind-Value="Country.IATACode" Label="IATA Code" 
+                          Variant="Variant.Outlined" Class="mb-3" HelperText="3-letter airport code" />
+            <MudSwitch @bind-Value="Country.IsActive" Label="Active" Color="Color.Primary" />
+        </MudForm>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Cancel">Cancel</MudButton>
+        <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="Save" Disabled="@(!_isValid)">
+            @(IsNew ? "Create" : "Save")
+        </MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] private MudDialogInstance MudDialog { get; set; } = null!;
+    [Parameter] public Country Country { get; set; } = new();
+    [Parameter] public bool IsNew { get; set; }
+
+    private MudForm? _form;
+    private bool _isValid;
+
+    private async Task Save()
+    {
+        if (_form != null)
+        {
+            await _form.Validate();
+            if (!_isValid) return;
+        }
+
+        if (IsNew)
+        {
+            Country.CreatedAt = DateTime.UtcNow;
+            DbContext.Countries.Add(Country);
+        }
+        else
+        {
+            Country.ModifiedAt = DateTime.UtcNow;
+            DbContext.Countries.Update(Country);
+        }
+
+        await DbContext.SaveChangesAsync();
+        MudDialog.Close(DialogResult.Ok(true));
+    }
+
+    private void Cancel() => MudDialog.Cancel();
+}
