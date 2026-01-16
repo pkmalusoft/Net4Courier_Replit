@@ -1,0 +1,194 @@
+@page "/forwarding-agents"
+@inject ApplicationDbContext DbContext
+@inject ISnackbar Snackbar
+@inject IDialogService DialogService
+@using Microsoft.EntityFrameworkCore
+@using Net4Courier.Infrastructure.Data
+@using Net4Courier.Masters.Entities
+
+<PageTitle>Forwarding Agents - Net4Courier</PageTitle>
+
+<MudPaper Class="pa-4" Elevation="0">
+    <MudToolBar Dense="true" Class="pl-0">
+        <MudText Typo="Typo.h6">Forwarding Agents</MudText>
+        <MudSpacer />
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add" OnClick="OpenAddDialog">
+            Add Agent
+        </MudButton>
+    </MudToolBar>
+
+    <MudTable Items="_agents" Hover="true" Dense="true" Class="mt-4" Loading="_loading">
+        <HeaderContent>
+            <MudTh>Code</MudTh>
+            <MudTh>Name</MudTh>
+            <MudTh>Contact Person</MudTh>
+            <MudTh>Phone</MudTh>
+            <MudTh>Email</MudTh>
+            <MudTh>Status</MudTh>
+            <MudTh Style="width: 120px;">Actions</MudTh>
+        </HeaderContent>
+        <RowTemplate>
+            <MudTd>@context.Code</MudTd>
+            <MudTd>@context.Name</MudTd>
+            <MudTd>@context.ContactPerson</MudTd>
+            <MudTd>@context.Phone</MudTd>
+            <MudTd>@context.Email</MudTd>
+            <MudTd>
+                <MudChip T="string" Size="Size.Small" Color="@(context.IsActive ? Color.Success : Color.Default)">
+                    @(context.IsActive ? "Active" : "Inactive")
+                </MudChip>
+            </MudTd>
+            <MudTd>
+                <MudIconButton Icon="@Icons.Material.Filled.Edit" Size="Size.Small" OnClick="@(() => OpenEditDialog(context))" />
+                <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" Color="Color.Error" OnClick="@(() => DeleteAgent(context))" />
+            </MudTd>
+        </RowTemplate>
+        <NoRecordsContent>
+            <MudText>No forwarding agents found. Click "Add Agent" to create one.</MudText>
+        </NoRecordsContent>
+    </MudTable>
+</MudPaper>
+
+<MudDialog @bind-Visible="_dialogVisible" Options="new DialogOptions { MaxWidth = MaxWidth.Small, FullWidth = true }">
+    <TitleContent>
+        <MudText Typo="Typo.h6">@(_editingAgent.Id == 0 ? "Add Forwarding Agent" : "Edit Forwarding Agent")</MudText>
+    </TitleContent>
+    <DialogContent>
+        <MudGrid Spacing="2">
+            <MudItem xs="4">
+                <MudTextField @bind-Value="_editingAgent.Code" Label="Code" Variant="Variant.Outlined" />
+            </MudItem>
+            <MudItem xs="8">
+                <MudTextField @bind-Value="_editingAgent.Name" Label="Name*" Variant="Variant.Outlined" Required="true" />
+            </MudItem>
+            <MudItem xs="6">
+                <MudTextField @bind-Value="_editingAgent.ContactPerson" Label="Contact Person" Variant="Variant.Outlined" />
+            </MudItem>
+            <MudItem xs="6">
+                <MudTextField @bind-Value="_editingAgent.Phone" Label="Phone" Variant="Variant.Outlined" />
+            </MudItem>
+            <MudItem xs="6">
+                <MudTextField @bind-Value="_editingAgent.Mobile" Label="Mobile" Variant="Variant.Outlined" />
+            </MudItem>
+            <MudItem xs="6">
+                <MudTextField @bind-Value="_editingAgent.Email" Label="Email" Variant="Variant.Outlined" />
+            </MudItem>
+            <MudItem xs="12">
+                <MudSwitch @bind-Value="_editingAgent.IsActive" Label="Active" Color="Color.Primary" />
+            </MudItem>
+        </MudGrid>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="CloseDialog">Cancel</MudButton>
+        <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="SaveAgent">Save</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    private List<Party> _agents = new();
+    private bool _loading = true;
+    private bool _dialogVisible;
+    private Party _editingAgent = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadAgents();
+    }
+
+    private async Task LoadAgents()
+    {
+        _loading = true;
+        _agents = await DbContext.Parties
+            .Where(p => p.PartyType == PartyType.ForwardingAgent && !p.IsDeleted)
+            .OrderBy(p => p.Name)
+            .ToListAsync();
+        _loading = false;
+    }
+
+    private void OpenAddDialog()
+    {
+        _editingAgent = new Party 
+        { 
+            PartyType = PartyType.ForwardingAgent,
+            IsActive = true,
+            CreatedAt = DateTime.UtcNow
+        };
+        _dialogVisible = true;
+    }
+
+    private void OpenEditDialog(Party agent)
+    {
+        _editingAgent = new Party
+        {
+            Id = agent.Id,
+            Code = agent.Code,
+            Name = agent.Name,
+            ContactPerson = agent.ContactPerson,
+            Phone = agent.Phone,
+            Mobile = agent.Mobile,
+            Email = agent.Email,
+            IsActive = agent.IsActive,
+            PartyType = PartyType.ForwardingAgent,
+            CompanyId = agent.CompanyId,
+            CreatedAt = agent.CreatedAt
+        };
+        _dialogVisible = true;
+    }
+
+    private void CloseDialog()
+    {
+        _dialogVisible = false;
+    }
+
+    private async Task SaveAgent()
+    {
+        if (string.IsNullOrWhiteSpace(_editingAgent.Name))
+        {
+            Snackbar.Add("Name is required", Severity.Error);
+            return;
+        }
+
+        if (_editingAgent.Id == 0)
+        {
+            DbContext.Parties.Add(_editingAgent);
+            Snackbar.Add("Forwarding agent added successfully", Severity.Success);
+        }
+        else
+        {
+            var existing = await DbContext.Parties.FindAsync(_editingAgent.Id);
+            if (existing != null)
+            {
+                existing.Code = _editingAgent.Code;
+                existing.Name = _editingAgent.Name;
+                existing.ContactPerson = _editingAgent.ContactPerson;
+                existing.Phone = _editingAgent.Phone;
+                existing.Mobile = _editingAgent.Mobile;
+                existing.Email = _editingAgent.Email;
+                existing.IsActive = _editingAgent.IsActive;
+                existing.ModifiedAt = DateTime.UtcNow;
+            }
+            Snackbar.Add("Forwarding agent updated successfully", Severity.Success);
+        }
+
+        await DbContext.SaveChangesAsync();
+        _dialogVisible = false;
+        await LoadAgents();
+    }
+
+    private async Task DeleteAgent(Party agent)
+    {
+        bool? confirm = await DialogService.ShowMessageBox(
+            "Delete Forwarding Agent",
+            $"Are you sure you want to delete '{agent.Name}'?",
+            yesText: "Delete", cancelText: "Cancel");
+
+        if (confirm == true)
+        {
+            agent.IsDeleted = true;
+            agent.ModifiedAt = DateTime.UtcNow;
+            await DbContext.SaveChangesAsync();
+            Snackbar.Add("Forwarding agent deleted", Severity.Success);
+            await LoadAgents();
+        }
+    }
+}
