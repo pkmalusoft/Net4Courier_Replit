@@ -7,6 +7,7 @@
 @using Net4Courier.Infrastructure.Data
 @using Net4Courier.Masters.Entities
 @using Net4Courier.Operations.Entities
+@using Net4Courier.Finance.Entities
 @using Net4Courier.Kernel.Enums
 
 <PageTitle>@(Id > 0 ? "Edit AWB" : "New AWB") - Net4Courier</PageTitle>
@@ -57,7 +58,7 @@
                                   Disabled="_isAutoAWB" />
                 </MudItem>
                 <MudItem xs="6" md="2">
-                    <MudSelect T="PaymentMode" @bind-Value="_inscan.PaymentModeId" Label="Payment Mode" Dense="true" 
+                    <MudSelect T="PaymentMode" Value="_inscan.PaymentModeId" ValueChanged="OnPaymentModeChanged" Label="Payment Mode" Dense="true" 
                                Variant="Variant.Outlined" AnchorOrigin="Origin.BottomCenter">
                         <MudSelectItem T="PaymentMode" Value="@PaymentMode.PickupCash">Pickup Cash</MudSelectItem>
                         <MudSelectItem T="PaymentMode" Value="@PaymentMode.COD">COD</MudSelectItem>
@@ -67,14 +68,35 @@
                     </MudSelect>
                 </MudItem>
                 <MudItem xs="6" md="2">
-                    <MudSelect T="long?" Value="_inscan.CustomerId" ValueChanged="OnCustomerChanged" Label="Customer" Dense="true" 
-                               Variant="Variant.Outlined" AnchorOrigin="Origin.BottomCenter">
-                        <MudSelectItem T="long?" Value="@((long?)null)">-- Walk-in --</MudSelectItem>
-                        @foreach (var customer in _customers)
-                        {
-                            <MudSelectItem T="long?" Value="@customer.Id">@customer.Name</MudSelectItem>
-                        }
-                    </MudSelect>
+                    @if (_inscan.PaymentModeId == PaymentMode.Account)
+                    {
+                        <MudSelect T="long?" Value="_inscan.CustomerId" ValueChanged="OnCustomerChanged" Label="Customer" Dense="true" 
+                                   Variant="Variant.Outlined" AnchorOrigin="Origin.BottomCenter">
+                            <MudSelectItem T="long?" Value="@((long?)null)">-- Walk-in --</MudSelectItem>
+                            @foreach (var customer in _customers)
+                            {
+                                <MudSelectItem T="long?" Value="@customer.Id">@customer.Name</MudSelectItem>
+                            }
+                        </MudSelect>
+                    }
+                    else if (_inscan.PaymentModeId == PaymentMode.PickupCash)
+                    {
+                        <MudSelect T="long?" @bind-Value="_selectedCashAccountId" Label="Cash Account" Dense="true" 
+                                   Variant="Variant.Outlined" AnchorOrigin="Origin.BottomCenter">
+                            @foreach (var acc in _cashAccounts)
+                            {
+                                <MudSelectItem T="long?" Value="@acc.Id">@acc.Name</MudSelectItem>
+                            }
+                        </MudSelect>
+                    }
+                    else if (_inscan.PaymentModeId == PaymentMode.COD || _inscan.PaymentModeId == PaymentMode.CAD)
+                    {
+                        <MudTextField Value="@_controlAccountName" Label="Account" Dense="true" Variant="Variant.Outlined" Disabled="true" />
+                    }
+                    else if (_inscan.PaymentModeId == PaymentMode.Prepaid)
+                    {
+                        <MudTextField Value="@_controlAccountName" Label="Account" Dense="true" Variant="Variant.Outlined" Disabled="true" />
+                    }
                 </MudItem>
                 <MudItem xs="6" md="1">
                     <MudCheckBox Value="_copyAddress" ValueChanged="OnCopyAddressChanged" Label="Copy Addr" Dense="true" T="bool" />
@@ -307,10 +329,14 @@
     private List<City> _destCities = new();
     private List<Location> _originLocations = new();
     private List<Location> _destLocations = new();
+    private List<AccountHead> _cashAccounts = new();
     private long? _originCountryId;
     private long? _originCityId;
     private long? _destCountryId;
     private long? _destCityId;
+    private long? _selectedCashAccountId;
+    private long? _controlAccountId;
+    private string _controlAccountName = string.Empty;
     private bool _isAutoAWB = true;
     private bool _copyAddress;
     private bool _applyTax;
@@ -322,6 +348,7 @@
     {
         _customers = await DbContext.Parties.Where(p => p.PartyType == PartyType.Customer && p.IsActive && !p.IsDeleted).OrderBy(p => p.Name).ToListAsync();
         _countries = await DbContext.Countries.Where(c => c.IsActive && !c.IsDeleted).OrderBy(c => c.Name).ToListAsync();
+        _cashAccounts = await DbContext.AccountHeads.Where(a => a.AccountGroup == AccountGroup.CashAccount && a.IsActive && !a.IsDeleted && !a.IsGroup).OrderBy(a => a.Name).ToListAsync();
 
         if (Id > 0)
         {
@@ -399,6 +426,50 @@
         {
             _inscan.AWBNo = await GenerateAWBNo();
         }
+        StateHasChanged();
+    }
+
+    private async Task OnPaymentModeChanged(PaymentMode paymentMode)
+    {
+        _inscan.PaymentModeId = paymentMode;
+        _inscan.CustomerId = null;
+        _selectedCashAccountId = null;
+        _controlAccountId = null;
+        _controlAccountName = string.Empty;
+
+        if (paymentMode == PaymentMode.COD || paymentMode == PaymentMode.CAD)
+        {
+            var codAccount = await DbContext.AccountHeads
+                .FirstOrDefaultAsync(a => a.Name.Contains("COD") && a.Name.Contains("Control") && a.IsActive && !a.IsDeleted && !a.IsGroup);
+            if (codAccount != null)
+            {
+                _controlAccountId = codAccount.Id;
+                _controlAccountName = codAccount.Name;
+            }
+            else
+            {
+                _controlAccountName = "COD Control Account";
+            }
+        }
+        else if (paymentMode == PaymentMode.Prepaid)
+        {
+            var prepaidAccount = await DbContext.AccountHeads
+                .FirstOrDefaultAsync(a => a.Name.Contains("Prepaid") && a.Name.Contains("Control") && a.IsActive && !a.IsDeleted && !a.IsGroup);
+            if (prepaidAccount != null)
+            {
+                _controlAccountId = prepaidAccount.Id;
+                _controlAccountName = prepaidAccount.Name;
+            }
+            else
+            {
+                _controlAccountName = "Prepaid Control Account";
+            }
+        }
+        else if (paymentMode == PaymentMode.PickupCash && _cashAccounts.Any())
+        {
+            _selectedCashAccountId = _cashAccounts.First().Id;
+        }
+
         StateHasChanged();
     }
 
