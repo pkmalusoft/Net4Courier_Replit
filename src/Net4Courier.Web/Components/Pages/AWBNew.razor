@@ -67,7 +67,7 @@
                     </MudSelect>
                 </MudItem>
                 <MudItem xs="6" md="2">
-                    <MudSelect T="long?" @bind-Value="_inscan.CustomerId" Label="Customer" Dense="true" 
+                    <MudSelect T="long?" Value="_inscan.CustomerId" ValueChanged="OnCustomerChanged" Label="Customer" Dense="true" 
                                Variant="Variant.Outlined" AnchorOrigin="Origin.BottomCenter">
                         <MudSelectItem T="long?" Value="@((long?)null)">-- Walk-in --</MudSelectItem>
                         @foreach (var customer in _customers)
@@ -77,7 +77,7 @@
                     </MudSelect>
                 </MudItem>
                 <MudItem xs="6" md="1">
-                    <MudCheckBox @bind-Value="_copyAddress" Label="Copy Addr" Dense="true" />
+                    <MudCheckBox Value="_copyAddress" ValueChanged="OnCopyAddressChanged" Label="Copy Addr" Dense="true" T="bool" />
                 </MudItem>
             </MudGrid>
         </MudCard>
@@ -315,6 +315,53 @@
             _inscan.AWBNo = await GenerateAWBNo();
         }
         StateHasChanged();
+    }
+
+    private async Task OnCustomerChanged(long? customerId)
+    {
+        _inscan.CustomerId = customerId;
+        if (_copyAddress && customerId.HasValue)
+        {
+            await PopulateConsignorFromCustomer(customerId.Value);
+        }
+        StateHasChanged();
+    }
+
+    private async Task OnCopyAddressChanged(bool value)
+    {
+        _copyAddress = value;
+        if (_copyAddress && _inscan.CustomerId.HasValue)
+        {
+            await PopulateConsignorFromCustomer(_inscan.CustomerId.Value);
+        }
+        StateHasChanged();
+    }
+
+    private async Task PopulateConsignorFromCustomer(long customerId)
+    {
+        var customer = await DbContext.Parties
+            .Include(p => p.Addresses)
+            .FirstOrDefaultAsync(p => p.Id == customerId);
+        
+        if (customer == null) return;
+
+        _inscan.Consignor = customer.Name;
+        _inscan.ConsignorContact = customer.ContactPerson;
+        _inscan.ConsignorPhone = customer.Phone;
+        _inscan.ConsignorMobile = customer.Mobile;
+
+        var address = customer.Addresses.FirstOrDefault(a => a.IsDefault) 
+                      ?? customer.Addresses.FirstOrDefault();
+        
+        if (address != null)
+        {
+            _inscan.ConsignorAddress1 = address.BuildingName;
+            _inscan.ConsignorAddress2 = string.IsNullOrEmpty(address.Area) ? address.Street : $"{address.Street}, {address.Area}";
+            _inscan.ConsignorCity = address.City;
+            _inscan.ConsignorState = address.State;
+            _inscan.ConsignorCountry = address.Country ?? "India";
+            _inscan.ConsignorPostalCode = address.PostalCode;
+        }
     }
 
     private async Task Save()
