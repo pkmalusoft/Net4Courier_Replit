@@ -95,6 +95,15 @@ cd src/Net4Courier.Web && dotnet run --urls http://0.0.0.0:5000
 17. [x] UserType management (Employee, Agent, Customer, Vendor classification)
 18. [x] Geography Masters - Country, State, City, Location with hierarchical relationships
 19. [x] Financial Period Management - Auto-generated monthly periods with open/close control
+20. [x] Dynamic Other Charges - Configurable charge types with dialog selection in AWB entry
+
+## Dynamic Other Charges System
+- **OtherChargeType**: Master table for charge types (Handling, Insurance, Packaging, etc.)
+- **AWBOtherCharge**: Junction table linking charges to AWBs with amounts
+- AWB entry has an "Other Charges" field with edit button that opens a dialog
+- Dialog shows all active charge types with checkboxes and amount fields
+- Hover tooltip shows breakdown of selected charges with individual amounts
+- Charges saved in a database transaction with AWB to ensure consistency
 
 ## Financial Period System
 - When a Financial Year is created, 12 monthly periods are auto-generated
