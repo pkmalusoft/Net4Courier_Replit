@@ -8,9 +8,9 @@ public class Branch : BaseEntity
     public string Name { get; set; } = string.Empty;
     public string? Code { get; set; }
     public string? Address { get; set; }
-    public string? City { get; set; }
-    public string? State { get; set; }
-    public string? Country { get; set; }
+    public long? CountryId { get; set; }
+    public long? StateId { get; set; }
+    public long? CityId { get; set; }
     public string? PostalCode { get; set; }
     public string? Phone { get; set; }
     public string? Email { get; set; }
@@ -20,4 +20,7 @@ public class Branch : BaseEntity
     public bool IsActive { get; set; } = true;
     
     public virtual Company Company { get; set; } = null!;
+    public virtual Country? Country { get; set; }
+    public virtual State? State { get; set; }
+    public virtual City? City { get; set; }
 }

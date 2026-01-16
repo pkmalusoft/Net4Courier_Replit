@@ -78,6 +78,12 @@ public class ApplicationDbContext : DbContext
                   .WithMany(c => c.Branches)
                   .HasForeignKey(e => e.CompanyId)
                   .OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(e => e.Country).WithMany().HasForeignKey(e => e.CountryId)
+                  .OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(e => e.State).WithMany().HasForeignKey(e => e.StateId)
+                  .OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(e => e.City).WithMany().HasForeignKey(e => e.CityId)
+                  .OnDelete(DeleteBehavior.Restrict);
         });
 
         modelBuilder.Entity<User>(entity =>
