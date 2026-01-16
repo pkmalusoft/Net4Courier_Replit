@@ -69,6 +69,7 @@ public class InscanMaster : AuditableEntity
     public decimal? FuelSurcharge { get; set; }
     public decimal? MaterialCost { get; set; }
     public decimal? CustomsValue { get; set; }
+    public string? Currency { get; set; }
     public decimal? TaxPercent { get; set; }
     public decimal? TaxAmount { get; set; }
     public decimal? SurchargePercent { get; set; }

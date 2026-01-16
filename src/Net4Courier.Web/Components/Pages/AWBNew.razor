@@ -1,0 +1,353 @@
+@page "/awb-new"
+@page "/awb-new/{Id:long}"
+@inject ApplicationDbContext DbContext
+@inject NavigationManager NavigationManager
+@inject ISnackbar Snackbar
+@using Microsoft.EntityFrameworkCore
+@using Net4Courier.Infrastructure.Data
+@using Net4Courier.Masters.Entities
+@using Net4Courier.Operations.Entities
+@using Net4Courier.Kernel.Enums
+
+<PageTitle>@(Id > 0 ? "Edit AWB" : "New AWB") - Net4Courier</PageTitle>
+
+<MudPaper Class="pa-4" Elevation="0">
+    <MudForm @ref="_form" @bind-IsValid="_formIsValid">
+
+        <MudToolBar Dense="true" Class="pl-0">
+            <MudText Typo="Typo.h6">Airway Bill Details</MudText>
+            <MudSpacer />
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="Save" Disabled="!_formIsValid">
+                @(Id > 0 ? "Update" : "Save")
+            </MudButton>
+            <MudButton Variant="Variant.Outlined" Color="Color.Secondary" OnClick="Cancel" Class="ml-2">Cancel</MudButton>
+            <MudMenu Dense="true" Class="ml-2">
+                <ActivatorContent>
+                    <MudButton Variant="Variant.Outlined">Actions</MudButton>
+                </ActivatorContent>
+                <ChildContent>
+                    <MudMenuItem Icon="@Icons.Material.Filled.Print">Print AWB</MudMenuItem>
+                    <MudMenuItem Icon="@Icons.Material.Filled.ContentCopy">Duplicate</MudMenuItem>
+                    <MudMenuItem Icon="@Icons.Material.Filled.History">View History</MudMenuItem>
+                </ChildContent>
+            </MudMenu>
+        </MudToolBar>
+
+        <MudCard Class="mt-4 pa-4">
+            <MudGrid>
+                <MudItem xs="6" md="1">
+                    <MudCheckBox Value="_isAutoAWB" ValueChanged="OnAutoAWBChanged" Label="Auto" Dense="true" T="bool" />
+                </MudItem>
+                <MudItem xs="6" md="2">
+                    <MudSelect T="ShipmentMode?" @bind-Value="_inscan.ShipmentModeId" Label="Shipping Mode" Dense="true" 
+                               Variant="Variant.Outlined" AnchorOrigin="Origin.BottomCenter">
+                        <MudSelectItem T="ShipmentMode?" Value="@ShipmentMode.Air">AIR</MudSelectItem>
+                        <MudSelectItem T="ShipmentMode?" Value="@ShipmentMode.Surface">SURFACE</MudSelectItem>
+                        <MudSelectItem T="ShipmentMode?" Value="@ShipmentMode.Sea">SEA</MudSelectItem>
+                        <MudSelectItem T="ShipmentMode?" Value="@ShipmentMode.Rail">RAIL</MudSelectItem>
+                    </MudSelect>
+                </MudItem>
+                <MudItem xs="6" md="2">
+                    <MudDatePicker @bind-Date="_transactionDate" Label="AWB Date" Dense="true" 
+                                   Variant="Variant.Outlined" DateFormat="dd/MM/yyyy" />
+                </MudItem>
+                <MudItem xs="6" md="2">
+                    <MudTextField @bind-Value="_inscan.AWBNo" Label="AWB No." Dense="true" 
+                                  Variant="Variant.Outlined" Required="true" RequiredError="Required" 
+                                  Disabled="_isAutoAWB" />
+                </MudItem>
+                <MudItem xs="6" md="2">
+                    <MudSelect T="PaymentMode" @bind-Value="_inscan.PaymentModeId" Label="Payment Mode" Dense="true" 
+                               Variant="Variant.Outlined" AnchorOrigin="Origin.BottomCenter">
+                        <MudSelectItem T="PaymentMode" Value="@PaymentMode.PickupCash">Pickup Cash</MudSelectItem>
+                        <MudSelectItem T="PaymentMode" Value="@PaymentMode.COD">COD</MudSelectItem>
+                        <MudSelectItem T="PaymentMode" Value="@PaymentMode.Account">Account</MudSelectItem>
+                        <MudSelectItem T="PaymentMode" Value="@PaymentMode.Prepaid">Prepaid</MudSelectItem>
+                        <MudSelectItem T="PaymentMode" Value="@PaymentMode.CAD">CAD</MudSelectItem>
+                    </MudSelect>
+                </MudItem>
+                <MudItem xs="6" md="2">
+                    <MudSelect T="long?" @bind-Value="_inscan.CustomerId" Label="Customer" Dense="true" 
+                               Variant="Variant.Outlined" AnchorOrigin="Origin.BottomCenter">
+                        <MudSelectItem T="long?" Value="@((long?)null)">-- Walk-in --</MudSelectItem>
+                        @foreach (var customer in _customers)
+                        {
+                            <MudSelectItem T="long?" Value="@customer.Id">@customer.Name</MudSelectItem>
+                        }
+                    </MudSelect>
+                </MudItem>
+                <MudItem xs="6" md="1">
+                    <MudCheckBox @bind-Value="_copyAddress" Label="Copy Addr" Dense="true" />
+                </MudItem>
+            </MudGrid>
+        </MudCard>
+
+        <MudGrid Class="mt-4">
+            <MudItem xs="12" md="6">
+                <MudCard Class="pa-4" Style="height: 100%;">
+                    <MudText Typo="Typo.subtitle1" Color="Color.Primary" Class="mb-2">Consignor / Shipper</MudText>
+                    <MudTextField @bind-Value="_inscan.Consignor" Label="Name" Dense="true" Variant="Variant.Outlined" Class="mb-2" />
+                    <MudGrid Spacing="2">
+                        <MudItem xs="6">
+                            <MudTextField @bind-Value="_inscan.ConsignorPhone" Label="Telephone" Dense="true" Variant="Variant.Outlined" />
+                        </MudItem>
+                        <MudItem xs="6">
+                            <MudTextField @bind-Value="_inscan.ConsignorMobile" Label="Mobile No." Dense="true" Variant="Variant.Outlined" />
+                        </MudItem>
+                    </MudGrid>
+                    <MudTextField @bind-Value="_inscan.ConsignorContact" Label="Contact Person" Dense="true" Variant="Variant.Outlined" Class="mt-2" />
+                    <MudTextField @bind-Value="_inscan.ConsignorAddress1" Label="Flat / Building" Dense="true" Variant="Variant.Outlined" Class="mt-2" />
+                    <MudTextField @bind-Value="_inscan.ConsignorAddress2" Label="Area / Landmark" Dense="true" Variant="Variant.Outlined" Class="mt-2" />
+                    <MudGrid Spacing="2" Class="mt-2">
+                        <MudItem xs="6">
+                            <MudTextField @bind-Value="_inscan.ConsignorPostalCode" Label="Pincode" Dense="true" Variant="Variant.Outlined" />
+                        </MudItem>
+                        <MudItem xs="6">
+                            <MudTextField @bind-Value="_inscan.ConsignorLocation" Label="Origin Location" Dense="true" Variant="Variant.Outlined" />
+                        </MudItem>
+                        <MudItem xs="6">
+                            <MudTextField @bind-Value="_inscan.ConsignorCity" Label="Origin City" Dense="true" Variant="Variant.Outlined" />
+                        </MudItem>
+                        <MudItem xs="6">
+                            <MudTextField @bind-Value="_inscan.ConsignorCountry" Label="Origin Country" Dense="true" Variant="Variant.Outlined" />
+                        </MudItem>
+                    </MudGrid>
+                </MudCard>
+            </MudItem>
+
+            <MudItem xs="12" md="6">
+                <MudCard Class="pa-4" Style="height: 100%;">
+                    <MudText Typo="Typo.subtitle1" Color="Color.Primary" Class="mb-2">Consignee / Receiver</MudText>
+                    <MudTextField @bind-Value="_inscan.Consignee" Label="Name" Dense="true" Variant="Variant.Outlined" Class="mb-2" />
+                    <MudGrid Spacing="2">
+                        <MudItem xs="6">
+                            <MudTextField @bind-Value="_inscan.ConsigneePhone" Label="Telephone" Dense="true" Variant="Variant.Outlined" />
+                        </MudItem>
+                        <MudItem xs="6">
+                            <MudTextField @bind-Value="_inscan.ConsigneeMobile" Label="Mobile No." Dense="true" Variant="Variant.Outlined" />
+                        </MudItem>
+                    </MudGrid>
+                    <MudTextField @bind-Value="_inscan.ConsigneeContact" Label="Contact Person" Dense="true" Variant="Variant.Outlined" Class="mt-2" />
+                    <MudTextField @bind-Value="_inscan.ConsigneeAddress1" Label="Flat / Building" Dense="true" Variant="Variant.Outlined" Class="mt-2" />
+                    <MudTextField @bind-Value="_inscan.ConsigneeAddress2" Label="Area / Landmark" Dense="true" Variant="Variant.Outlined" Class="mt-2" />
+                    <MudGrid Spacing="2" Class="mt-2">
+                        <MudItem xs="6">
+                            <MudTextField @bind-Value="_inscan.ConsigneePostalCode" Label="Pincode" Dense="true" Variant="Variant.Outlined" />
+                        </MudItem>
+                        <MudItem xs="6">
+                            <MudTextField @bind-Value="_inscan.ConsigneeLocation" Label="Destination Location" Dense="true" Variant="Variant.Outlined" />
+                        </MudItem>
+                        <MudItem xs="6">
+                            <MudTextField @bind-Value="_inscan.ConsigneeCity" Label="Destination City" Dense="true" Variant="Variant.Outlined" />
+                        </MudItem>
+                        <MudItem xs="6">
+                            <MudTextField @bind-Value="_inscan.ConsigneeCountry" Label="Destination Country" Dense="true" Variant="Variant.Outlined" />
+                        </MudItem>
+                    </MudGrid>
+                </MudCard>
+            </MudItem>
+        </MudGrid>
+
+        <MudCard Class="mt-4 pa-4">
+            <MudText Typo="Typo.subtitle1" Color="Color.Primary" Class="mb-2">Shipment & Charges</MudText>
+            <MudGrid>
+                <MudItem xs="6" md="2">
+                    <MudNumericField @bind-Value="_inscan.Pieces" Label="Pieces" Dense="true" Variant="Variant.Outlined" />
+                </MudItem>
+                <MudItem xs="6" md="2">
+                    <MudNumericField @bind-Value="_inscan.Weight" Label="Weight (kg)" Dense="true" Variant="Variant.Outlined" Format="N2" />
+                </MudItem>
+                <MudItem xs="6" md="2">
+                    <MudNumericField @bind-Value="_inscan.CustomsValue" Label="Invoice Value" Dense="true" Variant="Variant.Outlined" Format="N2" />
+                </MudItem>
+                <MudItem xs="6" md="2">
+                    <MudSelect T="string" @bind-Value="_inscan.Currency" Label="Currency" Dense="true" Variant="Variant.Outlined" AnchorOrigin="Origin.BottomCenter">
+                        <MudSelectItem T="string" Value="@("INR")">INR</MudSelectItem>
+                        <MudSelectItem T="string" Value="@("USD")">USD</MudSelectItem>
+                        <MudSelectItem T="string" Value="@("EUR")">EUR</MudSelectItem>
+                        <MudSelectItem T="string" Value="@("GBP")">GBP</MudSelectItem>
+                        <MudSelectItem T="string" Value="@("AED")">AED</MudSelectItem>
+                    </MudSelect>
+                </MudItem>
+                <MudItem xs="6" md="2">
+                    <MudSelect T="DocumentType" @bind-Value="_inscan.DocumentTypeId" Label="Type" Dense="true" Variant="Variant.Outlined" AnchorOrigin="Origin.BottomCenter">
+                        <MudSelectItem T="DocumentType" Value="@DocumentType.Document">Document</MudSelectItem>
+                        <MudSelectItem T="DocumentType" Value="@DocumentType.Parcel">Parcel</MudSelectItem>
+                    </MudSelect>
+                </MudItem>
+                <MudItem xs="6" md="2">
+                    <MudSelect T="MovementType" @bind-Value="_inscan.MovementTypeId" Label="Movement" Dense="true" Variant="Variant.Outlined" AnchorOrigin="Origin.BottomCenter">
+                        <MudSelectItem T="MovementType" Value="@MovementType.Domestic">Domestic</MudSelectItem>
+                        <MudSelectItem T="MovementType" Value="@MovementType.International">International</MudSelectItem>
+                    </MudSelect>
+                </MudItem>
+            </MudGrid>
+            <MudDivider Class="my-3" />
+            <MudGrid>
+                <MudItem xs="6" md="2">
+                    <MudNumericField @bind-Value="_inscan.CourierCharge" Label="Courier Charge" Dense="true" Variant="Variant.Outlined" Format="N2" />
+                </MudItem>
+                <MudItem xs="6" md="2">
+                    <MudNumericField @bind-Value="_inscan.OtherCharge" Label="Other Charge" Dense="true" Variant="Variant.Outlined" Format="N2" />
+                </MudItem>
+                <MudItem xs="6" md="2">
+                    <MudNumericField @bind-Value="_inscan.FuelSurcharge" Label="Fuel Surcharge" Dense="true" Variant="Variant.Outlined" Format="N2" />
+                </MudItem>
+                <MudItem xs="6" md="2">
+                    <MudStack Row="true" AlignItems="AlignItems.Center">
+                        <MudCheckBox @bind-Value="_applyTax" Label="Tax" Dense="true" />
+                        @if (_applyTax)
+                        {
+                            <MudNumericField @bind-Value="_inscan.TaxPercent" Label="%" Dense="true" Variant="Variant.Outlined" Format="N1" Style="width: 80px;" />
+                        }
+                    </MudStack>
+                </MudItem>
+                <MudItem xs="6" md="2">
+                    <MudNumericField @bind-Value="_inscan.Discount" Label="Discount" Dense="true" Variant="Variant.Outlined" Format="N2" />
+                </MudItem>
+                <MudItem xs="6" md="2">
+                    <MudNumericField Value="@NetTotal" Label="Total" Dense="true" Variant="Variant.Filled" Format="N2" ReadOnly="true" />
+                </MudItem>
+            </MudGrid>
+            @if (_inscan.PaymentModeId == PaymentMode.COD || _inscan.PaymentModeId == PaymentMode.CAD)
+            {
+                <MudGrid Class="mt-2">
+                    <MudItem xs="6" md="2">
+                        <MudNumericField @bind-Value="_inscan.CODAmount" Label="COD Amount" Dense="true" Variant="Variant.Outlined" Format="N2" />
+                    </MudItem>
+                </MudGrid>
+            }
+        </MudCard>
+
+        <MudGrid Class="mt-4">
+            <MudItem xs="12" md="6">
+                <MudCard Class="pa-4" Style="height: 100%;">
+                    <MudText Typo="Typo.subtitle1" Color="Color.Primary" Class="mb-2">Forwarding Agent</MudText>
+                    <MudGrid Spacing="2">
+                        <MudItem xs="12">
+                            <MudTextField @bind-Value="_inscan.ForwardingAWBNo" Label="Agent Name/AWB No." Dense="true" Variant="Variant.Outlined" />
+                        </MudItem>
+                        <MudItem xs="6">
+                            <MudNumericField @bind-Value="_inscan.ForwardingCharge" Label="Rate" Dense="true" Variant="Variant.Outlined" Format="N2" />
+                        </MudItem>
+                        <MudItem xs="6">
+                            <MudNumericField @bind-Value="_inscan.ManifestWeight" Label="Manifest Weight" Dense="true" Variant="Variant.Outlined" Format="N2" />
+                        </MudItem>
+                        <MudItem xs="6">
+                            <MudNumericField @bind-Value="_inscan.VerifiedWeight" Label="Verified Weight" Dense="true" Variant="Variant.Outlined" Format="N2" />
+                        </MudItem>
+                    </MudGrid>
+                </MudCard>
+            </MudItem>
+
+            <MudItem xs="12" md="6">
+                <MudCard Class="pa-4" Style="height: 100%;">
+                    <MudText Typo="Typo.subtitle1" Color="Color.Primary" Class="mb-2">Instructions & Audit</MudText>
+                    <MudStack Row="true" Wrap="Wrap.Wrap" Spacing="2">
+                        <MudCheckBox @bind-Value="_inscan.IsNCND" Label="NCND" Dense="true" />
+                        <MudCheckBox @bind-Value="_inscan.IsCashOnly" Label="Cash Only" Dense="true" />
+                        <MudCheckBox @bind-Value="_inscan.IsChequeOnly" Label="Cheque Only" Dense="true" />
+                        <MudCheckBox @bind-Value="_inscan.IsCollectMaterial" Label="Collect Material" Dense="true" />
+                        <MudCheckBox @bind-Value="_inscan.IsDOCopyBack" Label="DO Copy Back" Dense="true" />
+                    </MudStack>
+                    <MudTextField @bind-Value="_inscan.Remarks" Label="Remarks" Dense="true" Variant="Variant.Outlined" Lines="3" Class="mt-2" />
+                </MudCard>
+            </MudItem>
+        </MudGrid>
+
+    </MudForm>
+</MudPaper>
+
+@code {
+    [Parameter] public long Id { get; set; }
+
+    private InscanMaster _inscan = new();
+    private MudForm _form = null!;
+    private bool _formIsValid;
+    private DateTime? _transactionDate = DateTime.Today;
+    private List<Party> _customers = new();
+    private bool _isAutoAWB = true;
+    private bool _copyAddress;
+    private bool _applyTax;
+
+    private decimal NetTotal => ((_inscan.CourierCharge ?? 0) + (_inscan.OtherCharge ?? 0) + (_inscan.FuelSurcharge ?? 0)) 
+                                * (1 + (_applyTax ? (_inscan.TaxPercent ?? 0) / 100 : 0)) - (_inscan.Discount ?? 0);
+
+    protected override async Task OnInitializedAsync()
+    {
+        _customers = await DbContext.Parties.Where(p => p.PartyType == PartyType.Customer && p.IsActive && !p.IsDeleted).OrderBy(p => p.Name).ToListAsync();
+
+        if (Id > 0)
+        {
+            var existing = await DbContext.InscanMasters.FindAsync(Id);
+            if (existing != null)
+            {
+                _inscan = existing;
+                _transactionDate = _inscan.TransactionDate.ToLocalTime();
+                _isAutoAWB = _inscan.IsAutoGenerated;
+                _applyTax = (_inscan.TaxPercent ?? 0) > 0;
+            }
+        }
+        else
+        {
+            _inscan.AWBNo = await GenerateAWBNo();
+            _inscan.TransactionDate = DateTime.UtcNow;
+            _inscan.ConsignorCountry = "India";
+            _inscan.ConsigneeCountry = "India";
+            _inscan.ShipmentModeId = ShipmentMode.Air;
+            _inscan.IsAutoGenerated = true;
+            _inscan.Currency = "INR";
+        }
+    }
+
+    private async Task<string> GenerateAWBNo()
+    {
+        var today = DateTime.Today.ToString("yyyyMMdd");
+        var count = await DbContext.InscanMasters.CountAsync(i => i.AWBNo.StartsWith(today)) + 1;
+        return $"{today}{count:D4}";
+    }
+
+    private async Task OnAutoAWBChanged(bool value)
+    {
+        _isAutoAWB = value;
+        if (_isAutoAWB)
+        {
+            _inscan.AWBNo = await GenerateAWBNo();
+        }
+        StateHasChanged();
+    }
+
+    private async Task Save()
+    {
+        await _form.Validate();
+        if (!_formIsValid) return;
+
+        if (_transactionDate.HasValue)
+            _inscan.TransactionDate = _transactionDate.Value.Date.ToUniversalTime();
+
+        _inscan.IsAutoGenerated = _isAutoAWB;
+        _inscan.NetTotal = NetTotal;
+        _inscan.IsCOD = _inscan.PaymentModeId == PaymentMode.COD || _inscan.PaymentModeId == PaymentMode.CAD;
+
+        if (Id == 0)
+        {
+            _inscan.CreatedAt = DateTime.UtcNow;
+            _inscan.CourierStatusId = CourierStatus.Pending;
+            DbContext.InscanMasters.Add(_inscan);
+        }
+        else
+        {
+            _inscan.ModifiedAt = DateTime.UtcNow;
+            DbContext.InscanMasters.Update(_inscan);
+        }
+
+        await DbContext.SaveChangesAsync();
+        Snackbar.Add(Id > 0 ? "AWB updated successfully" : "AWB created successfully", Severity.Success);
+        NavigationManager.NavigateTo("/awb-list");
+    }
+
+    private void Cancel()
+    {
+        NavigationManager.NavigateTo("/awb-list");
+    }
+}
