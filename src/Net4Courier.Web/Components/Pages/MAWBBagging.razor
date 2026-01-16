@@ -1,0 +1,372 @@
+@page "/mawb-bagging/{Id:long}"
+@inject ApplicationDbContext DbContext
+@inject NavigationManager NavigationManager
+@inject IDialogService DialogService
+@inject ISnackbar Snackbar
+@inject MAWBService MawbService
+@inject IJSRuntime JS
+@using Microsoft.EntityFrameworkCore
+@using Net4Courier.Infrastructure.Data
+@using Net4Courier.Operations.Entities
+@using Net4Courier.Kernel.Enums
+@using Net4Courier.Web.Services
+
+<PageTitle>MAWB Bagging - Net4Courier</PageTitle>
+
+@if (_mawb == null)
+{
+    <MudProgressCircular Indeterminate="true" />
+}
+else
+{
+    <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center" Class="mb-4">
+        <MudText Typo="Typo.h4">@(_mawb.Status == MAWBStatus.Draft ? "MAWB Bagging" : "MAWB View"): @_mawb.MAWBNo</MudText>
+        <MudChip T="string" Color="@GetStatusColor(_mawb.Status)" Size="Size.Medium">@_mawb.Status</MudChip>
+    </MudStack>
+
+    <MudGrid>
+        <MudItem xs="12" md="4">
+            <MudPaper Class="pa-4" Elevation="2">
+                <MudText Typo="Typo.h6" Class="mb-2">MAWB Summary</MudText>
+                <MudSimpleTable Dense="true" Hover="false" Striped="true">
+                    <tbody>
+                        <tr><td><strong>Origin</strong></td><td>@_mawb.OriginCityName (@_mawb.OriginAirportCode)</td></tr>
+                        <tr><td><strong>Destination</strong></td><td>@_mawb.DestinationCityName (@_mawb.DestinationAirportCode)</td></tr>
+                        <tr><td><strong>Carrier</strong></td><td>@_mawb.CarrierName (@_mawb.CarrierCode)</td></tr>
+                        <tr><td><strong>Flight</strong></td><td>@_mawb.FlightNo</td></tr>
+                        <tr><td><strong>Departure</strong></td><td>@_mawb.DepartureDate?.ToString("dd/MM/yyyy") @_mawb.DepartureTime?.ToString(@"hh\:mm")</td></tr>
+                        <tr><td><strong>Total Bags</strong></td><td>@_bags.Count</td></tr>
+                        <tr><td><strong>Total Pieces</strong></td><td>@_shipmentsInMawb.Sum(s => s.Pieces ?? 0)</td></tr>
+                        <tr><td><strong>Total Weight</strong></td><td>@_shipmentsInMawb.Sum(s => s.Weight ?? 0).ToString("N2") kg</td></tr>
+                    </tbody>
+                </MudSimpleTable>
+                
+                @if (_mawb.Status == MAWBStatus.Draft)
+                {
+                    <MudStack Row="true" Class="mt-4" Spacing="2">
+                        <MudButton Variant="Variant.Outlined" Color="Color.Primary" OnClick="AddBag" StartIcon="@Icons.Material.Filled.AddCircle">
+                            Add Bag
+                        </MudButton>
+                        <MudButton Variant="Variant.Filled" Color="Color.Success" OnClick="FinalizeMAWB" StartIcon="@Icons.Material.Filled.CheckCircle">
+                            Finalize
+                        </MudButton>
+                    </MudStack>
+                }
+            </MudPaper>
+
+            <MudPaper Class="pa-4 mt-4" Elevation="2">
+                <MudText Typo="Typo.h6" Class="mb-2">Bags</MudText>
+                <MudList Dense="true" Clickable="true" Class="py-0">
+                    @foreach (var bag in _bags)
+                    {
+                        <MudListItem Icon="@Icons.Material.Filled.Inventory2" 
+                                     IconColor="@(bag == _selectedBag ? Color.Primary : Color.Default)"
+                                     Class="@(bag == _selectedBag ? "mud-primary-text" : "")"
+                                     OnClick="@(() => _selectedBag = bag)">
+                            <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center" Style="width:100%">
+                                <div>
+                                    <MudText Typo="Typo.body1">@bag.BagNo</MudText>
+                                    <MudText Typo="Typo.caption">@bag.PieceCount pcs | @bag.GrossWeight.ToString("N2") kg</MudText>
+                                </div>
+                                @if (bag.IsSealed)
+                                {
+                                    <MudIcon Icon="@Icons.Material.Filled.Lock" Size="Size.Small" Color="Color.Success" />
+                                }
+                            </MudStack>
+                        </MudListItem>
+                    }
+                </MudList>
+                @if (!_bags.Any())
+                {
+                    <MudText Typo="Typo.body2" Color="Color.Warning" Class="mt-2">No bags created yet. Click "Add Bag" to start.</MudText>
+                }
+            </MudPaper>
+        </MudItem>
+
+        <MudItem xs="12" md="8">
+            @if (_mawb.Status == MAWBStatus.Draft && _selectedBag != null)
+            {
+                <MudPaper Class="pa-4 mb-4" Elevation="2">
+                    <MudText Typo="Typo.h6" Class="mb-2">Barcode Scanning - Bag: @_selectedBag.BagNo</MudText>
+                    <MudStack Row="true" Spacing="2" AlignItems="AlignItems.Center">
+                        <MudTextField @bind-Value="_scanInput" Label="Scan AWB Barcode" Variant="Variant.Outlined"
+                                      Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Filled.QrCodeScanner"
+                                      Immediate="true" @onkeypress="HandleScanKeyPress" @ref="_scanField"
+                                      Placeholder="Focus here and scan barcode..." Style="width: 300px;" />
+                        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="ProcessScan" Disabled="@_scanning">
+                            Add
+                        </MudButton>
+                        <MudText Typo="Typo.body2" Color="Color.Success">Scanned: @_scanCount shipments this session</MudText>
+                    </MudStack>
+                    
+                    @if (!string.IsNullOrEmpty(_lastScanMessage))
+                    {
+                        <MudAlert Severity="@_lastScanSeverity" Class="mt-2" Dense="true" ShowCloseIcon="true" CloseIconClicked="() => _lastScanMessage = null">
+                            @_lastScanMessage
+                        </MudAlert>
+                    }
+
+                    @if (_scanLog.Any())
+                    {
+                        <MudText Typo="Typo.subtitle2" Class="mt-3 mb-1">Scan Log (Last 10)</MudText>
+                        <MudSimpleTable Dense="true" Hover="true" Style="max-height: 150px; overflow-y: auto;">
+                            <thead>
+                                <tr><th>AWB No</th><th>Bag</th><th>Time</th><th>Status</th></tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var log in _scanLog.TakeLast(10).Reverse())
+                                {
+                                    <tr>
+                                        <td>@log.AWBNo</td>
+                                        <td>@log.BagNo</td>
+                                        <td>@log.Time.ToString("HH:mm:ss")</td>
+                                        <td><MudChip T="string" Color="@(log.Success ? Color.Success : Color.Error)" Size="Size.Small">@(log.Success ? "Added" : "Rejected")</MudChip></td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </MudSimpleTable>
+                    }
+                </MudPaper>
+            }
+
+            <MudPaper Class="pa-4" Elevation="2">
+                <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center" Class="mb-2">
+                    <MudText Typo="Typo.h6">Shipments in @(_selectedBag?.BagNo ?? "MAWB")</MudText>
+                    @if (_mawb.Status == MAWBStatus.Draft && _selectedBag != null)
+                    {
+                        <MudButton Variant="Variant.Outlined" Color="Color.Primary" OnClick="OpenManualAddDialog" StartIcon="@Icons.Material.Filled.Add">
+                            Manual Add
+                        </MudButton>
+                    }
+                </MudStack>
+
+                <MudTable Items="@GetDisplayShipments()" Hover="true" Striped="true" Dense="true">
+                    <HeaderContent>
+                        <MudTh>AWB No</MudTh>
+                        <MudTh>Consignee</MudTh>
+                        <MudTh>Destination</MudTh>
+                        <MudTh>Pieces</MudTh>
+                        <MudTh>Weight</MudTh>
+                        <MudTh>Bag</MudTh>
+                        @if (_mawb.Status == MAWBStatus.Draft)
+                        {
+                            <MudTh>Actions</MudTh>
+                        }
+                    </HeaderContent>
+                    <RowTemplate>
+                        <MudTd DataLabel="AWB No">@context.AWBNo</MudTd>
+                        <MudTd DataLabel="Consignee">@context.Consignee</MudTd>
+                        <MudTd DataLabel="Destination">@context.ConsigneeCity</MudTd>
+                        <MudTd DataLabel="Pieces">@context.Pieces</MudTd>
+                        <MudTd DataLabel="Weight">@context.Weight?.ToString("N2") kg</MudTd>
+                        <MudTd DataLabel="Bag">@context.BagNo</MudTd>
+                        @if (_mawb.Status == MAWBStatus.Draft)
+                        {
+                            <MudTd>
+                                <MudIconButton Icon="@Icons.Material.Filled.RemoveCircle" Size="Size.Small" Color="Color.Error" 
+                                               OnClick="@(() => RemoveShipment(context))" Title="Remove from bag" />
+                            </MudTd>
+                        }
+                    </RowTemplate>
+                    <NoRecordsContent>
+                        <MudText>No shipments in this bag.</MudText>
+                    </NoRecordsContent>
+                </MudTable>
+            </MudPaper>
+        </MudItem>
+    </MudGrid>
+}
+
+@code {
+    [Parameter] public long Id { get; set; }
+    
+    private MasterAirwaybill? _mawb;
+    private List<MAWBBag> _bags = new();
+    private List<InscanMaster> _shipmentsInMawb = new();
+    private MAWBBag? _selectedBag;
+    
+    private string _scanInput = "";
+    private int _scanCount = 0;
+    private string? _lastScanMessage;
+    private Severity _lastScanSeverity = Severity.Info;
+    private bool _scanning = false;
+    private List<ScanLogEntry> _scanLog = new();
+    private MudTextField<string>? _scanField;
+
+    private class ScanLogEntry
+    {
+        public string AWBNo { get; set; } = "";
+        public string? BagNo { get; set; }
+        public DateTime Time { get; set; }
+        public bool Success { get; set; }
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadData();
+    }
+
+    private async Task LoadData()
+    {
+        _mawb = await MawbService.GetMAWBWithDetails(Id);
+        if (_mawb != null)
+        {
+            _bags = _mawb.Bags?.OrderBy(b => b.SequenceNo).ToList() ?? new List<MAWBBag>();
+            _shipmentsInMawb = await MawbService.GetShipmentsInMAWB(Id);
+            
+            if (_selectedBag == null && _bags.Any())
+                _selectedBag = _bags.First();
+        }
+    }
+
+    private List<InscanMaster> GetDisplayShipments()
+    {
+        if (_selectedBag == null)
+            return _shipmentsInMawb;
+        return _shipmentsInMawb.Where(s => s.MAWBBagId == _selectedBag.Id).ToList();
+    }
+
+    private Color GetStatusColor(MAWBStatus status)
+    {
+        return status switch
+        {
+            MAWBStatus.Draft => Color.Default,
+            MAWBStatus.Finalized => Color.Info,
+            MAWBStatus.Dispatched => Color.Success,
+            _ => Color.Default
+        };
+    }
+
+    private async Task AddBag()
+    {
+        try
+        {
+            var bag = await MawbService.CreateBag(Id);
+            _bags.Add(bag);
+            _selectedBag = bag;
+            Snackbar.Add($"Bag {bag.BagNo} created", Severity.Success);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add(ex.Message, Severity.Error);
+        }
+    }
+
+    private async Task HandleScanKeyPress(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter")
+        {
+            await ProcessScan();
+        }
+    }
+
+    private async Task ProcessScan()
+    {
+        if (string.IsNullOrWhiteSpace(_scanInput) || _selectedBag == null)
+            return;
+
+        _scanning = true;
+        var awbNo = _scanInput.Trim();
+        _scanInput = "";
+
+        try
+        {
+            var validation = await MawbService.ValidateShipmentForBagging(awbNo, Id, _selectedBag.Id);
+            
+            if (!validation.IsValid)
+            {
+                _lastScanMessage = validation.ErrorMessage;
+                _lastScanSeverity = Severity.Error;
+                _scanLog.Add(new ScanLogEntry { AWBNo = awbNo, BagNo = _selectedBag.BagNo, Time = DateTime.Now, Success = false });
+            }
+            else if (validation.Shipment != null)
+            {
+                await MawbService.AddShipmentToBag(_selectedBag.Id, validation.Shipment.Id);
+                _lastScanMessage = $"AWB {awbNo} added to bag {_selectedBag.BagNo}";
+                _lastScanSeverity = Severity.Success;
+                _scanCount++;
+                _scanLog.Add(new ScanLogEntry { AWBNo = awbNo, BagNo = _selectedBag.BagNo, Time = DateTime.Now, Success = true });
+                await LoadData();
+            }
+        }
+        catch (Exception ex)
+        {
+            _lastScanMessage = ex.Message;
+            _lastScanSeverity = Severity.Error;
+        }
+        finally
+        {
+            _scanning = false;
+            StateHasChanged();
+            if (_scanField != null)
+                await _scanField.FocusAsync();
+        }
+    }
+
+    private async Task RemoveShipment(InscanMaster shipment)
+    {
+        var confirm = await DialogService.ShowMessageBox(
+            "Remove Shipment",
+            $"Remove AWB {shipment.AWBNo} from bag {shipment.BagNo}?",
+            yesText: "Remove", cancelText: "Cancel");
+
+        if (confirm == true)
+        {
+            await MawbService.RemoveShipmentFromBag(shipment.Id);
+            Snackbar.Add($"AWB {shipment.AWBNo} removed from bag", Severity.Info);
+            await LoadData();
+        }
+    }
+
+    private async Task FinalizeMAWB()
+    {
+        if (!_shipmentsInMawb.Any())
+        {
+            Snackbar.Add("Cannot finalize MAWB without shipments", Severity.Warning);
+            return;
+        }
+
+        var confirm = await DialogService.ShowMessageBox(
+            "Finalize MAWB",
+            $"Finalize MAWB {_mawb?.MAWBNo}? This will lock the manifest.",
+            yesText: "Finalize", cancelText: "Cancel");
+
+        if (confirm == true)
+        {
+            var (success, error) = await MawbService.FinalizeMAWB(Id);
+            if (success)
+            {
+                Snackbar.Add("MAWB finalized successfully", Severity.Success);
+                await LoadData();
+            }
+            else
+            {
+                Snackbar.Add(error ?? "Failed to finalize MAWB", Severity.Error);
+            }
+        }
+    }
+
+    private async Task OpenManualAddDialog()
+    {
+        if (_selectedBag == null) return;
+
+        var eligibleShipments = await MawbService.GetEligibleShipments(Id);
+        
+        var parameters = new DialogParameters
+        {
+            { "Shipments", eligibleShipments },
+            { "BagId", _selectedBag.Id },
+            { "MawbService", MawbService }
+        };
+
+        var options = new DialogOptions { MaxWidth = MaxWidth.Large, FullWidth = true };
+        var dialog = await DialogService.ShowAsync<MAWBManualAddDialog>("Add Shipments", parameters, options);
+        var result = await dialog.Result;
+
+        if (result != null && !result.Canceled)
+        {
+            await LoadData();
+            Snackbar.Add("Shipments added to bag", Severity.Success);
+        }
+    }
+}

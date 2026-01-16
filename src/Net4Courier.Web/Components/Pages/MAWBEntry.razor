@@ -1,0 +1,272 @@
+@page "/mawb-entry"
+@page "/mawb-entry/{Id:long}"
+@inject ApplicationDbContext DbContext
+@inject NavigationManager NavigationManager
+@inject ISnackbar Snackbar
+@inject MAWBService MawbService
+@using Microsoft.EntityFrameworkCore
+@using Net4Courier.Infrastructure.Data
+@using Net4Courier.Operations.Entities
+@using Net4Courier.Masters.Entities
+@using Net4Courier.Web.Services
+
+<PageTitle>@(_isEdit ? "Edit MAWB" : "New MAWB") - Net4Courier</PageTitle>
+
+<MudText Typo="Typo.h4" GutterBottom="true">@(_isEdit ? $"Edit MAWB: {_mawb.MAWBNo}" : "Create New Master Airwaybill")</MudText>
+
+<MudPaper Class="pa-4" Elevation="2">
+    <MudGrid>
+        <MudItem xs="12">
+            <MudText Typo="Typo.h6" Class="mb-2">Route Information</MudText>
+        </MudItem>
+        
+        <MudItem xs="12" md="6">
+            <MudAutocomplete T="City" Label="Origin City" @bind-Value="_originCity"
+                             SearchFunc="@SearchCities" ToStringFunc="@(c => c?.Name ?? "")"
+                             Variant="Variant.Outlined" Dense="true" Required="true"
+                             ResetValueOnEmptyText="true" CoerceValue="true" />
+        </MudItem>
+        <MudItem xs="12" md="3">
+            <MudTextField @bind-Value="_mawb.OriginAirportCode" Label="Origin Airport Code" 
+                          Variant="Variant.Outlined" Placeholder="e.g., DXB" />
+        </MudItem>
+        <MudItem xs="12" md="3">
+            <MudTextField Value="@_originCity?.Country?.Name" Label="Origin Country" 
+                          Variant="Variant.Outlined" ReadOnly="true" />
+        </MudItem>
+        
+        <MudItem xs="12" md="6">
+            <MudAutocomplete T="City" Label="Destination City" @bind-Value="_destinationCity"
+                             SearchFunc="@SearchCities" ToStringFunc="@(c => c?.Name ?? "")"
+                             Variant="Variant.Outlined" Dense="true" Required="true"
+                             ResetValueOnEmptyText="true" CoerceValue="true" />
+        </MudItem>
+        <MudItem xs="12" md="3">
+            <MudTextField @bind-Value="_mawb.DestinationAirportCode" Label="Destination Airport Code" 
+                          Variant="Variant.Outlined" Placeholder="e.g., JFK" />
+        </MudItem>
+        <MudItem xs="12" md="3">
+            <MudTextField Value="@_destinationCity?.Country?.Name" Label="Destination Country" 
+                          Variant="Variant.Outlined" ReadOnly="true" />
+        </MudItem>
+
+        <MudItem xs="12">
+            <MudDivider Class="my-2" />
+            <MudText Typo="Typo.h6" Class="mb-2 mt-2">Flight Information</MudText>
+        </MudItem>
+
+        <MudItem xs="12" md="3">
+            <MudTextField @bind-Value="_mawb.CarrierCode" Label="Carrier Code" 
+                          Variant="Variant.Outlined" Placeholder="e.g., EK" />
+        </MudItem>
+        <MudItem xs="12" md="3">
+            <MudTextField @bind-Value="_mawb.CarrierName" Label="Carrier Name" 
+                          Variant="Variant.Outlined" Placeholder="e.g., Emirates" />
+        </MudItem>
+        <MudItem xs="12" md="3">
+            <MudTextField @bind-Value="_mawb.FlightNo" Label="Flight No" 
+                          Variant="Variant.Outlined" Placeholder="e.g., EK501" />
+        </MudItem>
+        <MudItem xs="12" md="3">
+            <MudDatePicker @bind-Date="_departureDate" Label="Departure Date" 
+                           Variant="Variant.Outlined" DateFormat="dd/MM/yyyy" />
+        </MudItem>
+        
+        <MudItem xs="12" md="3">
+            <MudTimePicker @bind-Time="_departureTime" Label="Departure Time" 
+                           Variant="Variant.Outlined" />
+        </MudItem>
+        <MudItem xs="12" md="3">
+            <MudDatePicker @bind-Date="_arrivalDate" Label="Arrival Date" 
+                           Variant="Variant.Outlined" DateFormat="dd/MM/yyyy" />
+        </MudItem>
+        <MudItem xs="12" md="3">
+            <MudTimePicker @bind-Time="_arrivalTime" Label="Arrival Time" 
+                           Variant="Variant.Outlined" />
+        </MudItem>
+
+        <MudItem xs="12">
+            <MudDivider Class="my-2" />
+            <MudText Typo="Typo.h6" Class="mb-2 mt-2">Co-Loader / Agent (Optional)</MudText>
+        </MudItem>
+
+        <MudItem xs="12" md="6">
+            <MudAutocomplete T="Party" Label="Co-Loader / Agent" @bind-Value="_coLoader"
+                             SearchFunc="@SearchCoLoaders" ToStringFunc="@(p => p?.Name ?? "")"
+                             Variant="Variant.Outlined" Dense="true"
+                             ResetValueOnEmptyText="true" CoerceValue="true" />
+        </MudItem>
+        <MudItem xs="12" md="6">
+            <MudTextField @bind-Value="_mawb.CoLoaderMAWBNo" Label="Co-Loader MAWB No" 
+                          Variant="Variant.Outlined" Placeholder="Agent's reference number" />
+        </MudItem>
+
+        <MudItem xs="12">
+            <MudDivider Class="my-2" />
+            <MudText Typo="Typo.h6" Class="mb-2 mt-2">Additional Information</MudText>
+        </MudItem>
+
+        <MudItem xs="12" md="4">
+            <MudTextField @bind-Value="_mawb.CustomsDeclarationNo" Label="Customs Declaration No" 
+                          Variant="Variant.Outlined" />
+        </MudItem>
+        <MudItem xs="12" md="4">
+            <MudTextField @bind-Value="_mawb.ExportPermitNo" Label="Export Permit No" 
+                          Variant="Variant.Outlined" />
+        </MudItem>
+        <MudItem xs="12" md="4">
+        </MudItem>
+
+        <MudItem xs="12">
+            <MudTextField @bind-Value="_mawb.Remarks" Label="Remarks" 
+                          Variant="Variant.Outlined" Lines="2" />
+        </MudItem>
+
+        <MudItem xs="12" Class="d-flex justify-end gap-2 mt-4">
+            <MudButton Variant="Variant.Text" Color="Color.Default" Href="/mawb-list">Cancel</MudButton>
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="Save" Disabled="@_saving">
+                @if (_saving)
+                {
+                    <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" />
+                }
+                @(_isEdit ? "Update MAWB" : "Create MAWB")
+            </MudButton>
+            @if (_isEdit && _mawb.Status == MAWBStatus.Draft)
+            {
+                <MudButton Variant="Variant.Filled" Color="Color.Success" Href="@($"/mawb-bagging/{_mawb.Id}")">
+                    Proceed to Bagging
+                </MudButton>
+            }
+        </MudItem>
+    </MudGrid>
+</MudPaper>
+
+@code {
+    [Parameter] public long Id { get; set; }
+    
+    private MasterAirwaybill _mawb = new() { TransactionDate = DateTime.Today };
+    private bool _isEdit => Id > 0;
+    private bool _saving = false;
+    
+    private City? _originCity;
+    private City? _destinationCity;
+    private Party? _coLoader;
+    private DateTime? _departureDate;
+    private DateTime? _arrivalDate;
+    private TimeSpan? _departureTime;
+    private TimeSpan? _arrivalTime;
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (_isEdit)
+        {
+            var mawb = await DbContext.MasterAirwaybills.FindAsync(Id);
+            if (mawb != null)
+            {
+                _mawb = mawb;
+                _departureDate = mawb.DepartureDate;
+                _arrivalDate = mawb.ArrivalDate;
+                _departureTime = mawb.DepartureTime;
+                _arrivalTime = mawb.ArrivalTime;
+                
+                if (mawb.OriginCityId.HasValue)
+                    _originCity = await DbContext.Cities.Include(c => c.Country).FirstOrDefaultAsync(c => c.Id == mawb.OriginCityId);
+                if (mawb.DestinationCityId.HasValue)
+                    _destinationCity = await DbContext.Cities.Include(c => c.Country).FirstOrDefaultAsync(c => c.Id == mawb.DestinationCityId);
+                if (mawb.CoLoaderId.HasValue)
+                    _coLoader = await DbContext.Parties.FindAsync(mawb.CoLoaderId);
+            }
+        }
+    }
+
+    private async Task<IEnumerable<City>> SearchCities(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return await DbContext.Cities.Include(c => c.Country).Take(20).ToListAsync();
+
+        return await DbContext.Cities
+            .Include(c => c.Country)
+            .Where(c => c.Name.Contains(value) || (c.Code != null && c.Code.Contains(value)))
+            .Take(20)
+            .ToListAsync();
+    }
+
+    private async Task<IEnumerable<Party>> SearchCoLoaders(string? value)
+    {
+        var query = DbContext.Parties
+            .Where(p => p.PartyType == PartyType.CoLoader && p.IsActive && !p.IsDeleted);
+
+        if (!string.IsNullOrWhiteSpace(value))
+            query = query.Where(p => p.Name.Contains(value) || (p.Code != null && p.Code.Contains(value)));
+
+        return await query.Take(20).ToListAsync();
+    }
+
+    private async Task Save()
+    {
+        if (_originCity == null)
+        {
+            Snackbar.Add("Please select an origin city", Severity.Warning);
+            return;
+        }
+
+        if (_destinationCity == null)
+        {
+            Snackbar.Add("Please select a destination city", Severity.Warning);
+            return;
+        }
+
+        _saving = true;
+
+        try
+        {
+            _mawb.OriginCityId = _originCity.Id;
+            _mawb.OriginCityName = _originCity.Name;
+            _mawb.OriginCountryId = _originCity.CountryId;
+            _mawb.OriginCountryName = _originCity.Country?.Name;
+
+            _mawb.DestinationCityId = _destinationCity.Id;
+            _mawb.DestinationCityName = _destinationCity.Name;
+            _mawb.DestinationCountryId = _destinationCity.CountryId;
+            _mawb.DestinationCountryName = _destinationCity.Country?.Name;
+
+            _mawb.CoLoaderId = _coLoader?.Id;
+            _mawb.CoLoaderName = _coLoader?.Name;
+
+            _mawb.DepartureDate = _departureDate;
+            _mawb.ArrivalDate = _arrivalDate;
+            _mawb.DepartureTime = _departureTime;
+            _mawb.ArrivalTime = _arrivalTime;
+
+            if (_isEdit)
+            {
+                await MawbService.UpdateMAWB(_mawb);
+                Snackbar.Add("MAWB updated successfully", Severity.Success);
+            }
+            else
+            {
+                var newMawb = await MawbService.CreateMAWB(
+                    null, null, null,
+                    _mawb.OriginCityId, _mawb.OriginCityName, _mawb.OriginCountryId, _mawb.OriginCountryName, _mawb.OriginAirportCode,
+                    _mawb.DestinationCityId, _mawb.DestinationCityName, _mawb.DestinationCountryId, _mawb.DestinationCountryName, _mawb.DestinationAirportCode,
+                    _mawb.CarrierCode, _mawb.CarrierName, _mawb.FlightNo,
+                    _mawb.DepartureDate, _mawb.ArrivalDate, _mawb.DepartureTime, _mawb.ArrivalTime,
+                    _mawb.CoLoaderId, _mawb.CoLoaderName, _mawb.Remarks);
+
+                Snackbar.Add("MAWB created successfully", Severity.Success);
+                NavigationManager.NavigateTo($"/mawb-bagging/{newMawb.Id}");
+                return;
+            }
+
+            NavigationManager.NavigateTo("/mawb-list");
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _saving = false;
+        }
+    }
+}

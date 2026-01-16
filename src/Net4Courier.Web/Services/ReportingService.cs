@@ -327,4 +327,203 @@ public class ReportingService
 
         return document.GeneratePdf();
     }
+
+    public async Task<byte[]> GenerateMAWBManifest(long mawbId)
+    {
+        var mawb = await _context.MasterAirwaybills
+            .Include(m => m.Bags)
+            .FirstOrDefaultAsync(m => m.Id == mawbId);
+
+        if (mawb == null)
+            return Array.Empty<byte>();
+
+        var shipments = await _context.InscanMasters
+            .Where(s => s.MAWBId == mawbId)
+            .OrderBy(s => s.BagNo)
+            .ThenBy(s => s.AWBNo)
+            .ToListAsync();
+
+        var document = Document.Create(container =>
+        {
+            container.Page(page =>
+            {
+                page.Size(PageSizes.A4);
+                page.Margin(30);
+                page.DefaultTextStyle(x => x.FontSize(9));
+
+                page.Header().Column(col =>
+                {
+                    col.Item().Row(row =>
+                    {
+                        row.RelativeItem().Text("MASTER AIRWAYBILL MANIFEST").Bold().FontSize(16);
+                        row.ConstantItem(120).AlignRight().Text($"Status: {mawb.Status}").FontSize(10);
+                    });
+                    col.Item().Text($"MAWB No: {mawb.MAWBNo}").Bold().FontSize(14);
+                    col.Item().PaddingVertical(10).LineHorizontal(1);
+                });
+
+                page.Content().Column(col =>
+                {
+                    col.Item().Table(table =>
+                    {
+                        table.ColumnsDefinition(columns =>
+                        {
+                            columns.ConstantColumn(80);
+                            columns.RelativeColumn();
+                            columns.ConstantColumn(80);
+                            columns.RelativeColumn();
+                        });
+
+                        table.Cell().Text("Origin:").Bold();
+                        table.Cell().Text($"{mawb.OriginCityName} ({mawb.OriginAirportCode})");
+                        table.Cell().Text("Destination:").Bold();
+                        table.Cell().Text($"{mawb.DestinationCityName} ({mawb.DestinationAirportCode})");
+
+                        table.Cell().Text("Carrier:").Bold();
+                        table.Cell().Text($"{mawb.CarrierName} ({mawb.CarrierCode})");
+                        table.Cell().Text("Flight:").Bold();
+                        table.Cell().Text(mawb.FlightNo ?? "-");
+
+                        table.Cell().Text("Departure:").Bold();
+                        table.Cell().Text($"{mawb.DepartureDate?.ToString("dd-MMM-yyyy")} {mawb.DepartureTime?.ToString(@"hh\:mm") ?? ""}");
+                        table.Cell().Text("Arrival:").Bold();
+                        table.Cell().Text($"{mawb.ArrivalDate?.ToString("dd-MMM-yyyy")} {mawb.ArrivalTime?.ToString(@"hh\:mm") ?? ""}");
+
+                        table.Cell().Text("Total Bags:").Bold();
+                        table.Cell().Text($"{mawb.TotalBags}");
+                        table.Cell().Text("Total Pieces:").Bold();
+                        table.Cell().Text($"{mawb.TotalPieces}");
+
+                        table.Cell().Text("Gross Weight:").Bold();
+                        table.Cell().Text($"{mawb.TotalGrossWeight:N2} Kg");
+                        table.Cell().Text("Chg. Weight:").Bold();
+                        table.Cell().Text($"{mawb.TotalChargeableWeight:N2} Kg");
+                    });
+
+                    col.Item().PaddingVertical(15).LineHorizontal(0.5f);
+
+                    if (mawb.Bags?.Any() == true)
+                    {
+                        col.Item().Text("BAG SUMMARY").Bold().FontSize(11);
+                        col.Item().PaddingVertical(5).Table(table =>
+                        {
+                            table.ColumnsDefinition(columns =>
+                            {
+                                columns.ConstantColumn(100);
+                                columns.ConstantColumn(80);
+                                columns.ConstantColumn(60);
+                                columns.ConstantColumn(80);
+                                columns.ConstantColumn(80);
+                                columns.RelativeColumn();
+                            });
+
+                            table.Header(header =>
+                            {
+                                header.Cell().Background(Colors.Grey.Lighten3).Padding(3).Text("Bag No").Bold();
+                                header.Cell().Background(Colors.Grey.Lighten3).Padding(3).Text("Seal No").Bold();
+                                header.Cell().Background(Colors.Grey.Lighten3).Padding(3).Text("Pieces").Bold();
+                                header.Cell().Background(Colors.Grey.Lighten3).Padding(3).Text("Gross Wt").Bold();
+                                header.Cell().Background(Colors.Grey.Lighten3).Padding(3).Text("Chg. Wt").Bold();
+                                header.Cell().Background(Colors.Grey.Lighten3).Padding(3).Text("Sealed").Bold();
+                            });
+
+                            foreach (var bag in mawb.Bags.OrderBy(b => b.SequenceNo))
+                            {
+                                table.Cell().BorderBottom(0.5f).BorderColor(Colors.Grey.Lighten2).Padding(3).Text(bag.BagNo);
+                                table.Cell().BorderBottom(0.5f).BorderColor(Colors.Grey.Lighten2).Padding(3).Text(bag.SealNo ?? "-");
+                                table.Cell().BorderBottom(0.5f).BorderColor(Colors.Grey.Lighten2).Padding(3).Text(bag.PieceCount.ToString());
+                                table.Cell().BorderBottom(0.5f).BorderColor(Colors.Grey.Lighten2).Padding(3).Text($"{bag.GrossWeight:N2}");
+                                table.Cell().BorderBottom(0.5f).BorderColor(Colors.Grey.Lighten2).Padding(3).Text($"{bag.ChargeableWeight:N2}");
+                                table.Cell().BorderBottom(0.5f).BorderColor(Colors.Grey.Lighten2).Padding(3).Text(bag.IsSealed ? "Yes" : "No");
+                            }
+                        });
+                    }
+
+                    col.Item().PaddingVertical(15).LineHorizontal(0.5f);
+                    col.Item().Text("SHIPMENT DETAILS").Bold().FontSize(11);
+
+                    col.Item().PaddingVertical(5).Table(table =>
+                    {
+                        table.ColumnsDefinition(columns =>
+                        {
+                            columns.ConstantColumn(30);
+                            columns.ConstantColumn(90);
+                            columns.RelativeColumn();
+                            columns.ConstantColumn(80);
+                            columns.ConstantColumn(40);
+                            columns.ConstantColumn(50);
+                            columns.ConstantColumn(80);
+                        });
+
+                        table.Header(header =>
+                        {
+                            header.Cell().Background(Colors.Grey.Lighten3).Padding(3).Text("#").Bold();
+                            header.Cell().Background(Colors.Grey.Lighten3).Padding(3).Text("AWB No").Bold();
+                            header.Cell().Background(Colors.Grey.Lighten3).Padding(3).Text("Consignee").Bold();
+                            header.Cell().Background(Colors.Grey.Lighten3).Padding(3).Text("Destination").Bold();
+                            header.Cell().Background(Colors.Grey.Lighten3).Padding(3).Text("Pcs").Bold();
+                            header.Cell().Background(Colors.Grey.Lighten3).Padding(3).Text("Wt").Bold();
+                            header.Cell().Background(Colors.Grey.Lighten3).Padding(3).Text("Bag").Bold();
+                        });
+
+                        int seq = 0;
+                        foreach (var shipment in shipments)
+                        {
+                            seq++;
+                            table.Cell().BorderBottom(0.5f).BorderColor(Colors.Grey.Lighten2).Padding(3).Text(seq.ToString());
+                            table.Cell().BorderBottom(0.5f).BorderColor(Colors.Grey.Lighten2).Padding(3).Text(shipment.AWBNo);
+                            table.Cell().BorderBottom(0.5f).BorderColor(Colors.Grey.Lighten2).Padding(3).Text(shipment.Consignee ?? "-");
+                            table.Cell().BorderBottom(0.5f).BorderColor(Colors.Grey.Lighten2).Padding(3).Text(shipment.ConsigneeCity ?? "-");
+                            table.Cell().BorderBottom(0.5f).BorderColor(Colors.Grey.Lighten2).Padding(3).Text((shipment.Pieces ?? 0).ToString());
+                            table.Cell().BorderBottom(0.5f).BorderColor(Colors.Grey.Lighten2).Padding(3).Text($"{shipment.Weight ?? 0:N2}");
+                            table.Cell().BorderBottom(0.5f).BorderColor(Colors.Grey.Lighten2).Padding(3).Text(shipment.BagNo ?? "-");
+                        }
+
+                        table.Cell().ColumnSpan(4).Background(Colors.Grey.Lighten4).Padding(3).Text("TOTALS").Bold();
+                        table.Cell().Background(Colors.Grey.Lighten4).Padding(3).Text(shipments.Sum(s => s.Pieces ?? 0).ToString()).Bold();
+                        table.Cell().Background(Colors.Grey.Lighten4).Padding(3).Text($"{shipments.Sum(s => s.Weight ?? 0):N2}").Bold();
+                        table.Cell().Background(Colors.Grey.Lighten4).Padding(3).Text("");
+                    });
+
+                    if (!string.IsNullOrEmpty(mawb.Remarks))
+                    {
+                        col.Item().PaddingTop(20).Text($"Remarks: {mawb.Remarks}");
+                    }
+
+                    col.Item().PaddingTop(40).Row(row =>
+                    {
+                        row.RelativeItem().Column(c =>
+                        {
+                            c.Item().Text("Prepared By:").FontSize(8);
+                            c.Item().PaddingTop(20).Width(120).LineHorizontal(1);
+                        });
+                        row.ConstantItem(30);
+                        row.RelativeItem().Column(c =>
+                        {
+                            c.Item().Text("Approved By:").FontSize(8);
+                            c.Item().PaddingTop(20).Width(120).LineHorizontal(1);
+                        });
+                        row.ConstantItem(30);
+                        row.RelativeItem().Column(c =>
+                        {
+                            c.Item().Text("Received By:").FontSize(8);
+                            c.Item().PaddingTop(20).Width(120).LineHorizontal(1);
+                        });
+                    });
+                });
+
+                page.Footer().AlignCenter().Text(x =>
+                {
+                    x.Span("Generated: ");
+                    x.Span(DateTime.Now.ToString("dd-MMM-yyyy HH:mm"));
+                    x.Span(" | Page ");
+                    x.CurrentPageNumber();
+                    x.Span(" of ");
+                    x.TotalPages();
+                });
+            });
+        });
+
+        return document.GeneratePdf();
+    }
 }

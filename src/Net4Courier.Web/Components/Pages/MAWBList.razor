@@ -1,0 +1,225 @@
+@page "/mawb-list"
+@inject ApplicationDbContext DbContext
+@inject NavigationManager NavigationManager
+@inject IDialogService DialogService
+@inject ISnackbar Snackbar
+@inject MAWBService MawbService
+@using Microsoft.EntityFrameworkCore
+@using Net4Courier.Infrastructure.Data
+@using Net4Courier.Operations.Entities
+@using Net4Courier.Web.Services
+
+<PageTitle>MAWB List - Net4Courier</PageTitle>
+
+<MudText Typo="Typo.h4" GutterBottom="true">Master Airwaybill (MAWB) Processing</MudText>
+
+<MudPaper Class="pa-4 mb-4" Elevation="2">
+    <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
+        <MudStack Row="true" Spacing="2">
+            <MudTextField @bind-Value="_searchString" Placeholder="Search MAWB..." Adornment="Adornment.Start" 
+                          AdornmentIcon="@Icons.Material.Filled.Search" IconSize="Size.Medium" Class="mt-0" Immediate="true" Style="width:200px" />
+            <MudDatePicker @bind-Date="_fromDate" Label="From" Variant="Variant.Outlined" DateFormat="dd/MM/yyyy" Style="width:150px" />
+            <MudDatePicker @bind-Date="_toDate" Label="To" Variant="Variant.Outlined" DateFormat="dd/MM/yyyy" Style="width:150px" />
+            <MudSelect T="MAWBStatus?" @bind-Value="_statusFilter" Label="Status" Variant="Variant.Outlined" Style="width:150px" AnchorOrigin="Origin.BottomCenter">
+                <MudSelectItem T="MAWBStatus?" Value="@((MAWBStatus?)null)">All Status</MudSelectItem>
+                <MudSelectItem T="MAWBStatus?" Value="@MAWBStatus.Draft">Draft</MudSelectItem>
+                <MudSelectItem T="MAWBStatus?" Value="@MAWBStatus.Finalized">Finalized</MudSelectItem>
+                <MudSelectItem T="MAWBStatus?" Value="@MAWBStatus.Dispatched">Dispatched</MudSelectItem>
+                <MudSelectItem T="MAWBStatus?" Value="@MAWBStatus.InTransit">In Transit</MudSelectItem>
+                <MudSelectItem T="MAWBStatus?" Value="@MAWBStatus.Received">Received</MudSelectItem>
+            </MudSelect>
+            <MudButton Variant="Variant.Outlined" Color="Color.Primary" OnClick="Search">Search</MudButton>
+        </MudStack>
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add" Href="/mawb-entry">
+            New MAWB
+        </MudButton>
+    </MudStack>
+</MudPaper>
+
+<MudPaper Elevation="2">
+    <MudTable Items="@_mawbList" Hover="true" Striped="true" Loading="@_loading" LoadingProgressColor="Color.Primary">
+        <HeaderContent>
+            <MudTh><MudTableSortLabel SortBy="new Func<MasterAirwaybill, object>(x => x.MAWBNo)">MAWB No</MudTableSortLabel></MudTh>
+            <MudTh>Date</MudTh>
+            <MudTh>Origin</MudTh>
+            <MudTh>Destination</MudTh>
+            <MudTh>Carrier</MudTh>
+            <MudTh>Flight</MudTh>
+            <MudTh>Bags</MudTh>
+            <MudTh>Pieces</MudTh>
+            <MudTh>Weight</MudTh>
+            <MudTh>Status</MudTh>
+            <MudTh Style="width: 200px;">Actions</MudTh>
+        </HeaderContent>
+        <RowTemplate>
+            <MudTd DataLabel="MAWB No">
+                <MudLink Href="@($"/mawb-bagging/{context.Id}")">@context.MAWBNo</MudLink>
+            </MudTd>
+            <MudTd DataLabel="Date">@context.TransactionDate.ToString("dd/MM/yyyy")</MudTd>
+            <MudTd DataLabel="Origin">@context.OriginCityName (@context.OriginAirportCode)</MudTd>
+            <MudTd DataLabel="Destination">@context.DestinationCityName (@context.DestinationAirportCode)</MudTd>
+            <MudTd DataLabel="Carrier">@context.CarrierName</MudTd>
+            <MudTd DataLabel="Flight">@context.FlightNo</MudTd>
+            <MudTd DataLabel="Bags">@context.TotalBags</MudTd>
+            <MudTd DataLabel="Pieces">@context.TotalPieces</MudTd>
+            <MudTd DataLabel="Weight">@context.TotalGrossWeight.ToString("N2") kg</MudTd>
+            <MudTd DataLabel="Status">
+                <MudChip T="string" Color="@GetStatusColor(context.Status)" Size="Size.Small">@context.Status</MudChip>
+            </MudTd>
+            <MudTd>
+                @if (context.Status == MAWBStatus.Draft)
+                {
+                    <MudIconButton Icon="@Icons.Material.Filled.Edit" Size="Size.Small" Color="Color.Primary" Href="@($"/mawb-entry/{context.Id}")" Title="Edit" />
+                    <MudIconButton Icon="@Icons.Material.Filled.Inventory2" Size="Size.Small" Color="Color.Info" Href="@($"/mawb-bagging/{context.Id}")" Title="Bagging" />
+                    <MudIconButton Icon="@Icons.Material.Filled.CheckCircle" Size="Size.Small" Color="Color.Success" OnClick="@(() => FinalizeMAWB(context))" Title="Finalize" />
+                    <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" Color="Color.Error" OnClick="@(() => DeleteMAWB(context))" Title="Delete" />
+                }
+                else if (context.Status == MAWBStatus.Finalized)
+                {
+                    <MudIconButton Icon="@Icons.Material.Filled.Visibility" Size="Size.Small" Color="Color.Default" Href="@($"/mawb-bagging/{context.Id}")" Title="View" />
+                    <MudIconButton Icon="@Icons.Material.Filled.LocalShipping" Size="Size.Small" Color="Color.Success" OnClick="@(() => DispatchMAWB(context))" Title="Dispatch" />
+                    <MudIconButton Icon="@Icons.Material.Filled.Print" Size="Size.Small" Color="Color.Default" OnClick="@(() => PrintManifest(context.Id))" Title="Print Manifest" />
+                }
+                else
+                {
+                    <MudIconButton Icon="@Icons.Material.Filled.Visibility" Size="Size.Small" Color="Color.Default" Href="@($"/mawb-bagging/{context.Id}")" Title="View" />
+                    <MudIconButton Icon="@Icons.Material.Filled.Print" Size="Size.Small" Color="Color.Default" OnClick="@(() => PrintManifest(context.Id))" Title="Print Manifest" />
+                }
+            </MudTd>
+        </RowTemplate>
+        <NoRecordsContent>
+            <MudText>No MAWB records found.</MudText>
+        </NoRecordsContent>
+        <PagerContent>
+            <MudTablePager PageSizeOptions="new int[] { 10, 25, 50, 100 }" />
+        </PagerContent>
+    </MudTable>
+</MudPaper>
+
+@code {
+    private List<MasterAirwaybill> _mawbList = new();
+    private bool _loading = true;
+    private string _searchString = "";
+    private DateTime? _fromDate = DateTime.Today.AddDays(-30);
+    private DateTime? _toDate = DateTime.Today;
+    private MAWBStatus? _statusFilter;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await Search();
+    }
+
+    private async Task Search()
+    {
+        _loading = true;
+        var query = DbContext.MasterAirwaybills
+            .Include(m => m.Bags)
+            .Where(m => !m.IsDeleted)
+            .AsQueryable();
+
+        if (!string.IsNullOrWhiteSpace(_searchString))
+        {
+            query = query.Where(m => m.MAWBNo.Contains(_searchString) || 
+                                     (m.OriginCityName != null && m.OriginCityName.Contains(_searchString)) ||
+                                     (m.DestinationCityName != null && m.DestinationCityName.Contains(_searchString)) ||
+                                     (m.CarrierName != null && m.CarrierName.Contains(_searchString)));
+        }
+
+        if (_fromDate.HasValue)
+            query = query.Where(m => m.TransactionDate >= _fromDate.Value);
+
+        if (_toDate.HasValue)
+            query = query.Where(m => m.TransactionDate <= _toDate.Value.AddDays(1));
+
+        if (_statusFilter.HasValue)
+            query = query.Where(m => m.Status == _statusFilter.Value);
+
+        _mawbList = await query
+            .OrderByDescending(m => m.TransactionDate)
+            .ThenByDescending(m => m.Id)
+            .Take(200)
+            .ToListAsync();
+
+        _loading = false;
+    }
+
+    private Color GetStatusColor(MAWBStatus status)
+    {
+        return status switch
+        {
+            MAWBStatus.Draft => Color.Default,
+            MAWBStatus.Finalized => Color.Info,
+            MAWBStatus.Dispatched => Color.Success,
+            MAWBStatus.InTransit => Color.Warning,
+            MAWBStatus.Received => Color.Primary,
+            MAWBStatus.Cancelled => Color.Error,
+            _ => Color.Default
+        };
+    }
+
+    private async Task FinalizeMAWB(MasterAirwaybill mawb)
+    {
+        var confirm = await DialogService.ShowMessageBox(
+            "Finalize MAWB",
+            $"Are you sure you want to finalize MAWB {mawb.MAWBNo}? This will lock the manifest for dispatch.",
+            yesText: "Finalize", cancelText: "Cancel");
+
+        if (confirm == true)
+        {
+            var (success, error) = await MawbService.FinalizeMAWB(mawb.Id);
+            if (success)
+            {
+                Snackbar.Add($"MAWB {mawb.MAWBNo} finalized successfully", Severity.Success);
+                await Search();
+            }
+            else
+            {
+                Snackbar.Add(error ?? "Failed to finalize MAWB", Severity.Error);
+            }
+        }
+    }
+
+    private async Task DispatchMAWB(MasterAirwaybill mawb)
+    {
+        var confirm = await DialogService.ShowMessageBox(
+            "Dispatch MAWB",
+            $"Are you sure you want to dispatch MAWB {mawb.MAWBNo}?",
+            yesText: "Dispatch", cancelText: "Cancel");
+
+        if (confirm == true)
+        {
+            var (success, error) = await MawbService.DispatchMAWB(mawb.Id);
+            if (success)
+            {
+                Snackbar.Add($"MAWB {mawb.MAWBNo} dispatched successfully", Severity.Success);
+                await Search();
+            }
+            else
+            {
+                Snackbar.Add(error ?? "Failed to dispatch MAWB", Severity.Error);
+            }
+        }
+    }
+
+    private async Task DeleteMAWB(MasterAirwaybill mawb)
+    {
+        var confirm = await DialogService.ShowMessageBox(
+            "Delete MAWB",
+            $"Are you sure you want to delete MAWB {mawb.MAWBNo}?",
+            yesText: "Delete", cancelText: "Cancel");
+
+        if (confirm == true)
+        {
+            mawb.IsDeleted = true;
+            mawb.ModifiedAt = DateTime.UtcNow;
+            await DbContext.SaveChangesAsync();
+            Snackbar.Add("MAWB deleted successfully", Severity.Success);
+            await Search();
+        }
+    }
+
+    private void PrintManifest(long id)
+    {
+        NavigationManager.NavigateTo($"/api/report/mawb/{id}", true);
+    }
+}

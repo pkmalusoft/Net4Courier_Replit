@@ -1,0 +1,126 @@
+@inject ISnackbar Snackbar
+@using Net4Courier.Operations.Entities
+@using Net4Courier.Web.Services
+
+<MudDialog>
+    <TitleContent>
+        <MudText Typo="Typo.h6">
+            <MudIcon Icon="@Icons.Material.Filled.Add" Class="mr-2" />
+            Add Shipments to Bag
+        </MudText>
+    </TitleContent>
+    <DialogContent>
+        <MudTextField @bind-Value="_searchText" Placeholder="Search by AWB, Consignee..." 
+                      Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Filled.Search"
+                      Immediate="true" Class="mb-4" />
+        
+        <MudTable Items="@FilteredShipments" Hover="true" Dense="true" MultiSelection="true" 
+                  @bind-SelectedItems="_selectedShipments" Style="max-height: 400px; overflow-y: auto;">
+            <HeaderContent>
+                <MudTh Style="width:50px;"></MudTh>
+                <MudTh>AWB No</MudTh>
+                <MudTh>Consignee</MudTh>
+                <MudTh>Origin</MudTh>
+                <MudTh>Destination</MudTh>
+                <MudTh>Pieces</MudTh>
+                <MudTh>Weight</MudTh>
+                <MudTh>Status</MudTh>
+            </HeaderContent>
+            <RowTemplate>
+                <MudTd></MudTd>
+                <MudTd DataLabel="AWB No">@context.AWBNo</MudTd>
+                <MudTd DataLabel="Consignee">@context.Consignee</MudTd>
+                <MudTd DataLabel="Origin">@context.ConsignorCity</MudTd>
+                <MudTd DataLabel="Destination">@context.ConsigneeCity</MudTd>
+                <MudTd DataLabel="Pieces">@context.Pieces</MudTd>
+                <MudTd DataLabel="Weight">@context.Weight?.ToString("N2") kg</MudTd>
+                <MudTd DataLabel="Status">
+                    @if (context.IsOnHold)
+                    {
+                        <MudChip T="string" Color="Color.Error" Size="Size.Small">On Hold</MudChip>
+                    }
+                    else
+                    {
+                        <MudChip T="string" Color="Color.Success" Size="Size.Small">Eligible</MudChip>
+                    }
+                </MudTd>
+            </RowTemplate>
+            <NoRecordsContent>
+                <MudText>No eligible shipments found.</MudText>
+            </NoRecordsContent>
+        </MudTable>
+        
+        <MudText Typo="Typo.body2" Class="mt-2">Selected: @_selectedShipments.Count shipments</MudText>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Cancel">Cancel</MudButton>
+        <MudButton Color="Color.Primary" OnClick="AddSelected" Disabled="@(!_selectedShipments.Any() || _adding)">
+            @if (_adding)
+            {
+                <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" />
+            }
+            Add Selected (@_selectedShipments.Count)
+        </MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] MudDialogInstance? MudDialog { get; set; }
+    [Parameter] public List<InscanMaster> Shipments { get; set; } = new();
+    [Parameter] public long BagId { get; set; }
+    [Parameter] public MAWBService? MawbService { get; set; }
+    
+    private HashSet<InscanMaster> _selectedShipments = new();
+    private string _searchText = "";
+    private bool _adding = false;
+
+    private IEnumerable<InscanMaster> FilteredShipments
+    {
+        get
+        {
+            if (string.IsNullOrWhiteSpace(_searchText))
+                return Shipments.Where(s => !s.IsOnHold);
+
+            var search = _searchText.ToLower();
+            return Shipments.Where(s => !s.IsOnHold && (
+                s.AWBNo.ToLower().Contains(search) ||
+                (s.Consignee?.ToLower().Contains(search) ?? false) ||
+                (s.Consignor?.ToLower().Contains(search) ?? false) ||
+                (s.ConsigneeCity?.ToLower().Contains(search) ?? false)));
+        }
+    }
+
+    private void Cancel() => MudDialog?.Cancel();
+
+    private async Task AddSelected()
+    {
+        if (!_selectedShipments.Any() || MawbService == null)
+            return;
+
+        _adding = true;
+        int addedCount = 0;
+
+        try
+        {
+            foreach (var shipment in _selectedShipments)
+            {
+                try
+                {
+                    await MawbService.AddShipmentToBag(BagId, shipment.Id);
+                    addedCount++;
+                }
+                catch (Exception ex)
+                {
+                    Snackbar.Add($"Failed to add {shipment.AWBNo}: {ex.Message}", Severity.Warning);
+                }
+            }
+
+            Snackbar.Add($"{addedCount} shipments added to bag", Severity.Success);
+            MudDialog?.Close(DialogResult.Ok(addedCount));
+        }
+        finally
+        {
+            _adding = false;
+        }
+    }
+}

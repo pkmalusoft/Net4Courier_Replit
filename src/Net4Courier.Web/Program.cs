@@ -70,6 +70,7 @@ builder.Services.AddScoped<RatingEngineService>();
 builder.Services.AddScoped<DRSReconciliationService>();
 builder.Services.AddScoped<InvoicingService>();
 builder.Services.AddScoped<ShipmentStatusService>();
+builder.Services.AddScoped<MAWBService>();
 builder.Services.AddAuthorizationCore();
 builder.Services.AddCascadingAuthenticationState();
 
@@ -111,6 +112,13 @@ app.MapGet("/api/report/receipt/{id:long}", async (long id, ApplicationDbContext
     if (receipt == null) return Results.NotFound();
     var pdf = reportService.GenerateReceiptPdf(receipt);
     return Results.File(pdf, "application/pdf", $"Receipt-{receipt.ReceiptNo}.pdf");
+});
+
+app.MapGet("/api/report/mawb/{id:long}", async (long id, ReportingService reportService) =>
+{
+    var pdf = await reportService.GenerateMAWBManifest(id);
+    if (pdf.Length == 0) return Results.NotFound();
+    return Results.File(pdf, "application/pdf", $"MAWB-Manifest-{id}.pdf");
 });
 
 using (var scope = app.Services.CreateScope())

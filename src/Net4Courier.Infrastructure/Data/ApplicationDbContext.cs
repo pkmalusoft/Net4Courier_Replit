@@ -41,6 +41,8 @@ public class ApplicationDbContext : DbContext
     public DbSet<PickupRequest> PickupRequests => Set<PickupRequest>();
     public DbSet<PickupRequestShipment> PickupRequestShipments => Set<PickupRequestShipment>();
     public DbSet<Vehicle> Vehicles => Set<Vehicle>();
+    public DbSet<MasterAirwaybill> MasterAirwaybills => Set<MasterAirwaybill>();
+    public DbSet<MAWBBag> MAWBBags => Set<MAWBBag>();
     
     public DbSet<Invoice> Invoices => Set<Invoice>();
     public DbSet<InvoiceDetail> InvoiceDetails => Set<InvoiceDetail>();
@@ -332,6 +334,12 @@ public class ApplicationDbContext : DbContext
             entity.ToTable("InscanMasters");
             entity.HasKey(e => e.Id);
             entity.Property(e => e.AWBNo).HasMaxLength(50).IsRequired();
+            entity.Property(e => e.MAWBNo).HasMaxLength(50);
+            entity.Property(e => e.BagNo).HasMaxLength(50);
+            entity.Property(e => e.BaggedByUserName).HasMaxLength(100);
+            entity.Property(e => e.HoldReason).HasMaxLength(500);
+            entity.Property(e => e.HoldByUserName).HasMaxLength(100);
+            entity.Property(e => e.HoldReleasedByUserName).HasMaxLength(100);
             
             entity.HasIndex(e => e.AWBNo);
             entity.HasIndex(e => new { e.BranchId, e.TransactionDate });
@@ -341,6 +349,14 @@ public class ApplicationDbContext : DbContext
             entity.HasIndex(e => e.FinancialYearId);
             entity.HasIndex(e => e.InvoiceId);
             entity.HasIndex(e => e.DRSId);
+            entity.HasIndex(e => e.MAWBId);
+            entity.HasIndex(e => e.MAWBBagId);
+            entity.HasIndex(e => e.IsOnHold);
+            
+            entity.HasOne(e => e.MAWB).WithMany().HasForeignKey(e => e.MAWBId)
+                  .OnDelete(DeleteBehavior.SetNull);
+            entity.HasOne(e => e.MAWBBag).WithMany(b => b.Shipments).HasForeignKey(e => e.MAWBBagId)
+                  .OnDelete(DeleteBehavior.SetNull);
         });
 
         modelBuilder.Entity<InscanMasterItem>(entity =>
@@ -490,6 +506,52 @@ public class ApplicationDbContext : DbContext
             entity.HasKey(e => e.Id);
             entity.Property(e => e.VehicleNo).HasMaxLength(50).IsRequired();
             entity.HasIndex(e => e.VehicleNo);
+        });
+
+        modelBuilder.Entity<MasterAirwaybill>(entity =>
+        {
+            entity.ToTable("MasterAirwaybills");
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.MAWBNo).HasMaxLength(50).IsRequired();
+            entity.Property(e => e.OriginCityName).HasMaxLength(100);
+            entity.Property(e => e.OriginCountryName).HasMaxLength(100);
+            entity.Property(e => e.OriginAirportCode).HasMaxLength(10);
+            entity.Property(e => e.DestinationCityName).HasMaxLength(100);
+            entity.Property(e => e.DestinationCountryName).HasMaxLength(100);
+            entity.Property(e => e.DestinationAirportCode).HasMaxLength(10);
+            entity.Property(e => e.CarrierCode).HasMaxLength(20);
+            entity.Property(e => e.CarrierName).HasMaxLength(100);
+            entity.Property(e => e.FlightNo).HasMaxLength(20);
+            entity.Property(e => e.CoLoaderName).HasMaxLength(200);
+            entity.Property(e => e.CoLoaderMAWBNo).HasMaxLength(50);
+            entity.Property(e => e.TotalGrossWeight).HasPrecision(18, 3);
+            entity.Property(e => e.TotalChargeableWeight).HasPrecision(18, 3);
+            entity.Property(e => e.Remarks).HasMaxLength(500);
+            entity.Property(e => e.CustomsDeclarationNo).HasMaxLength(50);
+            entity.Property(e => e.ExportPermitNo).HasMaxLength(50);
+            entity.Property(e => e.FinalizedByUserName).HasMaxLength(100);
+            entity.Property(e => e.DispatchedByUserName).HasMaxLength(100);
+            entity.HasIndex(e => e.MAWBNo).IsUnique();
+            entity.HasIndex(e => new { e.BranchId, e.TransactionDate });
+            entity.HasIndex(e => new { e.Status, e.TransactionDate });
+            entity.HasIndex(e => new { e.OriginCityId, e.DestinationCityId });
+        });
+
+        modelBuilder.Entity<MAWBBag>(entity =>
+        {
+            entity.ToTable("MAWBBags");
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.BagNo).HasMaxLength(50).IsRequired();
+            entity.Property(e => e.SealNo).HasMaxLength(50);
+            entity.Property(e => e.BagType).HasMaxLength(50);
+            entity.Property(e => e.Remarks).HasMaxLength(500);
+            entity.Property(e => e.GrossWeight).HasPrecision(18, 3);
+            entity.Property(e => e.ChargeableWeight).HasPrecision(18, 3);
+            entity.Property(e => e.SealedByUserName).HasMaxLength(100);
+            entity.HasIndex(e => new { e.MAWBId, e.BagNo }).IsUnique();
+            entity.HasIndex(e => e.BagNo);
+            entity.HasOne(e => e.MAWB).WithMany(m => m.Bags).HasForeignKey(e => e.MAWBId)
+                  .OnDelete(DeleteBehavior.Cascade);
         });
 
         modelBuilder.Entity<ShipmentStatusGroup>(entity =>

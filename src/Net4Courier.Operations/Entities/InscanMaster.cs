@@ -122,6 +122,26 @@ public class InscanMaster : AuditableEntity
     public long? PickupRequestId { get; set; }
     public long? PickupRequestShipmentId { get; set; }
     
+    public long? MAWBId { get; set; }
+    public long? MAWBBagId { get; set; }
+    public string? MAWBNo { get; set; }
+    public string? BagNo { get; set; }
+    public DateTime? BaggedAt { get; set; }
+    public long? BaggedByUserId { get; set; }
+    public string? BaggedByUserName { get; set; }
+    
+    public bool IsOnHold { get; set; }
+    public string? HoldReason { get; set; }
+    public DateTime? HoldDate { get; set; }
+    public long? HoldByUserId { get; set; }
+    public string? HoldByUserName { get; set; }
+    public DateTime? HoldReleasedDate { get; set; }
+    public long? HoldReleasedByUserId { get; set; }
+    public string? HoldReleasedByUserName { get; set; }
+    
+    public virtual MasterAirwaybill? MAWB { get; set; }
+    public virtual MAWBBag? MAWBBag { get; set; }
+    
     public virtual ICollection<InscanMasterItem> Items { get; set; } = new List<InscanMasterItem>();
     public virtual ICollection<AWBTracking> TrackingHistory { get; set; } = new List<AWBTracking>();
     public virtual ICollection<AWBOtherCharge> OtherCharges { get; set; } = new List<AWBOtherCharge>();

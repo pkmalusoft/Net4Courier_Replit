@@ -71,6 +71,19 @@ The application is built on .NET 8 Blazor Server, utilizing a modular architectu
     - **AWB Timeline Component**: Visual timeline display on AWB details page with color-coded status groups.
     - **Status Management Admin Page**: CRUD operations for status groups and statuses with sequence ordering.
     - **CourierStatus Mapping**: Optional mapping from database statuses to legacy CourierStatus enum for backward compatibility.
+- **MAWB Processing (Master Airwaybill)**:
+    - **MasterAirwaybill Entity**: Stores MAWB header info including origin/destination cities, carrier details, flight info, departure/arrival times.
+    - **MAWBBag Entity**: Individual bags within a MAWB with bag numbers, seal numbers, weights, and piece counts.
+    - **Shipment-to-Bag Linking**: InscanMaster extended with MAWBId, MAWBBagId, BaggedAt fields to track which shipments are in which bags.
+    - **Hold Tracking**: IsOnHold, HoldReason, HoldDate fields on InscanMaster prevent held shipments from being bagged.
+    - **MAWBService**: Comprehensive validation logic including route matching (origin/destination city), hold checks, duplicate prevention, and status eligibility filtering.
+    - **MAWBList Page**: View all MAWBs with status filters (Draft, Finalized, Dispatched), date range filtering.
+    - **MAWBEntry Page**: Create/edit MAWB headers with origin/destination city autocomplete, carrier info, flight details, co-loader assignment.
+    - **MAWBBagging Page**: Manage bags and add shipments via barcode scanning or manual selection grid with real-time validation.
+    - **Barcode Scanning**: Live scan input with auto-validation, error messages (on-hold, already bagged, route mismatch, not found), and scan log.
+    - **Finalization Workflow**: Pre-finalize validation blocks finalization if any shipment is on-hold; status updates to MANIFESTED.
+    - **Status Integration**: BAGGED, UNBAGGED, MANIFESTED, IN_TRANSIT statuses added to timeline on MAWB actions.
+    - **MAWB Manifest PDF**: QuestPDF report with MAWB header, bag summary, and shipment details including weights and dimensions.
 
 ## External Dependencies
 - **Database**: PostgreSQL (hosted on Replit)
