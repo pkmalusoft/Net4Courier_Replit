@@ -439,35 +439,47 @@
 
         if (paymentMode == PaymentMode.COD || paymentMode == PaymentMode.CAD)
         {
-            var codAccount = await DbContext.AccountHeads
-                .FirstOrDefaultAsync(a => a.Name.Contains("COD") && a.Name.Contains("Control") && a.IsActive && !a.IsDeleted && !a.IsGroup);
-            if (codAccount != null)
+            var controlType = paymentMode == PaymentMode.COD ? ControlAccountType.CODControl : ControlAccountType.CADControl;
+            var setting = await DbContext.ControlAccountSettings
+                .Include(s => s.AccountHead)
+                .FirstOrDefaultAsync(s => s.AccountType == controlType && !s.IsDeleted);
+            if (setting?.AccountHead != null)
             {
-                _controlAccountId = codAccount.Id;
-                _controlAccountName = codAccount.Name;
+                _controlAccountId = setting.AccountHeadId;
+                _controlAccountName = setting.AccountHead.Name;
             }
             else
             {
-                _controlAccountName = "COD Control Account";
+                _controlAccountName = paymentMode == PaymentMode.COD ? "COD Control (Not Configured)" : "CAD Control (Not Configured)";
             }
         }
         else if (paymentMode == PaymentMode.Prepaid)
         {
-            var prepaidAccount = await DbContext.AccountHeads
-                .FirstOrDefaultAsync(a => a.Name.Contains("Prepaid") && a.Name.Contains("Control") && a.IsActive && !a.IsDeleted && !a.IsGroup);
-            if (prepaidAccount != null)
+            var setting = await DbContext.ControlAccountSettings
+                .Include(s => s.AccountHead)
+                .FirstOrDefaultAsync(s => s.AccountType == ControlAccountType.PrepaidControl && !s.IsDeleted);
+            if (setting?.AccountHead != null)
             {
-                _controlAccountId = prepaidAccount.Id;
-                _controlAccountName = prepaidAccount.Name;
+                _controlAccountId = setting.AccountHeadId;
+                _controlAccountName = setting.AccountHead.Name;
             }
             else
             {
-                _controlAccountName = "Prepaid Control Account";
+                _controlAccountName = "Prepaid Control (Not Configured)";
             }
         }
-        else if (paymentMode == PaymentMode.PickupCash && _cashAccounts.Any())
+        else if (paymentMode == PaymentMode.PickupCash)
         {
-            _selectedCashAccountId = _cashAccounts.First().Id;
+            var setting = await DbContext.ControlAccountSettings
+                .FirstOrDefaultAsync(s => s.AccountType == ControlAccountType.CashAccount && !s.IsDeleted);
+            if (setting != null)
+            {
+                _selectedCashAccountId = setting.AccountHeadId;
+            }
+            else if (_cashAccounts.Any())
+            {
+                _selectedCashAccountId = _cashAccounts.First().Id;
+            }
         }
 
         StateHasChanged();

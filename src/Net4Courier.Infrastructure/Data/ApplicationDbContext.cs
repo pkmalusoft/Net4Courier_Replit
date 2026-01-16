@@ -40,6 +40,7 @@ public class ApplicationDbContext : DbContext
     public DbSet<Journal> Journals => Set<Journal>();
     public DbSet<JournalEntry> JournalEntries => Set<JournalEntry>();
     public DbSet<AccountHead> AccountHeads => Set<AccountHead>();
+    public DbSet<ControlAccountSetting> ControlAccountSettings => Set<ControlAccountSetting>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -317,6 +318,15 @@ public class ApplicationDbContext : DbContext
             entity.Property(e => e.Name).HasMaxLength(200);
             entity.HasIndex(e => new { e.CompanyId, e.Code }).IsUnique();
             entity.HasOne(e => e.Parent).WithMany(a => a.Children).HasForeignKey(e => e.ParentId);
+        });
+
+        modelBuilder.Entity<ControlAccountSetting>(entity =>
+        {
+            entity.ToTable("ControlAccountSettings");
+            entity.HasKey(e => e.Id);
+            entity.HasIndex(e => new { e.CompanyId, e.AccountType }).IsUnique();
+            entity.HasOne(e => e.AccountHead).WithMany().HasForeignKey(e => e.AccountHeadId)
+                  .OnDelete(DeleteBehavior.Restrict);
         });
     }
 }
