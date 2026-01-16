@@ -33,7 +33,8 @@ public enum RateBasedType
 public enum RateCardStatus
 {
     Draft = 0,
-    Active = 1,
-    Expired = 2,
-    Suspended = 3
+    PendingApproval = 1,
+    Active = 2,
+    Expired = 3,
+    Suspended = 4
 }

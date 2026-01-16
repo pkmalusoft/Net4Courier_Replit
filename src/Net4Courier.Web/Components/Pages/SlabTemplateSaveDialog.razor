@@ -1,0 +1,95 @@
+@using Microsoft.EntityFrameworkCore
+@using Net4Courier.Masters.Entities
+@using Net4Courier.Infrastructure.Data
+@inject ApplicationDbContext DbContext
+@inject ISnackbar Snackbar
+
+<MudDialog>
+    <TitleContent>
+        <MudText Typo="Typo.h6">Save Slab Rules as Template</MudText>
+    </TitleContent>
+    <DialogContent>
+        <MudStack Spacing="3">
+            <MudTextField @bind-Value="_templateName" Label="Template Name" Variant="Variant.Outlined"
+                          Required="true" RequiredError="Template name is required" />
+            <MudTextField @bind-Value="_description" Label="Description" Variant="Variant.Outlined"
+                          Lines="2" />
+            
+            <MudText Typo="Typo.body2" Color="Color.Secondary">
+                This will save @SlabRules.Count slab rule(s) with base weight @BaseWeight.ToString("N3")kg
+            </MudText>
+        </MudStack>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Cancel">Cancel</MudButton>
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="Save" 
+                   Disabled="@(string.IsNullOrWhiteSpace(_templateName) || _saving)">
+            @(_saving ? "Saving..." : "Save Template")
+        </MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] private MudDialogInstance MudDialog { get; set; } = null!;
+    [Parameter] public List<RateCardSlabRule> SlabRules { get; set; } = new();
+    [Parameter] public decimal BaseWeight { get; set; }
+    [Parameter] public decimal BaseRate { get; set; }
+
+    private string _templateName = "";
+    private string _description = "";
+    private bool _saving;
+
+    private async Task Save()
+    {
+        if (string.IsNullOrWhiteSpace(_templateName))
+        {
+            Snackbar.Add("Template name is required", Severity.Warning);
+            return;
+        }
+
+        _saving = true;
+        try
+        {
+            var template = new SlabRuleTemplate
+            {
+                TemplateName = _templateName.Trim(),
+                Description = _description?.Trim(),
+                BaseWeight = BaseWeight,
+                BaseRate = BaseRate,
+                IsActive = true,
+                CreatedAt = DateTime.UtcNow
+            };
+
+            int sortOrder = 0;
+            foreach (var rule in SlabRules.Where(r => !r.IsDeleted).OrderBy(r => r.FromWeight))
+            {
+                template.Details.Add(new SlabRuleTemplateDetail
+                {
+                    FromWeight = rule.FromWeight,
+                    ToWeight = rule.ToWeight,
+                    IncrementWeight = rule.IncrementWeight,
+                    IncrementRate = rule.IncrementRate,
+                    CalculationMode = rule.CalculationMode,
+                    SortOrder = sortOrder++,
+                    IsActive = true,
+                    CreatedAt = DateTime.UtcNow
+                });
+            }
+
+            DbContext.SlabRuleTemplates.Add(template);
+            await DbContext.SaveChangesAsync();
+
+            MudDialog.Close(DialogResult.Ok(template));
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error saving template: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _saving = false;
+        }
+    }
+
+    private void Cancel() => MudDialog.Cancel();
+}

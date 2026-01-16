@@ -54,6 +54,8 @@ public class ApplicationDbContext : DbContext
     public DbSet<RateCardZone> RateCardZones => Set<RateCardZone>();
     public DbSet<RateCardSlabRule> RateCardSlabRules => Set<RateCardSlabRule>();
     public DbSet<CustomerRateAssignment> CustomerRateAssignments => Set<CustomerRateAssignment>();
+    public DbSet<SlabRuleTemplate> SlabRuleTemplates => Set<SlabRuleTemplate>();
+    public DbSet<SlabRuleTemplateDetail> SlabRuleTemplateDetails => Set<SlabRuleTemplateDetail>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -285,6 +287,32 @@ public class ApplicationDbContext : DbContext
             entity.HasIndex(e => new { e.RateCardId, e.CustomerId });
             entity.HasOne(e => e.RateCard).WithMany(r => r.CustomerAssignments).HasForeignKey(e => e.RateCardId)
                   .OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(e => e.Customer).WithMany().HasForeignKey(e => e.CustomerId)
+                  .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        modelBuilder.Entity<SlabRuleTemplate>(entity =>
+        {
+            entity.ToTable("SlabRuleTemplates");
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.TemplateName).HasMaxLength(100).IsRequired();
+            entity.Property(e => e.Description).HasMaxLength(500);
+            entity.Property(e => e.BaseWeight).HasPrecision(18, 3);
+            entity.Property(e => e.BaseRate).HasPrecision(18, 4);
+            entity.HasIndex(e => new { e.CompanyId, e.TemplateName }).IsUnique();
+        });
+
+        modelBuilder.Entity<SlabRuleTemplateDetail>(entity =>
+        {
+            entity.ToTable("SlabRuleTemplateDetails");
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.FromWeight).HasPrecision(18, 3);
+            entity.Property(e => e.ToWeight).HasPrecision(18, 3);
+            entity.Property(e => e.IncrementWeight).HasPrecision(18, 3);
+            entity.Property(e => e.IncrementRate).HasPrecision(18, 4);
+            entity.HasIndex(e => new { e.TemplateId, e.SortOrder });
+            entity.HasOne(e => e.Template).WithMany(t => t.Details).HasForeignKey(e => e.TemplateId)
+                  .OnDelete(DeleteBehavior.Cascade);
         });
     }
 

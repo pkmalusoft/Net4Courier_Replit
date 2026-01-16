@@ -26,6 +26,8 @@
             <MudStack Row="true" Spacing="2">
                 @if (!_isNew)
                 {
+                    <MudButton Variant="Variant.Outlined" Color="Color.Info" StartIcon="@Icons.Material.Filled.ContentCopy"
+                               OnClick="CloneRateCard">Clone</MudButton>
                     <MudButton Variant="Variant.Outlined" Color="Color.Secondary" StartIcon="@Icons.Material.Filled.Calculate"
                                OnClick="OpenRateSimulator">Test Rates</MudButton>
                 }
@@ -75,6 +77,7 @@
                         <MudSelect T="RateCardStatus" @bind-Value="_rateCard.Status" Label="Status"
                                    Variant="Variant.Outlined" Margin="Margin.Dense">
                             <MudSelectItem T="RateCardStatus" Value="RateCardStatus.Draft">Draft</MudSelectItem>
+                            <MudSelectItem T="RateCardStatus" Value="RateCardStatus.PendingApproval">Pending Approval</MudSelectItem>
                             <MudSelectItem T="RateCardStatus" Value="RateCardStatus.Active">Active</MudSelectItem>
                             <MudSelectItem T="RateCardStatus" Value="RateCardStatus.Suspended">Suspended</MudSelectItem>
                             <MudSelectItem T="RateCardStatus" Value="RateCardStatus.Expired">Expired</MudSelectItem>
@@ -101,12 +104,26 @@
 
             <MudTabPanel Text="Zone Pricing" Disabled="@_isNew">
                 <MudStack Row="true" Justify="Justify.SpaceBetween" Class="mb-4">
-                    <MudText Typo="Typo.subtitle1">Zone-wise Base Pricing</MudText>
-                    <MudButton Variant="Variant.Outlined" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add"
-                               OnClick="AddZonePricing" Size="Size.Small">Add Zone</MudButton>
+                    <MudStack>
+                        <MudText Typo="Typo.subtitle1">Zone-wise Base Pricing</MudText>
+                        @if (_selectedZones.Count > 0)
+                        {
+                            <MudText Typo="Typo.caption" Color="Color.Primary">@_selectedZones.Count zone(s) selected</MudText>
+                        }
+                    </MudStack>
+                    <MudStack Row="true" Spacing="2">
+                        @if (_selectedZones.Count > 0)
+                        {
+                            <MudButton Variant="Variant.Outlined" Color="Color.Secondary" StartIcon="@Icons.Material.Filled.ContentCopy"
+                                       OnClick="ApplyBulkSettings" Size="Size.Small">Apply Bulk Settings</MudButton>
+                        }
+                        <MudButton Variant="Variant.Outlined" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add"
+                                   OnClick="AddZonePricing" Size="Size.Small">Add Zone</MudButton>
+                    </MudStack>
                 </MudStack>
 
-                <MudTable Items="@_rateCardZones" Hover="true" Dense="true" Elevation="0" Class="border-solid border">
+                <MudTable Items="@_rateCardZones" Hover="true" Dense="true" Elevation="0" Class="border-solid border"
+                          MultiSelection="true" @bind-SelectedItems="_selectedZones">
                     <HeaderContent>
                         <MudTh>Zone</MudTh>
                         <MudTh>Base Weight (kg)</MudTh>
@@ -144,13 +161,17 @@
 
             <MudTabPanel Text="Customer Assignment" Disabled="@_isNew">
                 <MudStack Row="true" Justify="Justify.SpaceBetween" Class="mb-4">
-                    <MudText Typo="Typo.subtitle1">Assigned Customers</MudText>
+                    <MudStack>
+                        <MudText Typo="Typo.subtitle1">Assigned Customers</MudText>
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">Lower priority number = higher preference. Use arrows to reorder.</MudText>
+                    </MudStack>
                     <MudButton Variant="Variant.Outlined" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add"
                                OnClick="AddCustomerAssignment" Size="Size.Small">Assign Customer</MudButton>
                 </MudStack>
 
                 <MudTable Items="@_customerAssignments" Hover="true" Dense="true" Elevation="0" Class="border-solid border">
                     <HeaderContent>
+                        <MudTh Style="width:60px">Order</MudTh>
                         <MudTh>Customer</MudTh>
                         <MudTh>Effective From</MudTh>
                         <MudTh>Effective To</MudTh>
@@ -159,10 +180,22 @@
                         <MudTh Style="width:80px">Actions</MudTh>
                     </HeaderContent>
                     <RowTemplate>
+                        <MudTd>
+                            <MudStack Row="true" Spacing="0">
+                                <MudIconButton Icon="@Icons.Material.Filled.ArrowUpward" Size="Size.Small" 
+                                               Disabled="@(_customerAssignments.IndexOf(context) == 0)"
+                                               OnClick="@(() => MovePriorityUp(context))" Title="Move Up" />
+                                <MudIconButton Icon="@Icons.Material.Filled.ArrowDownward" Size="Size.Small" 
+                                               Disabled="@(_customerAssignments.IndexOf(context) == _customerAssignments.Count - 1)"
+                                               OnClick="@(() => MovePriorityDown(context))" Title="Move Down" />
+                            </MudStack>
+                        </MudTd>
                         <MudTd DataLabel="Customer">@GetCustomerName(context.CustomerId)</MudTd>
                         <MudTd DataLabel="Effective From">@context.EffectiveFrom.ToString("dd-MMM-yyyy")</MudTd>
                         <MudTd DataLabel="Effective To">@(context.EffectiveTo?.ToString("dd-MMM-yyyy") ?? "No Expiry")</MudTd>
-                        <MudTd DataLabel="Priority">@context.Priority</MudTd>
+                        <MudTd DataLabel="Priority">
+                            <MudChip T="string" Size="Size.Small" Color="Color.Primary">@context.Priority</MudChip>
+                        </MudTd>
                         <MudTd DataLabel="Remarks">@context.Remarks</MudTd>
                         <MudTd>
                             <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" Color="Color.Error"
@@ -185,6 +218,7 @@
     private List<RateCardZone> _rateCardZones = new();
     private List<CustomerRateAssignment> _customerAssignments = new();
     private Dictionary<long, string> _customerNames = new();
+    private HashSet<RateCardZone> _selectedZones = new();
     private bool _isNew => Id == 0;
     private bool _saving;
     private DateTime? _validFromDate;
@@ -398,9 +432,169 @@
         }
     }
 
+    private async Task MovePriorityUp(CustomerRateAssignment assignment)
+    {
+        var index = _customerAssignments.IndexOf(assignment);
+        if (index > 0)
+        {
+            var prev = _customerAssignments[index - 1];
+            var tempPriority = prev.Priority;
+            prev.Priority = assignment.Priority;
+            assignment.Priority = tempPriority;
+            prev.ModifiedAt = DateTime.UtcNow;
+            assignment.ModifiedAt = DateTime.UtcNow;
+            await DbContext.SaveChangesAsync();
+            _customerAssignments = _customerAssignments.OrderBy(a => a.Priority).ToList();
+            StateHasChanged();
+        }
+    }
+
+    private async Task MovePriorityDown(CustomerRateAssignment assignment)
+    {
+        var index = _customerAssignments.IndexOf(assignment);
+        if (index < _customerAssignments.Count - 1)
+        {
+            var next = _customerAssignments[index + 1];
+            var tempPriority = next.Priority;
+            next.Priority = assignment.Priority;
+            assignment.Priority = tempPriority;
+            next.ModifiedAt = DateTime.UtcNow;
+            assignment.ModifiedAt = DateTime.UtcNow;
+            await DbContext.SaveChangesAsync();
+            _customerAssignments = _customerAssignments.OrderBy(a => a.Priority).ToList();
+            StateHasChanged();
+        }
+    }
+
+    private async Task ApplyBulkSettings()
+    {
+        if (_selectedZones.Count == 0) return;
+
+        var parameters = new DialogParameters<BulkZoneSettingsDialog>
+        {
+            { x => x.SelectedCount, _selectedZones.Count }
+        };
+
+        var options = new DialogOptions { MaxWidth = MaxWidth.Small, FullWidth = true };
+        var dialog = await DialogService.ShowAsync<BulkZoneSettingsDialog>("Apply Bulk Settings", parameters, options);
+        var result = await dialog.Result;
+
+        if (result != null && !result.Canceled && result.Data is BulkZoneSettingsDialog.BulkZoneSettings settings)
+        {
+            var zoneCount = _selectedZones.Count;
+            foreach (var zone in _selectedZones)
+            {
+                if (settings.ApplyBaseWeight)
+                    zone.BaseWeight = settings.BaseWeight;
+                if (settings.ApplyBaseRate)
+                    zone.BaseRate = settings.BaseRate;
+                if (settings.ApplyMinCharge)
+                    zone.MinCharge = settings.MinCharge;
+                if (settings.ApplyMaxCharge)
+                    zone.MaxCharge = settings.MaxCharge;
+                if (settings.ApplyMargin)
+                    zone.MarginPercentage = settings.MarginPercentage;
+                if (settings.ApplyTaxMode)
+                    zone.TaxMode = settings.TaxMode;
+                zone.ModifiedAt = DateTime.UtcNow;
+            }
+
+            await DbContext.SaveChangesAsync();
+            _selectedZones.Clear();
+            Snackbar.Add($"Bulk settings applied to {zoneCount} zones", Severity.Success);
+            StateHasChanged();
+        }
+    }
+
     private void OpenRateSimulator()
     {
         Navigation.NavigateTo($"/rate-simulator/{Id}");
+    }
+
+    private async Task CloneRateCard()
+    {
+        var parameters = new DialogParameters<ConfirmDialog>
+        {
+            { x => x.ContentText, $"Create a copy of '{_rateCard.RateCardName}'? This will duplicate all zone pricing and slab rules." },
+            { x => x.ButtonText, "Clone" },
+            { x => x.Color, Color.Info }
+        };
+
+        var dialog = await DialogService.ShowAsync<ConfirmDialog>("Clone Rate Card", parameters);
+        var result = await dialog.Result;
+
+        if (result != null && !result.Canceled)
+        {
+            try
+            {
+                var clone = new RateCard
+                {
+                    RateCardName = $"{_rateCard.RateCardName} (Copy)",
+                    Description = _rateCard.Description,
+                    MovementTypeId = _rateCard.MovementTypeId,
+                    PaymentModeId = _rateCard.PaymentModeId,
+                    RateBasedType = _rateCard.RateBasedType,
+                    Status = RateCardStatus.Draft,
+                    ValidFrom = DateTime.UtcNow.Date,
+                    ValidTo = _rateCard.ValidTo,
+                    IsDefault = false,
+                    ForwardingAgentId = _rateCard.ForwardingAgentId,
+                    CompanyId = _rateCard.CompanyId,
+                    IsActive = true,
+                    CreatedAt = DateTime.UtcNow
+                };
+
+                DbContext.RateCards.Add(clone);
+                await DbContext.SaveChangesAsync();
+
+                foreach (var zone in _rateCardZones.Where(z => !z.IsDeleted))
+                {
+                    var cloneZone = new RateCardZone
+                    {
+                        RateCardId = clone.Id,
+                        ZoneMatrixId = zone.ZoneMatrixId,
+                        BaseWeight = zone.BaseWeight,
+                        BaseRate = zone.BaseRate,
+                        MinCharge = zone.MinCharge,
+                        MaxCharge = zone.MaxCharge,
+                        MarginPercentage = zone.MarginPercentage,
+                        ForwardingAgentId = zone.ForwardingAgentId,
+                        IsActive = true,
+                        CreatedAt = DateTime.UtcNow
+                    };
+                    DbContext.RateCardZones.Add(cloneZone);
+                    await DbContext.SaveChangesAsync();
+
+                    var slabRules = await DbContext.RateCardSlabRules
+                        .Where(s => s.RateCardZoneId == zone.Id && !s.IsDeleted)
+                        .ToListAsync();
+
+                    foreach (var slab in slabRules)
+                    {
+                        DbContext.RateCardSlabRules.Add(new RateCardSlabRule
+                        {
+                            RateCardZoneId = cloneZone.Id,
+                            FromWeight = slab.FromWeight,
+                            ToWeight = slab.ToWeight,
+                            IncrementWeight = slab.IncrementWeight,
+                            IncrementRate = slab.IncrementRate,
+                            CalculationMode = slab.CalculationMode,
+                            SortOrder = slab.SortOrder,
+                            IsActive = true,
+                            CreatedAt = DateTime.UtcNow
+                        });
+                    }
+                    await DbContext.SaveChangesAsync();
+                }
+
+                Snackbar.Add($"Rate card cloned successfully", Severity.Success);
+                Navigation.NavigateTo($"/rate-card/{clone.Id}");
+            }
+            catch (Exception ex)
+            {
+                Snackbar.Add($"Error cloning rate card: {ex.Message}", Severity.Error);
+            }
+        }
     }
 
     private void GoBack()
@@ -424,6 +618,7 @@
     private Color GetStatusColor(RateCardStatus status) => status switch
     {
         RateCardStatus.Active => Color.Success,
+        RateCardStatus.PendingApproval => Color.Info,
         RateCardStatus.Draft => Color.Warning,
         RateCardStatus.Expired => Color.Default,
         RateCardStatus.Suspended => Color.Error,

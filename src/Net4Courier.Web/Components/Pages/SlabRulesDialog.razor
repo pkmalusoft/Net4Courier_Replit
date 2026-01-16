@@ -3,6 +3,7 @@
 @using Net4Courier.Infrastructure.Data
 @inject ApplicationDbContext DbContext
 @inject ISnackbar Snackbar
+@inject IDialogService DialogService
 
 <MudDialog>
     <TitleContent>
@@ -58,8 +59,14 @@
                 </NoRecordsContent>
             </MudTable>
 
-            <MudButton Variant="Variant.Outlined" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add"
-                       OnClick="AddRule" Size="Size.Small">Add Rule</MudButton>
+            <MudStack Row="true" Spacing="2">
+                <MudButton Variant="Variant.Outlined" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add"
+                           OnClick="AddRule" Size="Size.Small">Add Rule</MudButton>
+                <MudButton Variant="Variant.Outlined" Color="Color.Secondary" StartIcon="@Icons.Material.Filled.FileDownload"
+                           OnClick="OpenLoadTemplate" Size="Size.Small">Load Template</MudButton>
+                <MudButton Variant="Variant.Outlined" Color="Color.Success" StartIcon="@Icons.Material.Filled.Save"
+                           OnClick="OpenSaveTemplate" Size="Size.Small" Disabled="@(_slabRules.Count == 0)">Save as Template</MudButton>
+            </MudStack>
 
             <MudDivider Class="my-2" />
 
@@ -210,4 +217,65 @@
     }
 
     private void Cancel() => MudDialog.Cancel();
+
+    private async Task OpenLoadTemplate()
+    {
+        var templates = await DbContext.SlabRuleTemplates
+            .Include(t => t.Details.Where(d => !d.IsDeleted))
+            .Where(t => !t.IsDeleted && t.IsActive)
+            .OrderBy(t => t.TemplateName)
+            .ToListAsync();
+
+        if (!templates.Any())
+        {
+            Snackbar.Add("No templates available. Save a template first.", Severity.Warning);
+            return;
+        }
+
+        var parameters = new DialogParameters<SlabTemplatePickerDialog>
+        {
+            { x => x.Templates, templates }
+        };
+        var options = new DialogOptions { MaxWidth = MaxWidth.Small, FullWidth = true };
+        var dialog = await DialogService.ShowAsync<SlabTemplatePickerDialog>("Load Template", parameters, options);
+        var result = await dialog.Result;
+
+        if (!result.Canceled && result.Data is SlabRuleTemplate selectedTemplate)
+        {
+            _slabRules.Clear();
+            foreach (var detail in selectedTemplate.Details.OrderBy(d => d.SortOrder))
+            {
+                _slabRules.Add(new RateCardSlabRule
+                {
+                    RateCardZoneId = RateCardZoneId,
+                    FromWeight = detail.FromWeight,
+                    ToWeight = detail.ToWeight,
+                    IncrementWeight = detail.IncrementWeight,
+                    IncrementRate = detail.IncrementRate,
+                    CalculationMode = detail.CalculationMode,
+                    SortOrder = detail.SortOrder,
+                    IsActive = true
+                });
+            }
+            Snackbar.Add($"Loaded template: {selectedTemplate.TemplateName}", Severity.Success);
+        }
+    }
+
+    private async Task OpenSaveTemplate()
+    {
+        var parameters = new DialogParameters<SlabTemplateSaveDialog>
+        {
+            { x => x.SlabRules, _slabRules },
+            { x => x.BaseWeight, _baseWeight },
+            { x => x.BaseRate, _baseRate }
+        };
+        var options = new DialogOptions { MaxWidth = MaxWidth.Small, FullWidth = true };
+        var dialog = await DialogService.ShowAsync<SlabTemplateSaveDialog>("Save as Template", parameters, options);
+        var result = await dialog.Result;
+
+        if (!result.Canceled)
+        {
+            Snackbar.Add("Template saved successfully", Severity.Success);
+        }
+    }
 }
