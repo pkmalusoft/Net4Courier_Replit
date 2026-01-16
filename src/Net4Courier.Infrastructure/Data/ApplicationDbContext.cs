@@ -33,6 +33,8 @@ public class ApplicationDbContext : DbContext
     public DbSet<Manifest> Manifests => Set<Manifest>();
     public DbSet<DRS> DRSs => Set<DRS>();
     public DbSet<DRSDetail> DRSDetails => Set<DRSDetail>();
+    public DbSet<OtherChargeType> OtherChargeTypes => Set<OtherChargeType>();
+    public DbSet<AWBOtherCharge> AWBOtherCharges => Set<AWBOtherCharge>();
     
     public DbSet<Invoice> Invoices => Set<Invoice>();
     public DbSet<InvoiceDetail> InvoiceDetails => Set<InvoiceDetail>();
@@ -270,6 +272,25 @@ public class ApplicationDbContext : DbContext
             entity.HasKey(e => e.Id);
             entity.HasOne(e => e.DRS).WithMany().HasForeignKey(e => e.DRSId);
             entity.HasOne(e => e.Inscan).WithMany().HasForeignKey(e => e.InscanId);
+        });
+
+        modelBuilder.Entity<OtherChargeType>(entity =>
+        {
+            entity.ToTable("OtherChargeTypes");
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Name).HasMaxLength(100).IsRequired();
+            entity.HasIndex(e => new { e.CompanyId, e.Name }).IsUnique();
+        });
+
+        modelBuilder.Entity<AWBOtherCharge>(entity =>
+        {
+            entity.ToTable("AWBOtherCharges");
+            entity.HasKey(e => e.Id);
+            entity.HasIndex(e => new { e.InscanId, e.OtherChargeTypeId }).IsUnique();
+            entity.HasOne(e => e.Inscan).WithMany(i => i.OtherCharges).HasForeignKey(e => e.InscanId)
+                  .OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne(e => e.OtherChargeType).WithMany().HasForeignKey(e => e.OtherChargeTypeId)
+                  .OnDelete(DeleteBehavior.Restrict);
         });
     }
 
