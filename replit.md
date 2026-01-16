@@ -115,6 +115,36 @@ cd src/Net4Courier.Web && dotnet run --urls http://0.0.0.0:5000
 18. [x] Geography Masters - Country, State, City, Location with hierarchical relationships
 19. [x] Financial Period Management - Auto-generated monthly periods with open/close control
 20. [x] Dynamic Other Charges - Configurable charge types with dialog selection in AWB entry
+21. [x] Pickup Management - Complete workflow from request to INSCAN with responsive mobile pages
+
+## Pickup Management Workflow
+The pickup management system handles the complete flow from customer request to hub receipt:
+
+### Status Flow
+1. **Pickup Request** - Customer/Staff creates a pickup request
+2. **Assigned for Collection** - Dispatcher assigns a courier (Delivery Agent)
+3. **Shipment Collected** - Courier picks up the shipment from customer location
+4. **Inscanned** - Storekeeper scans and receives the shipment at the hub
+
+### Pages
+- `/pickup-management` - Main dashboard with status filters, summary cards, and quick actions
+- `/pickup-request-new` - Create new pickup request (staff view)
+- `/pickup-inscan` - INSCAN page with barcode scanner input for storekeeper
+- `/courier-pickups` - Mobile-friendly courier view with assigned/collected tabs
+- `/customer/pickup-request` - Customer portal to request pickups
+- `/customer/my-pickups` - Customer portal to track their pickup requests
+
+### Entity: PickupRequest
+Fields: PickupNo, RequestDate, ScheduledDate, CustomerId, CourierId, customer/contact details, pickup address, EstimatedPieces/Weight, ActualPieces/Weight, Status, timestamps (AssignedAt, CollectedAt, InscannedAt), CollectionRemarks
+
+### Key Features
+- Auto-generated Pickup Numbers (PU + date + sequence)
+- Customer address autocomplete from saved addresses
+- Courier assignment dialog with delivery agent list
+- Collection confirmation dialog with actual pieces and remarks
+- Barcode scanner input for INSCAN (works with USB/Bluetooth scanners)
+- Real-time status count cards (pending/assigned/collected/inscanned)
+- Responsive design for mobile devices
 
 ## Dynamic Other Charges System
 - **OtherChargeType**: Master table for charge types (Handling, Insurance, Packaging, etc.)
@@ -154,14 +184,16 @@ Movement type is now calculated automatically based on origin/destination countr
 The Movement Type dropdown has been removed from AWBNew.razor and replaced with a color-coded chip that updates automatically when origin/destination countries change.
 
 ## Recent Changes (Jan 16, 2026)
-- Implemented Financial Period Management (auto-generated monthly periods, open/close control)
+- **Pickup Management Workflow**: Complete pickup-to-INSCAN workflow with 6 new pages
+- Added PickupRequest entity with PickupStatus enum (PickupRequest, AssignedForCollection, ShipmentCollected, Inscanned, Cancelled)
+- Created responsive Courier Pickups page for mobile field operations
+- Created INSCAN page with barcode scanner input support
+- Added Customer Portal layout with simplified navigation
+- Reorganized navigation menu into 16 major groups following ERP best practices
+- Party Type Classification: Added AccountNature (Receivable/Payable) to parties
+- Separate management pages for Customers, Delivery Agents, Co-Loaders, Forwarding Agents
+- Seeded forwarding agents: DHL Express, FedEx, Aramex, UPS, TNT
 - Added period validation to AWB entry form to prevent transactions in closed periods
-- Added IsActive property to BaseEntity for consistent soft-delete pattern
-- Fixed AWBNew.razor binding issues (Currency field now bound to entity, Auto AWB toggle regenerates AWB number)
-- Added Currency field to InscanMaster entity
-- Fixed date handling to properly convert to UTC
-- Removed duplicate ForwardingAWBNo bindings
-- Improved Forwarding Agent section layout
 
 ## Changes (Jan 15, 2026)
 - Implemented modular architecture with 6 separate modules

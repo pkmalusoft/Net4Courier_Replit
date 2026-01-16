@@ -1,0 +1,205 @@
+@page "/pickup-inscan"
+@inject ApplicationDbContext DbContext
+@inject NavigationManager NavigationManager
+@inject ISnackbar Snackbar
+@inject IJSRuntime JS
+@using Microsoft.EntityFrameworkCore
+@using Net4Courier.Infrastructure.Data
+@using Net4Courier.Operations.Entities
+
+<PageTitle>INSCAN - Net4Courier</PageTitle>
+
+<MudText Typo="Typo.h4" GutterBottom="true">INSCAN - Receive Shipments</MudText>
+
+<MudGrid>
+    <MudItem xs="12" md="6">
+        <MudPaper Class="pa-4" Elevation="2">
+            <MudText Typo="Typo.h6" GutterBottom="true">Scan or Enter Pickup No</MudText>
+            <MudTextField @ref="_scanField" @bind-Value="_scanInput" Label="Pickup No / Barcode" Variant="Variant.Outlined" 
+                          Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Filled.QrCodeScanner"
+                          OnKeyUp="OnScanKeyUp" FullWidth="true" AutoFocus="true"
+                          Placeholder="Scan barcode or type pickup number..." />
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="ProcessScan" FullWidth="true" Class="mt-3"
+                       StartIcon="@Icons.Material.Filled.Check" Size="Size.Large">
+                INSCAN
+            </MudButton>
+            
+            @if (!string.IsNullOrEmpty(_lastMessage))
+            {
+                <MudAlert Severity="@_lastSeverity" Class="mt-3" Dense="true">@_lastMessage</MudAlert>
+            }
+        </MudPaper>
+
+        <MudPaper Class="pa-4 mt-4" Elevation="2">
+            <MudText Typo="Typo.h6" GutterBottom="true">Pending for INSCAN</MudText>
+            <MudList T="PickupRequest" Dense="true">
+                @foreach (var pickup in _pendingPickups)
+                {
+                    <MudListItem OnClick="@(() => SelectPickup(pickup))">
+                        <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
+                            <MudStack Spacing="0">
+                                <MudText Typo="Typo.body1"><strong>@pickup.PickupNo</strong></MudText>
+                                <MudText Typo="Typo.caption">@pickup.CustomerName - @pickup.City</MudText>
+                            </MudStack>
+                            <MudChip T="string" Color="Color.Success" Size="Size.Small">Collected</MudChip>
+                        </MudStack>
+                    </MudListItem>
+                }
+                @if (!_pendingPickups.Any())
+                {
+                    <MudListItem>
+                        <MudText Color="Color.Secondary">No pending pickups for INSCAN</MudText>
+                    </MudListItem>
+                }
+            </MudList>
+        </MudPaper>
+    </MudItem>
+
+    <MudItem xs="12" md="6">
+        <MudPaper Class="pa-4" Elevation="2">
+            <MudText Typo="Typo.h6" GutterBottom="true">Recently Inscanned Today</MudText>
+            <MudSimpleTable Hover="true" Dense="true" Striped="true">
+                <thead>
+                    <tr>
+                        <th>Pickup No</th>
+                        <th>Customer</th>
+                        <th>Time</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var pickup in _inscannedToday)
+                    {
+                        <tr>
+                            <td>@pickup.PickupNo</td>
+                            <td>@pickup.CustomerName</td>
+                            <td>@pickup.InscannedAt?.ToString("HH:mm")</td>
+                        </tr>
+                    }
+                    @if (!_inscannedToday.Any())
+                    {
+                        <tr>
+                            <td colspan="3" class="text-center">No inscanned pickups today</td>
+                        </tr>
+                    }
+                </tbody>
+            </MudSimpleTable>
+        </MudPaper>
+
+        <MudPaper Class="pa-4 mt-4" Elevation="2" Style="background-color: #e8f5e9;">
+            <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
+                <MudStack Spacing="0">
+                    <MudText Typo="Typo.h3" Color="Color.Success">@_inscannedToday.Count</MudText>
+                    <MudText Typo="Typo.body2">Inscanned Today</MudText>
+                </MudStack>
+                <MudIcon Icon="@Icons.Material.Filled.CheckCircle" Size="Size.Large" Color="Color.Success" />
+            </MudStack>
+        </MudPaper>
+    </MudItem>
+</MudGrid>
+
+@code {
+    [SupplyParameterFromQuery] public long? pickupId { get; set; }
+    
+    private string _scanInput = "";
+    private string _lastMessage = "";
+    private Severity _lastSeverity = Severity.Info;
+    private List<PickupRequest> _pendingPickups = new();
+    private List<PickupRequest> _inscannedToday = new();
+    private MudTextField<string>? _scanField;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadData();
+        
+        if (pickupId.HasValue)
+        {
+            var pickup = _pendingPickups.FirstOrDefault(p => p.Id == pickupId.Value);
+            if (pickup != null)
+            {
+                _scanInput = pickup.PickupNo;
+            }
+        }
+    }
+
+    private async Task LoadData()
+    {
+        var today = DateTime.UtcNow.Date;
+        
+        _pendingPickups = await DbContext.PickupRequests
+            .Where(p => p.Status == PickupStatus.ShipmentCollected && !p.IsDeleted)
+            .OrderByDescending(p => p.CollectedAt)
+            .Take(50)
+            .ToListAsync();
+            
+        _inscannedToday = await DbContext.PickupRequests
+            .Where(p => p.Status == PickupStatus.Inscanned && !p.IsDeleted && p.InscannedAt >= today)
+            .OrderByDescending(p => p.InscannedAt)
+            .Take(50)
+            .ToListAsync();
+    }
+
+    private async Task OnScanKeyUp(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter")
+        {
+            await ProcessScan();
+        }
+    }
+
+    private async Task ProcessScan()
+    {
+        if (string.IsNullOrWhiteSpace(_scanInput))
+        {
+            _lastMessage = "Please enter or scan a pickup number";
+            _lastSeverity = Severity.Warning;
+            return;
+        }
+
+        var pickup = await DbContext.PickupRequests
+            .FirstOrDefaultAsync(p => p.PickupNo == _scanInput.Trim() && !p.IsDeleted);
+
+        if (pickup == null)
+        {
+            _lastMessage = $"Pickup {_scanInput} not found";
+            _lastSeverity = Severity.Error;
+            Snackbar.Add(_lastMessage, Severity.Error);
+        }
+        else if (pickup.Status == PickupStatus.Inscanned)
+        {
+            _lastMessage = $"Pickup {_scanInput} already inscanned";
+            _lastSeverity = Severity.Warning;
+            Snackbar.Add(_lastMessage, Severity.Warning);
+        }
+        else if (pickup.Status != PickupStatus.ShipmentCollected)
+        {
+            _lastMessage = $"Pickup {_scanInput} status is {pickup.Status}. Expected: Shipment Collected";
+            _lastSeverity = Severity.Warning;
+            Snackbar.Add(_lastMessage, Severity.Warning);
+        }
+        else
+        {
+            pickup.Status = PickupStatus.Inscanned;
+            pickup.InscannedAt = DateTime.UtcNow;
+            await DbContext.SaveChangesAsync();
+            
+            _lastMessage = $"Pickup {_scanInput} inscanned successfully!";
+            _lastSeverity = Severity.Success;
+            Snackbar.Add(_lastMessage, Severity.Success);
+            
+            await LoadData();
+        }
+
+        _scanInput = "";
+        StateHasChanged();
+        
+        if (_scanField != null)
+        {
+            await _scanField.FocusAsync();
+        }
+    }
+
+    private void SelectPickup(PickupRequest pickup)
+    {
+        _scanInput = pickup.PickupNo;
+    }
+}

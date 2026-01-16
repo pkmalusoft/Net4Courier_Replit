@@ -1,0 +1,274 @@
+@page "/pickup-request-new"
+@page "/pickup-request-edit/{Id:long}"
+@inject ApplicationDbContext DbContext
+@inject NavigationManager NavigationManager
+@inject ISnackbar Snackbar
+@using Microsoft.EntityFrameworkCore
+@using Net4Courier.Infrastructure.Data
+@using Net4Courier.Operations.Entities
+@using Net4Courier.Masters.Entities
+
+<PageTitle>@(_isEdit ? "Edit" : "New") Pickup Request - Net4Courier</PageTitle>
+
+<MudText Typo="Typo.h4" GutterBottom="true">@(_isEdit ? "Edit" : "New") Pickup Request</MudText>
+
+<MudPaper Class="pa-4" Elevation="2">
+    <MudForm @ref="_form" @bind-IsValid="_isValid">
+        <MudGrid>
+            <MudItem xs="12" sm="6" md="4">
+                <MudTextField @bind-Value="_entity.PickupNo" Label="Pickup No" Variant="Variant.Outlined" ReadOnly="true" />
+            </MudItem>
+            <MudItem xs="12" sm="6" md="4">
+                <MudDatePicker @bind-Date="_scheduledDate" Label="Scheduled Date" Variant="Variant.Outlined" DateFormat="dd/MM/yyyy" Required="true" />
+            </MudItem>
+            <MudItem xs="12" sm="6" md="4">
+                <MudChip T="string" Color="@GetStatusColor(_entity.Status)">@GetStatusText(_entity.Status)</MudChip>
+            </MudItem>
+        </MudGrid>
+
+        <MudDivider Class="my-4" />
+        <MudText Typo="Typo.h6" GutterBottom="true">Customer Details</MudText>
+        
+        <MudGrid>
+            <MudItem xs="12" sm="6">
+                <MudAutocomplete T="Party" Label="Select Customer" Value="_selectedCustomer" SearchFunc="SearchCustomers"
+                                 ToStringFunc="@(c => c?.Name ?? string.Empty)" Variant="Variant.Outlined"
+                                 ShowProgressIndicator="true" Dense="true" ResetValueOnEmptyText="true"
+                                 ValueChanged="OnCustomerSelected" />
+            </MudItem>
+            <MudItem xs="12" sm="6">
+                <MudTextField @bind-Value="_entity.CustomerName" Label="Customer Name" Variant="Variant.Outlined" Required="true" />
+            </MudItem>
+            <MudItem xs="12" sm="6" md="4">
+                <MudTextField @bind-Value="_entity.ContactPerson" Label="Contact Person" Variant="Variant.Outlined" />
+            </MudItem>
+            <MudItem xs="12" sm="6" md="4">
+                <MudTextField @bind-Value="_entity.Phone" Label="Phone" Variant="Variant.Outlined" />
+            </MudItem>
+            <MudItem xs="12" sm="6" md="4">
+                <MudTextField @bind-Value="_entity.Mobile" Label="Mobile" Variant="Variant.Outlined" Required="true" />
+            </MudItem>
+            <MudItem xs="12" sm="6">
+                <MudTextField @bind-Value="_entity.Email" Label="Email" Variant="Variant.Outlined" />
+            </MudItem>
+        </MudGrid>
+
+        <MudDivider Class="my-4" />
+        <MudText Typo="Typo.h6" GutterBottom="true">Pickup Address</MudText>
+
+        <MudGrid>
+            @if (_customerAddresses.Any())
+            {
+                <MudItem xs="12">
+                    <MudSelect T="long?" Value="_selectedAddressId" Label="Select Address" Variant="Variant.Outlined" 
+                               ValueChanged="OnAddressSelected" AnchorOrigin="Origin.BottomCenter">
+                        <MudSelectItem T="long?" Value="@((long?)null)">-- Enter New Address --</MudSelectItem>
+                        @foreach (var addr in _customerAddresses)
+                        {
+                            <MudSelectItem T="long?" Value="@((long?)addr.Id)">
+                                @addr.AddressType: @addr.Street, @addr.City - @addr.PostalCode
+                            </MudSelectItem>
+                        }
+                    </MudSelect>
+                </MudItem>
+            }
+            <MudItem xs="12">
+                <MudTextField @bind-Value="_entity.PickupAddress" Label="Address" Variant="Variant.Outlined" Required="true" Lines="2" />
+            </MudItem>
+            <MudItem xs="12" sm="6" md="3">
+                <MudTextField @bind-Value="_entity.City" Label="City" Variant="Variant.Outlined" Required="true" />
+            </MudItem>
+            <MudItem xs="12" sm="6" md="3">
+                <MudTextField @bind-Value="_entity.State" Label="State" Variant="Variant.Outlined" />
+            </MudItem>
+            <MudItem xs="12" sm="6" md="3">
+                <MudTextField @bind-Value="_entity.Country" Label="Country" Variant="Variant.Outlined" />
+            </MudItem>
+            <MudItem xs="12" sm="6" md="3">
+                <MudTextField @bind-Value="_entity.PostalCode" Label="Postal Code" Variant="Variant.Outlined" Required="true" />
+            </MudItem>
+            <MudItem xs="12">
+                <MudTextField @bind-Value="_entity.Landmark" Label="Landmark" Variant="Variant.Outlined" />
+            </MudItem>
+        </MudGrid>
+
+        <MudDivider Class="my-4" />
+        <MudText Typo="Typo.h6" GutterBottom="true">Package Details</MudText>
+
+        <MudGrid>
+            <MudItem xs="12" sm="6" md="3">
+                <MudNumericField @bind-Value="_entity.EstimatedPieces" Label="Estimated Pieces" Variant="Variant.Outlined" Min="1" />
+            </MudItem>
+            <MudItem xs="12" sm="6" md="3">
+                <MudNumericField @bind-Value="_entity.EstimatedWeight" Label="Estimated Weight (kg)" Variant="Variant.Outlined" Step="0.5M" />
+            </MudItem>
+            <MudItem xs="12" sm="6">
+                <MudTextField @bind-Value="_entity.ReferenceNo" Label="Reference No" Variant="Variant.Outlined" />
+            </MudItem>
+            <MudItem xs="12" sm="6">
+                <MudTextField @bind-Value="_entity.PONumber" Label="PO Number" Variant="Variant.Outlined" />
+            </MudItem>
+            <MudItem xs="12">
+                <MudTextField @bind-Value="_entity.PackageDescription" Label="Package Description" Variant="Variant.Outlined" Lines="2" />
+            </MudItem>
+            <MudItem xs="12">
+                <MudTextField @bind-Value="_entity.SpecialInstructions" Label="Special Instructions" Variant="Variant.Outlined" Lines="2" />
+            </MudItem>
+        </MudGrid>
+
+        <MudDivider Class="my-4" />
+        
+        <MudGrid>
+            <MudItem xs="12" Class="d-flex gap-2 flex-wrap">
+                <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="Save" Disabled="@(!_isValid)">
+                    @(_isEdit ? "Update" : "Create") Pickup Request
+                </MudButton>
+                <MudButton Variant="Variant.Outlined" Href="/pickup-management">Cancel</MudButton>
+            </MudItem>
+        </MudGrid>
+    </MudForm>
+</MudPaper>
+
+@code {
+    [Parameter] public long Id { get; set; }
+    
+    private PickupRequest _entity = new();
+    private MudForm _form = null!;
+    private bool _isValid;
+    private bool _isEdit;
+    private DateTime? _scheduledDate = DateTime.Today;
+    private Party? _selectedCustomer;
+    private List<PartyAddress> _customerAddresses = new();
+    private long? _selectedAddressId;
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (Id > 0)
+        {
+            _isEdit = true;
+            _entity = await DbContext.PickupRequests.FindAsync(Id) ?? new PickupRequest();
+            _scheduledDate = _entity.ScheduledDate?.Date;
+            if (_entity.CustomerId.HasValue)
+            {
+                _selectedCustomer = await DbContext.Parties
+                    .Include(p => p.Addresses)
+                    .FirstOrDefaultAsync(p => p.Id == _entity.CustomerId.Value);
+                if (_selectedCustomer != null)
+                {
+                    _customerAddresses = _selectedCustomer.Addresses.ToList();
+                }
+            }
+        }
+        else
+        {
+            _entity.PickupNo = await GeneratePickupNo();
+            _entity.RequestDate = DateTime.UtcNow;
+        }
+    }
+
+    private async Task<string> GeneratePickupNo()
+    {
+        var today = DateTime.UtcNow.Date;
+        var count = await DbContext.PickupRequests
+            .Where(p => p.RequestDate >= today)
+            .CountAsync();
+        return $"PU{DateTime.UtcNow:yyyyMMdd}{(count + 1):D4}";
+    }
+
+    private async Task<IEnumerable<Party>> SearchCustomers(string value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return Enumerable.Empty<Party>();
+            
+        return await DbContext.Parties
+            .Include(p => p.Addresses)
+            .Where(p => p.PartyType == PartyType.Customer && !p.IsDeleted && p.IsActive && 
+                       (p.Name.Contains(value) || (p.Code != null && p.Code.Contains(value))))
+            .Take(10)
+            .ToListAsync();
+    }
+
+    private async Task OnCustomerSelected(Party? customer)
+    {
+        _selectedCustomer = customer;
+        if (customer != null)
+        {
+            _entity.CustomerId = customer.Id;
+            _entity.CustomerName = customer.Name;
+            _entity.ContactPerson = customer.ContactPerson;
+            _entity.Phone = customer.Phone;
+            _entity.Mobile = customer.Mobile;
+            _entity.Email = customer.Email;
+            _customerAddresses = customer.Addresses.ToList();
+            
+            var defaultAddr = _customerAddresses.FirstOrDefault(a => a.IsDefault) ?? _customerAddresses.FirstOrDefault();
+            if (defaultAddr != null)
+            {
+                _selectedAddressId = defaultAddr.Id;
+                OnAddressSelected(defaultAddr.Id);
+            }
+        }
+        else
+        {
+            _entity.CustomerId = null;
+            _customerAddresses.Clear();
+        }
+        await Task.CompletedTask;
+    }
+
+    private void OnAddressSelected(long? addressId)
+    {
+        _selectedAddressId = addressId;
+        if (addressId.HasValue)
+        {
+            var addr = _customerAddresses.FirstOrDefault(a => a.Id == addressId.Value);
+            if (addr != null)
+            {
+                _entity.AddressId = addr.Id;
+                _entity.PickupAddress = $"{addr.BuildingName}, {addr.Street}, {addr.Area}".Trim().Trim(',');
+                _entity.City = addr.City;
+                _entity.State = addr.State;
+                _entity.Country = addr.Country;
+                _entity.PostalCode = addr.PostalCode;
+                _entity.Landmark = addr.Landmark;
+                _entity.Latitude = addr.Latitude;
+                _entity.Longitude = addr.Longitude;
+            }
+        }
+    }
+
+    private async Task Save()
+    {
+        _entity.ScheduledDate = _scheduledDate.HasValue ? DateTime.SpecifyKind(_scheduledDate.Value, DateTimeKind.Utc) : null;
+        
+        if (!_isEdit)
+        {
+            _entity.Status = PickupStatus.PickupRequest;
+            DbContext.PickupRequests.Add(_entity);
+        }
+        
+        await DbContext.SaveChangesAsync();
+        Snackbar.Add(_isEdit ? "Pickup request updated" : "Pickup request created", Severity.Success);
+        NavigationManager.NavigateTo("/pickup-management");
+    }
+
+    private Color GetStatusColor(PickupStatus status) => status switch
+    {
+        PickupStatus.PickupRequest => Color.Warning,
+        PickupStatus.AssignedForCollection => Color.Info,
+        PickupStatus.ShipmentCollected => Color.Success,
+        PickupStatus.Inscanned => Color.Secondary,
+        PickupStatus.Cancelled => Color.Error,
+        _ => Color.Default
+    };
+
+    private string GetStatusText(PickupStatus status) => status switch
+    {
+        PickupStatus.PickupRequest => "Pickup Request",
+        PickupStatus.AssignedForCollection => "Assigned for Collection",
+        PickupStatus.ShipmentCollected => "Shipment Collected",
+        PickupStatus.Inscanned => "Inscanned",
+        PickupStatus.Cancelled => "Cancelled",
+        _ => status.ToString()
+    };
+}

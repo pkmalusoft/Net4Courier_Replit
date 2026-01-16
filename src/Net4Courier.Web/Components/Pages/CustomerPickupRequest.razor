@@ -1,0 +1,179 @@
+@page "/customer/pickup-request"
+@layout CustomerLayout
+@inject ApplicationDbContext DbContext
+@inject NavigationManager NavigationManager
+@inject ISnackbar Snackbar
+@inject Microsoft.AspNetCore.Components.Authorization.AuthenticationStateProvider AuthStateProvider
+@using Microsoft.EntityFrameworkCore
+@using Net4Courier.Infrastructure.Data
+@using Net4Courier.Operations.Entities
+@using Net4Courier.Masters.Entities
+@using Net4Courier.Web.Services
+
+<PageTitle>Request Pickup - Net4Courier</PageTitle>
+
+<MudContainer MaxWidth="MaxWidth.Medium" Class="py-4">
+    <MudText Typo="Typo.h5" GutterBottom="true" Align="Align.Center">Request a Pickup</MudText>
+    
+    <MudPaper Class="pa-4" Elevation="2">
+        <MudForm @ref="_form" @bind-IsValid="_isValid">
+            <MudStack Spacing="3">
+                <MudDatePicker @bind-Date="_scheduledDate" Label="Preferred Pickup Date" Variant="Variant.Outlined" 
+                               DateFormat="dd/MM/yyyy" Required="true" MinDate="DateTime.Today" />
+                
+                <MudDivider />
+                <MudText Typo="Typo.subtitle1" GutterBottom="true">Pickup Address</MudText>
+                
+                @if (_savedAddresses.Any())
+                {
+                    <MudSelect T="long?" Value="_selectedAddressId" Label="Select Saved Address" Variant="Variant.Outlined" 
+                               ValueChanged="OnAddressSelected" AnchorOrigin="Origin.BottomCenter">
+                        <MudSelectItem T="long?" Value="@((long?)null)">-- Enter New Address --</MudSelectItem>
+                        @foreach (var addr in _savedAddresses)
+                        {
+                            <MudSelectItem T="long?" Value="@((long?)addr.Id)">
+                                @addr.AddressType: @addr.Street, @addr.City - @addr.PostalCode
+                            </MudSelectItem>
+                        }
+                    </MudSelect>
+                }
+                
+                <MudTextField @bind-Value="_entity.PickupAddress" Label="Pickup Address" Variant="Variant.Outlined" 
+                              Required="true" Lines="2" />
+                
+                <MudGrid>
+                    <MudItem xs="6">
+                        <MudTextField @bind-Value="_entity.City" Label="City" Variant="Variant.Outlined" Required="true" />
+                    </MudItem>
+                    <MudItem xs="6">
+                        <MudTextField @bind-Value="_entity.PostalCode" Label="Postal Code" Variant="Variant.Outlined" Required="true" />
+                    </MudItem>
+                </MudGrid>
+                
+                <MudTextField @bind-Value="_entity.Landmark" Label="Landmark (optional)" Variant="Variant.Outlined" />
+                
+                <MudDivider />
+                <MudText Typo="Typo.subtitle1" GutterBottom="true">Contact Details</MudText>
+                
+                <MudTextField @bind-Value="_entity.ContactPerson" Label="Contact Person" Variant="Variant.Outlined" Required="true" />
+                
+                <MudGrid>
+                    <MudItem xs="6">
+                        <MudTextField @bind-Value="_entity.Mobile" Label="Mobile" Variant="Variant.Outlined" Required="true" />
+                    </MudItem>
+                    <MudItem xs="6">
+                        <MudTextField @bind-Value="_entity.Phone" Label="Alternate Phone" Variant="Variant.Outlined" />
+                    </MudItem>
+                </MudGrid>
+                
+                <MudDivider />
+                <MudText Typo="Typo.subtitle1" GutterBottom="true">Package Information</MudText>
+                
+                <MudGrid>
+                    <MudItem xs="6">
+                        <MudNumericField @bind-Value="_entity.EstimatedPieces" Label="Number of Pieces" Variant="Variant.Outlined" Min="1" />
+                    </MudItem>
+                    <MudItem xs="6">
+                        <MudNumericField @bind-Value="_entity.EstimatedWeight" Label="Approx Weight (kg)" Variant="Variant.Outlined" />
+                    </MudItem>
+                </MudGrid>
+                
+                <MudTextField @bind-Value="_entity.PackageDescription" Label="Package Description" Variant="Variant.Outlined" Lines="2"
+                              Placeholder="What are you sending?" />
+                
+                <MudTextField @bind-Value="_entity.SpecialInstructions" Label="Special Instructions" Variant="Variant.Outlined" Lines="2"
+                              Placeholder="Any special handling requirements?" />
+                
+                <MudTextField @bind-Value="_entity.ReferenceNo" Label="Your Reference Number (optional)" Variant="Variant.Outlined" />
+                
+                <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="Submit" FullWidth="true" Size="Size.Large"
+                           Disabled="@(!_isValid)" StartIcon="@Icons.Material.Filled.Send">
+                    Submit Pickup Request
+                </MudButton>
+            </MudStack>
+        </MudForm>
+    </MudPaper>
+</MudContainer>
+
+@code {
+    private PickupRequest _entity = new();
+    private MudForm _form = null!;
+    private bool _isValid;
+    private DateTime? _scheduledDate = DateTime.Today.AddDays(1);
+    private List<PartyAddress> _savedAddresses = new();
+    private long? _selectedAddressId;
+    private Party? _customerParty;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+        var user = authState.User;
+        
+        if (user.Identity?.IsAuthenticated == true)
+        {
+            var userIdClaim = user.FindFirst("UserId")?.Value;
+            if (long.TryParse(userIdClaim, out var userId))
+            {
+                var dbUser = await DbContext.Users.FindAsync(userId);
+                if (dbUser != null)
+                {
+                    _entity.Email = dbUser.Email;
+                }
+            }
+        }
+        
+        _entity.EstimatedPieces = 1;
+    }
+
+    private void OnAddressSelected(long? addressId)
+    {
+        _selectedAddressId = addressId;
+        if (addressId.HasValue)
+        {
+            var addr = _savedAddresses.FirstOrDefault(a => a.Id == addressId.Value);
+            if (addr != null)
+            {
+                _entity.AddressId = addr.Id;
+                _entity.PickupAddress = $"{addr.BuildingName}, {addr.Street}, {addr.Area}".Trim().Trim(',');
+                _entity.City = addr.City;
+                _entity.State = addr.State;
+                _entity.Country = addr.Country;
+                _entity.PostalCode = addr.PostalCode;
+                _entity.Landmark = addr.Landmark;
+            }
+        }
+    }
+
+    private async Task Submit()
+    {
+        _entity.PickupNo = await GeneratePickupNo();
+        _entity.RequestDate = DateTime.UtcNow;
+        _entity.ScheduledDate = _scheduledDate.HasValue ? DateTime.SpecifyKind(_scheduledDate.Value, DateTimeKind.Utc) : null;
+        _entity.Status = PickupStatus.PickupRequest;
+        
+        if (_customerParty != null)
+        {
+            _entity.CustomerId = _customerParty.Id;
+            _entity.CustomerName = _customerParty.Name;
+        }
+        else
+        {
+            _entity.CustomerName = _entity.ContactPerson;
+        }
+        
+        DbContext.PickupRequests.Add(_entity);
+        await DbContext.SaveChangesAsync();
+        
+        Snackbar.Add($"Pickup request {_entity.PickupNo} submitted successfully!", Severity.Success);
+        NavigationManager.NavigateTo("/customer/my-pickups");
+    }
+
+    private async Task<string> GeneratePickupNo()
+    {
+        var today = DateTime.UtcNow.Date;
+        var count = await DbContext.PickupRequests
+            .Where(p => p.RequestDate >= today)
+            .CountAsync();
+        return $"PU{DateTime.UtcNow:yyyyMMdd}{(count + 1):D4}";
+    }
+}

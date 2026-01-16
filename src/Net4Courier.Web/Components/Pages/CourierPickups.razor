@@ -1,0 +1,185 @@
+@page "/courier-pickups"
+@inject ApplicationDbContext DbContext
+@inject ISnackbar Snackbar
+@inject IDialogService DialogService
+@using Microsoft.EntityFrameworkCore
+@using Net4Courier.Infrastructure.Data
+@using Net4Courier.Operations.Entities
+
+<PageTitle>My Pickups - Net4Courier</PageTitle>
+
+<MudText Typo="Typo.h5" GutterBottom="true">My Assigned Pickups</MudText>
+
+<MudTabs Elevation="2" Rounded="true" ApplyEffectsToContainer="true" PanelClass="pa-4">
+    <MudTabPanel Text="Assigned" BadgeData="@_assignedPickups.Count" BadgeColor="Color.Primary">
+        @if (_assignedPickups.Any())
+        {
+            <MudStack Spacing="3">
+                @foreach (var pickup in _assignedPickups)
+                {
+                    <MudCard Outlined="true">
+                        <MudCardContent>
+                            <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Start">
+                                <MudStack Spacing="1">
+                                    <MudText Typo="Typo.h6">@pickup.PickupNo</MudText>
+                                    <MudText Typo="Typo.body1"><strong>@pickup.CustomerName</strong></MudText>
+                                    <MudText Typo="Typo.body2">@pickup.ContactPerson</MudText>
+                                </MudStack>
+                                <MudChip T="string" Color="Color.Info" Size="Size.Small">Assigned</MudChip>
+                            </MudStack>
+                            
+                            <MudDivider Class="my-2" />
+                            
+                            <MudStack Spacing="1">
+                                <MudStack Row="true" AlignItems="AlignItems.Start">
+                                    <MudIcon Icon="@Icons.Material.Filled.LocationOn" Size="Size.Small" Color="Color.Primary" />
+                                    <MudText Typo="Typo.body2">@pickup.PickupAddress</MudText>
+                                </MudStack>
+                                <MudText Typo="Typo.body2" Class="ml-6">@pickup.City, @pickup.PostalCode</MudText>
+                                @if (!string.IsNullOrEmpty(pickup.Landmark))
+                                {
+                                    <MudText Typo="Typo.caption" Class="ml-6" Color="Color.Secondary">Near: @pickup.Landmark</MudText>
+                                }
+                            </MudStack>
+
+                            <MudDivider Class="my-2" />
+                            
+                            <MudStack Row="true" Spacing="2">
+                                <MudStack Row="true" AlignItems="AlignItems.Center">
+                                    <MudIcon Icon="@Icons.Material.Filled.Phone" Size="Size.Small" />
+                                    <MudLink Href="@($"tel:{pickup.Mobile ?? pickup.Phone}")" Typo="Typo.body2">
+                                        @(pickup.Mobile ?? pickup.Phone)
+                                    </MudLink>
+                                </MudStack>
+                                @if (pickup.EstimatedPieces.HasValue)
+                                {
+                                    <MudChip T="string" Size="Size.Small" Variant="Variant.Outlined">
+                                        @pickup.EstimatedPieces pcs @(pickup.EstimatedWeight.HasValue ? $"/ {pickup.EstimatedWeight:N1} kg" : "")
+                                    </MudChip>
+                                }
+                            </MudStack>
+
+                            @if (!string.IsNullOrEmpty(pickup.SpecialInstructions))
+                            {
+                                <MudAlert Severity="Severity.Info" Dense="true" Class="mt-2" NoIcon="true">
+                                    <MudText Typo="Typo.caption">@pickup.SpecialInstructions</MudText>
+                                </MudAlert>
+                            }
+                        </MudCardContent>
+                        <MudCardActions>
+                            <MudButton Variant="Variant.Filled" Color="Color.Success" FullWidth="true" Size="Size.Large"
+                                       StartIcon="@Icons.Material.Filled.CheckCircle" OnClick="@(() => MarkCollected(pickup))">
+                                Mark as Collected
+                            </MudButton>
+                        </MudCardActions>
+                    </MudCard>
+                }
+            </MudStack>
+        }
+        else
+        {
+            <MudAlert Severity="Severity.Info">No pickups assigned to you</MudAlert>
+        }
+    </MudTabPanel>
+    
+    <MudTabPanel Text="Collected" BadgeData="@_collectedPickups.Count" BadgeColor="Color.Success">
+        @if (_collectedPickups.Any())
+        {
+            <MudStack Spacing="2">
+                @foreach (var pickup in _collectedPickups)
+                {
+                    <MudCard Outlined="true">
+                        <MudCardContent>
+                            <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
+                                <MudStack Spacing="0">
+                                    <MudText Typo="Typo.subtitle1"><strong>@pickup.PickupNo</strong></MudText>
+                                    <MudText Typo="Typo.body2">@pickup.CustomerName</MudText>
+                                    <MudText Typo="Typo.caption" Color="Color.Secondary">@pickup.City</MudText>
+                                </MudStack>
+                                <MudStack Spacing="0" AlignItems="AlignItems.End">
+                                    <MudChip T="string" Color="Color.Success" Size="Size.Small">Collected</MudChip>
+                                    <MudText Typo="Typo.caption">@pickup.CollectedAt?.ToString("HH:mm")</MudText>
+                                </MudStack>
+                            </MudStack>
+                        </MudCardContent>
+                    </MudCard>
+                }
+            </MudStack>
+        }
+        else
+        {
+            <MudAlert Severity="Severity.Info">No collected pickups</MudAlert>
+        }
+    </MudTabPanel>
+</MudTabs>
+
+<MudPaper Class="pa-3 mt-4" Elevation="2" Style="background-color: #e3f2fd;">
+    <MudStack Row="true" Justify="Justify.SpaceAround">
+        <MudStack Spacing="0" AlignItems="AlignItems.Center">
+            <MudText Typo="Typo.h4" Color="Color.Primary">@_assignedPickups.Count</MudText>
+            <MudText Typo="Typo.caption">Pending</MudText>
+        </MudStack>
+        <MudDivider Vertical="true" FlexItem="true" />
+        <MudStack Spacing="0" AlignItems="AlignItems.Center">
+            <MudText Typo="Typo.h4" Color="Color.Success">@_collectedPickups.Count</MudText>
+            <MudText Typo="Typo.caption">Collected</MudText>
+        </MudStack>
+    </MudStack>
+</MudPaper>
+
+<MudFab Color="Color.Primary" StartIcon="@Icons.Material.Filled.Refresh" Size="Size.Large" 
+        Style="position: fixed; bottom: 20px; right: 20px;" OnClick="LoadData" />
+
+@code {
+    private List<PickupRequest> _assignedPickups = new();
+    private List<PickupRequest> _collectedPickups = new();
+    private long? _currentCourierId;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadData();
+    }
+
+    private async Task LoadData()
+    {
+        var today = DateTime.UtcNow.Date;
+        
+        _assignedPickups = await DbContext.PickupRequests
+            .Where(p => p.Status == PickupStatus.AssignedForCollection && !p.IsDeleted)
+            .OrderBy(p => p.ScheduledDate)
+            .ThenBy(p => p.RequestDate)
+            .ToListAsync();
+            
+        _collectedPickups = await DbContext.PickupRequests
+            .Where(p => p.Status == PickupStatus.ShipmentCollected && !p.IsDeleted && p.CollectedAt >= today)
+            .OrderByDescending(p => p.CollectedAt)
+            .ToListAsync();
+            
+        StateHasChanged();
+    }
+
+    private async Task MarkCollected(PickupRequest pickup)
+    {
+        var parameters = new DialogParameters<CollectPickupDialog>
+        {
+            { x => x.Pickup, pickup }
+        };
+        var options = new DialogOptions { CloseButton = true, MaxWidth = MaxWidth.Small, FullWidth = true };
+        var dialog = await DialogService.ShowAsync<CollectPickupDialog>("Collect Pickup", parameters, options);
+        var result = await dialog.Result;
+        
+        if (result != null && !result.Canceled && result.Data is CollectPickupDialog.CollectionResult collectionResult)
+        {
+            pickup.Status = PickupStatus.ShipmentCollected;
+            pickup.CollectedAt = DateTime.UtcNow;
+            pickup.CollectionRemarks = collectionResult.Remarks;
+            if (collectionResult.ActualPieces.HasValue)
+            {
+                pickup.ActualPieces = collectionResult.ActualPieces;
+            }
+            await DbContext.SaveChangesAsync();
+            Snackbar.Add($"Pickup {pickup.PickupNo} marked as collected!", Severity.Success);
+            await LoadData();
+        }
+    }
+}

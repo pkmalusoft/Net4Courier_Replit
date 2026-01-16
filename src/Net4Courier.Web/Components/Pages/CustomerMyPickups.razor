@@ -1,0 +1,147 @@
+@page "/customer/my-pickups"
+@layout CustomerLayout
+@inject ApplicationDbContext DbContext
+@inject ISnackbar Snackbar
+@using Microsoft.EntityFrameworkCore
+@using Net4Courier.Infrastructure.Data
+@using Net4Courier.Operations.Entities
+
+<PageTitle>My Pickups - Net4Courier</PageTitle>
+
+<MudContainer MaxWidth="MaxWidth.Large" Class="py-4">
+    <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center" Class="mb-4">
+        <MudText Typo="Typo.h5">My Pickup Requests</MudText>
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" Href="/customer/pickup-request"
+                   StartIcon="@Icons.Material.Filled.Add">
+            New Pickup
+        </MudButton>
+    </MudStack>
+    
+    @if (_pickups.Any())
+    {
+        <MudStack Spacing="3">
+            @foreach (var pickup in _pickups)
+            {
+                <MudCard Outlined="true">
+                    <MudCardContent>
+                        <MudGrid>
+                            <MudItem xs="12" sm="8">
+                                <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Start">
+                                    <MudStack Spacing="0">
+                                        <MudText Typo="Typo.h6">@pickup.PickupNo</MudText>
+                                        <MudText Typo="Typo.caption" Color="Color.Secondary">
+                                            Requested: @pickup.RequestDate.ToString("dd MMM yyyy, HH:mm")
+                                        </MudText>
+                                    </MudStack>
+                                    <MudChip T="string" Color="@GetStatusColor(pickup.Status)" Size="Size.Small">
+                                        @GetStatusText(pickup.Status)
+                                    </MudChip>
+                                </MudStack>
+                                
+                                <MudDivider Class="my-2" />
+                                
+                                <MudStack Row="true" Spacing="2">
+                                    <MudIcon Icon="@Icons.Material.Filled.LocationOn" Size="Size.Small" Color="Color.Primary" />
+                                    <MudText Typo="Typo.body2">@pickup.PickupAddress, @pickup.City - @pickup.PostalCode</MudText>
+                                </MudStack>
+                                
+                                @if (pickup.ScheduledDate.HasValue)
+                                {
+                                    <MudStack Row="true" Spacing="2" Class="mt-1">
+                                        <MudIcon Icon="@Icons.Material.Filled.Event" Size="Size.Small" Color="Color.Secondary" />
+                                        <MudText Typo="Typo.body2">Scheduled: @pickup.ScheduledDate.Value.ToString("dd MMM yyyy")</MudText>
+                                    </MudStack>
+                                }
+                            </MudItem>
+                            <MudItem xs="12" sm="4">
+                                <MudPaper Class="pa-3" Style="@GetStatusBackground(pickup.Status)">
+                                    <MudStack Spacing="1">
+                                        @if (pickup.Status == PickupStatus.AssignedForCollection && !string.IsNullOrEmpty(pickup.CourierName))
+                                        {
+                                            <MudText Typo="Typo.caption">Courier Assigned:</MudText>
+                                            <MudText Typo="Typo.body2"><strong>@pickup.CourierName</strong></MudText>
+                                            @if (!string.IsNullOrEmpty(pickup.CourierPhone))
+                                            {
+                                                <MudLink Href="@($"tel:{pickup.CourierPhone}")" Typo="Typo.body2">
+                                                    @pickup.CourierPhone
+                                                </MudLink>
+                                            }
+                                        }
+                                        else if (pickup.Status == PickupStatus.ShipmentCollected)
+                                        {
+                                            <MudText Typo="Typo.caption">Collected at:</MudText>
+                                            <MudText Typo="Typo.body2">@pickup.CollectedAt?.ToString("dd MMM, HH:mm")</MudText>
+                                        }
+                                        else if (pickup.Status == PickupStatus.Inscanned)
+                                        {
+                                            <MudText Typo="Typo.caption">Received at hub:</MudText>
+                                            <MudText Typo="Typo.body2">@pickup.InscannedAt?.ToString("dd MMM, HH:mm")</MudText>
+                                        }
+                                        else if (pickup.Status == PickupStatus.PickupRequest)
+                                        {
+                                            <MudText Typo="Typo.caption">Status:</MudText>
+                                            <MudText Typo="Typo.body2">Awaiting courier assignment</MudText>
+                                        }
+                                    </MudStack>
+                                </MudPaper>
+                            </MudItem>
+                        </MudGrid>
+                    </MudCardContent>
+                </MudCard>
+            }
+        </MudStack>
+    }
+    else
+    {
+        <MudPaper Class="pa-6 text-center" Elevation="0">
+            <MudIcon Icon="@Icons.Material.Filled.LocalShipping" Size="Size.Large" Color="Color.Secondary" />
+            <MudText Typo="Typo.h6" Class="mt-2">No pickup requests yet</MudText>
+            <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-4">Request your first pickup to get started</MudText>
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" Href="/customer/pickup-request">
+                Request Pickup
+            </MudButton>
+        </MudPaper>
+    }
+</MudContainer>
+
+@code {
+    private List<PickupRequest> _pickups = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        _pickups = await DbContext.PickupRequests
+            .Where(p => !p.IsDeleted)
+            .OrderByDescending(p => p.RequestDate)
+            .Take(50)
+            .ToListAsync();
+    }
+
+    private Color GetStatusColor(PickupStatus status) => status switch
+    {
+        PickupStatus.PickupRequest => Color.Warning,
+        PickupStatus.AssignedForCollection => Color.Info,
+        PickupStatus.ShipmentCollected => Color.Success,
+        PickupStatus.Inscanned => Color.Secondary,
+        PickupStatus.Cancelled => Color.Error,
+        _ => Color.Default
+    };
+
+    private string GetStatusText(PickupStatus status) => status switch
+    {
+        PickupStatus.PickupRequest => "Pending",
+        PickupStatus.AssignedForCollection => "Courier Assigned",
+        PickupStatus.ShipmentCollected => "Collected",
+        PickupStatus.Inscanned => "At Hub",
+        PickupStatus.Cancelled => "Cancelled",
+        _ => status.ToString()
+    };
+
+    private string GetStatusBackground(PickupStatus status) => status switch
+    {
+        PickupStatus.PickupRequest => "background-color: #fff3e0;",
+        PickupStatus.AssignedForCollection => "background-color: #e3f2fd;",
+        PickupStatus.ShipmentCollected => "background-color: #e8f5e9;",
+        PickupStatus.Inscanned => "background-color: #f3e5f5;",
+        _ => "background-color: #f5f5f5;"
+    };
+}

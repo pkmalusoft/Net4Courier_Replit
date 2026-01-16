@@ -35,6 +35,7 @@ public class ApplicationDbContext : DbContext
     public DbSet<DRSDetail> DRSDetails => Set<DRSDetail>();
     public DbSet<OtherChargeType> OtherChargeTypes => Set<OtherChargeType>();
     public DbSet<AWBOtherCharge> AWBOtherCharges => Set<AWBOtherCharge>();
+    public DbSet<PickupRequest> PickupRequests => Set<PickupRequest>();
     
     public DbSet<Invoice> Invoices => Set<Invoice>();
     public DbSet<InvoiceDetail> InvoiceDetails => Set<InvoiceDetail>();
@@ -291,6 +292,18 @@ public class ApplicationDbContext : DbContext
                   .OnDelete(DeleteBehavior.Cascade);
             entity.HasOne(e => e.OtherChargeType).WithMany().HasForeignKey(e => e.OtherChargeTypeId)
                   .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        modelBuilder.Entity<PickupRequest>(entity =>
+        {
+            entity.ToTable("PickupRequests");
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.PickupNo).HasMaxLength(50);
+            entity.HasIndex(e => e.PickupNo);
+            entity.HasIndex(e => new { e.BranchId, e.RequestDate });
+            entity.HasIndex(e => new { e.CustomerId, e.Status });
+            entity.HasIndex(e => new { e.CourierId, e.Status });
+            entity.HasIndex(e => e.Status);
         });
     }
 
