@@ -1,0 +1,124 @@
+@using Net4Courier.Operations.Entities
+@using Net4Courier.Web.Services
+@inject ShipmentStatusService StatusService
+
+<MudPaper Class="pa-4" Elevation="1">
+    <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center" Class="mb-4">
+        <MudText Typo="Typo.h6">Shipment Timeline</MudText>
+        <MudIconButton Icon="@Icons.Material.Filled.Refresh" Size="Size.Small" OnClick="LoadTimeline" />
+    </MudStack>
+
+    @if (_loading)
+    {
+        <MudProgressLinear Indeterminate="true" />
+    }
+    else if (!_timeline.Any())
+    {
+        <MudAlert Severity="Severity.Info">No timeline events recorded</MudAlert>
+    }
+    else
+    {
+        <MudTimeline TimelinePosition="TimelinePosition.Start">
+            @foreach (var item in _timeline.OrderByDescending(t => t.ChangedAt))
+            {
+                <MudTimelineItem Color="@GetItemColor(item)" Size="Size.Small" Variant="Variant.Filled">
+                    <ItemOpposite>
+                        <MudStack Spacing="0" AlignItems="AlignItems.End">
+                            <MudText Typo="Typo.caption">@item.ChangedAt.ToString("dd-MMM-yyyy")</MudText>
+                            <MudText Typo="Typo.caption" Color="Color.Secondary">@item.ChangedAt.ToString("HH:mm:ss")</MudText>
+                        </MudStack>
+                    </ItemOpposite>
+                    <ItemContent>
+                        <MudStack Spacing="0">
+                            <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="1">
+                                <MudText Typo="Typo.body1"><strong>@item.Status.Name</strong></MudText>
+                                @if (item.IsAutomatic)
+                                {
+                                    <MudChip T="string" Size="Size.Small" Color="Color.Info">Auto</MudChip>
+                                }
+                            </MudStack>
+                            <MudText Typo="Typo.body2" Color="Color.Secondary">@item.Status.TimelineDescription</MudText>
+                            @if (!string.IsNullOrEmpty(item.LocationName))
+                            {
+                                <MudText Typo="Typo.caption" Color="Color.Secondary">
+                                    <MudIcon Icon="@Icons.Material.Filled.LocationOn" Size="Size.Small" /> @item.LocationName
+                                </MudText>
+                            }
+                            @if (!string.IsNullOrEmpty(item.UserName))
+                            {
+                                <MudText Typo="Typo.caption" Color="Color.Secondary">
+                                    <MudIcon Icon="@Icons.Material.Filled.Person" Size="Size.Small" /> @item.UserName
+                                </MudText>
+                            }
+                            @if (!string.IsNullOrEmpty(item.Remarks))
+                            {
+                                <MudText Typo="Typo.caption" Style="font-style: italic;">@item.Remarks</MudText>
+                            }
+                        </MudStack>
+                    </ItemContent>
+                </MudTimelineItem>
+            }
+        </MudTimeline>
+    }
+</MudPaper>
+
+@code {
+    [Parameter] public long InscanMasterId { get; set; }
+    [Parameter] public string? AWBNo { get; set; }
+
+    private bool _loading;
+    private List<ShipmentStatusHistory> _timeline = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadTimeline();
+    }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        await LoadTimeline();
+    }
+
+    private async Task LoadTimeline()
+    {
+        _loading = true;
+        StateHasChanged();
+
+        try
+        {
+            if (InscanMasterId > 0)
+            {
+                _timeline = await StatusService.GetTimeline(InscanMasterId);
+            }
+            else if (!string.IsNullOrEmpty(AWBNo))
+            {
+                _timeline = await StatusService.GetTimelineByAWB(AWBNo);
+            }
+        }
+        finally
+        {
+            _loading = false;
+            StateHasChanged();
+        }
+    }
+
+    private Color GetItemColor(ShipmentStatusHistory item)
+    {
+        if (item.Status.IsException) return Color.Warning;
+        if (item.Status.IsTerminal) return Color.Success;
+        
+        return item.StatusGroup.Code switch
+        {
+            "PRE_PICKUP" => Color.Default,
+            "COLLECTION" => Color.Info,
+            "ORIGIN_WH" => Color.Warning,
+            "TRANSIT" => Color.Secondary,
+            "DEST_WH" => Color.Tertiary,
+            "DELIVERY" => Color.Success,
+            "EXCEPTION" => Color.Error,
+            "FINANCE" => Color.Primary,
+            "CLOSED" => Color.Dark,
+            _ => Color.Default
+        };
+    }
+}

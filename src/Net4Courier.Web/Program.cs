@@ -69,6 +69,7 @@ builder.Services.AddScoped<ReportingService>();
 builder.Services.AddScoped<RatingEngineService>();
 builder.Services.AddScoped<DRSReconciliationService>();
 builder.Services.AddScoped<InvoicingService>();
+builder.Services.AddScoped<ShipmentStatusService>();
 builder.Services.AddAuthorizationCore();
 builder.Services.AddCascadingAuthenticationState();
 
@@ -120,6 +121,83 @@ using (var scope = app.Services.CreateScope())
     {
         await dbContext.Database.EnsureCreatedAsync();
         
+        // Create ShipmentStatus tables if they don't exist (for incremental schema updates)
+        await dbContext.Database.ExecuteSqlRawAsync(@"
+            CREATE TABLE IF NOT EXISTS ""ShipmentStatusGroups"" (
+                ""Id"" BIGSERIAL PRIMARY KEY,
+                ""Code"" VARCHAR(50) NOT NULL,
+                ""Name"" VARCHAR(200) NOT NULL,
+                ""Description"" TEXT,
+                ""SequenceNo"" INT NOT NULL DEFAULT 0,
+                ""IconName"" VARCHAR(50),
+                ""ColorCode"" VARCHAR(20),
+                ""IsActive"" BOOLEAN NOT NULL DEFAULT TRUE,
+                ""IsDeleted"" BOOLEAN NOT NULL DEFAULT FALSE,
+                ""CreatedAt"" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                ""ModifiedAt"" TIMESTAMP WITH TIME ZONE,
+                ""CreatedBy"" INT,
+                ""ModifiedBy"" INT
+            );
+            CREATE UNIQUE INDEX IF NOT EXISTS ""IX_ShipmentStatusGroups_Code"" ON ""ShipmentStatusGroups"" (""Code"");
+        ");
+        
+        await dbContext.Database.ExecuteSqlRawAsync(@"
+            CREATE TABLE IF NOT EXISTS ""ShipmentStatuses"" (
+                ""Id"" BIGSERIAL PRIMARY KEY,
+                ""StatusGroupId"" BIGINT NOT NULL REFERENCES ""ShipmentStatusGroups""(""Id"") ON DELETE CASCADE,
+                ""Code"" VARCHAR(50) NOT NULL,
+                ""Name"" VARCHAR(200) NOT NULL,
+                ""TimelineDescription"" TEXT,
+                ""SequenceNo"" INT NOT NULL DEFAULT 0,
+                ""IsTerminal"" BOOLEAN NOT NULL DEFAULT FALSE,
+                ""IsException"" BOOLEAN NOT NULL DEFAULT FALSE,
+                ""MapsToCourierStatus"" INT,
+                ""IconName"" VARCHAR(50),
+                ""ColorCode"" VARCHAR(20),
+                ""RequiresPOD"" BOOLEAN NOT NULL DEFAULT FALSE,
+                ""RequiresLocation"" BOOLEAN NOT NULL DEFAULT FALSE,
+                ""RequiresRemarks"" BOOLEAN NOT NULL DEFAULT FALSE,
+                ""IsActive"" BOOLEAN NOT NULL DEFAULT TRUE,
+                ""IsDeleted"" BOOLEAN NOT NULL DEFAULT FALSE,
+                ""CreatedAt"" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                ""ModifiedAt"" TIMESTAMP WITH TIME ZONE,
+                ""CreatedBy"" INT,
+                ""ModifiedBy"" INT
+            );
+            CREATE UNIQUE INDEX IF NOT EXISTS ""IX_ShipmentStatuses_Code"" ON ""ShipmentStatuses"" (""Code"");
+            CREATE INDEX IF NOT EXISTS ""IX_ShipmentStatuses_GroupId"" ON ""ShipmentStatuses"" (""StatusGroupId"");
+        ");
+        
+        await dbContext.Database.ExecuteSqlRawAsync(@"
+            CREATE TABLE IF NOT EXISTS ""ShipmentStatusHistories"" (
+                ""Id"" BIGSERIAL PRIMARY KEY,
+                ""InscanMasterId"" BIGINT NOT NULL REFERENCES ""InscanMasters""(""Id"") ON DELETE CASCADE,
+                ""StatusId"" BIGINT NOT NULL REFERENCES ""ShipmentStatuses""(""Id"") ON DELETE CASCADE,
+                ""StatusGroupId"" BIGINT NOT NULL REFERENCES ""ShipmentStatusGroups""(""Id"") ON DELETE CASCADE,
+                ""EventType"" VARCHAR(100) NOT NULL,
+                ""EventRefId"" BIGINT,
+                ""EventRefType"" VARCHAR(100),
+                ""BranchId"" BIGINT,
+                ""LocationName"" VARCHAR(200),
+                ""UserId"" BIGINT,
+                ""UserName"" VARCHAR(200),
+                ""Remarks"" TEXT,
+                ""ChangedAt"" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                ""IsAutomatic"" BOOLEAN NOT NULL DEFAULT FALSE,
+                ""DeviceInfo"" VARCHAR(500),
+                ""Latitude"" DECIMAL(10,7),
+                ""Longitude"" DECIMAL(10,7),
+                ""IsActive"" BOOLEAN NOT NULL DEFAULT TRUE,
+                ""IsDeleted"" BOOLEAN NOT NULL DEFAULT FALSE,
+                ""CreatedAt"" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                ""ModifiedAt"" TIMESTAMP WITH TIME ZONE,
+                ""CreatedBy"" INT,
+                ""ModifiedBy"" INT
+            );
+            CREATE INDEX IF NOT EXISTS ""IX_ShipmentStatusHistories_InscanMasterId"" ON ""ShipmentStatusHistories"" (""InscanMasterId"");
+            CREATE INDEX IF NOT EXISTS ""IX_ShipmentStatusHistories_Timeline"" ON ""ShipmentStatusHistories"" (""InscanMasterId"", ""ChangedAt"" DESC);
+        ");
+        
         var authService = scope.ServiceProvider.GetRequiredService<AuthService>();
         await authService.SeedAdminUserAsync();
         
@@ -140,6 +218,9 @@ using (var scope = app.Services.CreateScope())
             await dbContext.SaveChangesAsync();
             Console.WriteLine("Seeded OtherChargeTypes data");
         }
+        
+        var shipmentStatusService = scope.ServiceProvider.GetRequiredService<ShipmentStatusService>();
+        await shipmentStatusService.SeedDefaultStatuses();
         
         if (!await dbContext.Parties.AnyAsync(p => p.PartyType == Net4Courier.Masters.Entities.PartyType.ForwardingAgent))
         {

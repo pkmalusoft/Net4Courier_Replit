@@ -61,6 +61,10 @@ public class ApplicationDbContext : DbContext
     public DbSet<CustomerRateAssignment> CustomerRateAssignments => Set<CustomerRateAssignment>();
     public DbSet<SlabRuleTemplate> SlabRuleTemplates => Set<SlabRuleTemplate>();
     public DbSet<SlabRuleTemplateDetail> SlabRuleTemplateDetails => Set<SlabRuleTemplateDetail>();
+    
+    public DbSet<ShipmentStatusGroup> ShipmentStatusGroups => Set<ShipmentStatusGroup>();
+    public DbSet<ShipmentStatus> ShipmentStatuses => Set<ShipmentStatus>();
+    public DbSet<ShipmentStatusHistory> ShipmentStatusHistories => Set<ShipmentStatusHistory>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -486,6 +490,57 @@ public class ApplicationDbContext : DbContext
             entity.HasKey(e => e.Id);
             entity.Property(e => e.VehicleNo).HasMaxLength(50).IsRequired();
             entity.HasIndex(e => e.VehicleNo);
+        });
+
+        modelBuilder.Entity<ShipmentStatusGroup>(entity =>
+        {
+            entity.ToTable("ShipmentStatusGroups");
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Code).HasMaxLength(30).IsRequired();
+            entity.Property(e => e.Name).HasMaxLength(100).IsRequired();
+            entity.Property(e => e.Description).HasMaxLength(500);
+            entity.Property(e => e.IconName).HasMaxLength(50);
+            entity.Property(e => e.ColorCode).HasMaxLength(20);
+            entity.HasIndex(e => e.Code).IsUnique();
+            entity.HasIndex(e => e.SequenceNo);
+        });
+
+        modelBuilder.Entity<ShipmentStatus>(entity =>
+        {
+            entity.ToTable("ShipmentStatuses");
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Code).HasMaxLength(50).IsRequired();
+            entity.Property(e => e.Name).HasMaxLength(100).IsRequired();
+            entity.Property(e => e.TimelineDescription).HasMaxLength(200);
+            entity.Property(e => e.IconName).HasMaxLength(50);
+            entity.Property(e => e.ColorCode).HasMaxLength(20);
+            entity.HasIndex(e => e.Code).IsUnique();
+            entity.HasIndex(e => new { e.StatusGroupId, e.SequenceNo });
+            entity.HasOne(e => e.StatusGroup).WithMany(g => g.Statuses).HasForeignKey(e => e.StatusGroupId)
+                  .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        modelBuilder.Entity<ShipmentStatusHistory>(entity =>
+        {
+            entity.ToTable("ShipmentStatusHistories");
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.EventType).HasMaxLength(50);
+            entity.Property(e => e.EventRefType).HasMaxLength(50);
+            entity.Property(e => e.LocationName).HasMaxLength(200);
+            entity.Property(e => e.UserName).HasMaxLength(100);
+            entity.Property(e => e.Remarks).HasMaxLength(500);
+            entity.Property(e => e.DeviceInfo).HasMaxLength(200);
+            entity.Property(e => e.Latitude).HasPrecision(10, 6);
+            entity.Property(e => e.Longitude).HasPrecision(10, 6);
+            entity.HasIndex(e => new { e.InscanMasterId, e.ChangedAt });
+            entity.HasIndex(e => new { e.StatusId, e.ChangedAt });
+            entity.HasIndex(e => e.ChangedAt);
+            entity.HasOne(e => e.InscanMaster).WithMany().HasForeignKey(e => e.InscanMasterId)
+                  .OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne(e => e.Status).WithMany(s => s.History).HasForeignKey(e => e.StatusId)
+                  .OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(e => e.StatusGroup).WithMany().HasForeignKey(e => e.StatusGroupId)
+                  .OnDelete(DeleteBehavior.Restrict);
         });
     }
 

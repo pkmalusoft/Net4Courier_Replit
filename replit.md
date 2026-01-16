@@ -63,6 +63,14 @@ The application is built on .NET 8 Blazor Server, utilizing a modular architectu
     - **Bulk POD Update**: Desktop interface for updating multiple AWBs simultaneously.
     - **Barcode Scanner**: Device camera-based AWB barcode/QR scanning for quick lookup.
     - **Offline Support**: IndexedDB storage for offline POD capture with sync when online.
+- **Shipment Status Timeline**:
+    - **Database-Driven Status Management**: Flexible status groups and statuses configurable via admin UI instead of hardcoded enums.
+    - **9 Status Groups**: Pre-Pickup, Collection, Origin Warehouse, Transit, Destination Warehouse, Delivery, Exception/Return, Billing, Closed with 27+ baseline statuses.
+    - **Timeline History**: Complete chronological record of every status change with user, location, timestamp, and remarks.
+    - **Automatic Status Updates**: Integrated into PickupInscan (SHIPMENT_COLLECTED, INSCAN_ORIGIN), Outscan/DRS (OUT_FOR_DELIVERY), POD capture (DELIVERED, POD_CAPTURED, DELIVERY_FAILED), and Invoice generation (INVOICED).
+    - **AWB Timeline Component**: Visual timeline display on AWB details page with color-coded status groups.
+    - **Status Management Admin Page**: CRUD operations for status groups and statuses with sequence ordering.
+    - **CourierStatus Mapping**: Optional mapping from database statuses to legacy CourierStatus enum for backward compatibility.
 
 ## External Dependencies
 - **Database**: PostgreSQL (hosted on Replit)

@@ -3,13 +3,18 @@ namespace Net4Courier.Kernel.Enums;
 public enum CourierStatus
 {
     Pending = 0,
-    PickedUp = 1,
-    InTransit = 2,
-    OutForDelivery = 3,
-    Delivered = 4,
-    Returned = 5,
-    OnHold = 6,
-    Cancelled = 7
+    AssignedToPickup = 1,
+    PickedUp = 2,
+    InscanAtOrigin = 3,
+    InTransit = 4,
+    InscanAtDestination = 5,
+    OutForDelivery = 6,
+    Delivered = 7,
+    NotDelivered = 8,
+    ReturnToOrigin = 9,
+    Returned = 10,
+    OnHold = 11,
+    Cancelled = 12
 }
 
 public enum PaymentMode

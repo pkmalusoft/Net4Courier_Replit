@@ -1,0 +1,352 @@
+@page "/status-management"
+@using Net4Courier.Infrastructure.Data
+@using Net4Courier.Operations.Entities
+@using Net4Courier.Web.Services
+@using Net4Courier.Kernel.Enums
+@using Microsoft.EntityFrameworkCore
+@inject ApplicationDbContext Context
+@inject ShipmentStatusService StatusService
+@inject ISnackbar Snackbar
+@inject IDialogService DialogService
+@rendermode InteractiveServer
+
+<PageTitle>Status Management</PageTitle>
+
+<MudContainer MaxWidth="MaxWidth.ExtraLarge" Class="py-4">
+    <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center" Class="mb-4">
+        <MudText Typo="Typo.h5">Shipment Status Management</MudText>
+        <MudStack Row="true" Spacing="2">
+            <MudButton Variant="Variant.Outlined" Color="Color.Secondary" StartIcon="@Icons.Material.Filled.Refresh"
+                       OnClick="SeedDefaults">
+                Seed Defaults
+            </MudButton>
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add"
+                       OnClick="OpenAddGroupDialog">
+                Add Group
+            </MudButton>
+        </MudStack>
+    </MudStack>
+
+    @if (_loading)
+    {
+        <MudProgressLinear Indeterminate="true" />
+    }
+    else if (!_groups.Any())
+    {
+        <MudPaper Class="pa-8" Elevation="1">
+            <MudStack AlignItems="AlignItems.Center" Spacing="4">
+                <MudIcon Icon="@Icons.Material.Filled.Category" Size="Size.Large" Color="Color.Secondary" />
+                <MudText Typo="Typo.h6" Color="Color.Secondary">No Status Groups Defined</MudText>
+                <MudText Typo="Typo.body2" Color="Color.Secondary">
+                    Click "Seed Defaults" to create the standard 9 groups with ~30 statuses, or add groups manually.
+                </MudText>
+            </MudStack>
+        </MudPaper>
+    }
+    else
+    {
+        <MudGrid>
+            @foreach (var group in _groups)
+            {
+                <MudItem xs="12" md="6" lg="4">
+                    <MudPaper Class="pa-4" Elevation="2" Style="@($"border-left: 4px solid {group.ColorCode ?? "#9E9E9E"};")">
+                        <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Start" Class="mb-3">
+                            <MudStack Spacing="0">
+                                <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="1">
+                                    <MudIcon Icon="@GetIcon(group.IconName)" Size="Size.Small" />
+                                    <MudText Typo="Typo.h6">@group.Name</MudText>
+                                </MudStack>
+                                <MudText Typo="Typo.caption" Color="Color.Secondary">@group.Code</MudText>
+                            </MudStack>
+                            <MudStack Row="true" Spacing="1">
+                                <MudIconButton Icon="@Icons.Material.Filled.Add" Size="Size.Small" Color="Color.Primary"
+                                               OnClick="@(() => OpenAddStatusDialog(group))" Title="Add Status" />
+                                <MudIconButton Icon="@Icons.Material.Filled.Edit" Size="Size.Small" Color="Color.Default"
+                                               OnClick="@(() => OpenEditGroupDialog(group))" Title="Edit Group" />
+                            </MudStack>
+                        </MudStack>
+
+                        @if (group.Statuses.Any())
+                        {
+                            <MudList T="ShipmentStatus" Dense="true">
+                                @foreach (var status in group.Statuses.OrderBy(s => s.SequenceNo))
+                                {
+                                    <MudListItem T="ShipmentStatus">
+                                        <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
+                                            <MudStack Spacing="0">
+                                                <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="1">
+                                                    <MudText Typo="Typo.body2">@status.Name</MudText>
+                                                    @if (status.IsTerminal)
+                                                    {
+                                                        <MudChip T="string" Size="Size.Small" Color="Color.Success">Terminal</MudChip>
+                                                    }
+                                                    @if (status.IsException)
+                                                    {
+                                                        <MudChip T="string" Size="Size.Small" Color="Color.Warning">Exception</MudChip>
+                                                    }
+                                                </MudStack>
+                                                <MudText Typo="Typo.caption" Color="Color.Secondary">@status.Code</MudText>
+                                            </MudStack>
+                                            <MudIconButton Icon="@Icons.Material.Filled.Edit" Size="Size.Small"
+                                                           OnClick="@(() => OpenEditStatusDialog(status))" />
+                                        </MudStack>
+                                    </MudListItem>
+                                }
+                            </MudList>
+                        }
+                        else
+                        {
+                            <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mt-2">No statuses defined</MudText>
+                        }
+                    </MudPaper>
+                </MudItem>
+            }
+        </MudGrid>
+    }
+</MudContainer>
+
+<MudDialog @bind-Visible="_showGroupDialog">
+    <TitleContent>
+        <MudText Typo="Typo.h6">@(_editingGroup?.Id > 0 ? "Edit" : "Add") Status Group</MudText>
+    </TitleContent>
+    <DialogContent>
+        @if (_editingGroup != null)
+        {
+            <MudGrid>
+                <MudItem xs="12" md="6">
+                    <MudTextField @bind-Value="_editingGroup.Code" Label="Code" Variant="Variant.Outlined" Required="true" />
+                </MudItem>
+                <MudItem xs="12" md="6">
+                    <MudTextField @bind-Value="_editingGroup.Name" Label="Name" Variant="Variant.Outlined" Required="true" />
+                </MudItem>
+                <MudItem xs="12">
+                    <MudTextField @bind-Value="_editingGroup.Description" Label="Description" Variant="Variant.Outlined" />
+                </MudItem>
+                <MudItem xs="12" md="4">
+                    <MudNumericField T="int" @bind-Value="_editingGroup.SequenceNo" Label="Sequence" Variant="Variant.Outlined" />
+                </MudItem>
+                <MudItem xs="12" md="4">
+                    <MudTextField @bind-Value="_editingGroup.IconName" Label="Icon Name" Variant="Variant.Outlined" />
+                </MudItem>
+                <MudItem xs="12" md="4">
+                    <MudColorPicker @bind-Text="_editingGroup.ColorCode" Label="Color" Variant="Variant.Outlined" />
+                </MudItem>
+            </MudGrid>
+        }
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="CloseGroupDialog">Cancel</MudButton>
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="SaveGroup">Save</MudButton>
+    </DialogActions>
+</MudDialog>
+
+<MudDialog @bind-Visible="_showStatusDialog">
+    <TitleContent>
+        <MudText Typo="Typo.h6">@(_editingStatus?.Id > 0 ? "Edit" : "Add") Status</MudText>
+    </TitleContent>
+    <DialogContent>
+        @if (_editingStatus != null)
+        {
+            <MudGrid>
+                <MudItem xs="12" md="6">
+                    <MudTextField @bind-Value="_editingStatus.Code" Label="Code" Variant="Variant.Outlined" Required="true" />
+                </MudItem>
+                <MudItem xs="12" md="6">
+                    <MudTextField @bind-Value="_editingStatus.Name" Label="Name" Variant="Variant.Outlined" Required="true" />
+                </MudItem>
+                <MudItem xs="12">
+                    <MudTextField @bind-Value="_editingStatus.TimelineDescription" Label="Timeline Description" Variant="Variant.Outlined" />
+                </MudItem>
+                <MudItem xs="12" md="4">
+                    <MudNumericField T="int" @bind-Value="_editingStatus.SequenceNo" Label="Sequence" Variant="Variant.Outlined" />
+                </MudItem>
+                <MudItem xs="12" md="4">
+                    <MudSelect T="CourierStatus?" Label="Maps to CourierStatus" @bind-Value="_editingStatus.MapsToCourierStatus"
+                               Variant="Variant.Outlined" Clearable="true">
+                        @foreach (var cs in Enum.GetValues<CourierStatus>())
+                        {
+                            <MudSelectItem Value="@((CourierStatus?)cs)">@cs</MudSelectItem>
+                        }
+                    </MudSelect>
+                </MudItem>
+                <MudItem xs="12" md="4">
+                    <MudTextField @bind-Value="_editingStatus.IconName" Label="Icon Name" Variant="Variant.Outlined" />
+                </MudItem>
+                <MudItem xs="12" md="4">
+                    <MudCheckBox @bind-Value="_editingStatus.IsTerminal" Label="Is Terminal" />
+                </MudItem>
+                <MudItem xs="12" md="4">
+                    <MudCheckBox @bind-Value="_editingStatus.IsException" Label="Is Exception" />
+                </MudItem>
+                <MudItem xs="12" md="4">
+                    <MudCheckBox @bind-Value="_editingStatus.RequiresPOD" Label="Requires POD" />
+                </MudItem>
+                <MudItem xs="12" md="4">
+                    <MudCheckBox @bind-Value="_editingStatus.RequiresRemarks" Label="Requires Remarks" />
+                </MudItem>
+                <MudItem xs="12" md="4">
+                    <MudCheckBox @bind-Value="_editingStatus.RequiresLocation" Label="Requires Location" />
+                </MudItem>
+            </MudGrid>
+        }
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="CloseStatusDialog">Cancel</MudButton>
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="SaveStatus">Save</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    private bool _loading;
+    private bool _showGroupDialog;
+    private bool _showStatusDialog;
+    private List<ShipmentStatusGroup> _groups = new();
+    private ShipmentStatusGroup? _editingGroup;
+    private ShipmentStatus? _editingStatus;
+    private long? _selectedGroupId;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadGroups();
+    }
+
+    private async Task LoadGroups()
+    {
+        _loading = true;
+        StateHasChanged();
+
+        try
+        {
+            _groups = await StatusService.GetAllGroups();
+        }
+        finally
+        {
+            _loading = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task SeedDefaults()
+    {
+        var confirmed = await DialogService.ShowMessageBox(
+            "Seed Default Statuses",
+            "This will create the standard 9 status groups with ~30 statuses. Continue?",
+            yesText: "Yes", cancelText: "No");
+
+        if (confirmed == true)
+        {
+            await StatusService.SeedDefaultStatuses();
+            Snackbar.Add("Default statuses seeded successfully", Severity.Success);
+            await LoadGroups();
+        }
+    }
+
+    private void OpenAddGroupDialog()
+    {
+        _editingGroup = new ShipmentStatusGroup
+        {
+            SequenceNo = _groups.Count + 1,
+            CreatedAt = DateTime.UtcNow
+        };
+        _showGroupDialog = true;
+    }
+
+    private void OpenEditGroupDialog(ShipmentStatusGroup group)
+    {
+        _editingGroup = group;
+        _showGroupDialog = true;
+    }
+
+    private void CloseGroupDialog()
+    {
+        _showGroupDialog = false;
+        _editingGroup = null;
+    }
+
+    private async Task SaveGroup()
+    {
+        if (_editingGroup == null || string.IsNullOrEmpty(_editingGroup.Code) || string.IsNullOrEmpty(_editingGroup.Name))
+        {
+            Snackbar.Add("Code and Name are required", Severity.Warning);
+            return;
+        }
+
+        if (_editingGroup.Id == 0)
+        {
+            _editingGroup.CreatedAt = DateTime.UtcNow;
+            Context.ShipmentStatusGroups.Add(_editingGroup);
+        }
+        else
+        {
+            _editingGroup.ModifiedAt = DateTime.UtcNow;
+        }
+
+        await Context.SaveChangesAsync();
+        Snackbar.Add("Group saved successfully", Severity.Success);
+        CloseGroupDialog();
+        await LoadGroups();
+    }
+
+    private void OpenAddStatusDialog(ShipmentStatusGroup group)
+    {
+        _selectedGroupId = group.Id;
+        _editingStatus = new ShipmentStatus
+        {
+            StatusGroupId = group.Id,
+            SequenceNo = group.Statuses.Count + 1,
+            CreatedAt = DateTime.UtcNow
+        };
+        _showStatusDialog = true;
+    }
+
+    private void OpenEditStatusDialog(ShipmentStatus status)
+    {
+        _editingStatus = status;
+        _showStatusDialog = true;
+    }
+
+    private void CloseStatusDialog()
+    {
+        _showStatusDialog = false;
+        _editingStatus = null;
+        _selectedGroupId = null;
+    }
+
+    private async Task SaveStatus()
+    {
+        if (_editingStatus == null || string.IsNullOrEmpty(_editingStatus.Code) || string.IsNullOrEmpty(_editingStatus.Name))
+        {
+            Snackbar.Add("Code and Name are required", Severity.Warning);
+            return;
+        }
+
+        if (_editingStatus.Id == 0)
+        {
+            _editingStatus.CreatedAt = DateTime.UtcNow;
+            Context.ShipmentStatuses.Add(_editingStatus);
+        }
+        else
+        {
+            _editingStatus.ModifiedAt = DateTime.UtcNow;
+        }
+
+        await Context.SaveChangesAsync();
+        Snackbar.Add("Status saved successfully", Severity.Success);
+        CloseStatusDialog();
+        await LoadGroups();
+    }
+
+    private string GetIcon(string? iconName) => iconName switch
+    {
+        "Schedule" => Icons.Material.Filled.Schedule,
+        "LocalShipping" => Icons.Material.Filled.LocalShipping,
+        "Warehouse" => Icons.Material.Filled.Warehouse,
+        "Flight" => Icons.Material.Filled.Flight,
+        "Hub" => Icons.Material.Filled.Hub,
+        "DeliveryDining" => Icons.Material.Filled.DeliveryDining,
+        "Warning" => Icons.Material.Filled.Warning,
+        "AttachMoney" => Icons.Material.Filled.AttachMoney,
+        "CheckCircle" => Icons.Material.Filled.CheckCircle,
+        _ => Icons.Material.Filled.Circle
+    };
+}

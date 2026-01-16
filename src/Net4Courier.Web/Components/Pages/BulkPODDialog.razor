@@ -5,6 +5,7 @@
 @using Net4Courier.Kernel.Enums
 @inject ApplicationDbContext DbContext
 @inject ISnackbar Snackbar
+@inject Net4Courier.Web.Services.ShipmentStatusService ShipmentStatusService
 
 <MudDialog>
     <DialogContent>
@@ -141,6 +142,38 @@
             }
 
             await DbContext.SaveChangesAsync();
+            
+            foreach (var awb in SelectedAwbs)
+            {
+                var statusCode = _status switch
+                {
+                    DeliveryStatus.Delivered => "DELIVERED",
+                    DeliveryStatus.PartialDelivery => "DELIVERED",
+                    DeliveryStatus.Refused => "DELIVERY_FAILED",
+                    DeliveryStatus.NotDelivered => "DELIVERY_FAILED",
+                    _ => "DELIVERY_FAILED"
+                };
+                
+                await ShipmentStatusService.SetStatus(
+                    awb.Id, statusCode, "POD", null, null,
+                    null, awb.ConsigneeCity, null, null,
+                    $"{_status}: {_remarks ?? _receivedBy}", isAutomatic: false);
+                
+                if (_status == DeliveryStatus.Delivered)
+                {
+                    await ShipmentStatusService.SetStatus(
+                        awb.Id, "POD_CAPTURED", "POD", null, null,
+                        null, awb.ConsigneeCity, null, null,
+                        $"Received by {_receivedBy} ({_relation})", isAutomatic: true);
+                }
+                else if (_status == DeliveryStatus.Refused || _status == DeliveryStatus.NotDelivered)
+                {
+                    await ShipmentStatusService.SetStatus(
+                        awb.Id, "RETURN_INITIATED", "POD", null, null,
+                        null, awb.ConsigneeCity, null, null,
+                        $"Reason: {_nonDeliveryReason}", isAutomatic: true);
+                }
+            }
 
             Snackbar.Add($"POD updated for {SelectedAwbs.Count} AWB(s)", Severity.Success);
             MudDialog.Close(DialogResult.Ok(true));

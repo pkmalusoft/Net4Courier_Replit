@@ -9,10 +9,12 @@ namespace Net4Courier.Web.Services;
 public class InvoicingService
 {
     private readonly ApplicationDbContext _context;
+    private readonly ShipmentStatusService _statusService;
 
-    public InvoicingService(ApplicationDbContext context)
+    public InvoicingService(ApplicationDbContext context, ShipmentStatusService statusService)
     {
         _context = context;
+        _statusService = statusService;
     }
 
     public async Task<List<InscanMaster>> GetUnbilledAWBs(long customerId, DateTime fromDate, DateTime toDate)
@@ -208,6 +210,11 @@ public class InvoicingService
             {
                 awb.InvoiceId = invoice.Id;
                 awb.ModifiedAt = DateTime.UtcNow;
+                
+                await _statusService.SetStatus(
+                    awb.Id, "INVOICED", "Invoice", invoice.Id, "Invoice",
+                    null, null, null, null,
+                    $"Invoice {invoice.InvoiceNo} generated", isAutomatic: true);
             }
         }
 
