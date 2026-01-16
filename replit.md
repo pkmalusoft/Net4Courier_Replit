@@ -107,7 +107,14 @@ cd src/Net4Courier.Web && dotnet run --urls http://0.0.0.0:5000
 - PostgreSQL partitioning by TransactionDate for performance
 - Party/PartyAddress normalization for storage efficiency
 
-## Recent Changes (Jan 15, 2026)
+## Recent Changes (Jan 16, 2026)
+- Fixed AWBNew.razor binding issues (Currency field now bound to entity, Auto AWB toggle regenerates AWB number)
+- Added Currency field to InscanMaster entity
+- Fixed date handling to properly convert to UTC
+- Removed duplicate ForwardingAWBNo bindings
+- Improved Forwarding Agent section layout
+
+## Changes (Jan 15, 2026)
 - Implemented modular architecture with 6 separate modules
 - Created complete InscanMaster entity (139 fields, legacy compatible)
 - Added separate AWBTracking table for status history
