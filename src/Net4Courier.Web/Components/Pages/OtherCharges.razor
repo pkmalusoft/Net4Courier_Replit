@@ -1,0 +1,140 @@
+@page "/other-charges"
+@inject ApplicationDbContext DbContext
+@inject IDialogService DialogService
+@inject ISnackbar Snackbar
+@using Microsoft.EntityFrameworkCore
+@using Net4Courier.Infrastructure.Data
+@using Net4Courier.Operations.Entities
+
+<PageTitle>Manage Other Charges</PageTitle>
+
+<MudContainer MaxWidth="MaxWidth.Large" Class="mt-4">
+    <MudPaper Class="pa-4" Elevation="2">
+        <MudToolBar Dense="true">
+            <MudText Typo="Typo.h6">Other Charge Types</MudText>
+            <MudSpacer />
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add" 
+                       OnClick="AddNew">Add New</MudButton>
+        </MudToolBar>
+
+        <MudTable Items="_chargeTypes" Hover="true" Dense="true" Class="mt-4" Loading="_loading">
+            <HeaderContent>
+                <MudTh>Name</MudTh>
+                <MudTh>Description</MudTh>
+                <MudTh Style="text-align: right;">Default Amount</MudTh>
+                <MudTh Style="text-align: center;">Is Percentage</MudTh>
+                <MudTh Style="text-align: center;">Sort Order</MudTh>
+                <MudTh Style="text-align: center;">Active</MudTh>
+                <MudTh Style="text-align: center;">Actions</MudTh>
+            </HeaderContent>
+            <RowTemplate>
+                <MudTd>@context.Name</MudTd>
+                <MudTd>@context.Description</MudTd>
+                <MudTd Style="text-align: right;">@context.DefaultAmount.ToString("N2")</MudTd>
+                <MudTd Style="text-align: center;">
+                    @if (context.IsPercentage)
+                    {
+                        <MudIcon Icon="@Icons.Material.Filled.Check" Color="Color.Success" Size="Size.Small" />
+                    }
+                </MudTd>
+                <MudTd Style="text-align: center;">@context.SortOrder</MudTd>
+                <MudTd Style="text-align: center;">
+                    @if (context.IsActive)
+                    {
+                        <MudChip T="string" Size="Size.Small" Color="Color.Success">Active</MudChip>
+                    }
+                    else
+                    {
+                        <MudChip T="string" Size="Size.Small" Color="Color.Default">Inactive</MudChip>
+                    }
+                </MudTd>
+                <MudTd Style="text-align: center;">
+                    <MudIconButton Icon="@Icons.Material.Filled.Edit" Size="Size.Small" Color="Color.Primary" 
+                                   OnClick="@(() => Edit(context))" />
+                    <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" Color="Color.Error" 
+                                   OnClick="@(() => Delete(context))" />
+                </MudTd>
+            </RowTemplate>
+            <NoRecordsContent>
+                <MudText Align="Align.Center">No charge types found. Click "Add New" to create one.</MudText>
+            </NoRecordsContent>
+        </MudTable>
+    </MudPaper>
+</MudContainer>
+
+@code {
+    private List<OtherChargeType> _chargeTypes = new();
+    private bool _loading = true;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadData();
+    }
+
+    private async Task LoadData()
+    {
+        _loading = true;
+        _chargeTypes = await DbContext.OtherChargeTypes
+            .Where(c => !c.IsDeleted)
+            .OrderBy(c => c.SortOrder)
+            .ThenBy(c => c.Name)
+            .ToListAsync();
+        _loading = false;
+    }
+
+    private async Task AddNew()
+    {
+        var chargeType = new OtherChargeType { SortOrder = _chargeTypes.Count + 1 };
+        var parameters = new DialogParameters<OtherChargeTypeDialog>
+        {
+            { x => x.ChargeType, chargeType },
+            { x => x.IsNew, true }
+        };
+
+        var dialog = await DialogService.ShowAsync<OtherChargeTypeDialog>("Add Other Charge Type", parameters,
+            new DialogOptions { MaxWidth = MaxWidth.Small, FullWidth = true });
+        var result = await dialog.Result;
+
+        if (!result!.Canceled)
+        {
+            await LoadData();
+            Snackbar.Add("Charge type added successfully", Severity.Success);
+        }
+    }
+
+    private async Task Edit(OtherChargeType chargeType)
+    {
+        var parameters = new DialogParameters<OtherChargeTypeDialog>
+        {
+            { x => x.ChargeType, chargeType },
+            { x => x.IsNew, false }
+        };
+
+        var dialog = await DialogService.ShowAsync<OtherChargeTypeDialog>("Edit Other Charge Type", parameters,
+            new DialogOptions { MaxWidth = MaxWidth.Small, FullWidth = true });
+        var result = await dialog.Result;
+
+        if (!result!.Canceled)
+        {
+            await LoadData();
+            Snackbar.Add("Charge type updated successfully", Severity.Success);
+        }
+    }
+
+    private async Task Delete(OtherChargeType chargeType)
+    {
+        var confirm = await DialogService.ShowMessageBox(
+            "Confirm Delete",
+            $"Are you sure you want to delete '{chargeType.Name}'?",
+            yesText: "Delete", cancelText: "Cancel");
+
+        if (confirm == true)
+        {
+            chargeType.IsDeleted = true;
+            chargeType.ModifiedAt = DateTime.UtcNow;
+            await DbContext.SaveChangesAsync();
+            await LoadData();
+            Snackbar.Add("Charge type deleted successfully", Severity.Success);
+        }
+    }
+}

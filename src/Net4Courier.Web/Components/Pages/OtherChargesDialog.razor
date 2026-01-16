@@ -1,0 +1,110 @@
+@inject ApplicationDbContext DbContext
+@using Microsoft.EntityFrameworkCore
+@using Net4Courier.Infrastructure.Data
+@using Net4Courier.Operations.Entities
+
+<MudDialog>
+    <TitleContent>
+        <MudText Typo="Typo.h6">
+            <MudIcon Icon="@Icons.Material.Filled.ReceiptLong" Class="mr-2" />
+            Select Other Charges
+        </MudText>
+    </TitleContent>
+    <DialogContent>
+        <MudTable Items="_chargeItems" Hover="true" Dense="true" Style="max-height: 400px; overflow-y: auto;">
+            <HeaderContent>
+                <MudTh Style="width: 50px;"></MudTh>
+                <MudTh>Charge Type</MudTh>
+                <MudTh Style="width: 150px; text-align: right;">Amount</MudTh>
+            </HeaderContent>
+            <RowTemplate>
+                <MudTd>
+                    <MudCheckBox @bind-Value="@context.IsSelected" Color="Color.Primary" Dense="true" />
+                </MudTd>
+                <MudTd>
+                    <MudText>@context.Name</MudText>
+                    @if (!string.IsNullOrEmpty(context.Description))
+                    {
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">@context.Description</MudText>
+                    }
+                </MudTd>
+                <MudTd>
+                    <MudNumericField @bind-Value="@context.Amount" Variant="Variant.Outlined" Dense="true" 
+                                     Format="N2" Disabled="!context.IsSelected" Style="width: 120px;" />
+                </MudTd>
+            </RowTemplate>
+        </MudTable>
+        
+        <MudDivider Class="my-3" />
+        <MudGrid>
+            <MudItem xs="6">
+                <MudText Typo="Typo.subtitle1"><strong>Selected Charges:</strong> @_chargeItems.Count(c => c.IsSelected)</MudText>
+            </MudItem>
+            <MudItem xs="6" Style="text-align: right;">
+                <MudText Typo="Typo.h6" Color="Color.Primary"><strong>Total: @TotalAmount.ToString("N2")</strong></MudText>
+            </MudItem>
+        </MudGrid>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Cancel">Cancel</MudButton>
+        <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="Save">Apply</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] MudDialogInstance MudDialog { get; set; } = null!;
+    [Parameter] public List<AWBOtherCharge> ExistingCharges { get; set; } = new();
+
+    private List<ChargeItem> _chargeItems = new();
+
+    private decimal TotalAmount => _chargeItems.Where(c => c.IsSelected).Sum(c => c.Amount);
+
+    protected override async Task OnInitializedAsync()
+    {
+        var chargeTypes = await DbContext.OtherChargeTypes
+            .Where(c => c.IsActive && !c.IsDeleted)
+            .OrderBy(c => c.SortOrder)
+            .ThenBy(c => c.Name)
+            .ToListAsync();
+
+        foreach (var ct in chargeTypes)
+        {
+            var existing = ExistingCharges.FirstOrDefault(e => e.OtherChargeTypeId == ct.Id);
+            _chargeItems.Add(new ChargeItem
+            {
+                ChargeTypeId = ct.Id,
+                Name = ct.Name,
+                Description = ct.Description,
+                DefaultAmount = ct.DefaultAmount,
+                Amount = existing?.Amount ?? ct.DefaultAmount,
+                IsSelected = existing != null
+            });
+        }
+    }
+
+    private void Save()
+    {
+        var selectedCharges = _chargeItems
+            .Where(c => c.IsSelected)
+            .Select(c => new AWBOtherCharge
+            {
+                OtherChargeTypeId = c.ChargeTypeId,
+                Amount = c.Amount
+            })
+            .ToList();
+
+        MudDialog.Close(DialogResult.Ok(selectedCharges));
+    }
+
+    private void Cancel() => MudDialog.Cancel();
+
+    private class ChargeItem
+    {
+        public long ChargeTypeId { get; set; }
+        public string Name { get; set; } = string.Empty;
+        public string? Description { get; set; }
+        public decimal DefaultAmount { get; set; }
+        public decimal Amount { get; set; }
+        public bool IsSelected { get; set; }
+    }
+}

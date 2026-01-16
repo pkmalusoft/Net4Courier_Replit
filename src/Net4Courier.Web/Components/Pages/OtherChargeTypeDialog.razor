@@ -1,0 +1,83 @@
+@inject ApplicationDbContext DbContext
+@using Net4Courier.Infrastructure.Data
+@using Net4Courier.Operations.Entities
+
+<MudDialog>
+    <TitleContent>
+        <MudText Typo="Typo.h6">
+            <MudIcon Icon="@Icons.Material.Filled.Receipt" Class="mr-2" />
+            @(IsNew ? "Add Other Charge Type" : "Edit Other Charge Type")
+        </MudText>
+    </TitleContent>
+    <DialogContent>
+        <MudForm @ref="_form" @bind-IsValid="_formIsValid">
+            <MudGrid>
+                <MudItem xs="12">
+                    <MudTextField @bind-Value="ChargeType.Name" Label="Name" Required="true" 
+                                  RequiredError="Name is required" Variant="Variant.Outlined" />
+                </MudItem>
+                <MudItem xs="12">
+                    <MudTextField @bind-Value="ChargeType.Description" Label="Description" 
+                                  Variant="Variant.Outlined" Lines="2" />
+                </MudItem>
+                <MudItem xs="6">
+                    <MudNumericField @bind-Value="ChargeType.DefaultAmount" Label="Default Amount" 
+                                     Variant="Variant.Outlined" Format="N2" />
+                </MudItem>
+                <MudItem xs="6">
+                    <MudNumericField @bind-Value="ChargeType.SortOrder" Label="Sort Order" 
+                                     Variant="Variant.Outlined" />
+                </MudItem>
+                <MudItem xs="6">
+                    <MudSwitch @bind-Value="ChargeType.IsPercentage" Label="Is Percentage" Color="Color.Primary" />
+                </MudItem>
+                <MudItem xs="6">
+                    <MudSwitch @bind-Value="ChargeType.IsActive" Label="Active" Color="Color.Success" />
+                </MudItem>
+            </MudGrid>
+        </MudForm>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Cancel">Cancel</MudButton>
+        <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="Save" Disabled="!_formIsValid">Save</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] MudDialogInstance MudDialog { get; set; } = null!;
+    [Parameter] public OtherChargeType ChargeType { get; set; } = new();
+    [Parameter] public bool IsNew { get; set; }
+
+    private MudForm _form = null!;
+    private bool _formIsValid;
+
+    protected override void OnInitialized()
+    {
+        if (IsNew)
+        {
+            ChargeType.IsActive = true;
+        }
+    }
+
+    private async Task Save()
+    {
+        await _form.Validate();
+        if (!_formIsValid) return;
+
+        if (IsNew)
+        {
+            ChargeType.CreatedAt = DateTime.UtcNow;
+            DbContext.OtherChargeTypes.Add(ChargeType);
+        }
+        else
+        {
+            ChargeType.ModifiedAt = DateTime.UtcNow;
+            DbContext.OtherChargeTypes.Update(ChargeType);
+        }
+
+        await DbContext.SaveChangesAsync();
+        MudDialog.Close(DialogResult.Ok(ChargeType));
+    }
+
+    private void Cancel() => MudDialog.Cancel();
+}
