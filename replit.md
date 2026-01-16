@@ -42,13 +42,18 @@ The application is built on .NET 8 Blazor Server, utilizing a modular architectu
     - **Dynamic Other Charges**: Configurable charge types applied during AWB entry with detailed breakdown.
 - **Reporting**: Integration with QuestPDF for generating AWB labels, Invoice PDFs, and Receipt PDFs.
 - **Automatic Movement Type Calculation**: Determines shipment type (Domestic, International-Export, International-Import, Transhipment) based on origin/destination countries relative to the company's country.
-- **Rate Card Management** (NEW):
+- **Rate Card Management**:
     - **Zone Matrix**: Define zones with country/city/postal code mappings for geographic rate categorization.
     - **Rate Cards**: Configurable pricing cards with movement type, payment mode, validity dates, and status tracking.
     - **Slab-Based Pricing**: Rule-based weight slabs that reduce storage from 30 rows to 2-3 rules per zone.
-    - **Customer Rate Assignments**: Priority-based rate card assignments with effective date versioning.
+    - **Slab Rule Templates**: Reusable template library for saving/loading common slab configurations across rate cards.
+    - **Customer Rate Assignments**: Priority-based rate card assignments with effective date versioning and drag-reorder support.
     - **Rating Engine Service**: Automated rate calculation with zone resolution (city > country > default), chargeable weight (actual vs volumetric), and slab calculations (PerStep/PerKg/FlatAfter modes).
-    - **Rate Simulator**: Test rate calculations before applying to live shipments.
+    - **Formula Trace Display**: Detailed step-by-step calculation breakdown showing rate card source, zone resolution path, weight calculations, slab charges, and adjustments.
+    - **Rate Simulator**: Test rate calculations with full formula tracing before applying to live shipments.
+    - **Clone Rate Card**: Duplicate existing rate cards with all zones and slab rules as Draft status.
+    - **Bulk Zone Operations**: Multi-select zones to apply common settings (base weight/rate, charges, margins, tax mode).
+    - **Approval Workflow**: Status transitions (Draft → Pending Approval → Active → Expired/Suspended) with color-coded indicators.
 
 ## External Dependencies
 - **Database**: PostgreSQL (hosted on Replit)
