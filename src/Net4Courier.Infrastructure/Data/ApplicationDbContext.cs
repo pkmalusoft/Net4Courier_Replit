@@ -36,6 +36,7 @@ public class ApplicationDbContext : DbContext
     public DbSet<OtherChargeType> OtherChargeTypes => Set<OtherChargeType>();
     public DbSet<AWBOtherCharge> AWBOtherCharges => Set<AWBOtherCharge>();
     public DbSet<PickupRequest> PickupRequests => Set<PickupRequest>();
+    public DbSet<PickupRequestShipment> PickupRequestShipments => Set<PickupRequestShipment>();
     
     public DbSet<Invoice> Invoices => Set<Invoice>();
     public DbSet<InvoiceDetail> InvoiceDetails => Set<InvoiceDetail>();
@@ -304,6 +305,19 @@ public class ApplicationDbContext : DbContext
             entity.HasIndex(e => new { e.CustomerId, e.Status });
             entity.HasIndex(e => new { e.CourierId, e.Status });
             entity.HasIndex(e => e.Status);
+        });
+
+        modelBuilder.Entity<PickupRequestShipment>(entity =>
+        {
+            entity.ToTable("PickupRequestShipments");
+            entity.HasKey(e => e.Id);
+            entity.HasIndex(e => new { e.PickupRequestId, e.LineNo });
+            entity.HasIndex(e => e.AWBId);
+            entity.HasIndex(e => e.Status);
+            entity.HasOne(e => e.PickupRequest)
+                  .WithMany(p => p.Shipments)
+                  .HasForeignKey(e => e.PickupRequestId)
+                  .OnDelete(DeleteBehavior.Cascade);
         });
     }
 

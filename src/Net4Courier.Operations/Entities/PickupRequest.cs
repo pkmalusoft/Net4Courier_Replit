@@ -51,6 +51,12 @@ public class PickupRequest : AuditableEntity
     
     public string? ReferenceNo { get; set; }
     public string? PONumber { get; set; }
+    
+    public bool IsConverted { get; set; }
+    public DateTime? ConvertedAt { get; set; }
+    public string? ConvertedBy { get; set; }
+    
+    public ICollection<PickupRequestShipment> Shipments { get; set; } = new List<PickupRequestShipment>();
 }
 
 public enum PickupStatus

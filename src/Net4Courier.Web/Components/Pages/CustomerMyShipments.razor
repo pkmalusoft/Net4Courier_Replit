@@ -1,0 +1,242 @@
+@page "/customer/my-shipments"
+@layout CustomerLayout
+@inject ApplicationDbContext DbContext
+@inject NavigationManager NavigationManager
+@inject Microsoft.AspNetCore.Components.Authorization.AuthenticationStateProvider AuthStateProvider
+@using Microsoft.EntityFrameworkCore
+@using Net4Courier.Infrastructure.Data
+@using Net4Courier.Operations.Entities
+@using Net4Courier.Masters.Entities
+@using Net4Courier.Kernel.Enums
+
+<PageTitle>My Shipments - Net4Courier</PageTitle>
+
+<MudContainer MaxWidth="MaxWidth.Large" Class="py-4">
+    <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center" Class="mb-4">
+        <MudText Typo="Typo.h5">My Shipments</MudText>
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add"
+                   OnClick="@(() => NavigationManager.NavigateTo("/customer/pickup-request"))">
+            Request Pickup
+        </MudButton>
+    </MudStack>
+    
+    <MudPaper Class="pa-4 mb-4" Elevation="1">
+        <MudGrid>
+            <MudItem xs="12" sm="6" md="4">
+                <MudTextField @bind-Value="_searchText" Label="Search AWB No" Variant="Variant.Outlined" 
+                              Adornment="Adornment.End" AdornmentIcon="@Icons.Material.Filled.Search"
+                              Immediate="true" DebounceInterval="300" OnDebounceIntervalElapsed="LoadData" />
+            </MudItem>
+            <MudItem xs="12" sm="6" md="4">
+                <MudSelect T="string" @bind-Value="_statusFilter" Label="Status" Variant="Variant.Outlined"
+                           AnchorOrigin="Origin.BottomCenter">
+                    <MudSelectItem T="string" Value="@("")">All Statuses</MudSelectItem>
+                    <MudSelectItem T="string" Value="@("pending")">Pending</MudSelectItem>
+                    <MudSelectItem T="string" Value="@("intransit")">In Transit</MudSelectItem>
+                    <MudSelectItem T="string" Value="@("outfordelivery")">Out for Delivery</MudSelectItem>
+                    <MudSelectItem T="string" Value="@("delivered")">Delivered</MudSelectItem>
+                    <MudSelectItem T="string" Value="@("returned")">Returned</MudSelectItem>
+                </MudSelect>
+            </MudItem>
+            <MudItem xs="12" sm="6" md="4">
+                <MudButton Variant="Variant.Outlined" Color="Color.Secondary" OnClick="LoadData" FullWidth="true"
+                           StartIcon="@Icons.Material.Filled.Refresh" Style="height: 56px;">
+                    Refresh
+                </MudButton>
+            </MudItem>
+        </MudGrid>
+    </MudPaper>
+    
+    @if (_loading)
+    {
+        <MudProgressLinear Indeterminate="true" Color="Color.Primary" Class="mb-4" />
+    }
+    
+    @if (_shipments.Any())
+    {
+        <MudStack Spacing="2">
+            @foreach (var awb in _shipments)
+            {
+                <MudCard Outlined="true" Class="cursor-pointer" @onclick="@(() => ViewTracking(awb.AWBNo))">
+                    <MudCardContent>
+                        <MudGrid>
+                            <MudItem xs="12" sm="6" md="3">
+                                <MudStack Spacing="0">
+                                    <MudText Typo="Typo.caption" Color="Color.Secondary">AWB Number</MudText>
+                                    <MudText Typo="Typo.subtitle1"><strong>@awb.AWBNo</strong></MudText>
+                                </MudStack>
+                            </MudItem>
+                            <MudItem xs="12" sm="6" md="3">
+                                <MudStack Spacing="0">
+                                    <MudText Typo="Typo.caption" Color="Color.Secondary">Receiver</MudText>
+                                    <MudText Typo="Typo.body2">@awb.Consignee</MudText>
+                                    <MudText Typo="Typo.caption">@awb.ConsigneeCity, @awb.ConsigneeCountry</MudText>
+                                </MudStack>
+                            </MudItem>
+                            <MudItem xs="6" sm="4" md="2">
+                                <MudStack Spacing="0">
+                                    <MudText Typo="Typo.caption" Color="Color.Secondary">Date</MudText>
+                                    <MudText Typo="Typo.body2">@awb.TransactionDate.ToString("dd MMM yyyy")</MudText>
+                                </MudStack>
+                            </MudItem>
+                            <MudItem xs="6" sm="4" md="2">
+                                <MudStack Spacing="0">
+                                    <MudText Typo="Typo.caption" Color="Color.Secondary">Pieces/Weight</MudText>
+                                    <MudText Typo="Typo.body2">@awb.Pieces pcs / @(awb.Weight?.ToString("F2") ?? "0") kg</MudText>
+                                </MudStack>
+                            </MudItem>
+                            <MudItem xs="12" sm="4" md="2">
+                                <MudChip T="string" Color="@GetStatusColor(awb.CourierStatusId)" Size="Size.Small">
+                                    @GetStatusText(awb)
+                                </MudChip>
+                            </MudItem>
+                        </MudGrid>
+                    </MudCardContent>
+                </MudCard>
+            }
+        </MudStack>
+        
+        <MudStack Row="true" Justify="Justify.Center" Class="mt-4">
+            <MudPagination Count="@_totalPages" Selected="@_currentPage" SelectedChanged="OnPageChanged" 
+                           Color="Color.Primary" ShowFirstButton="true" ShowLastButton="true" />
+        </MudStack>
+    }
+    else if (!_loading)
+    {
+        <MudAlert Severity="Severity.Info">
+            No shipments found. <MudLink Href="/customer/pickup-request">Request a pickup</MudLink> to get started.
+        </MudAlert>
+    }
+</MudContainer>
+
+@code {
+    [SupplyParameterFromQuery(Name = "status")]
+    public string? StatusParam { get; set; }
+    
+    private List<InscanMaster> _shipments = new();
+    private string _searchText = "";
+    private string _statusFilter = "";
+    private bool _loading;
+    private long? _customerId;
+    private int _currentPage = 1;
+    private int _totalPages = 1;
+    private const int PageSize = 10;
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (!string.IsNullOrEmpty(StatusParam))
+        {
+            _statusFilter = StatusParam.ToLower();
+        }
+        
+        await LoadCustomerInfo();
+        await LoadData();
+    }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (!string.IsNullOrEmpty(StatusParam) && StatusParam.ToLower() != _statusFilter)
+        {
+            _statusFilter = StatusParam.ToLower();
+            await LoadData();
+        }
+    }
+
+    private async Task LoadCustomerInfo()
+    {
+        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+        var user = authState.User;
+        
+        if (user.Identity?.IsAuthenticated == true)
+        {
+            var userIdClaim = user.FindFirst("UserId")?.Value;
+            if (long.TryParse(userIdClaim, out var userId))
+            {
+                var dbUser = await DbContext.Users.FindAsync(userId);
+                if (dbUser != null)
+                {
+                    var party = await DbContext.Parties
+                        .FirstOrDefaultAsync(p => p.Email == dbUser.Email && !p.IsDeleted);
+                    if (party != null)
+                    {
+                        _customerId = party.Id;
+                    }
+                }
+            }
+        }
+    }
+
+    private async Task LoadData()
+    {
+        if (!_customerId.HasValue) return;
+        
+        _loading = true;
+        StateHasChanged();
+        
+        try
+        {
+            var query = DbContext.InscanMasters
+                .Where(a => a.CustomerId == _customerId && !a.IsDeleted);
+            
+            if (!string.IsNullOrEmpty(_searchText))
+            {
+                query = query.Where(a => a.AWBNo.Contains(_searchText) || 
+                    (a.Consignee != null && a.Consignee.Contains(_searchText)));
+            }
+            
+            query = _statusFilter switch
+            {
+                "pending" => query.Where(a => a.CourierStatusId == CourierStatus.Pending),
+                "intransit" => query.Where(a => a.CourierStatusId == CourierStatus.InTransit || a.CourierStatusId == CourierStatus.PickedUp),
+                "outfordelivery" => query.Where(a => a.CourierStatusId == CourierStatus.OutForDelivery),
+                "delivered" => query.Where(a => a.CourierStatusId == CourierStatus.Delivered),
+                "returned" => query.Where(a => a.IsReturnedToConsignor),
+                _ => query
+            };
+            
+            var totalCount = await query.CountAsync();
+            _totalPages = (int)Math.Ceiling(totalCount / (double)PageSize);
+            
+            _shipments = await query
+                .OrderByDescending(a => a.TransactionDate)
+                .Skip((_currentPage - 1) * PageSize)
+                .Take(PageSize)
+                .ToListAsync();
+        }
+        finally
+        {
+            _loading = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task OnPageChanged(int page)
+    {
+        _currentPage = page;
+        await LoadData();
+    }
+
+    private void ViewTracking(string awbNo)
+    {
+        NavigationManager.NavigateTo($"/customer/track?awb={awbNo}");
+    }
+
+    private Color GetStatusColor(CourierStatus status) => status switch
+    {
+        CourierStatus.Pending => Color.Info,
+        CourierStatus.PickedUp => Color.Primary,
+        CourierStatus.InTransit => Color.Primary,
+        CourierStatus.OutForDelivery => Color.Warning,
+        CourierStatus.Delivered => Color.Success,
+        CourierStatus.Returned => Color.Error,
+        CourierStatus.OnHold => Color.Warning,
+        CourierStatus.Cancelled => Color.Error,
+        _ => Color.Default
+    };
+
+    private string GetStatusText(InscanMaster awb)
+    {
+        if (awb.IsReturnedToConsignor) return "Returned";
+        return awb.CourierStatusId.ToString();
+    }
+}

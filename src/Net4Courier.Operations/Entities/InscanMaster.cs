@@ -119,6 +119,9 @@ public class InscanMaster : AuditableEntity
     public string? JobCode { get; set; }
     public string? ReferenceNo { get; set; }
     
+    public long? PickupRequestId { get; set; }
+    public long? PickupRequestShipmentId { get; set; }
+    
     public virtual ICollection<InscanMasterItem> Items { get; set; } = new List<InscanMasterItem>();
     public virtual ICollection<AWBTracking> TrackingHistory { get; set; } = new List<AWBTracking>();
     public virtual ICollection<AWBOtherCharge> OtherCharges { get; set; } = new List<AWBOtherCharge>();

@@ -3,9 +3,11 @@
 @inject NavigationManager NavigationManager
 @inject ISnackbar Snackbar
 @inject IJSRuntime JS
+@inject Microsoft.AspNetCore.Components.Authorization.AuthenticationStateProvider AuthStateProvider
 @using Microsoft.EntityFrameworkCore
 @using Net4Courier.Infrastructure.Data
 @using Net4Courier.Operations.Entities
+@using Net4Courier.Kernel.Enums
 
 <PageTitle>INSCAN - Net4Courier</PageTitle>
 
@@ -20,8 +22,16 @@
                           OnKeyUp="OnScanKeyUp" FullWidth="true" AutoFocus="true"
                           Placeholder="Scan barcode or type pickup number..." />
             <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="ProcessScan" FullWidth="true" Class="mt-3"
-                       StartIcon="@Icons.Material.Filled.Check" Size="Size.Large">
-                INSCAN
+                       StartIcon="@Icons.Material.Filled.Check" Size="Size.Large" Disabled="@_processing">
+                @if (_processing)
+                {
+                    <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" />
+                    <text>Processing...</text>
+                }
+                else
+                {
+                    <text>INSCAN & CONVERT TO BOOKING</text>
+                }
             </MudButton>
             
             @if (!string.IsNullOrEmpty(_lastMessage))
@@ -40,6 +50,9 @@
                             <MudStack Spacing="0">
                                 <MudText Typo="Typo.body1"><strong>@pickup.PickupNo</strong></MudText>
                                 <MudText Typo="Typo.caption">@pickup.CustomerName - @pickup.City</MudText>
+                                <MudText Typo="Typo.caption" Color="Color.Primary">
+                                    @(pickup.Shipments?.Count ?? 0) shipment(s)
+                                </MudText>
                             </MudStack>
                             <MudChip T="string" Color="Color.Success" Size="Size.Small">Collected</MudChip>
                         </MudStack>
@@ -63,6 +76,7 @@
                     <tr>
                         <th>Pickup No</th>
                         <th>Customer</th>
+                        <th>AWBs Created</th>
                         <th>Time</th>
                     </tr>
                 </thead>
@@ -72,28 +86,49 @@
                         <tr>
                             <td>@pickup.PickupNo</td>
                             <td>@pickup.CustomerName</td>
+                            <td>
+                                @{
+                                    var awbCount = pickup.Shipments?.Count(s => !string.IsNullOrEmpty(s.AWBNo)) ?? 0;
+                                }
+                                <MudChip T="string" Color="Color.Primary" Size="Size.Small">@awbCount AWB(s)</MudChip>
+                            </td>
                             <td>@pickup.InscannedAt?.ToString("HH:mm")</td>
                         </tr>
                     }
                     @if (!_inscannedToday.Any())
                     {
                         <tr>
-                            <td colspan="3" class="text-center">No inscanned pickups today</td>
+                            <td colspan="4" class="text-center">No inscanned pickups today</td>
                         </tr>
                     }
                 </tbody>
             </MudSimpleTable>
         </MudPaper>
 
-        <MudPaper Class="pa-4 mt-4" Elevation="2" Style="background-color: #e8f5e9;">
-            <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
-                <MudStack Spacing="0">
-                    <MudText Typo="Typo.h3" Color="Color.Success">@_inscannedToday.Count</MudText>
-                    <MudText Typo="Typo.body2">Inscanned Today</MudText>
-                </MudStack>
-                <MudIcon Icon="@Icons.Material.Filled.CheckCircle" Size="Size.Large" Color="Color.Success" />
-            </MudStack>
-        </MudPaper>
+        <MudGrid Class="mt-4">
+            <MudItem xs="6">
+                <MudPaper Class="pa-4" Elevation="2" Style="background-color: #e8f5e9;">
+                    <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
+                        <MudStack Spacing="0">
+                            <MudText Typo="Typo.h3" Color="Color.Success">@_inscannedToday.Count</MudText>
+                            <MudText Typo="Typo.body2">Pickups Inscanned</MudText>
+                        </MudStack>
+                        <MudIcon Icon="@Icons.Material.Filled.CheckCircle" Size="Size.Large" Color="Color.Success" />
+                    </MudStack>
+                </MudPaper>
+            </MudItem>
+            <MudItem xs="6">
+                <MudPaper Class="pa-4" Elevation="2" Style="background-color: #e3f2fd;">
+                    <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
+                        <MudStack Spacing="0">
+                            <MudText Typo="Typo.h3" Color="Color.Primary">@_awbsCreatedToday</MudText>
+                            <MudText Typo="Typo.body2">AWBs Created</MudText>
+                        </MudStack>
+                        <MudIcon Icon="@Icons.Material.Filled.LocalShipping" Size="Size.Large" Color="Color.Primary" />
+                    </MudStack>
+                </MudPaper>
+            </MudItem>
+        </MudGrid>
     </MudItem>
 </MudGrid>
 
@@ -106,9 +141,13 @@
     private List<PickupRequest> _pendingPickups = new();
     private List<PickupRequest> _inscannedToday = new();
     private MudTextField<string>? _scanField;
+    private bool _processing;
+    private int _awbsCreatedToday;
+    private string _currentUsername = "System";
 
     protected override async Task OnInitializedAsync()
     {
+        await LoadCurrentUser();
         await LoadData();
         
         if (pickupId.HasValue)
@@ -121,21 +160,36 @@
         }
     }
 
+    private async Task LoadCurrentUser()
+    {
+        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+        var user = authState.User;
+        if (user.Identity?.IsAuthenticated == true)
+        {
+            _currentUsername = user.Identity.Name ?? "System";
+        }
+    }
+
     private async Task LoadData()
     {
         var today = DateTime.UtcNow.Date;
         
         _pendingPickups = await DbContext.PickupRequests
+            .Include(p => p.Shipments)
             .Where(p => p.Status == PickupStatus.ShipmentCollected && !p.IsDeleted)
             .OrderByDescending(p => p.CollectedAt)
             .Take(50)
             .ToListAsync();
             
         _inscannedToday = await DbContext.PickupRequests
+            .Include(p => p.Shipments)
             .Where(p => p.Status == PickupStatus.Inscanned && !p.IsDeleted && p.InscannedAt >= today)
             .OrderByDescending(p => p.InscannedAt)
             .Take(50)
             .ToListAsync();
+            
+        _awbsCreatedToday = await DbContext.InscanMasters
+            .CountAsync(a => a.TransactionDate >= today && a.PickupRequestId != null && !a.IsDeleted);
     }
 
     private async Task OnScanKeyUp(KeyboardEventArgs e)
@@ -155,47 +209,179 @@
             return;
         }
 
-        var pickup = await DbContext.PickupRequests
-            .FirstOrDefaultAsync(p => p.PickupNo == _scanInput.Trim() && !p.IsDeleted);
-
-        if (pickup == null)
-        {
-            _lastMessage = $"Pickup {_scanInput} not found";
-            _lastSeverity = Severity.Error;
-            Snackbar.Add(_lastMessage, Severity.Error);
-        }
-        else if (pickup.Status == PickupStatus.Inscanned)
-        {
-            _lastMessage = $"Pickup {_scanInput} already inscanned";
-            _lastSeverity = Severity.Warning;
-            Snackbar.Add(_lastMessage, Severity.Warning);
-        }
-        else if (pickup.Status != PickupStatus.ShipmentCollected)
-        {
-            _lastMessage = $"Pickup {_scanInput} status is {pickup.Status}. Expected: Shipment Collected";
-            _lastSeverity = Severity.Warning;
-            Snackbar.Add(_lastMessage, Severity.Warning);
-        }
-        else
-        {
-            pickup.Status = PickupStatus.Inscanned;
-            pickup.InscannedAt = DateTime.UtcNow;
-            await DbContext.SaveChangesAsync();
-            
-            _lastMessage = $"Pickup {_scanInput} inscanned successfully!";
-            _lastSeverity = Severity.Success;
-            Snackbar.Add(_lastMessage, Severity.Success);
-            
-            await LoadData();
-        }
-
-        _scanInput = "";
+        _processing = true;
         StateHasChanged();
-        
-        if (_scanField != null)
+
+        try
         {
-            await _scanField.FocusAsync();
+            var pickup = await DbContext.PickupRequests
+                .Include(p => p.Shipments)
+                .FirstOrDefaultAsync(p => p.PickupNo == _scanInput.Trim() && !p.IsDeleted);
+
+            if (pickup == null)
+            {
+                _lastMessage = $"Pickup {_scanInput} not found";
+                _lastSeverity = Severity.Error;
+                Snackbar.Add(_lastMessage, Severity.Error);
+            }
+            else if (pickup.Status == PickupStatus.Inscanned)
+            {
+                _lastMessage = $"Pickup {_scanInput} already inscanned";
+                _lastSeverity = Severity.Warning;
+                Snackbar.Add(_lastMessage, Severity.Warning);
+            }
+            else if (pickup.Status != PickupStatus.ShipmentCollected)
+            {
+                _lastMessage = $"Pickup {_scanInput} status is {pickup.Status}. Expected: Shipment Collected";
+                _lastSeverity = Severity.Warning;
+                Snackbar.Add(_lastMessage, Severity.Warning);
+            }
+            else
+            {
+                var awbsCreated = await ConvertToBookings(pickup);
+                
+                pickup.Status = PickupStatus.Inscanned;
+                pickup.InscannedAt = DateTime.UtcNow;
+                pickup.InscannedBy = _currentUsername;
+                pickup.IsConverted = true;
+                pickup.ConvertedAt = DateTime.UtcNow;
+                pickup.ConvertedBy = _currentUsername;
+                
+                await DbContext.SaveChangesAsync();
+                
+                _lastMessage = $"Pickup {_scanInput} inscanned successfully! {awbsCreated} AWB(s) created.";
+                _lastSeverity = Severity.Success;
+                Snackbar.Add(_lastMessage, Severity.Success);
+                
+                await LoadData();
+            }
         }
+        finally
+        {
+            _processing = false;
+            _scanInput = "";
+            StateHasChanged();
+            
+            if (_scanField != null)
+            {
+                await _scanField.FocusAsync();
+            }
+        }
+    }
+
+    private async Task<int> ConvertToBookings(PickupRequest pickup)
+    {
+        int awbCount = 0;
+        var today = DateTime.UtcNow.Date;
+        
+        var existingCount = await DbContext.InscanMasters
+            .CountAsync(a => a.TransactionDate >= today);
+        
+        foreach (var shipment in pickup.Shipments.Where(s => s.Status == ShipmentLineStatus.Pending))
+        {
+            existingCount++;
+            var awbNo = $"AWB{DateTime.UtcNow:yyyyMMdd}{existingCount:D6}";
+            
+            var awb = new InscanMaster
+            {
+                AWBNo = awbNo,
+                TransactionDate = DateTime.UtcNow,
+                CompanyId = pickup.CompanyId,
+                BranchId = pickup.BranchId,
+                CustomerId = pickup.CustomerId,
+                
+                Consignor = pickup.CustomerName,
+                ConsignorContact = pickup.ContactPerson,
+                ConsignorPhone = pickup.Phone,
+                ConsignorMobile = pickup.Mobile,
+                ConsignorAddress1 = pickup.PickupAddress,
+                ConsignorCity = pickup.City,
+                ConsignorState = pickup.State,
+                ConsignorCountry = pickup.Country,
+                ConsignorPostalCode = pickup.PostalCode,
+                
+                Consignee = shipment.Consignee,
+                ConsigneeContact = shipment.ConsigneeContact,
+                ConsigneePhone = shipment.ConsigneePhone,
+                ConsigneeMobile = shipment.ConsigneeMobile,
+                ConsigneeAddress1 = shipment.ConsigneeAddress1,
+                ConsigneeAddress2 = shipment.ConsigneeAddress2,
+                ConsigneeCity = shipment.ConsigneeCity,
+                ConsigneeState = shipment.ConsigneeState,
+                ConsigneeCountry = shipment.ConsigneeCountry,
+                ConsigneePostalCode = shipment.ConsigneePostalCode,
+                
+                Pieces = shipment.Pieces,
+                Weight = shipment.Weight,
+                Length = shipment.Length,
+                Width = shipment.Width,
+                Height = shipment.Height,
+                VolumetricWeight = shipment.VolumetricWeight,
+                
+                CargoDescription = shipment.CargoDescription,
+                SpecialInstructions = shipment.SpecialInstructions ?? pickup.SpecialInstructions,
+                ReferenceNo = shipment.ReferenceNo ?? pickup.ReferenceNo,
+                
+                PaymentModeId = shipment.PaymentModeId,
+                DocumentTypeId = shipment.DocumentTypeId,
+                CourierStatusId = CourierStatus.PickedUp,
+                
+                PickupRequestId = pickup.Id,
+                PickupRequestShipmentId = shipment.Id,
+                PickedUpDate = pickup.CollectedAt,
+                PickedBy = pickup.CourierName,
+                
+                CreatedAt = DateTime.UtcNow,
+                CreatedBy = _currentUsername
+            };
+            
+            if (shipment.Length.HasValue && shipment.Width.HasValue && shipment.Height.HasValue)
+            {
+                awb.VolumetricWeight = (shipment.Length.Value * shipment.Width.Value * shipment.Height.Value) / 5000;
+                awb.ChargeableWeight = Math.Max(shipment.Weight ?? 0, awb.VolumetricWeight ?? 0);
+            }
+            else
+            {
+                awb.ChargeableWeight = shipment.Weight;
+            }
+            
+            DbContext.InscanMasters.Add(awb);
+            
+            
+            shipment.Status = ShipmentLineStatus.Booked;
+            shipment.AWBNo = awbNo;
+            shipment.BookedAt = DateTime.UtcNow;
+            
+            awbCount++;
+        }
+        
+        await DbContext.SaveChangesAsync();
+        
+        foreach (var shipment in pickup.Shipments.Where(s => s.Status == ShipmentLineStatus.Booked && s.AWBId == null))
+        {
+            var awb = await DbContext.InscanMasters
+                .FirstOrDefaultAsync(a => a.AWBNo == shipment.AWBNo);
+            if (awb != null)
+            {
+                shipment.AWBId = awb.Id;
+                
+                var tracking = new AWBTracking
+                {
+                    InscanId = awb.Id,
+                    EventDateTime = DateTime.UtcNow,
+                    StatusId = CourierStatus.PickedUp,
+                    Remarks = $"AWB created from Pickup Request {pickup.PickupNo}",
+                    Location = pickup.City,
+                    CreatedAt = DateTime.UtcNow,
+                    CreatedBy = _currentUsername
+                };
+                DbContext.AWBTrackings.Add(tracking);
+            }
+        }
+        
+        await DbContext.SaveChangesAsync();
+        
+        return awbCount;
     }
 
     private void SelectPickup(PickupRequest pickup)

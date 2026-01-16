@@ -9,20 +9,21 @@
 @using Net4Courier.Operations.Entities
 @using Net4Courier.Masters.Entities
 @using Net4Courier.Web.Services
+@using Net4Courier.Kernel.Enums
 
 <PageTitle>Request Pickup - Net4Courier</PageTitle>
 
-<MudContainer MaxWidth="MaxWidth.Medium" Class="py-4">
+<MudContainer MaxWidth="MaxWidth.Large" Class="py-4">
     <MudText Typo="Typo.h5" GutterBottom="true" Align="Align.Center">Request a Pickup</MudText>
     
-    <MudPaper Class="pa-4" Elevation="2">
+    <MudPaper Class="pa-4 mb-4" Elevation="2">
         <MudForm @ref="_form" @bind-IsValid="_isValid">
             <MudStack Spacing="3">
                 <MudDatePicker @bind-Date="_scheduledDate" Label="Preferred Pickup Date" Variant="Variant.Outlined" 
                                DateFormat="dd/MM/yyyy" Required="true" MinDate="DateTime.Today" />
                 
                 <MudDivider />
-                <MudText Typo="Typo.subtitle1" GutterBottom="true">Pickup Address</MudText>
+                <MudText Typo="Typo.subtitle1" GutterBottom="true">Pickup Address (Your Location)</MudText>
                 
                 @if (_savedAddresses.Any())
                 {
@@ -42,10 +43,10 @@
                               Required="true" Lines="2" />
                 
                 <MudGrid>
-                    <MudItem xs="6">
+                    <MudItem xs="12" sm="6">
                         <MudTextField @bind-Value="_entity.City" Label="City" Variant="Variant.Outlined" Required="true" />
                     </MudItem>
-                    <MudItem xs="6">
+                    <MudItem xs="12" sm="6">
                         <MudTextField @bind-Value="_entity.PostalCode" Label="Postal Code" Variant="Variant.Outlined" Required="true" />
                     </MudItem>
                 </MudGrid>
@@ -58,51 +59,144 @@
                 <MudTextField @bind-Value="_entity.ContactPerson" Label="Contact Person" Variant="Variant.Outlined" Required="true" />
                 
                 <MudGrid>
-                    <MudItem xs="6">
+                    <MudItem xs="12" sm="6">
                         <MudTextField @bind-Value="_entity.Mobile" Label="Mobile" Variant="Variant.Outlined" Required="true" />
                     </MudItem>
-                    <MudItem xs="6">
+                    <MudItem xs="12" sm="6">
                         <MudTextField @bind-Value="_entity.Phone" Label="Alternate Phone" Variant="Variant.Outlined" />
                     </MudItem>
                 </MudGrid>
                 
-                <MudDivider />
-                <MudText Typo="Typo.subtitle1" GutterBottom="true">Package Information</MudText>
-                
-                <MudGrid>
-                    <MudItem xs="6">
-                        <MudNumericField @bind-Value="_entity.EstimatedPieces" Label="Number of Pieces" Variant="Variant.Outlined" Min="1" />
-                    </MudItem>
-                    <MudItem xs="6">
-                        <MudNumericField @bind-Value="_entity.EstimatedWeight" Label="Approx Weight (kg)" Variant="Variant.Outlined" />
-                    </MudItem>
-                </MudGrid>
-                
-                <MudTextField @bind-Value="_entity.PackageDescription" Label="Package Description" Variant="Variant.Outlined" Lines="2"
-                              Placeholder="What are you sending?" />
-                
-                <MudTextField @bind-Value="_entity.SpecialInstructions" Label="Special Instructions" Variant="Variant.Outlined" Lines="2"
+                <MudTextField @bind-Value="_entity.SpecialInstructions" Label="Special Instructions (optional)" Variant="Variant.Outlined" Lines="2"
                               Placeholder="Any special handling requirements?" />
-                
-                <MudTextField @bind-Value="_entity.ReferenceNo" Label="Your Reference Number (optional)" Variant="Variant.Outlined" />
-                
-                <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="Submit" FullWidth="true" Size="Size.Large"
-                           Disabled="@(!_isValid)" StartIcon="@Icons.Material.Filled.Send">
-                    Submit Pickup Request
-                </MudButton>
             </MudStack>
         </MudForm>
+    </MudPaper>
+
+    <MudPaper Class="pa-4 mb-4" Elevation="2">
+        <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center" Class="mb-3">
+            <MudText Typo="Typo.subtitle1">Shipments (@_shipments.Count)</MudText>
+            <MudButton Variant="Variant.Outlined" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add" OnClick="AddShipment">
+                Add Shipment
+            </MudButton>
+        </MudStack>
+        
+        @if (_shipments.Count == 0)
+        {
+            <MudAlert Severity="Severity.Info">Add at least one shipment to continue</MudAlert>
+        }
+        else
+        {
+            <MudStack Spacing="3">
+                @foreach (var (shipment, index) in _shipments.Select((s, i) => (s, i)))
+                {
+                    <MudCard Outlined="true">
+                        <MudCardContent>
+                            <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center" Class="mb-2">
+                                <MudText Typo="Typo.subtitle2" Color="Color.Primary">Shipment #@(index + 1)</MudText>
+                                <MudIconButton Icon="@Icons.Material.Filled.Delete" Color="Color.Error" Size="Size.Small"
+                                               OnClick="@(() => RemoveShipment(index))" />
+                            </MudStack>
+                            
+                            <MudText Typo="Typo.subtitle2" GutterBottom="true">Receiver Details</MudText>
+                            <MudGrid>
+                                <MudItem xs="12" sm="6">
+                                    <MudTextField @bind-Value="shipment.Consignee" Label="Receiver Name" Variant="Variant.Outlined" Required="true" />
+                                </MudItem>
+                                <MudItem xs="12" sm="6">
+                                    <MudTextField @bind-Value="shipment.ConsigneePhone" Label="Receiver Phone" Variant="Variant.Outlined" Required="true" />
+                                </MudItem>
+                            </MudGrid>
+                            
+                            <MudTextField @bind-Value="shipment.ConsigneeAddress1" Label="Delivery Address" Variant="Variant.Outlined" 
+                                          Required="true" Class="mt-2" />
+                            
+                            <MudGrid>
+                                <MudItem xs="12" sm="4">
+                                    <MudTextField @bind-Value="shipment.ConsigneeCity" Label="City" Variant="Variant.Outlined" Required="true" />
+                                </MudItem>
+                                <MudItem xs="12" sm="4">
+                                    <MudTextField @bind-Value="shipment.ConsigneeState" Label="State" Variant="Variant.Outlined" />
+                                </MudItem>
+                                <MudItem xs="12" sm="4">
+                                    <MudTextField @bind-Value="shipment.ConsigneePostalCode" Label="Postal Code" Variant="Variant.Outlined" Required="true" />
+                                </MudItem>
+                            </MudGrid>
+                            
+                            <MudDivider Class="my-3" />
+                            <MudText Typo="Typo.subtitle2" GutterBottom="true">Package Details</MudText>
+                            
+                            <MudGrid>
+                                <MudItem xs="6" sm="3">
+                                    <MudNumericField @bind-Value="shipment.Pieces" Label="Pieces" Variant="Variant.Outlined" Min="1" />
+                                </MudItem>
+                                <MudItem xs="6" sm="3">
+                                    <MudNumericField @bind-Value="shipment.Weight" Label="Weight (kg)" Variant="Variant.Outlined" Format="F2" />
+                                </MudItem>
+                                <MudItem xs="12" sm="6">
+                                    <MudSelect T="DocumentType" @bind-Value="shipment.DocumentTypeId" Label="Content Type" 
+                                               Variant="Variant.Outlined" AnchorOrigin="Origin.BottomCenter">
+                                        <MudSelectItem Value="DocumentType.Document">Document</MudSelectItem>
+                                        <MudSelectItem Value="DocumentType.Parcel">Parcel</MudSelectItem>
+                                    </MudSelect>
+                                </MudItem>
+                            </MudGrid>
+                            
+                            <MudGrid>
+                                <MudItem xs="4">
+                                    <MudNumericField @bind-Value="shipment.Length" Label="Length (cm)" Variant="Variant.Outlined" Format="F1" />
+                                </MudItem>
+                                <MudItem xs="4">
+                                    <MudNumericField @bind-Value="shipment.Width" Label="Width (cm)" Variant="Variant.Outlined" Format="F1" />
+                                </MudItem>
+                                <MudItem xs="4">
+                                    <MudNumericField @bind-Value="shipment.Height" Label="Height (cm)" Variant="Variant.Outlined" Format="F1" />
+                                </MudItem>
+                            </MudGrid>
+                            
+                            <MudTextField @bind-Value="shipment.CargoDescription" Label="Package Description" Variant="Variant.Outlined" 
+                                          Placeholder="What are you sending?" Class="mt-2" />
+                            
+                            <MudGrid>
+                                <MudItem xs="12" sm="6">
+                                    <MudTextField @bind-Value="shipment.ReferenceNo" Label="Your Reference" Variant="Variant.Outlined" />
+                                </MudItem>
+                                <MudItem xs="12" sm="6">
+                                    <MudNumericField @bind-Value="shipment.DeclaredValue" Label="Declared Value" Variant="Variant.Outlined" Format="F2" />
+                                </MudItem>
+                            </MudGrid>
+                        </MudCardContent>
+                    </MudCard>
+                }
+            </MudStack>
+        }
+    </MudPaper>
+    
+    <MudPaper Class="pa-4" Elevation="2">
+        <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
+            <MudText>
+                <strong>Total Shipments:</strong> @_shipments.Count | 
+                <strong>Total Pieces:</strong> @_shipments.Sum(s => s.Pieces ?? 0) | 
+                <strong>Total Weight:</strong> @_shipments.Sum(s => s.Weight ?? 0).ToString("F2") kg
+            </MudText>
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="Submit" Size="Size.Large"
+                       Disabled="@(!_isValid || _shipments.Count == 0)" StartIcon="@Icons.Material.Filled.Send">
+                Submit Pickup Request
+            </MudButton>
+        </MudStack>
     </MudPaper>
 </MudContainer>
 
 @code {
     private PickupRequest _entity = new();
+    private List<PickupRequestShipment> _shipments = new();
     private MudForm _form = null!;
     private bool _isValid;
     private DateTime? _scheduledDate = DateTime.Today.AddDays(1);
     private List<PartyAddress> _savedAddresses = new();
     private long? _selectedAddressId;
     private Party? _customerParty;
+    private long? _customerId;
 
     protected override async Task OnInitializedAsync()
     {
@@ -118,11 +212,46 @@
                 if (dbUser != null)
                 {
                     _entity.Email = dbUser.Email;
+                    _entity.ContactPerson = dbUser.FullName;
+                    _entity.Phone = dbUser.Phone;
+                    
+                    _customerParty = await DbContext.Parties
+                        .Include(p => p.Addresses)
+                        .FirstOrDefaultAsync(p => p.Email == dbUser.Email && !p.IsDeleted);
+                    
+                    if (_customerParty != null)
+                    {
+                        _customerId = _customerParty.Id;
+                        _savedAddresses = _customerParty.Addresses.Where(a => !a.IsDeleted).ToList();
+                    }
                 }
             }
         }
         
-        _entity.EstimatedPieces = 1;
+        AddShipment();
+    }
+
+    private void AddShipment()
+    {
+        _shipments.Add(new PickupRequestShipment
+        {
+            LineNo = _shipments.Count + 1,
+            Pieces = 1,
+            DocumentTypeId = DocumentType.Document,
+            PaymentModeId = PaymentMode.Prepaid
+        });
+    }
+
+    private void RemoveShipment(int index)
+    {
+        if (_shipments.Count > 0)
+        {
+            _shipments.RemoveAt(index);
+            for (int i = 0; i < _shipments.Count; i++)
+            {
+                _shipments[i].LineNo = i + 1;
+            }
+        }
     }
 
     private void OnAddressSelected(long? addressId)
@@ -146,10 +275,18 @@
 
     private async Task Submit()
     {
+        if (_shipments.Count == 0)
+        {
+            Snackbar.Add("Please add at least one shipment", Severity.Warning);
+            return;
+        }
+
         _entity.PickupNo = await GeneratePickupNo();
         _entity.RequestDate = DateTime.UtcNow;
         _entity.ScheduledDate = _scheduledDate.HasValue ? DateTime.SpecifyKind(_scheduledDate.Value, DateTimeKind.Utc) : null;
         _entity.Status = PickupStatus.PickupRequest;
+        _entity.EstimatedPieces = _shipments.Sum(s => s.Pieces ?? 0);
+        _entity.EstimatedWeight = _shipments.Sum(s => s.Weight ?? 0);
         
         if (_customerParty != null)
         {
@@ -161,10 +298,15 @@
             _entity.CustomerName = _entity.ContactPerson;
         }
         
+        foreach (var shipment in _shipments)
+        {
+            _entity.Shipments.Add(shipment);
+        }
+        
         DbContext.PickupRequests.Add(_entity);
         await DbContext.SaveChangesAsync();
         
-        Snackbar.Add($"Pickup request {_entity.PickupNo} submitted successfully!", Severity.Success);
+        Snackbar.Add($"Pickup request {_entity.PickupNo} with {_shipments.Count} shipment(s) submitted successfully!", Severity.Success);
         NavigationManager.NavigateTo("/customer/my-pickups");
     }
 
