@@ -8,8 +8,9 @@ public class AccountHead : BaseEntity
     public string Code { get; set; } = string.Empty;
     public string Name { get; set; } = string.Empty;
     public long? ParentId { get; set; }
-    public AccountType AccountType { get; set; }
+    public AccountClassification Classification { get; set; }
     public AccountGroup AccountGroup { get; set; }
+    public AccountNature AccountNature { get; set; }
     public int Level { get; set; }
     public string? Path { get; set; }
     public bool IsGroup { get; set; }
@@ -21,28 +22,39 @@ public class AccountHead : BaseEntity
     public virtual ICollection<AccountHead> Children { get; set; } = new List<AccountHead>();
 }
 
-public enum AccountType
+public enum AccountClassification
 {
-    Asset = 1,
-    Liability = 2,
+    Assets = 1,
+    Liabilities = 2,
     Income = 3,
-    Expense = 4,
+    Expenditure = 4,
     Equity = 5
 }
 
 public enum AccountGroup
 {
-    CurrentAsset = 1,
-    FixedAsset = 2,
-    CurrentLiability = 3,
-    LongTermLiability = 4,
-    DirectIncome = 5,
-    IndirectIncome = 6,
-    DirectExpense = 7,
-    IndirectExpense = 8,
-    Capital = 9,
-    BankAccount = 10,
-    CashAccount = 11,
-    Receivable = 12,
-    Payable = 13
+    CurrentAssets = 1,
+    FixedAssets = 2,
+    Investments = 3,
+    CurrentLiabilities = 4,
+    LongTermLiabilities = 5,
+    DirectIncome = 6,
+    IndirectIncome = 7,
+    DirectExpenses = 8,
+    IndirectExpenses = 9,
+    Capital = 10,
+    Reserves = 11
+}
+
+public enum AccountNature
+{
+    General = 0,
+    CashAccount = 1,
+    BankAccount = 2,
+    ControlAccount = 3,
+    Receivable = 4,
+    Payable = 5,
+    TaxAccount = 6,
+    DiscountAccount = 7,
+    RoundOffAccount = 8
 }
