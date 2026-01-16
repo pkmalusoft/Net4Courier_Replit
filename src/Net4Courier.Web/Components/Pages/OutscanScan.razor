@@ -1,0 +1,312 @@
+@page "/outscan-scan/{DrsId:long}"
+@inject ApplicationDbContext DbContext
+@inject ISnackbar Snackbar
+@inject NavigationManager Navigation
+@using Microsoft.EntityFrameworkCore
+@using Net4Courier.Infrastructure.Data
+@using Net4Courier.Operations.Entities
+@using Net4Courier.Kernel.Enums
+
+<PageTitle>Outscan - Scan AWBs - Net4Courier</PageTitle>
+
+@if (_drs == null)
+{
+    <MudProgressCircular Indeterminate="true" />
+}
+else
+{
+    <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center" Class="mb-4">
+        <MudStack Spacing="0">
+            <MudText Typo="Typo.h5">Outscan: @_drs.DRSNo</MudText>
+            <MudText Typo="Typo.body2" Color="Color.Secondary">
+                @_drs.DeliveryEmployeeName | @_drs.VehicleNo | @_drs.DRSDate.ToString("dd MMM yyyy")
+            </MudText>
+        </MudStack>
+        <MudStack Row="true" Spacing="2">
+            <MudButton Variant="Variant.Outlined" Color="Color.Info" StartIcon="@Icons.Material.Filled.Print"
+                       Href="@($"/drs-print/{DrsId}")">
+                Print DRS
+            </MudButton>
+            <MudButton Variant="Variant.Outlined" Color="Color.Default" StartIcon="@Icons.Material.Filled.ArrowBack"
+                       Href="/outscan">
+                Back to List
+            </MudButton>
+        </MudStack>
+    </MudStack>
+
+    @if (_drs.DRSStatus != 1)
+    {
+        <MudPaper Class="pa-4 mb-4" Elevation="2" Style="background-color: #fff3e0;">
+            <MudStack Row="true" Spacing="2" AlignItems="AlignItems.Center">
+                <MudIcon Icon="@Icons.Material.Filled.QrCodeScanner" Size="Size.Large" Color="Color.Warning" />
+                <MudTextField @bind-Value="_scanInput" Label="Scan AWB Number" Variant="Variant.Outlined" 
+                              Immediate="true" OnKeyDown="OnScanKeyDown" Placeholder="Scan or type AWB number..."
+                              Adornment="Adornment.End" AdornmentIcon="@Icons.Material.Filled.Search"
+                              AdornmentColor="Color.Primary" OnAdornmentClick="ProcessScan"
+                              Style="flex-grow: 1;" />
+                <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="ProcessScan"
+                           StartIcon="@Icons.Material.Filled.Add" Size="Size.Large">
+                    Add
+                </MudButton>
+            </MudStack>
+            @if (!string.IsNullOrEmpty(_scanMessage))
+            {
+                <MudAlert Severity="@_scanSeverity" Class="mt-2" Dense="true">@_scanMessage</MudAlert>
+            }
+        </MudPaper>
+    }
+    else
+    {
+        <MudAlert Severity="Severity.Info" Class="mb-4">This DRS is closed. No more AWBs can be added.</MudAlert>
+    }
+
+    <MudPaper Class="pa-3 mb-4" Elevation="2" Style="background-color: #e3f2fd;">
+        <MudStack Row="true" Justify="Justify.SpaceAround">
+            <MudStack Spacing="0" AlignItems="AlignItems.Center">
+                <MudText Typo="Typo.h4" Color="Color.Primary">@_drsDetails.Count</MudText>
+                <MudText Typo="Typo.caption">Total AWBs</MudText>
+            </MudStack>
+            <MudDivider Vertical="true" FlexItem="true" />
+            <MudStack Spacing="0" AlignItems="AlignItems.Center">
+                <MudText Typo="Typo.h4" Color="Color.Success">@_drsDetails.Count(d => d.Status == "Delivered")</MudText>
+                <MudText Typo="Typo.caption">Delivered</MudText>
+            </MudStack>
+            <MudDivider Vertical="true" FlexItem="true" />
+            <MudStack Spacing="0" AlignItems="AlignItems.Center">
+                <MudText Typo="Typo.h4" Color="Color.Warning">@_drsDetails.Count(d => d.Status == "Pending")</MudText>
+                <MudText Typo="Typo.caption">Pending</MudText>
+            </MudStack>
+            <MudDivider Vertical="true" FlexItem="true" />
+            <MudStack Spacing="0" AlignItems="AlignItems.Center">
+                <MudText Typo="Typo.h4" Color="Color.Tertiary">@_totalCOD.ToString("N0")</MudText>
+                <MudText Typo="Typo.caption">Total COD</MudText>
+            </MudStack>
+        </MudStack>
+    </MudPaper>
+
+    <MudTable Items="@_drsDetails" Hover="true" Striped="true" Dense="true">
+        <HeaderContent>
+            <MudTh>#</MudTh>
+            <MudTh>AWB No</MudTh>
+            <MudTh>Consignee</MudTh>
+            <MudTh>Destination</MudTh>
+            <MudTh>Pcs</MudTh>
+            <MudTh Style="text-align: right;">COD</MudTh>
+            <MudTh>Status</MudTh>
+            @if (_drs.DRSStatus != 1)
+            {
+                <MudTh>Actions</MudTh>
+            }
+        </HeaderContent>
+        <RowTemplate>
+            <MudTd DataLabel="#">@context.Sequence</MudTd>
+            <MudTd DataLabel="AWB No">
+                <MudLink Href="@($"/awb/{context.InscanId}")">@context.Inscan?.AWBNo</MudLink>
+            </MudTd>
+            <MudTd DataLabel="Consignee">
+                <MudStack Spacing="0">
+                    <MudText Typo="Typo.body2">@context.Inscan?.Consignee</MudText>
+                    <MudText Typo="Typo.caption" Color="Color.Secondary">@context.Inscan?.ConsigneePhone</MudText>
+                </MudStack>
+            </MudTd>
+            <MudTd DataLabel="Destination">@context.Inscan?.ConsigneeCity</MudTd>
+            <MudTd DataLabel="Pcs">@context.Inscan?.Pieces</MudTd>
+            <MudTd DataLabel="COD" Style="text-align: right;">
+                @if (context.CODAmount > 0)
+                {
+                    <strong>@context.CODAmount?.ToString("N2")</strong>
+                }
+            </MudTd>
+            <MudTd DataLabel="Status">
+                @switch (context.Status)
+                {
+                    case "Delivered":
+                        <MudChip T="string" Size="Size.Small" Color="Color.Success">Delivered</MudChip>
+                        break;
+                    case "Returned":
+                        <MudChip T="string" Size="Size.Small" Color="Color.Error">Returned</MudChip>
+                        break;
+                    default:
+                        <MudChip T="string" Size="Size.Small" Color="Color.Warning">Pending</MudChip>
+                        break;
+                }
+            </MudTd>
+            @if (_drs.DRSStatus != 1)
+            {
+                <MudTd>
+                    <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" Color="Color.Error"
+                                   OnClick="@(() => RemoveFromDRS(context))" Title="Remove from DRS" />
+                </MudTd>
+            }
+        </RowTemplate>
+        <NoRecordsContent>
+            <MudText>No AWBs added to this DRS yet. Scan AWB numbers above to add.</MudText>
+        </NoRecordsContent>
+    </MudTable>
+}
+
+@code {
+    [Parameter] public long DrsId { get; set; }
+    
+    private DRS? _drs;
+    private List<DRSDetail> _drsDetails = new();
+    private string _scanInput = string.Empty;
+    private string _scanMessage = string.Empty;
+    private Severity _scanSeverity = Severity.Info;
+    private decimal _totalCOD;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadData();
+    }
+
+    private async Task LoadData()
+    {
+        _drs = await DbContext.Set<DRS>().FirstOrDefaultAsync(d => d.Id == DrsId);
+        
+        if (_drs == null)
+        {
+            Navigation.NavigateTo("/outscan");
+            return;
+        }
+        
+        _drsDetails = await DbContext.Set<DRSDetail>()
+            .Include(d => d.Inscan)
+            .Where(d => d.DRSId == DrsId)
+            .OrderBy(d => d.Sequence)
+            .ToListAsync();
+            
+        _totalCOD = _drsDetails.Sum(d => d.CODAmount ?? 0);
+        
+        await UpdateDRSCounts();
+    }
+
+    private async Task OnScanKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter")
+        {
+            await ProcessScan();
+        }
+    }
+
+    private async Task ProcessScan()
+    {
+        if (string.IsNullOrWhiteSpace(_scanInput))
+        {
+            _scanMessage = "Please enter an AWB number";
+            _scanSeverity = Severity.Warning;
+            return;
+        }
+        
+        var awbNo = _scanInput.Trim().ToUpper();
+        
+        var existingInDrs = _drsDetails.Any(d => d.Inscan?.AWBNo == awbNo);
+        if (existingInDrs)
+        {
+            _scanMessage = $"AWB {awbNo} is already in this DRS";
+            _scanSeverity = Severity.Warning;
+            _scanInput = string.Empty;
+            return;
+        }
+        
+        var awb = await DbContext.InscanMasters
+            .FirstOrDefaultAsync(a => a.AWBNo == awbNo && !a.IsDeleted);
+            
+        if (awb == null)
+        {
+            _scanMessage = $"AWB {awbNo} not found";
+            _scanSeverity = Severity.Error;
+            _scanInput = string.Empty;
+            return;
+        }
+        
+        var alreadyInOtherDrs = await DbContext.Set<DRSDetail>()
+            .Include(d => d.DRS)
+            .AnyAsync(d => d.InscanId == awb.Id && d.DRS.DRSStatus != 1);
+            
+        if (alreadyInOtherDrs)
+        {
+            _scanMessage = $"AWB {awbNo} is already assigned to another open DRS";
+            _scanSeverity = Severity.Warning;
+            _scanInput = string.Empty;
+            return;
+        }
+        
+        var nextSequence = _drsDetails.Count + 1;
+        var codAmount = awb.PaymentModeId == PaymentMode.COD ? (awb.CODAmount ?? 0) : 0;
+        
+        var detail = new DRSDetail
+        {
+            DRSId = DrsId,
+            InscanId = awb.Id,
+            Sequence = nextSequence,
+            AttemptNo = 1,
+            Status = "Pending",
+            CODAmount = codAmount,
+            CreatedAt = DateTime.UtcNow,
+            IsActive = true
+        };
+        
+        DbContext.Set<DRSDetail>().Add(detail);
+        
+        awb.CourierStatusId = CourierStatus.OutForDelivery;
+        awb.ModifiedAt = DateTime.UtcNow;
+        
+        var tracking = new AWBTracking
+        {
+            InscanId = awb.Id,
+            EventDateTime = DateTime.UtcNow,
+            StatusId = CourierStatus.OutForDelivery,
+            Remarks = $"Out for delivery - Added to DRS {_drs!.DRSNo}",
+            CreatedAt = DateTime.UtcNow
+        };
+        DbContext.AWBTrackings.Add(tracking);
+        
+        await DbContext.SaveChangesAsync();
+        
+        _scanMessage = $"AWB {awbNo} added successfully";
+        _scanSeverity = Severity.Success;
+        _scanInput = string.Empty;
+        
+        await LoadData();
+    }
+
+    private async Task RemoveFromDRS(DRSDetail detail)
+    {
+        DbContext.Set<DRSDetail>().Remove(detail);
+        
+        if (detail.Inscan != null)
+        {
+            detail.Inscan.CourierStatusId = CourierStatus.InTransit;
+            detail.Inscan.ModifiedAt = DateTime.UtcNow;
+            
+            var tracking = new AWBTracking
+            {
+                InscanId = detail.InscanId,
+                EventDateTime = DateTime.UtcNow,
+                StatusId = CourierStatus.InTransit,
+                Remarks = $"Removed from DRS {_drs!.DRSNo}",
+                CreatedAt = DateTime.UtcNow
+            };
+            DbContext.AWBTrackings.Add(tracking);
+        }
+        
+        await DbContext.SaveChangesAsync();
+        Snackbar.Add("AWB removed from DRS", Severity.Info);
+        await LoadData();
+    }
+
+    private async Task UpdateDRSCounts()
+    {
+        if (_drs == null) return;
+        
+        _drs.TotalAWBs = _drsDetails.Count;
+        _drs.DeliveredCount = _drsDetails.Count(d => d.Status == "Delivered");
+        _drs.PendingCount = _drsDetails.Count(d => d.Status == "Pending");
+        _drs.ReturnedCount = _drsDetails.Count(d => d.Status == "Returned");
+        _drs.TotalCOD = _drsDetails.Sum(d => d.CODAmount ?? 0);
+        _drs.CollectedCOD = _drsDetails.Where(d => d.Status == "Delivered").Sum(d => d.CollectedAmount ?? 0);
+        
+        await DbContext.SaveChangesAsync();
+    }
+}

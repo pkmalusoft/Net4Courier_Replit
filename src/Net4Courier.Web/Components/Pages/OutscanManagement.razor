@@ -1,0 +1,247 @@
+@page "/outscan"
+@inject ApplicationDbContext DbContext
+@inject ISnackbar Snackbar
+@inject IDialogService DialogService
+@inject NavigationManager Navigation
+@using Microsoft.EntityFrameworkCore
+@using Net4Courier.Infrastructure.Data
+@using Net4Courier.Operations.Entities
+@using Net4Courier.Masters.Entities
+@using static Net4Courier.Masters.Entities.Party
+
+<PageTitle>Outscan / DRS Management - Net4Courier</PageTitle>
+
+<MudText Typo="Typo.h5" GutterBottom="true">Outscan / Delivery Run Sheet</MudText>
+
+<MudPaper Class="pa-4 mb-4" Elevation="2">
+    <MudGrid>
+        <MudItem xs="12" sm="6" md="3">
+            <MudSelect T="string" @bind-Value="_selectedPeriod" Label="Period" Variant="Variant.Outlined" Dense="true">
+                <MudSelectItem T="string" Value="@("Today")">Today</MudSelectItem>
+                <MudSelectItem T="string" Value="@("Week")">This Week</MudSelectItem>
+                <MudSelectItem T="string" Value="@("Month")">This Month</MudSelectItem>
+                <MudSelectItem T="string" Value="@("Custom")">Custom Range</MudSelectItem>
+            </MudSelect>
+        </MudItem>
+        @if (_selectedPeriod == "Custom")
+        {
+            <MudItem xs="6" sm="3" md="2">
+                <MudDatePicker @bind-Date="_fromDate" Label="From" Variant="Variant.Outlined" Dense="true" />
+            </MudItem>
+            <MudItem xs="6" sm="3" md="2">
+                <MudDatePicker @bind-Date="_toDate" Label="To" Variant="Variant.Outlined" Dense="true" />
+            </MudItem>
+        }
+        <MudItem xs="12" sm="6" md="3">
+            <MudSelect T="long?" Value="_selectedCourierId" ValueChanged="OnCourierChanged" 
+                       Label="Courier" Variant="Variant.Outlined" Clearable="true" Dense="true">
+                <MudSelectItem T="long?" Value="@((long?)null)">All Couriers</MudSelectItem>
+                @foreach (var courier in _couriers)
+                {
+                    <MudSelectItem T="long?" Value="@((long?)courier.Id)">@courier.Name</MudSelectItem>
+                }
+            </MudSelect>
+        </MudItem>
+        <MudItem xs="12" sm="6" md="2">
+            <MudSelect T="int?" @bind-Value="_selectedStatus" Label="Status" Variant="Variant.Outlined" Clearable="true" Dense="true">
+                <MudSelectItem T="int?" Value="@((int?)null)">All Status</MudSelectItem>
+                <MudSelectItem T="int?" Value="@((int?)0)">Open</MudSelectItem>
+                <MudSelectItem T="int?" Value="@((int?)1)">Closed</MudSelectItem>
+            </MudSelect>
+        </MudItem>
+        <MudItem xs="12" sm="6" md="2">
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="Search" 
+                       StartIcon="@Icons.Material.Filled.Search" FullWidth="true">
+                Search
+            </MudButton>
+        </MudItem>
+    </MudGrid>
+</MudPaper>
+
+<MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center" Class="mb-4">
+    <MudText Typo="Typo.subtitle1">@_drsList.Count Delivery Run Sheets</MudText>
+    <MudButton Variant="Variant.Filled" Color="Color.Success" StartIcon="@Icons.Material.Filled.Add"
+               OnClick="CreateNewDRS">
+        Create New DRS
+    </MudButton>
+</MudStack>
+
+<MudTable Items="@_drsList" Hover="true" Striped="true" Dense="true" Loading="@_loading">
+    <HeaderContent>
+        <MudTh>DRS No</MudTh>
+        <MudTh>Date</MudTh>
+        <MudTh>Courier</MudTh>
+        <MudTh>Vehicle</MudTh>
+        <MudTh Style="text-align: center;">AWBs</MudTh>
+        <MudTh Style="text-align: center;">Delivered</MudTh>
+        <MudTh Style="text-align: right;">COD</MudTh>
+        <MudTh>Status</MudTh>
+        <MudTh>Actions</MudTh>
+    </HeaderContent>
+    <RowTemplate>
+        <MudTd DataLabel="DRS No">
+            <MudLink Href="@($"/outscan-scan/{context.Id}")">@context.DRSNo</MudLink>
+        </MudTd>
+        <MudTd DataLabel="Date">@context.DRSDate.ToString("dd MMM yyyy")</MudTd>
+        <MudTd DataLabel="Courier">@context.DeliveryEmployeeName</MudTd>
+        <MudTd DataLabel="Vehicle">@context.VehicleNo</MudTd>
+        <MudTd DataLabel="AWBs" Style="text-align: center;">@context.TotalAWBs</MudTd>
+        <MudTd DataLabel="Delivered" Style="text-align: center;">
+            <MudChip T="string" Size="Size.Small" Color="@(context.DeliveredCount == context.TotalAWBs ? Color.Success : Color.Default)">
+                @context.DeliveredCount / @context.TotalAWBs
+            </MudChip>
+        </MudTd>
+        <MudTd DataLabel="COD" Style="text-align: right;">
+            @if (context.TotalCOD > 0)
+            {
+                <span>@context.CollectedCOD?.ToString("N2") / @context.TotalCOD?.ToString("N2")</span>
+            }
+        </MudTd>
+        <MudTd DataLabel="Status">
+            @if (context.DRSStatus == 1)
+            {
+                <MudChip T="string" Size="Size.Small" Color="Color.Success">Closed</MudChip>
+            }
+            else
+            {
+                <MudChip T="string" Size="Size.Small" Color="Color.Warning">Open</MudChip>
+            }
+        </MudTd>
+        <MudTd>
+            <MudStack Row="true" Spacing="1">
+                <MudIconButton Icon="@Icons.Material.Filled.QrCodeScanner" Size="Size.Small" Color="Color.Primary"
+                               Href="@($"/outscan-scan/{context.Id}")" Title="Scan AWBs" />
+                <MudIconButton Icon="@Icons.Material.Filled.Print" Size="Size.Small" Color="Color.Info"
+                               OnClick="@(() => PrintDRS(context))" Title="Print DRS" />
+                @if (context.DRSStatus != 1)
+                {
+                    <MudIconButton Icon="@Icons.Material.Filled.CheckCircle" Size="Size.Small" Color="Color.Success"
+                                   OnClick="@(() => CloseDRS(context))" Title="Close DRS" />
+                }
+            </MudStack>
+        </MudTd>
+    </RowTemplate>
+    <NoRecordsContent>
+        <MudText>No Delivery Run Sheets found</MudText>
+    </NoRecordsContent>
+</MudTable>
+
+<MudPaper Class="pa-4 mt-4" Elevation="2" Style="background-color: #e8f5e9;">
+    <MudStack Row="true" Justify="Justify.SpaceAround">
+        <MudStack Spacing="0" AlignItems="AlignItems.Center">
+            <MudText Typo="Typo.h4" Color="Color.Primary">@_drsList.Count(d => d.DRSStatus != 1)</MudText>
+            <MudText Typo="Typo.caption">Open DRS</MudText>
+        </MudStack>
+        <MudDivider Vertical="true" FlexItem="true" />
+        <MudStack Spacing="0" AlignItems="AlignItems.Center">
+            <MudText Typo="Typo.h4" Color="Color.Success">@_drsList.Sum(d => d.TotalAWBs ?? 0)</MudText>
+            <MudText Typo="Typo.caption">Total AWBs</MudText>
+        </MudStack>
+        <MudDivider Vertical="true" FlexItem="true" />
+        <MudStack Spacing="0" AlignItems="AlignItems.Center">
+            <MudText Typo="Typo.h4" Color="Color.Tertiary">@_drsList.Sum(d => d.TotalCOD ?? 0).ToString("N0")</MudText>
+            <MudText Typo="Typo.caption">Total COD</MudText>
+        </MudStack>
+    </MudStack>
+</MudPaper>
+
+@code {
+    private List<DRS> _drsList = new();
+    private List<Party> _couriers = new();
+    private bool _loading;
+    
+    private string _selectedPeriod = "Today";
+    private DateTime? _fromDate;
+    private DateTime? _toDate;
+    private long? _selectedCourierId;
+    private int? _selectedStatus;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _couriers = await DbContext.Parties
+            .Where(p => p.PartyType == PartyType.DeliveryAgent && !p.IsDeleted && p.IsActive)
+            .OrderBy(p => p.Name)
+            .ToListAsync();
+            
+        await Search();
+    }
+
+    private async Task OnCourierChanged(long? courierId)
+    {
+        _selectedCourierId = courierId;
+        await Search();
+    }
+
+    private (DateTime from, DateTime to) GetDateRange()
+    {
+        var today = DateTime.UtcNow.Date;
+        
+        return _selectedPeriod switch
+        {
+            "Today" => (today, today.AddDays(1)),
+            "Week" => (today.AddDays(-(int)today.DayOfWeek), today.AddDays(7 - (int)today.DayOfWeek)),
+            "Month" => (new DateTime(today.Year, today.Month, 1), new DateTime(today.Year, today.Month, 1).AddMonths(1)),
+            "Custom" => (_fromDate?.Date ?? today.AddDays(-30), _toDate?.Date.AddDays(1) ?? today.AddDays(1)),
+            _ => (today, today.AddDays(1))
+        };
+    }
+
+    private async Task Search()
+    {
+        _loading = true;
+        var (from, to) = GetDateRange();
+        
+        var query = DbContext.Set<DRS>()
+            .Where(d => d.DRSDate >= from && d.DRSDate < to);
+        
+        if (_selectedStatus.HasValue)
+        {
+            query = query.Where(d => d.DRSStatus == _selectedStatus.Value);
+        }
+        
+        _drsList = await query
+            .OrderByDescending(d => d.DRSDate)
+            .ThenByDescending(d => d.Id)
+            .Take(100)
+            .ToListAsync();
+            
+        _loading = false;
+    }
+
+    private async Task CreateNewDRS()
+    {
+        var parameters = new DialogParameters<CreateDRSDialog>();
+        parameters.Add(x => x.Couriers, _couriers);
+        
+        var options = new DialogOptions { CloseButton = true, MaxWidth = MaxWidth.Small, FullWidth = true };
+        var dialog = await DialogService.ShowAsync<CreateDRSDialog>("Create Delivery Run Sheet", parameters, options);
+        var result = await dialog.Result;
+        
+        if (result != null && !result.Canceled && result.Data is DRS newDrs)
+        {
+            Navigation.NavigateTo($"/outscan-scan/{newDrs.Id}");
+        }
+    }
+
+    private async Task CloseDRS(DRS drs)
+    {
+        var confirmed = await DialogService.ShowMessageBox(
+            "Close DRS",
+            $"Are you sure you want to close DRS {drs.DRSNo}? This will finalize the delivery run.",
+            yesText: "Close", cancelText: "Cancel");
+            
+        if (confirmed == true)
+        {
+            drs.DRSStatus = 1;
+            drs.ClosedAt = DateTime.UtcNow;
+            await DbContext.SaveChangesAsync();
+            Snackbar.Add($"DRS {drs.DRSNo} has been closed", Severity.Success);
+            await Search();
+        }
+    }
+
+    private void PrintDRS(DRS drs)
+    {
+        Navigation.NavigateTo($"/drs-print/{drs.Id}");
+    }
+}

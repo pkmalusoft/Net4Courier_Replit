@@ -1,0 +1,192 @@
+@page "/drs-print/{DrsId:long}"
+@inject ApplicationDbContext DbContext
+@inject NavigationManager Navigation
+@using Microsoft.EntityFrameworkCore
+@using Net4Courier.Infrastructure.Data
+@using Net4Courier.Operations.Entities
+
+<PageTitle>Print DRS - Net4Courier</PageTitle>
+
+@if (_drs == null)
+{
+    <MudProgressCircular Indeterminate="true" />
+}
+else
+{
+    <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center" Class="mb-4 no-print">
+        <MudStack Spacing="0">
+            <MudText Typo="Typo.h5">Delivery Run Sheet: @_drs.DRSNo</MudText>
+            <MudText Typo="Typo.body2" Color="Color.Secondary">
+                @_drs.DeliveryEmployeeName | @_drs.VehicleNo | @_drs.DRSDate.ToString("dd MMM yyyy")
+            </MudText>
+        </MudStack>
+        <MudStack Row="true" Spacing="2">
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Print"
+                       OnClick="PrintPage">
+                Print
+            </MudButton>
+            <MudButton Variant="Variant.Filled" Color="Color.Info" StartIcon="@Icons.Material.Filled.PictureAsPdf"
+                       OnClick="DownloadPDF">
+                Download PDF
+            </MudButton>
+            <MudButton Variant="Variant.Outlined" Color="Color.Default" StartIcon="@Icons.Material.Filled.ArrowBack"
+                       Href="@($"/outscan-scan/{DrsId}")">
+                Back
+            </MudButton>
+        </MudStack>
+    </MudStack>
+
+    <MudPaper Class="pa-4" Elevation="2" id="printable-area">
+        <div style="font-family: Arial, sans-serif;">
+            <div style="text-align: center; margin-bottom: 20px;">
+                <h2 style="margin: 0;">DELIVERY RUN SHEET</h2>
+                <p style="margin: 5px 0; font-size: 14px;">@_drs.DRSNo</p>
+            </div>
+
+            <table style="width: 100%; margin-bottom: 20px; border-collapse: collapse;">
+                <tr>
+                    <td style="width: 50%; padding: 5px;">
+                        <strong>Date:</strong> @_drs.DRSDate.ToString("dd MMM yyyy")
+                    </td>
+                    <td style="width: 50%; padding: 5px;">
+                        <strong>Courier:</strong> @_drs.DeliveryEmployeeName
+                    </td>
+                </tr>
+                <tr>
+                    <td style="padding: 5px;">
+                        <strong>Vehicle:</strong> @_drs.VehicleNo
+                    </td>
+                    <td style="padding: 5px;">
+                        <strong>Total AWBs:</strong> @_drsDetails.Count
+                    </td>
+                </tr>
+                <tr>
+                    <td style="padding: 5px;">
+                        <strong>Total COD:</strong> @_totalCOD.ToString("N2")
+                    </td>
+                    <td style="padding: 5px;">
+                        <strong>Status:</strong> @(_drs.DRSStatus == 1 ? "Closed" : "Open")
+                    </td>
+                </tr>
+            </table>
+
+            <table style="width: 100%; border-collapse: collapse; border: 1px solid #000;">
+                <thead>
+                    <tr style="background-color: #f0f0f0;">
+                        <th style="border: 1px solid #000; padding: 8px; text-align: left;">#</th>
+                        <th style="border: 1px solid #000; padding: 8px; text-align: left;">AWB No</th>
+                        <th style="border: 1px solid #000; padding: 8px; text-align: left;">Consignee</th>
+                        <th style="border: 1px solid #000; padding: 8px; text-align: left;">Address</th>
+                        <th style="border: 1px solid #000; padding: 8px; text-align: center;">Pcs</th>
+                        <th style="border: 1px solid #000; padding: 8px; text-align: right;">COD</th>
+                        <th style="border: 1px solid #000; padding: 8px; text-align: left; width: 80px;">Status</th>
+                        <th style="border: 1px solid #000; padding: 8px; text-align: left; width: 100px;">Signature</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var detail in _drsDetails)
+                    {
+                        <tr>
+                            <td style="border: 1px solid #000; padding: 6px;">@detail.Sequence</td>
+                            <td style="border: 1px solid #000; padding: 6px; font-weight: bold;">@detail.Inscan?.AWBNo</td>
+                            <td style="border: 1px solid #000; padding: 6px;">
+                                @detail.Inscan?.Consignee<br/>
+                                <small>@detail.Inscan?.ConsigneePhone</small>
+                            </td>
+                            <td style="border: 1px solid #000; padding: 6px; font-size: 12px;">
+                                @detail.Inscan?.ConsigneeAddress1<br/>
+                                @detail.Inscan?.ConsigneeCity @detail.Inscan?.ConsigneePostalCode
+                            </td>
+                            <td style="border: 1px solid #000; padding: 6px; text-align: center;">@detail.Inscan?.Pieces</td>
+                            <td style="border: 1px solid #000; padding: 6px; text-align: right;">
+                                @if (detail.CODAmount > 0)
+                                {
+                                    @detail.CODAmount?.ToString("N2")
+                                }
+                            </td>
+                            <td style="border: 1px solid #000; padding: 6px;"></td>
+                            <td style="border: 1px solid #000; padding: 6px;"></td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+
+            <div style="margin-top: 30px;">
+                <table style="width: 100%;">
+                    <tr>
+                        <td style="width: 50%; padding: 20px; vertical-align: bottom;">
+                            <div style="border-top: 1px solid #000; margin-top: 40px; padding-top: 5px;">
+                                Courier Signature
+                            </div>
+                        </td>
+                        <td style="width: 50%; padding: 20px; vertical-align: bottom;">
+                            <div style="border-top: 1px solid #000; margin-top: 40px; padding-top: 5px;">
+                                Supervisor Signature
+                            </div>
+                        </td>
+                    </tr>
+                </table>
+            </div>
+
+            <div style="margin-top: 20px; font-size: 11px; color: #666;">
+                <p>Printed: @DateTime.Now.ToString("dd MMM yyyy HH:mm")</p>
+            </div>
+        </div>
+    </MudPaper>
+}
+
+<style>
+    @@media print {
+        .no-print {
+            display: none !important;
+        }
+        .mud-appbar, .mud-drawer, .mud-nav-menu {
+            display: none !important;
+        }
+        .mud-main-content {
+            margin-left: 0 !important;
+            padding: 10px !important;
+        }
+        #printable-area {
+            box-shadow: none !important;
+            border: none !important;
+        }
+    }
+</style>
+
+@code {
+    [Parameter] public long DrsId { get; set; }
+    
+    private DRS? _drs;
+    private List<DRSDetail> _drsDetails = new();
+    private decimal _totalCOD;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _drs = await DbContext.Set<DRS>().FirstOrDefaultAsync(d => d.Id == DrsId);
+        
+        if (_drs == null)
+        {
+            Navigation.NavigateTo("/outscan");
+            return;
+        }
+        
+        _drsDetails = await DbContext.Set<DRSDetail>()
+            .Include(d => d.Inscan)
+            .Where(d => d.DRSId == DrsId)
+            .OrderBy(d => d.Sequence)
+            .ToListAsync();
+            
+        _totalCOD = _drsDetails.Sum(d => d.CODAmount ?? 0);
+    }
+
+    private async Task PrintPage()
+    {
+        await Task.Delay(100);
+    }
+
+    private async Task DownloadPDF()
+    {
+        await Task.CompletedTask;
+    }
+}

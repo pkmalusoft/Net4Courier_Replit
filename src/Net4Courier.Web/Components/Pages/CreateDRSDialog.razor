@@ -1,0 +1,91 @@
+@inject ApplicationDbContext DbContext
+@inject ISnackbar Snackbar
+@using Microsoft.EntityFrameworkCore
+@using Net4Courier.Infrastructure.Data
+@using Net4Courier.Operations.Entities
+@using Net4Courier.Masters.Entities
+
+<MudDialog>
+    <DialogContent>
+        <MudStack Spacing="3">
+            <MudDatePicker @bind-Date="_drsDate" Label="DRS Date" Variant="Variant.Outlined" Required="true" />
+            
+            <MudSelect T="long?" @bind-Value="_selectedCourierId" Label="Courier / Delivery Agent" 
+                       Variant="Variant.Outlined" Required="true">
+                @foreach (var courier in Couriers)
+                {
+                    <MudSelectItem T="long?" Value="@((long?)courier.Id)">@courier.Name</MudSelectItem>
+                }
+            </MudSelect>
+            
+            <MudTextField @bind-Value="_vehicleNo" Label="Vehicle Number" Variant="Variant.Outlined" />
+            
+            <MudTextField @bind-Value="_remarks" Label="Remarks" Variant="Variant.Outlined" Lines="2" />
+        </MudStack>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Cancel">Cancel</MudButton>
+        <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="Submit" Disabled="@(!IsValid)">
+            Create DRS
+        </MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] MudDialogInstance MudDialog { get; set; } = null!;
+    [Parameter] public List<Party> Couriers { get; set; } = new();
+    
+    private DateTime? _drsDate = DateTime.Today;
+    private long? _selectedCourierId;
+    private string? _vehicleNo;
+    private string? _remarks;
+    
+    private bool IsValid => _drsDate.HasValue && _selectedCourierId.HasValue;
+
+    private void Cancel() => MudDialog.Cancel();
+
+    private async Task Submit()
+    {
+        if (!IsValid) return;
+        
+        var courier = Couriers.FirstOrDefault(c => c.Id == _selectedCourierId);
+        
+        var drsNo = await GenerateDRSNo();
+        
+        var drs = new DRS
+        {
+            DRSNo = drsNo,
+            DRSDate = _drsDate!.Value,
+            DeliveryEmployeeId = (int?)_selectedCourierId,
+            DeliveryEmployeeName = courier?.Name,
+            VehicleNo = _vehicleNo,
+            Remarks = _remarks,
+            TotalAWBs = 0,
+            DeliveredCount = 0,
+            PendingCount = 0,
+            ReturnedCount = 0,
+            TotalCOD = 0,
+            CollectedCOD = 0,
+            DRSStatus = 0,
+            CreatedAt = DateTime.UtcNow,
+            IsActive = true
+        };
+        
+        DbContext.Set<DRS>().Add(drs);
+        await DbContext.SaveChangesAsync();
+        
+        Snackbar.Add($"DRS {drsNo} created successfully", Severity.Success);
+        MudDialog.Close(DialogResult.Ok(drs));
+    }
+
+    private async Task<string> GenerateDRSNo()
+    {
+        var today = DateTime.UtcNow;
+        var prefix = $"DRS{today:yyyyMMdd}";
+        
+        var count = await DbContext.Set<DRS>()
+            .CountAsync(d => d.DRSNo.StartsWith(prefix));
+            
+        return $"{prefix}{(count + 1):D4}";
+    }
+}
