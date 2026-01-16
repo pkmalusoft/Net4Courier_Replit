@@ -118,3 +118,35 @@ cd src/Net4Courier.Web && dotnet run --urls http://0.0.0.0:5000
 
 ## MudBlazor Deployment Note
 MudBlazor static assets are stored locally in `wwwroot/lib/mudblazor/` for Replit compatibility. Do not use `_content/MudBlazor/` paths as they don't work in Replit's production environment.
+
+## MudBlazor Popover/Dropdown Fix (Critical for Replit)
+**Problem**: MudSelect/MudAutocomplete dropdowns may be invisible or appear in wrong positions in Replit's iframe environment.
+
+**Solution**: Place `<MudPopoverProvider />` as the **first child inside `<MudLayout>`** in MainLayout.razor:
+```razor
+<MudLayout>
+    <MudPopoverProvider />
+    <MudAppBar>...</MudAppBar>
+    <MudDrawer>...</MudDrawer>
+    <MudMainContent>...</MudMainContent>
+</MudLayout>
+```
+
+**DO NOT**:
+- Place MudPopoverProvider outside MudLayout
+- Add CSS overrides for .mud-popover-provider position
+- Use PopoverClass="mud-popover-fixed" on individual components
+
+**MudSelect Pattern** (for cascading dropdowns):
+```razor
+<MudSelect T="long?" Value="_selectedCountryId" ValueChanged="OnCountryChanged" 
+           Variant="Variant.Outlined" Clearable="true">
+    @foreach (var country in _countries)
+    {
+        <MudSelectItem T="long?" Value="@((long?)country.Id)">@country.Name</MudSelectItem>
+    }
+</MudSelect>
+```
+- Use `Value`/`ValueChanged` for parent dropdowns (enables cascading)
+- Use `@bind-Value` for final dropdown in cascade
+- Always cast to nullable: `Value="@((long?)entity.Id)"`
