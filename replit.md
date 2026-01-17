@@ -76,6 +76,7 @@ The application is built on .NET 8 Blazor Server, utilizing a modular architectu
     - **AWB Timeline Component**: Visual timeline display on AWB details page with color-coded status groups.
     - **Status Management Admin Page**: CRUD operations for status groups and statuses with sequence ordering, displaying status IDs.
     - **CourierStatus Mapping**: Optional mapping from database statuses to legacy CourierStatus enum for backward compatibility.
+    - **Public Tracking Page**: Customer-facing `/tracking` page accessible without login for AWB/reference number search, showing shipment details card (sender, receiver, origin, destination, weight/pieces) and full timeline history with color-coded status events. Includes "Update Status" button with dialog for manual status updates by selecting status group and status, with optional location and remarks.
 - **MAWB Processing (Master Airwaybill)**:
     - **MasterAirwaybill Entity**: Stores MAWB header info including origin/destination cities, carrier details, flight info, departure/arrival times.
     - **MAWBBag Entity**: Individual bags within a MAWB with bag numbers, seal numbers, weights, and piece counts.
