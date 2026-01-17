@@ -7,7 +7,15 @@ public class RateCardZone : AuditableEntity
     public long RateCardId { get; set; }
     public long ZoneMatrixId { get; set; }
     public decimal BaseWeight { get; set; }
+    
+    public decimal CostBaseRate { get; set; }
+    public decimal CostPerKg { get; set; }
+    public decimal SalesBaseRate { get; set; }
+    public decimal SalesPerKg { get; set; }
+    
+    [System.Obsolete("Use SalesBaseRate instead")]
     public decimal BaseRate { get; set; }
+    
     public TaxMode TaxMode { get; set; } = TaxMode.Exclusive;
     public long? ForwardingAgentId { get; set; }
     public decimal? MarginPercentage { get; set; }
@@ -15,6 +23,9 @@ public class RateCardZone : AuditableEntity
     public string? CurrencyCode { get; set; }
     public decimal? MinCharge { get; set; }
     public decimal? MaxCharge { get; set; }
+    
+    public decimal MarginBaseRate => SalesBaseRate - CostBaseRate;
+    public decimal MarginPerKg => SalesPerKg - CostPerKg;
     
     public virtual RateCard? RateCard { get; set; }
     public virtual ZoneMatrix? ZoneMatrix { get; set; }

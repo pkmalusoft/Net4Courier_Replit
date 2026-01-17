@@ -56,6 +56,7 @@ public class ApplicationDbContext : DbContext
     public DbSet<ControlAccountSetting> ControlAccountSettings => Set<ControlAccountSetting>();
     
     public DbSet<RateCard> RateCards => Set<RateCard>();
+    public DbSet<ZoneCategory> ZoneCategories => Set<ZoneCategory>();
     public DbSet<ZoneMatrix> ZoneMatrices => Set<ZoneMatrix>();
     public DbSet<ZoneMatrixDetail> ZoneMatrixDetails => Set<ZoneMatrixDetail>();
     public DbSet<RateCardZone> RateCardZones => Set<RateCardZone>();
@@ -243,14 +244,32 @@ public class ApplicationDbContext : DbContext
             entity.HasIndex(e => new { e.MovementTypeId, e.PaymentModeId });
         });
 
+        modelBuilder.Entity<ZoneCategory>(entity =>
+        {
+            entity.ToTable("ZoneCategories");
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Code).HasMaxLength(20).IsRequired();
+            entity.Property(e => e.Name).HasMaxLength(100).IsRequired();
+            entity.Property(e => e.Description).HasMaxLength(500);
+            entity.HasIndex(e => e.Code).IsUnique();
+            entity.HasOne(e => e.ForwardingAgent).WithMany().HasForeignKey(e => e.ForwardingAgentId)
+                  .OnDelete(DeleteBehavior.Restrict);
+        });
+
         modelBuilder.Entity<ZoneMatrix>(entity =>
         {
             entity.ToTable("ZoneMatrices");
             entity.HasKey(e => e.Id);
             entity.Property(e => e.ZoneCode).HasMaxLength(20).IsRequired();
             entity.Property(e => e.ZoneName).HasMaxLength(100).IsRequired();
-            entity.HasIndex(e => new { e.ZoneCategoryId, e.ZoneCode });
+            entity.HasIndex(e => new { e.ZoneCategoryId, e.ZoneCode }).IsUnique();
             entity.HasIndex(e => new { e.CountryId, e.CityId });
+            entity.HasOne(e => e.ZoneCategory).WithMany(z => z.ZoneMatrices).HasForeignKey(e => e.ZoneCategoryId)
+                  .OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(e => e.Country).WithMany().HasForeignKey(e => e.CountryId)
+                  .OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(e => e.City).WithMany().HasForeignKey(e => e.CityId)
+                  .OnDelete(DeleteBehavior.Restrict);
         });
 
         modelBuilder.Entity<ZoneMatrixDetail>(entity =>
@@ -268,9 +287,15 @@ public class ApplicationDbContext : DbContext
             entity.HasKey(e => e.Id);
             entity.Property(e => e.BaseWeight).HasPrecision(18, 3);
             entity.Property(e => e.BaseRate).HasPrecision(18, 4);
+            entity.Property(e => e.CostBaseRate).HasPrecision(18, 4);
+            entity.Property(e => e.CostPerKg).HasPrecision(18, 4);
+            entity.Property(e => e.SalesBaseRate).HasPrecision(18, 4);
+            entity.Property(e => e.SalesPerKg).HasPrecision(18, 4);
             entity.Property(e => e.MarginPercentage).HasPrecision(5, 2);
             entity.Property(e => e.MinCharge).HasPrecision(18, 4);
             entity.Property(e => e.MaxCharge).HasPrecision(18, 4);
+            entity.Ignore(e => e.MarginBaseRate);
+            entity.Ignore(e => e.MarginPerKg);
             entity.HasIndex(e => new { e.RateCardId, e.ZoneMatrixId });
             entity.HasIndex(e => new { e.RateCardId, e.ForwardingAgentId });
             entity.HasOne(e => e.RateCard).WithMany(r => r.RateCardZones).HasForeignKey(e => e.RateCardId)
