@@ -221,6 +221,26 @@ else
             return;
         }
         
+        var currentStatus = await DbContext.ShipmentStatusHistories
+            .Where(h => h.InscanMasterId == awb.Id)
+            .OrderByDescending(h => h.ChangedAt)
+            .ThenByDescending(h => h.Id)
+            .Select(h => h.StatusId)
+            .FirstOrDefaultAsync();
+        
+        var allowedStatusIds = new long[] { 7, 21 };
+        if (currentStatus > 0 && !allowedStatusIds.Contains(currentStatus))
+        {
+            var statusName = await DbContext.ShipmentStatuses
+                .Where(s => s.Id == currentStatus)
+                .Select(s => s.Name)
+                .FirstOrDefaultAsync() ?? "Unknown";
+            _scanMessage = $"AWB {awbNo} is not available for outscan. Current status: {statusName}. Only Inscan (ID:7) or Return Inscan (ID:21) are allowed.";
+            _scanSeverity = Severity.Warning;
+            _scanInput = string.Empty;
+            return;
+        }
+        
         var alreadyInOtherDrs = await DbContext.Set<DRSDetail>()
             .Include(d => d.DRS)
             .AnyAsync(d => d.InscanId == awb.Id && d.DRS.Status != DRSStatus.Closed);

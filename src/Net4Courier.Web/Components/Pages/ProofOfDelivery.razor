@@ -10,6 +10,7 @@
 @inject NavigationManager Navigation
 @inject IJSRuntime JS
 @inject IDialogService DialogService
+@inject Net4Courier.Web.Services.ShipmentStatusService ShipmentStatusService
 
 <PageTitle>Proof of Delivery</PageTitle>
 
@@ -463,6 +464,33 @@
             _selectedAwb.ModifiedAt = DateTime.UtcNow;
 
             await DbContext.SaveChangesAsync();
+
+            if (_pod.DeliveryStatus == DeliveryStatus.Delivered || _pod.DeliveryStatus == DeliveryStatus.PartialDelivery)
+            {
+                await ShipmentStatusService.SetStatus(
+                    _selectedAwb.Id, "DELIVERED", "POD", null, null,
+                    null, _selectedAwb.ConsigneeCity, null, null,
+                    $"Received by {_pod.ReceivedBy} ({_pod.Relation})", isAutomatic: false);
+                
+                await ShipmentStatusService.SetStatus(
+                    _selectedAwb.Id, "POD_CAPTURED", "POD", null, null,
+                    null, _selectedAwb.ConsigneeCity, null, null,
+                    $"POD captured with signature/photo", isAutomatic: true);
+            }
+            else if (_pod.DeliveryStatus == DeliveryStatus.Refused)
+            {
+                await ShipmentStatusService.SetStatus(
+                    _selectedAwb.Id, "RETURN_TO_ORIGIN", "POD", null, null,
+                    null, _selectedAwb.ConsigneeCity, null, null,
+                    $"Receiver rejected: {_pod.NonDeliveryReason}", isAutomatic: false);
+            }
+            else if (_pod.DeliveryStatus == DeliveryStatus.NotDelivered)
+            {
+                await ShipmentStatusService.SetStatus(
+                    _selectedAwb.Id, "DELIVERY_FAILED", "POD", null, null,
+                    null, _selectedAwb.ConsigneeCity, null, null,
+                    $"Unable to deliver: {_pod.NonDeliveryReason}", isAutomatic: false);
+            }
 
             Snackbar.Add($"POD submitted successfully for AWB {_selectedAwb.AWBNo}", Severity.Success);
             ClearForm();

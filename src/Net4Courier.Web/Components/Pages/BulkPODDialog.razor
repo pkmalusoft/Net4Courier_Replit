@@ -145,33 +145,31 @@
             
             foreach (var awb in SelectedAwbs)
             {
-                var statusCode = _status switch
+                if (_status == DeliveryStatus.Delivered || _status == DeliveryStatus.PartialDelivery)
                 {
-                    DeliveryStatus.Delivered => "DELIVERED",
-                    DeliveryStatus.PartialDelivery => "DELIVERED",
-                    DeliveryStatus.Refused => "DELIVERY_FAILED",
-                    DeliveryStatus.NotDelivered => "DELIVERY_FAILED",
-                    _ => "DELIVERY_FAILED"
-                };
-                
-                await ShipmentStatusService.SetStatus(
-                    awb.Id, statusCode, "POD", null, null,
-                    null, awb.ConsigneeCity, null, null,
-                    $"{_status}: {_remarks ?? _receivedBy}", isAutomatic: false);
-                
-                if (_status == DeliveryStatus.Delivered)
-                {
+                    await ShipmentStatusService.SetStatus(
+                        awb.Id, "DELIVERED", "POD", null, null,
+                        null, awb.ConsigneeCity, null, null,
+                        $"Received by {_receivedBy} ({_relation})", isAutomatic: false);
+                    
                     await ShipmentStatusService.SetStatus(
                         awb.Id, "POD_CAPTURED", "POD", null, null,
                         null, awb.ConsigneeCity, null, null,
-                        $"Received by {_receivedBy} ({_relation})", isAutomatic: true);
+                        $"POD captured - {_remarks ?? ""}", isAutomatic: true);
                 }
-                else if (_status == DeliveryStatus.Refused || _status == DeliveryStatus.NotDelivered)
+                else if (_status == DeliveryStatus.Refused)
                 {
                     await ShipmentStatusService.SetStatus(
-                        awb.Id, "RETURN_INITIATED", "POD", null, null,
+                        awb.Id, "RETURN_TO_ORIGIN", "POD", null, null,
                         null, awb.ConsigneeCity, null, null,
-                        $"Reason: {_nonDeliveryReason}", isAutomatic: true);
+                        $"Receiver rejected: {_nonDeliveryReason}", isAutomatic: false);
+                }
+                else if (_status == DeliveryStatus.NotDelivered)
+                {
+                    await ShipmentStatusService.SetStatus(
+                        awb.Id, "DELIVERY_FAILED", "POD", null, null,
+                        null, awb.ConsigneeCity, null, null,
+                        $"Unable to deliver: {_nonDeliveryReason}", isAutomatic: false);
                 }
             }
 
