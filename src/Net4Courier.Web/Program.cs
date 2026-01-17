@@ -13,6 +13,14 @@ QuestPDF.Settings.License = LicenseType.Community;
 
 var builder = WebApplication.CreateBuilder(args);
 
+var assemblyPath = System.Reflection.Assembly.GetExecutingAssembly().Location;
+var assemblyDir = Path.GetDirectoryName(assemblyPath);
+if (!string.IsNullOrEmpty(assemblyDir) && Directory.Exists(Path.Combine(assemblyDir, "wwwroot")))
+{
+    builder.Environment.ContentRootPath = assemblyDir;
+    builder.Environment.WebRootPath = Path.Combine(assemblyDir, "wwwroot");
+}
+
 builder.Services.Configure<ForwardedHeadersOptions>(options =>
 {
     options.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;
