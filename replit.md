@@ -69,6 +69,19 @@ The application is built on .NET 8 Blazor Server, utilizing a modular architectu
 - **Printing & Reports**: AWB Print, Manifest Labels, Export/Domestic Manifests with integration from AWB Entry and MAWB Bagging pages.
 - **Service Type Management**: Configurable service types via CRUD UI.
 - **Return to Shipper (RTS)**: Workflow for return shipments with address swapping, charge modes, and status tracking.
+- **Modern Login Page**: Split-screen design with courier illustration on left and compact vertical login card on right. Features Net4Courier logo, username/password fields, Forgot Password link, and responsive mobile layout.
+- **Forgot Password Page**: Matching split-screen design at `/forgot-password` for password reset requests.
+- **Knowledge Base**: Comprehensive documentation at `/knowledge-base` covering:
+    - Complete operational flow (Pickup Request → Collection → Inscan → AWB → MAWB → DRS → POD → Delivery)
+    - Reconciliation (DRS Reconciliation, Courier Day-End, Cash Receipt, Expense Approval, Courier Ledger)
+    - Accounts & Finance (General Ledger, Chart of Accounts, Financial Periods, AR Invoicing/Receipts, AP Bills/Payments, Financial Statements)
+    - Customer Management CRM (Customer Profiles, Contracts & Pricing, SLAs, Complaints)
+    - Pricing & Billing (Zone Management, Rate Cards, Rate Simulator, Special/Fuel/Other Charges, Discounts)
+    - System Settings (Companies, Branches, Service Types, Status Management, Users, Geography Masters)
+    - Compliance & Audit (Audit Logs, Regulatory Reports, Data Export, Documents)
+    - Complete 31 Status Codes reference table
+    - Searchable keywords throughout for easy text search (Ctrl+F)
+    - Uses Markdig for Markdown rendering with XSS protection (DisableHtml)
 
 ## External Dependencies
 - **Database**: PostgreSQL
