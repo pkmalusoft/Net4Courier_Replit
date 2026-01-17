@@ -1,0 +1,309 @@
+@page "/zone-categories"
+@using Microsoft.EntityFrameworkCore
+@using Net4Courier.Infrastructure.Data
+@using Net4Courier.Masters.Entities
+@using Net4Courier.Kernel.Enums
+@inject ApplicationDbContext DbContext
+@inject IDialogService DialogService
+@inject ISnackbar Snackbar
+@inject NavigationManager Navigation
+@rendermode InteractiveServer
+
+<PageTitle>Zone Categories</PageTitle>
+
+<MudContainer MaxWidth="MaxWidth.ExtraLarge" Class="mt-4">
+    <MudPaper Class="pa-4">
+        <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center" Class="mb-4">
+            <MudText Typo="Typo.h5">Zone Categories</MudText>
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add"
+                       OnClick="CreateNew">New Category</MudButton>
+        </MudStack>
+
+        <MudGrid Class="mb-4">
+            <MudItem xs="12" md="3">
+                <MudSelect T="string" Label="Movement Type" Value="_filterMovementType" Variant="Variant.Outlined" 
+                           Margin="Margin.Dense" Clearable="true" ValueChanged="FilterChanged">
+                    <MudSelectItem Value="@("")">All</MudSelectItem>
+                    <MudSelectItem Value="@("Domestic")">Domestic</MudSelectItem>
+                    <MudSelectItem Value="@("International")">International</MudSelectItem>
+                </MudSelect>
+            </MudItem>
+            <MudItem xs="12" md="4">
+                <MudTextField @bind-Value="_searchText" Label="Search" Variant="Variant.Outlined" Margin="Margin.Dense"
+                              Adornment="Adornment.End" AdornmentIcon="@Icons.Material.Filled.Search"
+                              Immediate="true" DebounceInterval="300" OnDebounceIntervalElapsed="SearchCategories" />
+            </MudItem>
+        </MudGrid>
+
+        <MudTable Items="@_categories" Hover="true" Striped="true" Loading="@_loading" Dense="true" Elevation="0"
+                  Class="border-solid border">
+            <HeaderContent>
+                <MudTh>Code</MudTh>
+                <MudTh>Name</MudTh>
+                <MudTh>Movement Type</MudTh>
+                <MudTh>Carrier</MudTh>
+                <MudTh>Zones</MudTh>
+                <MudTh>Sort Order</MudTh>
+                <MudTh Style="width:150px">Actions</MudTh>
+            </HeaderContent>
+            <RowTemplate>
+                <MudTd DataLabel="Code">
+                    <MudChip T="string" Size="Size.Small" Color="Color.Primary">@context.Code</MudChip>
+                </MudTd>
+                <MudTd DataLabel="Name">@context.Name</MudTd>
+                <MudTd DataLabel="Movement Type">
+                    <MudChip T="string" Size="Size.Small" Color="@(context.MovementType != MovementType.Domestic ? Color.Warning : Color.Info)">
+                        @context.MovementType
+                    </MudChip>
+                </MudTd>
+                <MudTd DataLabel="Carrier">@GetCarrierName(context.ForwardingAgentId)</MudTd>
+                <MudTd DataLabel="Zones">
+                    <MudLink OnClick="@(() => ManageZones(context))">@context.ZoneMatrices.Count zones</MudLink>
+                </MudTd>
+                <MudTd DataLabel="Sort">@context.SortOrder</MudTd>
+                <MudTd>
+                    <MudIconButton Icon="@Icons.Material.Filled.Map" Size="Size.Small" Color="Color.Secondary"
+                                   OnClick="@(() => ManageZones(context))" Title="Manage Zones" />
+                    <MudIconButton Icon="@Icons.Material.Filled.Edit" Size="Size.Small" Color="Color.Primary"
+                                   OnClick="@(() => Edit(context))" Title="Edit" />
+                    <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" Color="Color.Error"
+                                   OnClick="@(() => Delete(context))" Title="Delete" />
+                </MudTd>
+            </RowTemplate>
+            <NoRecordsContent>
+                <MudText Class="pa-4">No zone categories found. Click "New Category" to create one.</MudText>
+            </NoRecordsContent>
+            <LoadingContent>
+                <MudText>Loading...</MudText>
+            </LoadingContent>
+        </MudTable>
+    </MudPaper>
+</MudContainer>
+
+<MudDialog @bind-Visible="_dialogVisible" Options="new DialogOptions { MaxWidth = MaxWidth.Small, FullWidth = true }">
+    <TitleContent>
+        <MudText Typo="Typo.h6">@(_isEdit ? "Edit Zone Category" : "New Zone Category")</MudText>
+    </TitleContent>
+    <DialogContent>
+        <MudGrid>
+            <MudItem xs="12" md="6">
+                <MudTextField @bind-Value="_model.Code" Label="Code" Required="true" Variant="Variant.Outlined" />
+            </MudItem>
+            <MudItem xs="12" md="6">
+                <MudTextField @bind-Value="_model.Name" Label="Name" Required="true" Variant="Variant.Outlined" />
+            </MudItem>
+            <MudItem xs="12" md="6">
+                <MudSelect T="MovementType" @bind-Value="_model.MovementType" Label="Movement Type" Required="true" Variant="Variant.Outlined">
+                    <MudSelectItem Value="MovementType.Domestic">Domestic</MudSelectItem>
+                    <MudSelectItem Value="MovementType.InternationalExport">International Export</MudSelectItem>
+                    <MudSelectItem Value="MovementType.InternationalImport">International Import</MudSelectItem>
+                </MudSelect>
+            </MudItem>
+            <MudItem xs="12" md="6">
+                <MudAutocomplete T="Party" Label="Carrier (Forwarding Agent)" @bind-Value="_selectedCarrier"
+                                 SearchFunc="SearchCarriers" ToStringFunc="@(p => p?.Name ?? "")"
+                                 Variant="Variant.Outlined" Clearable="true" />
+            </MudItem>
+            <MudItem xs="12" md="6">
+                <MudNumericField T="int" @bind-Value="_model.SortOrder" Label="Sort Order" Variant="Variant.Outlined" />
+            </MudItem>
+            <MudItem xs="12">
+                <MudTextField @bind-Value="_model.Description" Label="Description" Lines="2" Variant="Variant.Outlined" />
+            </MudItem>
+        </MudGrid>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="CloseDialog">Cancel</MudButton>
+        <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="Save">Save</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    private List<ZoneCategory> _categories = new();
+    private Dictionary<long, string> _carrierNames = new();
+    private bool _loading = true;
+    private string _searchText = "";
+    private string _filterMovementType = "";
+    
+    private bool _dialogVisible = false;
+    private bool _isEdit = false;
+    private ZoneCategory _model = new();
+    private Party? _selectedCarrier;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadCategories();
+    }
+
+    private async Task LoadCategories()
+    {
+        _loading = true;
+        try
+        {
+            var query = DbContext.ZoneCategories
+                .Include(z => z.ZoneMatrices)
+                .Where(z => !z.IsDeleted)
+                .AsQueryable();
+
+            if (!string.IsNullOrWhiteSpace(_searchText))
+            {
+                query = query.Where(z => z.Code.ToLower().Contains(_searchText.ToLower()) ||
+                                         z.Name.ToLower().Contains(_searchText.ToLower()));
+            }
+
+            if (!string.IsNullOrWhiteSpace(_filterMovementType))
+            {
+                if (_filterMovementType == "Domestic")
+                    query = query.Where(z => z.MovementType == MovementType.Domestic);
+                else if (_filterMovementType == "International")
+                    query = query.Where(z => z.MovementType == MovementType.InternationalExport || 
+                                             z.MovementType == MovementType.InternationalImport);
+            }
+
+            _categories = await query.OrderBy(z => z.SortOrder).ThenBy(z => z.Code).ToListAsync();
+
+            var carrierIds = _categories.Where(z => z.ForwardingAgentId.HasValue)
+                .Select(z => z.ForwardingAgentId!.Value).Distinct().ToList();
+
+            if (carrierIds.Any())
+            {
+                _carrierNames = await DbContext.Parties
+                    .Where(p => carrierIds.Contains(p.Id))
+                    .ToDictionaryAsync(p => p.Id, p => p.Name);
+            }
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private async Task SearchCategories() => await LoadCategories();
+    
+    private async Task FilterChanged(string value)
+    {
+        _filterMovementType = value;
+        await LoadCategories();
+    }
+
+    private string GetCarrierName(long? id) => id.HasValue && _carrierNames.TryGetValue(id.Value, out var name) ? name : "-";
+
+    private void CreateNew()
+    {
+        _model = new ZoneCategory { SortOrder = (_categories.Count + 1) * 10 };
+        _selectedCarrier = null;
+        _isEdit = false;
+        _dialogVisible = true;
+    }
+
+    private async Task Edit(ZoneCategory category)
+    {
+        _model = new ZoneCategory
+        {
+            Id = category.Id,
+            Code = category.Code,
+            Name = category.Name,
+            MovementType = category.MovementType,
+            ForwardingAgentId = category.ForwardingAgentId,
+            Description = category.Description,
+            SortOrder = category.SortOrder
+        };
+        
+        if (category.ForwardingAgentId.HasValue)
+        {
+            _selectedCarrier = await DbContext.Parties.FirstOrDefaultAsync(p => p.Id == category.ForwardingAgentId);
+        }
+        else
+        {
+            _selectedCarrier = null;
+        }
+        
+        _isEdit = true;
+        _dialogVisible = true;
+    }
+
+    private async Task Save()
+    {
+        if (string.IsNullOrWhiteSpace(_model.Code) || string.IsNullOrWhiteSpace(_model.Name))
+        {
+            Snackbar.Add("Code and Name are required", Severity.Error);
+            return;
+        }
+
+        try
+        {
+            _model.ForwardingAgentId = _selectedCarrier?.Id;
+            
+            if (_isEdit)
+            {
+                var existing = await DbContext.ZoneCategories.FindAsync(_model.Id);
+                if (existing != null)
+                {
+                    existing.Code = _model.Code;
+                    existing.Name = _model.Name;
+                    existing.MovementType = _model.MovementType;
+                    existing.ForwardingAgentId = _model.ForwardingAgentId;
+                    existing.Description = _model.Description;
+                    existing.SortOrder = _model.SortOrder;
+                    existing.ModifiedAt = DateTime.UtcNow;
+                }
+            }
+            else
+            {
+                _model.CreatedAt = DateTime.UtcNow;
+                DbContext.ZoneCategories.Add(_model);
+            }
+
+            await DbContext.SaveChangesAsync();
+            Snackbar.Add(_isEdit ? "Category updated" : "Category created", Severity.Success);
+            _dialogVisible = false;
+            await LoadCategories();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error: {ex.Message}", Severity.Error);
+        }
+    }
+
+    private async Task Delete(ZoneCategory category)
+    {
+        var result = await DialogService.ShowMessageBox(
+            "Delete Zone Category",
+            $"Are you sure you want to delete '{category.Name}'?",
+            yesText: "Delete", cancelText: "Cancel");
+
+        if (result == true)
+        {
+            var existing = await DbContext.ZoneCategories.FindAsync(category.Id);
+            if (existing != null)
+            {
+                existing.IsDeleted = true;
+                existing.ModifiedAt = DateTime.UtcNow;
+                await DbContext.SaveChangesAsync();
+                Snackbar.Add("Category deleted", Severity.Success);
+                await LoadCategories();
+            }
+        }
+    }
+
+    private void ManageZones(ZoneCategory category)
+    {
+        Navigation.NavigateTo($"/zone-matrix?categoryId={category.Id}");
+    }
+
+    private void CloseDialog() => _dialogVisible = false;
+
+    private async Task<IEnumerable<Party>> SearchCarriers(string value)
+    {
+        var query = DbContext.Parties
+            .Where(p => !p.IsDeleted && p.PartyType == PartyType.ForwardingAgent);
+
+        if (!string.IsNullOrWhiteSpace(value))
+        {
+            query = query.Where(p => p.Name.ToLower().Contains(value.ToLower()) ||
+                                     p.Code.ToLower().Contains(value.ToLower()));
+        }
+
+        return await query.Take(20).ToListAsync();
+    }
+}

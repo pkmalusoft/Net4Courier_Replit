@@ -1,5 +1,6 @@
 @page "/zone-matrix"
 @using Microsoft.EntityFrameworkCore
+@using Microsoft.AspNetCore.WebUtilities
 @using Net4Courier.Infrastructure.Data
 @using ZoneMatrixEntity = Net4Courier.Masters.Entities.ZoneMatrix
 @using Net4Courier.Masters.Entities
@@ -9,20 +10,38 @@
 @inject NavigationManager Navigation
 @rendermode InteractiveServer
 
-<PageTitle>Zone Matrix</PageTitle>
+<PageTitle>Zone Management</PageTitle>
 
 <MudContainer MaxWidth="MaxWidth.ExtraLarge" Class="mt-4">
     <MudPaper Class="pa-4">
         <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center" Class="mb-4">
             <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
                 <MudIconButton Icon="@Icons.Material.Filled.ArrowBack" OnClick="GoBack" />
-                <MudText Typo="Typo.h5">Zone Matrix Management</MudText>
+                <MudText Typo="Typo.h5">
+                    @if (_selectedCategory != null)
+                    {
+                        <span>Zones - @_selectedCategory.Name</span>
+                    }
+                    else
+                    {
+                        <span>Zone Management</span>
+                    }
+                </MudText>
             </MudStack>
             <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add"
                        OnClick="CreateNewZone">New Zone</MudButton>
         </MudStack>
 
         <MudGrid Class="mb-4">
+            <MudItem xs="12" md="4">
+                <MudSelect T="long?" Label="Zone Category" Value="_categoryId" Variant="Variant.Outlined" 
+                           Margin="Margin.Dense" Clearable="true" ValueChanged="CategoryChanged">
+                    @foreach (var cat in _categories)
+                    {
+                        <MudSelectItem Value="@((long?)cat.Id)">@cat.Name (@cat.Code)</MudSelectItem>
+                    }
+                </MudSelect>
+            </MudItem>
             <MudItem xs="12" md="4">
                 <MudTextField @bind-Value="_searchText" Label="Search zones" Variant="Variant.Outlined" Margin="Margin.Dense"
                               Adornment="Adornment.End" AdornmentIcon="@Icons.Material.Filled.Search"
@@ -73,13 +92,32 @@
 
 @code {
     private List<ZoneMatrixEntity> _zones = new();
+    private List<ZoneCategory> _categories = new();
+    private ZoneCategory? _selectedCategory;
     private Dictionary<long, string> _countryNames = new();
     private Dictionary<long, string> _cityNames = new();
     private bool _loading = true;
     private string _searchText = "";
+    private long? _categoryId;
 
     protected override async Task OnInitializedAsync()
     {
+        _categories = await DbContext.ZoneCategories.Where(c => !c.IsDeleted).OrderBy(c => c.SortOrder).ToListAsync();
+        
+        var uri = new Uri(Navigation.Uri);
+        if (QueryHelpers.ParseQuery(uri.Query).TryGetValue("categoryId", out var catIdValue) && long.TryParse(catIdValue, out var catId))
+        {
+            _categoryId = catId;
+            _selectedCategory = _categories.FirstOrDefault(c => c.Id == catId);
+        }
+        
+        await LoadZones();
+    }
+
+    private async Task CategoryChanged(long? value)
+    {
+        _categoryId = value;
+        _selectedCategory = value.HasValue ? _categories.FirstOrDefault(c => c.Id == value) : null;
         await LoadZones();
     }
 
@@ -92,6 +130,11 @@
                 .Include(z => z.Details)
                 .Where(z => !z.IsDeleted)
                 .AsQueryable();
+
+            if (_categoryId.HasValue)
+            {
+                query = query.Where(z => z.ZoneCategoryId == _categoryId);
+            }
 
             if (!string.IsNullOrWhiteSpace(_searchText))
             {
