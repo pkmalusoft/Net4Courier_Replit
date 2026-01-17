@@ -64,6 +64,8 @@ else
 
 builder.Services.AddDbContext<ApplicationDbContext>(options =>
     options.UseNpgsql(connectionString));
+builder.Services.AddDbContextFactory<ApplicationDbContext>(options =>
+    options.UseNpgsql(connectionString), ServiceLifetime.Scoped);
 
 builder.Services.AddScoped<AuthService>();
 builder.Services.AddScoped<AppAuthStateProvider>();

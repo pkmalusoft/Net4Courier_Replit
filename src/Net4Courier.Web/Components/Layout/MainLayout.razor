@@ -6,7 +6,7 @@
 @using Net4Courier.Infrastructure.Data
 @inject NavigationManager NavigationManager
 @inject AuthenticationStateProvider AuthStateProvider
-@inject ApplicationDbContext DbContext
+@inject IDbContextFactory<ApplicationDbContext> DbFactory
 
 <MudThemeProvider @bind-IsDarkMode="@_isDarkMode" Theme="_theme" />
 <MudDialogProvider />
@@ -157,10 +157,12 @@
                 _userName = user.Identity.Name ?? "User";
                 _userInitial = _userName.Length > 0 ? _userName[0].ToString().ToUpper() : "U";
                 
+                await using var dbContext = await DbFactory.CreateDbContextAsync();
+                
                 var userIdClaim = user.FindFirst("UserId")?.Value;
                 if (int.TryParse(userIdClaim, out var userId))
                 {
-                    var dbUser = await DbContext.Users
+                    var dbUser = await dbContext.Users
                         .Include(u => u.Branch)
                         .ThenInclude(b => b!.Company)
                         .FirstOrDefaultAsync(u => u.Id == userId);
@@ -172,7 +174,7 @@
                     }
                 }
                 
-                var currentPeriod = await DbContext.FinancialPeriods
+                var currentPeriod = await dbContext.FinancialPeriods
                     .Where(fp => fp.Status == Net4Courier.Masters.Entities.PeriodStatus.Open && !fp.IsDeleted)
                     .OrderByDescending(fp => fp.StartDate)
                     .FirstOrDefaultAsync();
