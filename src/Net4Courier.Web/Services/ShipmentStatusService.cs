@@ -185,4 +185,35 @@ public class ShipmentStatusService
         _context.ShipmentStatuses.AddRange(statuses);
         await _context.SaveChangesAsync();
     }
+    
+    public async Task SeedRTSStatuses()
+    {
+        var exceptionGroup = await _context.ShipmentStatusGroups
+            .FirstOrDefaultAsync(g => g.Code == "EXCEPTION");
+        
+        if (exceptionGroup == null)
+            return;
+            
+        var existingRTS = await _context.ShipmentStatuses
+            .AnyAsync(s => s.Code == "RTS_REQUESTED");
+        
+        if (existingRTS)
+            return;
+        
+        var maxSequence = await _context.ShipmentStatuses
+            .Where(s => s.StatusGroupId == exceptionGroup.Id)
+            .MaxAsync(s => (int?)s.SequenceNo) ?? 0;
+        
+        var rtsStatuses = new List<ShipmentStatus>
+        {
+            new() { StatusGroupId = exceptionGroup.Id, Code = "RTS_REQUESTED", Name = "RTS Requested", TimelineDescription = "Return to shipper requested", SequenceNo = maxSequence + 1, IsException = true, CreatedAt = DateTime.UtcNow },
+            new() { StatusGroupId = exceptionGroup.Id, Code = "RTS_COLLECTED", Name = "RTS Collected", TimelineDescription = "Return shipment collected from receiver", SequenceNo = maxSequence + 2, IsException = true, CreatedAt = DateTime.UtcNow },
+            new() { StatusGroupId = exceptionGroup.Id, Code = "RTS_INSCANNED", Name = "RTS Inscanned", TimelineDescription = "Return shipment inscanned at store", SequenceNo = maxSequence + 3, IsException = true, CreatedAt = DateTime.UtcNow },
+            new() { StatusGroupId = exceptionGroup.Id, Code = "RTS_IN_TRANSIT", Name = "RTS In Transit", TimelineDescription = "Return shipment in transit to shipper", SequenceNo = maxSequence + 4, IsException = true, CreatedAt = DateTime.UtcNow },
+            new() { StatusGroupId = exceptionGroup.Id, Code = "RTS_DELIVERED", Name = "RTS Delivered", TimelineDescription = "Return shipment delivered to original shipper", SequenceNo = maxSequence + 5, IsException = true, IsTerminal = true, CreatedAt = DateTime.UtcNow }
+        };
+        
+        _context.ShipmentStatuses.AddRange(rtsStatuses);
+        await _context.SaveChangesAsync();
+    }
 }

@@ -314,6 +314,7 @@ public class DatabaseInitializationService : BackgroundService
 
             var shipmentStatusService = scope.ServiceProvider.GetRequiredService<ShipmentStatusService>();
             await shipmentStatusService.SeedDefaultStatuses();
+            await shipmentStatusService.SeedRTSStatuses();
 
             if (!await dbContext.Parties.AnyAsync(p => p.PartyType == Net4Courier.Masters.Entities.PartyType.ForwardingAgent, stoppingToken))
             {

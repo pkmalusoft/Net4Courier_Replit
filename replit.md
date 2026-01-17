@@ -97,6 +97,18 @@ The application is built on .NET 8 Blazor Server, utilizing a modular architectu
 - **Party Masters Seed Data**:
     - **Co-Loaders**: 5 sample co-loader companies (FastTrack Logistics, Global Freight Partners, Swift Cargo Solutions, TransWorld Shipping, Pacific Logistics) with Account Receivable nature.
     - **Forwarding Agents**: 5 major carriers (DHL, FedEx, Aramex, UPS, TNT) with Account Payable nature.
+- **Return to Shipper (RTS)**:
+    - **RTS Workflow**: When courier delivers a shipment, the receiver can send a return shipment back to the original shipper with swapped addresses.
+    - **InscanMaster RTS Fields**: IsRTS flag, OriginalShipmentId linking to parent, RTSChargeMode (Free/Chargeable), RTSCreatedAt timestamp, RTSReason.
+    - **RTSChargeMode Enum**: Free (no charge) or Chargeable (apply rate card).
+    - **RTS Status Codes**: RTS_REQUESTED, RTS_COLLECTED, RTS_INSCANNED, RTS_IN_TRANSIT, RTS_DELIVERED added to Exception/Return status group.
+    - **RTSList Page**: View and manage all RTS shipments with filters for date range and charge mode, showing original AWB link.
+    - **RTSEntryDialog**: Create RTS from search, selecting original shipment and specifying charge mode, weight, dimensions.
+    - **RTSEntryDialogWithShipment**: Create RTS directly from POD capture page with pre-filled original shipment data.
+    - **POD Integration**: "Create RTS" button on POD capture page to initiate return shipment after delivery.
+    - **Navigation**: RTS page accessible from Sorting/Hub Operations menu at `/rts-list`.
+    - **Address Swapping**: Automatic swap of consignor/consignee addresses when creating RTS.
+    - **Status Timeline**: RTS creation updates status on both original and RTS shipments with linked references.
 
 ## External Dependencies
 - **Database**: PostgreSQL (hosted on Replit)

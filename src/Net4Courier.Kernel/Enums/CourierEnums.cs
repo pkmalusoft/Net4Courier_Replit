@@ -135,3 +135,9 @@ public enum LedgerEntryType
     SalaryDeduction = 4,
     Adjustment = 5
 }
+
+public enum RTSChargeMode
+{
+    Free = 0,
+    Chargeable = 1
+}

@@ -9,6 +9,7 @@
 @inject ISnackbar Snackbar
 @inject NavigationManager Navigation
 @inject IJSRuntime JS
+@inject IDialogService DialogService
 
 <PageTitle>Proof of Delivery</PageTitle>
 
@@ -205,20 +206,26 @@
             </MudStack>
         </MudPaper>
 
-        <MudStack Row="true" Justify="Justify.FlexEnd" Spacing="2">
-            <MudButton Variant="Variant.Outlined" Color="Color.Secondary" OnClick="ClearForm">Cancel</MudButton>
-            <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Save"
-                       OnClick="SubmitPOD" Disabled="@(!IsFormValid() || _saving)">
-                @if (_saving)
-                {
-                    <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" />
-                    <text>Saving...</text>
-                }
-                else
-                {
-                    <text>Submit POD</text>
-                }
+        <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
+            <MudButton Variant="Variant.Outlined" Color="Color.Warning" StartIcon="@Icons.Material.Filled.SwapHoriz"
+                       OnClick="OpenCreateRTSDialog" Disabled="@(_selectedAwb?.IsRTS == true)">
+                Create RTS
             </MudButton>
+            <MudStack Row="true" Spacing="2">
+                <MudButton Variant="Variant.Outlined" Color="Color.Secondary" OnClick="ClearForm">Cancel</MudButton>
+                <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Save"
+                           OnClick="SubmitPOD" Disabled="@(!IsFormValid() || _saving)">
+                    @if (_saving)
+                    {
+                        <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" />
+                        <text>Saving...</text>
+                    }
+                    else
+                    {
+                        <text>Submit POD</text>
+                    }
+                </MudButton>
+            </MudStack>
         </MudStack>
     }
     else if (!_loading && string.IsNullOrEmpty(_searchAwb))
@@ -496,6 +503,25 @@
         CourierStatus.Cancelled => Color.Dark,
         _ => Color.Default
     };
+
+    private async Task OpenCreateRTSDialog()
+    {
+        if (_selectedAwb == null) return;
+        
+        var parameters = new DialogParameters<RTSEntryDialogWithShipment>
+        {
+            { x => x.OriginalShipment, _selectedAwb }
+        };
+        
+        var options = new DialogOptions { MaxWidth = MaxWidth.Large, FullWidth = true };
+        var dialog = await DialogService.ShowAsync<RTSEntryDialogWithShipment>("Create RTS", parameters, options);
+        var result = await dialog.Result;
+        
+        if (result != null && !result.Canceled)
+        {
+            Snackbar.Add("RTS created successfully", Severity.Success);
+        }
+    }
 
     public class PODModel
     {

@@ -1,0 +1,267 @@
+@using MudBlazor
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.EntityFrameworkCore
+@using Net4Courier.Infrastructure.Data
+@using Net4Courier.Operations.Entities
+@using Net4Courier.Kernel.Enums
+@using Net4Courier.Web.Services
+@inject ApplicationDbContext DbContext
+@inject ISnackbar Snackbar
+@inject AuthenticationStateProvider AuthStateProvider
+
+<MudDialog>
+    <TitleContent>
+        <MudText Typo="Typo.h6">
+            <MudIcon Icon="@Icons.Material.Filled.SwapHoriz" Class="mr-2" />
+            Create Return to Shipper (RTS)
+        </MudText>
+    </TitleContent>
+    <DialogContent>
+        <MudAlert Severity="Severity.Info" Class="mb-4">
+            Creating RTS for AWB: <strong>@OriginalShipment.AWBNo</strong>
+            <br/>Original route: @OriginalShipment.Consignor → @OriginalShipment.Consignee
+            <br/>RTS route (swapped): @OriginalShipment.Consignee → @OriginalShipment.Consignor
+        </MudAlert>
+        
+        <MudGrid>
+            <MudItem xs="12">
+                <MudText Typo="Typo.subtitle1" Class="mb-2">RTS Details</MudText>
+            </MudItem>
+            
+            <MudItem xs="12" md="6">
+                <MudSelect T="RTSChargeMode" @bind-Value="_rtsChargeMode" Label="Charge Mode" Variant="Variant.Outlined" Required="true">
+                    <MudSelectItem T="RTSChargeMode" Value="@RTSChargeMode.Free">Free (No Charge)</MudSelectItem>
+                    <MudSelectItem T="RTSChargeMode" Value="@RTSChargeMode.Chargeable">Chargeable</MudSelectItem>
+                </MudSelect>
+            </MudItem>
+            
+            <MudItem xs="12" md="6">
+                <MudTextField @bind-Value="_rtsReason" Label="RTS Reason" Variant="Variant.Outlined" Lines="1" />
+            </MudItem>
+            
+            <MudItem xs="12">
+                <MudDivider Class="my-2" />
+                <MudText Typo="Typo.subtitle1" Class="mb-2">Shipment Details (Editable)</MudText>
+            </MudItem>
+            
+            <MudItem xs="12" md="4">
+                <MudNumericField @bind-Value="_pieces" Label="Pieces" Variant="Variant.Outlined" Min="1" />
+            </MudItem>
+            <MudItem xs="12" md="4">
+                <MudNumericField @bind-Value="_weight" Label="Weight (kg)" Variant="Variant.Outlined" Format="N2" />
+            </MudItem>
+            <MudItem xs="12" md="4">
+                <MudSelect T="DocumentType" @bind-Value="_documentType" Label="Document Type" Variant="Variant.Outlined">
+                    <MudSelectItem T="DocumentType" Value="@DocumentType.Document">Document</MudSelectItem>
+                    <MudSelectItem T="DocumentType" Value="@DocumentType.Parcel">Parcel</MudSelectItem>
+                    <MudSelectItem T="DocumentType" Value="@DocumentType.Cargo">Cargo</MudSelectItem>
+                </MudSelect>
+            </MudItem>
+            
+            <MudItem xs="12" md="4">
+                <MudNumericField @bind-Value="_length" Label="Length (cm)" Variant="Variant.Outlined" Format="N2" />
+            </MudItem>
+            <MudItem xs="12" md="4">
+                <MudNumericField @bind-Value="_width" Label="Width (cm)" Variant="Variant.Outlined" Format="N2" />
+            </MudItem>
+            <MudItem xs="12" md="4">
+                <MudNumericField @bind-Value="_height" Label="Height (cm)" Variant="Variant.Outlined" Format="N2" />
+            </MudItem>
+            
+            <MudItem xs="12">
+                <MudTextField @bind-Value="_cargoDescription" Label="Cargo Description" Variant="Variant.Outlined" Lines="2" />
+            </MudItem>
+            
+            <MudItem xs="12">
+                <MudTextField @bind-Value="_specialInstructions" Label="Special Instructions" Variant="Variant.Outlined" Lines="2" />
+            </MudItem>
+        </MudGrid>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Cancel">Cancel</MudButton>
+        <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="CreateRTS" Disabled="@_saving">
+            @if (_saving)
+            {
+                <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" />
+            }
+            Create RTS
+        </MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] private MudDialogInstance MudDialog { get; set; } = null!;
+    [Parameter] public InscanMaster OriginalShipment { get; set; } = null!;
+    [Inject] private ShipmentStatusService ShipmentStatusService { get; set; } = null!;
+    
+    private bool _saving = false;
+    
+    private RTSChargeMode _rtsChargeMode = RTSChargeMode.Free;
+    private string _rtsReason = "";
+    private int? _pieces;
+    private decimal? _weight;
+    private DocumentType _documentType = DocumentType.Parcel;
+    private decimal? _length;
+    private decimal? _width;
+    private decimal? _height;
+    private string _cargoDescription = "";
+    private string _specialInstructions = "";
+
+    protected override void OnInitialized()
+    {
+        _pieces = OriginalShipment.Pieces ?? 1;
+        _weight = OriginalShipment.Weight;
+        _documentType = OriginalShipment.DocumentTypeId;
+        _length = OriginalShipment.Length;
+        _width = OriginalShipment.Width;
+        _height = OriginalShipment.Height;
+        _cargoDescription = OriginalShipment.CargoDescription ?? "";
+        _specialInstructions = OriginalShipment.SpecialInstructions ?? "";
+    }
+
+    private void Cancel()
+    {
+        MudDialog.Cancel();
+    }
+
+    private async Task CreateRTS()
+    {
+        if (OriginalShipment.CourierStatusId != CourierStatus.Delivered)
+        {
+            Snackbar.Add("RTS can only be created for delivered shipments", Severity.Warning);
+            return;
+        }
+        
+        if (OriginalShipment.IsRTS || OriginalShipment.OriginalShipmentId != null)
+        {
+            Snackbar.Add("Cannot create RTS from an RTS shipment", Severity.Warning);
+            return;
+        }
+        
+        var existingRTS = await DbContext.InscanMasters
+            .AnyAsync(i => i.OriginalShipmentId == OriginalShipment.Id && i.IsRTS && !i.IsDeleted);
+        if (existingRTS)
+        {
+            Snackbar.Add("An RTS already exists for this shipment", Severity.Warning);
+            return;
+        }
+        
+        _saving = true;
+        try
+        {
+            var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+            var userName = authState.User.Identity?.Name ?? "System";
+            var userIdClaim = authState.User.FindFirst("UserId")?.Value;
+            long? userId = userIdClaim != null ? long.Parse(userIdClaim) : null;
+            
+            var rtsAWBNo = OriginalShipment.AWBNo;
+            
+            var rtsShipment = new InscanMaster
+            {
+                AWBNo = rtsAWBNo,
+                TransactionDate = DateTime.UtcNow,
+                FinancialYearId = OriginalShipment.FinancialYearId,
+                CompanyId = OriginalShipment.CompanyId,
+                BranchId = OriginalShipment.BranchId,
+                DepotId = OriginalShipment.DepotId,
+                CustomerId = OriginalShipment.CustomerId,
+                
+                Consignor = OriginalShipment.Consignee,
+                ConsignorContact = OriginalShipment.ConsigneeContact,
+                ConsignorPhone = OriginalShipment.ConsigneePhone,
+                ConsignorMobile = OriginalShipment.ConsigneeMobile,
+                ConsignorAddress1 = OriginalShipment.ConsigneeAddress1,
+                ConsignorAddress2 = OriginalShipment.ConsigneeAddress2,
+                ConsignorCity = OriginalShipment.ConsigneeCity,
+                ConsignorState = OriginalShipment.ConsigneeState,
+                ConsignorCountry = OriginalShipment.ConsigneeCountry,
+                ConsignorPostalCode = OriginalShipment.ConsigneePostalCode,
+                ConsignorLocation = OriginalShipment.ConsigneeLocation,
+                
+                Consignee = OriginalShipment.Consignor,
+                ConsigneeContact = OriginalShipment.ConsignorContact,
+                ConsigneePhone = OriginalShipment.ConsignorPhone,
+                ConsigneeMobile = OriginalShipment.ConsignorMobile,
+                ConsigneeAddress1 = OriginalShipment.ConsignorAddress1,
+                ConsigneeAddress2 = OriginalShipment.ConsignorAddress2,
+                ConsigneeCity = OriginalShipment.ConsignorCity,
+                ConsigneeState = OriginalShipment.ConsignorState,
+                ConsigneeCountry = OriginalShipment.ConsignorCountry,
+                ConsigneePostalCode = OriginalShipment.ConsignorPostalCode,
+                ConsigneeLocation = OriginalShipment.ConsignorLocation,
+                
+                Pieces = _pieces,
+                Weight = _weight,
+                ChargeableWeight = _weight,
+                Length = _length,
+                Width = _width,
+                Height = _height,
+                
+                CargoDescription = _cargoDescription,
+                SpecialInstructions = _specialInstructions,
+                
+                CourierStatusId = CourierStatus.Pending,
+                PaymentModeId = _rtsChargeMode == RTSChargeMode.Free ? PaymentMode.Account : OriginalShipment.PaymentModeId,
+                MovementTypeId = OriginalShipment.MovementTypeId,
+                DocumentTypeId = _documentType,
+                ShipmentModeId = OriginalShipment.ShipmentModeId,
+                
+                NetTotal = _rtsChargeMode == RTSChargeMode.Free ? 0 : null,
+                
+                IsRTS = true,
+                OriginalShipmentId = OriginalShipment.Id,
+                RTSChargeMode = _rtsChargeMode,
+                RTSCreatedAt = DateTime.UtcNow,
+                RTSCreatedByUserId = userId,
+                RTSCreatedByUserName = userName,
+                RTSReason = _rtsReason,
+                
+                IsActive = true,
+                CreatedAt = DateTime.UtcNow
+            };
+            
+            if (_length.HasValue && _width.HasValue && _height.HasValue)
+            {
+                rtsShipment.VolumetricWeight = (_length.Value * _width.Value * _height.Value) / 5000;
+                rtsShipment.ChargeableWeight = Math.Max(rtsShipment.Weight ?? 0, rtsShipment.VolumetricWeight ?? 0);
+            }
+            
+            DbContext.InscanMasters.Add(rtsShipment);
+            await DbContext.SaveChangesAsync();
+            
+            await ShipmentStatusService.SetStatus(
+                rtsShipment.Id,
+                "RTS_REQUESTED",
+                "RTS_CREATED",
+                eventRefId: OriginalShipment.Id,
+                eventRefType: "OriginalShipment",
+                userId: userId,
+                userName: userName,
+                remarks: $"RTS created from original AWB {OriginalShipment.AWBNo}. Reason: {_rtsReason}",
+                isAutomatic: false
+            );
+            
+            await ShipmentStatusService.SetStatus(
+                OriginalShipment.Id,
+                "RTS_REQUESTED",
+                "RTS_LINKED",
+                eventRefId: rtsShipment.Id,
+                eventRefType: "RTSShipment",
+                userId: userId,
+                userName: userName,
+                remarks: $"RTS shipment created and linked",
+                isAutomatic: true
+            );
+            
+            MudDialog.Close(DialogResult.Ok(rtsShipment.Id));
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error creating RTS: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _saving = false;
+        }
+    }
+}

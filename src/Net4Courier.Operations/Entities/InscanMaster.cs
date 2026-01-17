@@ -119,6 +119,14 @@ public class InscanMaster : AuditableEntity
     public string? JobCode { get; set; }
     public string? ReferenceNo { get; set; }
     
+    public bool IsRTS { get; set; }
+    public long? OriginalShipmentId { get; set; }
+    public RTSChargeMode? RTSChargeMode { get; set; }
+    public DateTime? RTSCreatedAt { get; set; }
+    public long? RTSCreatedByUserId { get; set; }
+    public string? RTSCreatedByUserName { get; set; }
+    public string? RTSReason { get; set; }
+    
     public long? PickupRequestId { get; set; }
     public long? PickupRequestShipmentId { get; set; }
     
@@ -141,6 +149,9 @@ public class InscanMaster : AuditableEntity
     
     public virtual MasterAirwaybill? MAWB { get; set; }
     public virtual MAWBBag? MAWBBag { get; set; }
+    
+    public virtual InscanMaster? OriginalShipment { get; set; }
+    public virtual ICollection<InscanMaster> RTSShipments { get; set; } = new List<InscanMaster>();
     
     public virtual ICollection<InscanMasterItem> Items { get; set; } = new List<InscanMasterItem>();
     public virtual ICollection<AWBTracking> TrackingHistory { get; set; } = new List<AWBTracking>();
