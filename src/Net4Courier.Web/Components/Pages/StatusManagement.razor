@@ -107,105 +107,9 @@
     }
 </MudContainer>
 
-<MudDialog @bind-Visible="_showGroupDialog">
-    <TitleContent>
-        <MudText Typo="Typo.h6">@(_editingGroup?.Id > 0 ? "Edit" : "Add") Status Group</MudText>
-    </TitleContent>
-    <DialogContent>
-        @if (_editingGroup != null)
-        {
-            <MudGrid>
-                <MudItem xs="12" md="6">
-                    <MudTextField @bind-Value="_editingGroup.Code" Label="Code" Variant="Variant.Outlined" Required="true" />
-                </MudItem>
-                <MudItem xs="12" md="6">
-                    <MudTextField @bind-Value="_editingGroup.Name" Label="Name" Variant="Variant.Outlined" Required="true" />
-                </MudItem>
-                <MudItem xs="12">
-                    <MudTextField @bind-Value="_editingGroup.Description" Label="Description" Variant="Variant.Outlined" />
-                </MudItem>
-                <MudItem xs="12" md="4">
-                    <MudNumericField T="int" @bind-Value="_editingGroup.SequenceNo" Label="Sequence" Variant="Variant.Outlined" />
-                </MudItem>
-                <MudItem xs="12" md="4">
-                    <MudTextField @bind-Value="_editingGroup.IconName" Label="Icon Name" Variant="Variant.Outlined" />
-                </MudItem>
-                <MudItem xs="12" md="4">
-                    <MudColorPicker @bind-Text="_editingGroup.ColorCode" Label="Color" Variant="Variant.Outlined" />
-                </MudItem>
-            </MudGrid>
-        }
-    </DialogContent>
-    <DialogActions>
-        <MudButton OnClick="CloseGroupDialog">Cancel</MudButton>
-        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="SaveGroup">Save</MudButton>
-    </DialogActions>
-</MudDialog>
-
-<MudDialog @bind-Visible="_showStatusDialog">
-    <TitleContent>
-        <MudText Typo="Typo.h6">@(_editingStatus?.Id > 0 ? "Edit" : "Add") Status</MudText>
-    </TitleContent>
-    <DialogContent>
-        @if (_editingStatus != null)
-        {
-            <MudGrid>
-                <MudItem xs="12" md="6">
-                    <MudTextField @bind-Value="_editingStatus.Code" Label="Code" Variant="Variant.Outlined" Required="true" />
-                </MudItem>
-                <MudItem xs="12" md="6">
-                    <MudTextField @bind-Value="_editingStatus.Name" Label="Name" Variant="Variant.Outlined" Required="true" />
-                </MudItem>
-                <MudItem xs="12">
-                    <MudTextField @bind-Value="_editingStatus.TimelineDescription" Label="Timeline Description" Variant="Variant.Outlined" />
-                </MudItem>
-                <MudItem xs="12" md="4">
-                    <MudNumericField T="int" @bind-Value="_editingStatus.SequenceNo" Label="Sequence" Variant="Variant.Outlined" />
-                </MudItem>
-                <MudItem xs="12" md="4">
-                    <MudSelect T="CourierStatus?" Label="Maps to CourierStatus" @bind-Value="_editingStatus.MapsToCourierStatus"
-                               Variant="Variant.Outlined" Clearable="true">
-                        @foreach (var cs in Enum.GetValues<CourierStatus>())
-                        {
-                            <MudSelectItem Value="@((CourierStatus?)cs)">@cs</MudSelectItem>
-                        }
-                    </MudSelect>
-                </MudItem>
-                <MudItem xs="12" md="4">
-                    <MudTextField @bind-Value="_editingStatus.IconName" Label="Icon Name" Variant="Variant.Outlined" />
-                </MudItem>
-                <MudItem xs="12" md="4">
-                    <MudCheckBox @bind-Value="_editingStatus.IsTerminal" Label="Is Terminal" />
-                </MudItem>
-                <MudItem xs="12" md="4">
-                    <MudCheckBox @bind-Value="_editingStatus.IsException" Label="Is Exception" />
-                </MudItem>
-                <MudItem xs="12" md="4">
-                    <MudCheckBox @bind-Value="_editingStatus.RequiresPOD" Label="Requires POD" />
-                </MudItem>
-                <MudItem xs="12" md="4">
-                    <MudCheckBox @bind-Value="_editingStatus.RequiresRemarks" Label="Requires Remarks" />
-                </MudItem>
-                <MudItem xs="12" md="4">
-                    <MudCheckBox @bind-Value="_editingStatus.RequiresLocation" Label="Requires Location" />
-                </MudItem>
-            </MudGrid>
-        }
-    </DialogContent>
-    <DialogActions>
-        <MudButton OnClick="CloseStatusDialog">Cancel</MudButton>
-        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="SaveStatus">Save</MudButton>
-    </DialogActions>
-</MudDialog>
-
 @code {
     private bool _loading;
-    private bool _showGroupDialog;
-    private bool _showStatusDialog;
     private List<ShipmentStatusGroup> _groups = new();
-    private ShipmentStatusGroup? _editingGroup;
-    private ShipmentStatus? _editingStatus;
-    private long? _selectedGroupId;
 
     protected override async Task OnInitializedAsync()
     {
@@ -243,172 +147,180 @@
         }
     }
 
-    private void OpenAddGroupDialog()
+    private async Task OpenAddGroupDialog()
     {
-        _editingGroup = new ShipmentStatusGroup
+        var newGroup = new ShipmentStatusGroup
         {
             SequenceNo = _groups.Count + 1,
+            IsActive = true,
             CreatedAt = DateTime.UtcNow
         };
-        _showGroupDialog = true;
+
+        var parameters = new DialogParameters<GroupEditDialog> { { x => x.Group, newGroup } };
+        var options = new DialogOptions { CloseButton = true, MaxWidth = MaxWidth.Small, FullWidth = true };
+        var dialog = await DialogService.ShowAsync<GroupEditDialog>("Add Status Group", parameters, options);
+        var result = await dialog.Result;
+
+        if (result != null && !result.Canceled && result.Data is ShipmentStatusGroup savedGroup)
+        {
+            await SaveGroup(savedGroup, isNew: true);
+        }
     }
 
-    private void OpenEditGroupDialog(ShipmentStatusGroup group)
+    private async Task OpenEditGroupDialog(ShipmentStatusGroup group)
+    {
+        var editGroup = new ShipmentStatusGroup
+        {
+            Id = group.Id,
+            Code = group.Code ?? "",
+            Name = group.Name ?? "",
+            Description = group.Description,
+            SequenceNo = group.SequenceNo,
+            IconName = group.IconName,
+            ColorCode = group.ColorCode,
+            IsActive = group.IsActive,
+            CreatedAt = group.CreatedAt
+        };
+
+        var parameters = new DialogParameters<GroupEditDialog> { { x => x.Group, editGroup } };
+        var options = new DialogOptions { CloseButton = true, MaxWidth = MaxWidth.Small, FullWidth = true };
+        var dialog = await DialogService.ShowAsync<GroupEditDialog>("Edit Status Group", parameters, options);
+        var result = await dialog.Result;
+
+        if (result != null && !result.Canceled && result.Data is ShipmentStatusGroup savedGroup)
+        {
+            await SaveGroup(savedGroup, isNew: false);
+        }
+    }
+
+    private async Task SaveGroup(ShipmentStatusGroup group, bool isNew)
     {
         try
         {
-            _editingGroup = new ShipmentStatusGroup
+            if (isNew)
             {
-                Id = group.Id,
-                Code = group.Code ?? "",
-                Name = group.Name ?? "",
-                Description = group.Description,
-                SequenceNo = group.SequenceNo,
-                IconName = group.IconName,
-                ColorCode = group.ColorCode,
-                IsActive = group.IsActive,
-                CreatedAt = group.CreatedAt
-            };
-            _showGroupDialog = true;
-            StateHasChanged();
+                group.CreatedAt = DateTime.UtcNow;
+                Context.ShipmentStatusGroups.Add(group);
+            }
+            else
+            {
+                var existing = await Context.ShipmentStatusGroups.FindAsync(group.Id);
+                if (existing != null)
+                {
+                    existing.Code = group.Code;
+                    existing.Name = group.Name;
+                    existing.Description = group.Description;
+                    existing.SequenceNo = group.SequenceNo;
+                    existing.IconName = group.IconName;
+                    existing.ColorCode = group.ColorCode;
+                    existing.IsActive = group.IsActive;
+                    existing.ModifiedAt = DateTime.UtcNow;
+                }
+            }
+
+            await Context.SaveChangesAsync();
+            Snackbar.Add("Group saved successfully", Severity.Success);
+            await LoadGroups();
         }
         catch (Exception ex)
         {
-            Snackbar.Add($"Error opening dialog: {ex.Message}", Severity.Error);
+            Snackbar.Add($"Error saving group: {ex.Message}", Severity.Error);
         }
     }
 
-    private void CloseGroupDialog()
+    private async Task OpenAddStatusDialog(ShipmentStatusGroup group)
     {
-        _showGroupDialog = false;
-        _editingGroup = null;
-    }
-
-    private async Task SaveGroup()
-    {
-        if (_editingGroup == null || string.IsNullOrEmpty(_editingGroup.Code) || string.IsNullOrEmpty(_editingGroup.Name))
-        {
-            Snackbar.Add("Code and Name are required", Severity.Warning);
-            return;
-        }
-
-        if (_editingGroup.Id == 0)
-        {
-            _editingGroup.CreatedAt = DateTime.UtcNow;
-            Context.ShipmentStatusGroups.Add(_editingGroup);
-        }
-        else
-        {
-            var existing = await Context.ShipmentStatusGroups.FindAsync(_editingGroup.Id);
-            if (existing != null)
-            {
-                existing.Code = _editingGroup.Code;
-                existing.Name = _editingGroup.Name;
-                existing.Description = _editingGroup.Description;
-                existing.SequenceNo = _editingGroup.SequenceNo;
-                existing.IconName = _editingGroup.IconName;
-                existing.ColorCode = _editingGroup.ColorCode;
-                existing.IsActive = _editingGroup.IsActive;
-                existing.ModifiedAt = DateTime.UtcNow;
-            }
-        }
-
-        await Context.SaveChangesAsync();
-        Snackbar.Add("Group saved successfully", Severity.Success);
-        CloseGroupDialog();
-        await LoadGroups();
-    }
-
-    private void OpenAddStatusDialog(ShipmentStatusGroup group)
-    {
-        _selectedGroupId = group.Id;
-        _editingStatus = new ShipmentStatus
+        var newStatus = new ShipmentStatus
         {
             StatusGroupId = group.Id,
             SequenceNo = group.Statuses.Count + 1,
+            IsActive = true,
             CreatedAt = DateTime.UtcNow
         };
-        _showStatusDialog = true;
+
+        var parameters = new DialogParameters<StatusEditDialog> { { x => x.Status, newStatus } };
+        var options = new DialogOptions { CloseButton = true, MaxWidth = MaxWidth.Medium, FullWidth = true };
+        var dialog = await DialogService.ShowAsync<StatusEditDialog>("Add Status", parameters, options);
+        var result = await dialog.Result;
+
+        if (result != null && !result.Canceled && result.Data is ShipmentStatus savedStatus)
+        {
+            await SaveStatus(savedStatus, isNew: true);
+        }
     }
 
-    private void OpenEditStatusDialog(ShipmentStatus status)
+    private async Task OpenEditStatusDialog(ShipmentStatus status)
+    {
+        var editStatus = new ShipmentStatus
+        {
+            Id = status.Id,
+            StatusGroupId = status.StatusGroupId,
+            Code = status.Code ?? "",
+            Name = status.Name ?? "",
+            TimelineDescription = status.TimelineDescription,
+            SequenceNo = status.SequenceNo,
+            IsTerminal = status.IsTerminal,
+            IsException = status.IsException,
+            MapsToCourierStatus = status.MapsToCourierStatus,
+            IconName = status.IconName,
+            ColorCode = status.ColorCode,
+            RequiresPOD = status.RequiresPOD,
+            RequiresLocation = status.RequiresLocation,
+            RequiresRemarks = status.RequiresRemarks,
+            IsActive = status.IsActive,
+            CreatedAt = status.CreatedAt
+        };
+
+        var parameters = new DialogParameters<StatusEditDialog> { { x => x.Status, editStatus } };
+        var options = new DialogOptions { CloseButton = true, MaxWidth = MaxWidth.Medium, FullWidth = true };
+        var dialog = await DialogService.ShowAsync<StatusEditDialog>("Edit Status", parameters, options);
+        var result = await dialog.Result;
+
+        if (result != null && !result.Canceled && result.Data is ShipmentStatus savedStatus)
+        {
+            await SaveStatus(savedStatus, isNew: false);
+        }
+    }
+
+    private async Task SaveStatus(ShipmentStatus status, bool isNew)
     {
         try
         {
-            _editingStatus = new ShipmentStatus
+            if (isNew)
             {
-                Id = status.Id,
-                StatusGroupId = status.StatusGroupId,
-                Code = status.Code ?? "",
-                Name = status.Name ?? "",
-                TimelineDescription = status.TimelineDescription,
-                SequenceNo = status.SequenceNo,
-                IsTerminal = status.IsTerminal,
-                IsException = status.IsException,
-                MapsToCourierStatus = status.MapsToCourierStatus,
-                IconName = status.IconName,
-                ColorCode = status.ColorCode,
-                RequiresPOD = status.RequiresPOD,
-                RequiresLocation = status.RequiresLocation,
-                RequiresRemarks = status.RequiresRemarks,
-                IsActive = status.IsActive,
-                CreatedAt = status.CreatedAt
-            };
-            _showStatusDialog = true;
-            StateHasChanged();
+                status.CreatedAt = DateTime.UtcNow;
+                Context.ShipmentStatuses.Add(status);
+            }
+            else
+            {
+                var existing = await Context.ShipmentStatuses.FindAsync(status.Id);
+                if (existing != null)
+                {
+                    existing.Code = status.Code;
+                    existing.Name = status.Name;
+                    existing.TimelineDescription = status.TimelineDescription;
+                    existing.SequenceNo = status.SequenceNo;
+                    existing.IsTerminal = status.IsTerminal;
+                    existing.IsException = status.IsException;
+                    existing.MapsToCourierStatus = status.MapsToCourierStatus;
+                    existing.IconName = status.IconName;
+                    existing.ColorCode = status.ColorCode;
+                    existing.RequiresPOD = status.RequiresPOD;
+                    existing.RequiresLocation = status.RequiresLocation;
+                    existing.RequiresRemarks = status.RequiresRemarks;
+                    existing.IsActive = status.IsActive;
+                    existing.ModifiedAt = DateTime.UtcNow;
+                }
+            }
+
+            await Context.SaveChangesAsync();
+            Snackbar.Add("Status saved successfully", Severity.Success);
+            await LoadGroups();
         }
         catch (Exception ex)
         {
-            Snackbar.Add($"Error opening dialog: {ex.Message}", Severity.Error);
+            Snackbar.Add($"Error saving status: {ex.Message}", Severity.Error);
         }
-    }
-
-    private void CloseStatusDialog()
-    {
-        _showStatusDialog = false;
-        _editingStatus = null;
-        _selectedGroupId = null;
-    }
-
-    private async Task SaveStatus()
-    {
-        if (_editingStatus == null || string.IsNullOrEmpty(_editingStatus.Code) || string.IsNullOrEmpty(_editingStatus.Name))
-        {
-            Snackbar.Add("Code and Name are required", Severity.Warning);
-            return;
-        }
-
-        if (_editingStatus.Id == 0)
-        {
-            _editingStatus.CreatedAt = DateTime.UtcNow;
-            Context.ShipmentStatuses.Add(_editingStatus);
-        }
-        else
-        {
-            var existing = await Context.ShipmentStatuses.FindAsync(_editingStatus.Id);
-            if (existing != null)
-            {
-                existing.Code = _editingStatus.Code;
-                existing.Name = _editingStatus.Name;
-                existing.TimelineDescription = _editingStatus.TimelineDescription;
-                existing.SequenceNo = _editingStatus.SequenceNo;
-                existing.IsTerminal = _editingStatus.IsTerminal;
-                existing.IsException = _editingStatus.IsException;
-                existing.MapsToCourierStatus = _editingStatus.MapsToCourierStatus;
-                existing.IconName = _editingStatus.IconName;
-                existing.ColorCode = _editingStatus.ColorCode;
-                existing.RequiresPOD = _editingStatus.RequiresPOD;
-                existing.RequiresLocation = _editingStatus.RequiresLocation;
-                existing.RequiresRemarks = _editingStatus.RequiresRemarks;
-                existing.IsActive = _editingStatus.IsActive;
-                existing.ModifiedAt = DateTime.UtcNow;
-            }
-        }
-
-        await Context.SaveChangesAsync();
-        Snackbar.Add("Status saved successfully", Severity.Success);
-        CloseStatusDialog();
-        await LoadGroups();
     }
 
     private string GetIcon(string? iconName) => iconName switch
