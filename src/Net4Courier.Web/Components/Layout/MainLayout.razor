@@ -1,9 +1,12 @@
 @inherits LayoutComponentBase
 @using MudBlazor
 @using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.EntityFrameworkCore
 @using Net4Courier.Web.Services
+@using Net4Courier.Infrastructure.Data
 @inject NavigationManager NavigationManager
 @inject AuthenticationStateProvider AuthStateProvider
+@inject ApplicationDbContext DbContext
 
 <MudThemeProvider @bind-IsDarkMode="@_isDarkMode" Theme="_theme" />
 <MudDialogProvider />
@@ -17,10 +20,39 @@
         <MudSpacer />
         <AuthorizeView>
             <Authorized>
-                <MudMenu Icon="@Icons.Material.Filled.Person" Color="Color.Inherit" AnchorOrigin="Origin.BottomRight" TransformOrigin="Origin.TopRight">
-                    <MudMenuItem Icon="@Icons.Material.Filled.AccountCircle">@context.User.Identity?.Name</MudMenuItem>
-                    <MudDivider />
-                    <MudMenuItem Icon="@Icons.Material.Filled.Logout" OnClick="HandleLogout">Logout</MudMenuItem>
+                <div class="d-flex align-center gap-3 mr-4">
+                    <div class="header-info">
+                        <MudChip T="string" Size="Size.Small" Color="Color.Surface" Variant="Variant.Text" Class="header-chip">
+                            <MudIcon Icon="@Icons.Material.Filled.Business" Size="Size.Small" Class="mr-1" />
+                            @_companyName
+                        </MudChip>
+                        <MudChip T="string" Size="Size.Small" Color="Color.Surface" Variant="Variant.Text" Class="header-chip">
+                            <MudIcon Icon="@Icons.Material.Filled.Store" Size="Size.Small" Class="mr-1" />
+                            @_branchName
+                        </MudChip>
+                        <MudChip T="string" Size="Size.Small" Color="Color.Surface" Variant="Variant.Text" Class="header-chip">
+                            <MudIcon Icon="@Icons.Material.Filled.CalendarMonth" Size="Size.Small" Class="mr-1" />
+                            @_financialPeriod
+                        </MudChip>
+                    </div>
+                </div>
+                <MudBadge Content="@_notificationCount" Overlap="true" Color="Color.Error" Visible="@(_notificationCount > 0)" Class="mr-2">
+                    <MudIconButton Icon="@Icons.Material.Filled.Notifications" Color="Color.Inherit" />
+                </MudBadge>
+                <MudMenu AnchorOrigin="Origin.BottomRight" TransformOrigin="Origin.TopRight">
+                    <ActivatorContent>
+                        <MudChip T="string" Color="Color.Primary" Variant="Variant.Text" Class="user-chip">
+                            <MudAvatar Size="Size.Small" Color="Color.Secondary" Class="mr-2">@_userInitial</MudAvatar>
+                            @_userName
+                            <MudIcon Icon="@Icons.Material.Filled.ArrowDropDown" Size="Size.Small" />
+                        </MudChip>
+                    </ActivatorContent>
+                    <ChildContent>
+                        <MudMenuItem Icon="@Icons.Material.Filled.AccountCircle">Profile</MudMenuItem>
+                        <MudMenuItem Icon="@Icons.Material.Filled.Settings">Settings</MudMenuItem>
+                        <MudDivider />
+                        <MudMenuItem Icon="@Icons.Material.Filled.Logout" OnClick="HandleLogout">Logout</MudMenuItem>
+                    </ChildContent>
                 </MudMenu>
             </Authorized>
         </AuthorizeView>
@@ -42,9 +74,49 @@
     <a class="dismiss">X</a>
 </div>
 
+<style>
+    .header-info {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+    }
+    
+    .header-chip {
+        color: white !important;
+        font-size: 0.75rem;
+        height: 28px;
+    }
+    
+    .header-chip .mud-icon-root {
+        color: rgba(255,255,255,0.8) !important;
+    }
+    
+    .user-chip {
+        color: white !important;
+        cursor: pointer;
+        background: rgba(255,255,255,0.1) !important;
+    }
+    
+    .user-chip:hover {
+        background: rgba(255,255,255,0.2) !important;
+    }
+    
+    @@media (max-width: 960px) {
+        .header-info {
+            display: none;
+        }
+    }
+</style>
+
 @code {
     private bool _drawerOpen = true;
     private bool _isDarkMode = false;
+    private string _companyName = "Loading...";
+    private string _branchName = "Loading...";
+    private string _financialPeriod = "Loading...";
+    private string _userName = "";
+    private string _userInitial = "U";
+    private int _notificationCount = 0;
 
     private MudTheme _theme = new()
     {
@@ -67,6 +139,61 @@
             DrawerBackground = "#2a3042"
         },
     };
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadHeaderData();
+    }
+
+    private async Task LoadHeaderData()
+    {
+        try
+        {
+            var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+            var user = authState.User;
+            
+            if (user.Identity?.IsAuthenticated == true)
+            {
+                _userName = user.Identity.Name ?? "User";
+                _userInitial = _userName.Length > 0 ? _userName[0].ToString().ToUpper() : "U";
+                
+                var userIdClaim = user.FindFirst("UserId")?.Value;
+                if (int.TryParse(userIdClaim, out var userId))
+                {
+                    var dbUser = await DbContext.Users
+                        .Include(u => u.Branch)
+                        .ThenInclude(b => b!.Company)
+                        .FirstOrDefaultAsync(u => u.Id == userId);
+                    
+                    if (dbUser != null)
+                    {
+                        _companyName = dbUser.Branch?.Company?.Name ?? "No Company";
+                        _branchName = dbUser.Branch?.Name ?? "No Branch";
+                    }
+                }
+                
+                var currentPeriod = await DbContext.FinancialPeriods
+                    .Where(fp => fp.Status == Net4Courier.Masters.Entities.PeriodStatus.Open && !fp.IsDeleted)
+                    .OrderByDescending(fp => fp.StartDate)
+                    .FirstOrDefaultAsync();
+                
+                if (currentPeriod != null)
+                {
+                    _financialPeriod = currentPeriod.PeriodName ?? $"{currentPeriod.StartDate:MMM yyyy}";
+                }
+                else
+                {
+                    _financialPeriod = "No Period";
+                }
+            }
+        }
+        catch
+        {
+            _companyName = "N/A";
+            _branchName = "N/A";
+            _financialPeriod = "N/A";
+        }
+    }
 
     private void ToggleDrawer()
     {
