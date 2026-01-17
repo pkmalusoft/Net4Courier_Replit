@@ -1,0 +1,257 @@
+@page "/user-profile"
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.EntityFrameworkCore
+@using Net4Courier.Infrastructure.Data
+@using Net4Courier.Masters.Entities
+@inject AuthenticationStateProvider AuthStateProvider
+@inject IDbContextFactory<ApplicationDbContext> DbFactory
+@inject ISnackbar Snackbar
+
+<PageTitle>User Profile - Net4Courier</PageTitle>
+
+<MudContainer MaxWidth="MaxWidth.Medium" Class="py-6">
+    <MudText Typo="Typo.h4" GutterBottom="true">User Profile</MudText>
+    <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-6">View your profile details and update your password</MudText>
+
+    @if (_loading)
+    {
+        <MudProgressLinear Color="Color.Primary" Indeterminate="true" />
+    }
+    else if (_user == null)
+    {
+        <MudAlert Severity="Severity.Warning">Unable to load user profile.</MudAlert>
+    }
+    else
+    {
+        <MudGrid>
+            <MudItem xs="12" md="6">
+                <MudPaper Elevation="2" Class="pa-6">
+                    <MudStack Row="true" AlignItems="AlignItems.Center" Class="mb-4">
+                        <MudAvatar Size="Size.Large" Color="Color.Primary">
+                            @(_user.FullName?.Length > 0 ? _user.FullName[0].ToString().ToUpper() : "U")
+                        </MudAvatar>
+                        <div>
+                            <MudText Typo="Typo.h6">@_user.FullName</MudText>
+                            <MudText Typo="Typo.body2" Color="Color.Secondary">@_user.Username</MudText>
+                        </div>
+                    </MudStack>
+
+                    <MudDivider Class="my-4" />
+
+                    <MudText Typo="Typo.subtitle2" Color="Color.Primary" Class="mb-3">Profile Information</MudText>
+                    
+                    <MudStack Spacing="3">
+                        <MudField Label="Full Name" Variant="Variant.Outlined" Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Filled.Person">
+                            @_user.FullName
+                        </MudField>
+                        
+                        <MudField Label="Username" Variant="Variant.Outlined" Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Filled.AccountCircle">
+                            @_user.Username
+                        </MudField>
+                        
+                        <MudField Label="Email" Variant="Variant.Outlined" Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Filled.Email">
+                            @(_user.Email ?? "Not set")
+                        </MudField>
+                        
+                        <MudField Label="Phone" Variant="Variant.Outlined" Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Filled.Phone">
+                            @(_user.Phone ?? "Not set")
+                        </MudField>
+                        
+                        <MudField Label="Role" Variant="Variant.Outlined" Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Filled.Badge">
+                            @(_user.Role?.Name ?? "N/A")
+                        </MudField>
+                        
+                        <MudField Label="Branch" Variant="Variant.Outlined" Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Filled.Store">
+                            @(_user.Branch?.Name ?? "N/A")
+                        </MudField>
+                        
+                        <MudField Label="Last Login" Variant="Variant.Outlined" Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Filled.AccessTime">
+                            @(_user.LastLoginAt?.ToString("dd MMM yyyy HH:mm") ?? "Never")
+                        </MudField>
+                    </MudStack>
+                </MudPaper>
+            </MudItem>
+
+            <MudItem xs="12" md="6">
+                <MudPaper Elevation="2" Class="pa-6">
+                    <MudText Typo="Typo.h6" Class="mb-4">
+                        <MudIcon Icon="@Icons.Material.Filled.Lock" Class="mr-2" />
+                        Change Password
+                    </MudText>
+
+                    <MudDivider Class="mb-4" />
+
+                    <MudForm @ref="_form" @bind-IsValid="_formValid">
+                        <MudStack Spacing="3">
+                            <MudTextField @bind-Value="_currentPassword" 
+                                          Label="Current Password" 
+                                          Variant="Variant.Outlined"
+                                          InputType="@(_showCurrentPassword ? InputType.Text : InputType.Password)"
+                                          Adornment="Adornment.End"
+                                          AdornmentIcon="@(_showCurrentPassword ? Icons.Material.Filled.Visibility : Icons.Material.Filled.VisibilityOff)"
+                                          OnAdornmentClick="() => _showCurrentPassword = !_showCurrentPassword"
+                                          Required="true"
+                                          RequiredError="Current password is required" />
+
+                            <MudTextField @bind-Value="_newPassword" 
+                                          Label="New Password" 
+                                          Variant="Variant.Outlined"
+                                          InputType="@(_showNewPassword ? InputType.Text : InputType.Password)"
+                                          Adornment="Adornment.End"
+                                          AdornmentIcon="@(_showNewPassword ? Icons.Material.Filled.Visibility : Icons.Material.Filled.VisibilityOff)"
+                                          OnAdornmentClick="() => _showNewPassword = !_showNewPassword"
+                                          Required="true"
+                                          RequiredError="New password is required"
+                                          Validation="@(new Func<string, string?>(ValidateNewPassword))" />
+
+                            <MudTextField @bind-Value="_confirmPassword" 
+                                          Label="Confirm New Password" 
+                                          Variant="Variant.Outlined"
+                                          InputType="@(_showConfirmPassword ? InputType.Text : InputType.Password)"
+                                          Adornment="Adornment.End"
+                                          AdornmentIcon="@(_showConfirmPassword ? Icons.Material.Filled.Visibility : Icons.Material.Filled.VisibilityOff)"
+                                          OnAdornmentClick="() => _showConfirmPassword = !_showConfirmPassword"
+                                          Required="true"
+                                          RequiredError="Please confirm your new password"
+                                          Validation="@(new Func<string, string?>(ValidateConfirmPassword))" />
+
+                            <MudButton Variant="Variant.Filled" 
+                                       Color="Color.Primary" 
+                                       FullWidth="true"
+                                       Disabled="@(!_formValid || _saving)"
+                                       OnClick="ChangePassword"
+                                       Class="mt-2">
+                                @if (_saving)
+                                {
+                                    <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" />
+                                    <span>Changing Password...</span>
+                                }
+                                else
+                                {
+                                    <MudIcon Icon="@Icons.Material.Filled.Save" Class="mr-2" />
+                                    <span>Change Password</span>
+                                }
+                            </MudButton>
+                        </MudStack>
+                    </MudForm>
+
+                    <MudAlert Severity="Severity.Info" Dense="true" Class="mt-4">
+                        <MudText Typo="Typo.caption">
+                            Password must be at least 6 characters long.
+                        </MudText>
+                    </MudAlert>
+                </MudPaper>
+            </MudItem>
+        </MudGrid>
+    }
+</MudContainer>
+
+@code {
+    private User? _user;
+    private bool _loading = true;
+    private bool _saving = false;
+    private MudForm? _form;
+    private bool _formValid = false;
+
+    private string _currentPassword = string.Empty;
+    private string _newPassword = string.Empty;
+    private string _confirmPassword = string.Empty;
+    private bool _showCurrentPassword = false;
+    private bool _showNewPassword = false;
+    private bool _showConfirmPassword = false;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadUserProfile();
+    }
+
+    private async Task LoadUserProfile()
+    {
+        try
+        {
+            var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+            var userIdClaim = authState.User.FindFirst("UserId")?.Value;
+            
+            if (int.TryParse(userIdClaim, out var userId))
+            {
+                await using var dbContext = await DbFactory.CreateDbContextAsync();
+                _user = await dbContext.Users
+                    .Include(u => u.Role)
+                    .Include(u => u.Branch)
+                    .FirstOrDefaultAsync(u => u.Id == userId);
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error loading profile: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private string? ValidateNewPassword(string password)
+    {
+        if (string.IsNullOrEmpty(password))
+            return "New password is required";
+        if (password.Length < 6)
+            return "Password must be at least 6 characters";
+        return null;
+    }
+
+    private string? ValidateConfirmPassword(string confirmPassword)
+    {
+        if (string.IsNullOrEmpty(confirmPassword))
+            return "Please confirm your password";
+        if (confirmPassword != _newPassword)
+            return "Passwords do not match";
+        return null;
+    }
+
+    private async Task ChangePassword()
+    {
+        if (_form == null || _user == null) return;
+        
+        await _form.Validate();
+        if (!_formValid) return;
+
+        _saving = true;
+        try
+        {
+            await using var dbContext = await DbFactory.CreateDbContextAsync();
+            var user = await dbContext.Users.FirstOrDefaultAsync(u => u.Id == _user.Id);
+            
+            if (user == null)
+            {
+                Snackbar.Add("User not found", Severity.Error);
+                return;
+            }
+
+            if (!BCrypt.Net.BCrypt.Verify(_currentPassword, user.PasswordHash))
+            {
+                Snackbar.Add("Current password is incorrect", Severity.Error);
+                return;
+            }
+
+            user.PasswordHash = BCrypt.Net.BCrypt.HashPassword(_newPassword);
+            user.ModifiedAt = DateTime.UtcNow;
+            await dbContext.SaveChangesAsync();
+
+            Snackbar.Add("Password changed successfully", Severity.Success);
+            
+            _currentPassword = string.Empty;
+            _newPassword = string.Empty;
+            _confirmPassword = string.Empty;
+            _form.ResetAsync();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error changing password: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _saving = false;
+        }
+    }
+}
