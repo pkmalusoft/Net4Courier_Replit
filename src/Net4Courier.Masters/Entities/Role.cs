@@ -10,6 +10,7 @@ public class Role : BaseEntity
     
     public virtual ICollection<User> Users { get; set; } = new List<User>();
     public virtual ICollection<RolePermission> Permissions { get; set; } = new List<RolePermission>();
+    public virtual ICollection<FeaturePermission> FeaturePermissions { get; set; } = new List<FeaturePermission>();
 }
 
 public class RolePermission : BaseEntity

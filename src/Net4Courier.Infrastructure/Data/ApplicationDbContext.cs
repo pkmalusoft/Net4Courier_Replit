@@ -16,6 +16,7 @@ public class ApplicationDbContext : DbContext
     public DbSet<User> Users => Set<User>();
     public DbSet<Role> Roles => Set<Role>();
     public DbSet<RolePermission> RolePermissions => Set<RolePermission>();
+    public DbSet<FeaturePermission> FeaturePermissions => Set<FeaturePermission>();
     public DbSet<FinancialYear> FinancialYears => Set<FinancialYear>();
     public DbSet<FinancialPeriod> FinancialPeriods => Set<FinancialPeriod>();
     public DbSet<Party> Parties => Set<Party>();
@@ -43,6 +44,8 @@ public class ApplicationDbContext : DbContext
     public DbSet<Vehicle> Vehicles => Set<Vehicle>();
     public DbSet<MasterAirwaybill> MasterAirwaybills => Set<MasterAirwaybill>();
     public DbSet<MAWBBag> MAWBBags => Set<MAWBBag>();
+    public DbSet<ShipmentNote> ShipmentNotes => Set<ShipmentNote>();
+    public DbSet<ShipmentNoteMention> ShipmentNoteMentions => Set<ShipmentNoteMention>();
     
     public DbSet<Invoice> Invoices => Set<Invoice>();
     public DbSet<InvoiceDetail> InvoiceDetails => Set<InvoiceDetail>();
@@ -148,6 +151,15 @@ public class ApplicationDbContext : DbContext
             entity.ToTable("RolePermissions");
             entity.HasKey(e => e.Id);
             entity.HasOne(e => e.Role).WithMany(r => r.Permissions).HasForeignKey(e => e.RoleId);
+        });
+
+        modelBuilder.Entity<FeaturePermission>(entity =>
+        {
+            entity.ToTable("FeaturePermissions");
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.FeatureCode).HasMaxLength(100).IsRequired();
+            entity.HasIndex(e => new { e.RoleId, e.FeatureCode }).IsUnique();
+            entity.HasOne(e => e.Role).WithMany(r => r.FeaturePermissions).HasForeignKey(e => e.RoleId);
         });
 
         modelBuilder.Entity<FinancialYear>(entity =>
@@ -578,6 +590,28 @@ public class ApplicationDbContext : DbContext
             entity.HasIndex(e => new { e.MAWBId, e.BagNo }).IsUnique();
             entity.HasIndex(e => e.BagNo);
             entity.HasOne(e => e.MAWB).WithMany(m => m.Bags).HasForeignKey(e => e.MAWBId)
+                  .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<ShipmentNote>(entity =>
+        {
+            entity.ToTable("ShipmentNotes");
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.AuthorName).HasMaxLength(100).IsRequired();
+            entity.Property(e => e.Body).HasMaxLength(2000).IsRequired();
+            entity.HasIndex(e => e.ShipmentId);
+            entity.HasIndex(e => e.AuthorUserId);
+            entity.HasOne(e => e.Shipment).WithMany(s => s.Notes).HasForeignKey(e => e.ShipmentId)
+                  .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<ShipmentNoteMention>(entity =>
+        {
+            entity.ToTable("ShipmentNoteMentions");
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.MentionedUserName).HasMaxLength(100).IsRequired();
+            entity.HasIndex(e => e.MentionedUserId);
+            entity.HasOne(e => e.Note).WithMany(n => n.Mentions).HasForeignKey(e => e.NoteId)
                   .OnDelete(DeleteBehavior.Cascade);
         });
 

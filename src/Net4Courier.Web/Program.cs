@@ -72,6 +72,7 @@ builder.Services.AddScoped<DRSReconciliationService>();
 builder.Services.AddScoped<InvoicingService>();
 builder.Services.AddScoped<ShipmentStatusService>();
 builder.Services.AddScoped<MAWBService>();
+builder.Services.AddScoped<IPermissionService, PermissionService>();
 builder.Services.AddAuthorizationCore();
 builder.Services.AddCascadingAuthenticationState();
 

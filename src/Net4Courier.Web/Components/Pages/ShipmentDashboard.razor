@@ -1,0 +1,535 @@
+@page "/shipment/{Id:long}"
+@using Microsoft.EntityFrameworkCore
+@using Net4Courier.Infrastructure.Data
+@using Net4Courier.Operations.Entities
+@using Net4Courier.Masters.Entities
+@using Net4Courier.Kernel.Enums
+@using Net4Courier.Web.Services
+@using Microsoft.AspNetCore.Components.Authorization
+@inject ApplicationDbContext DbContext
+@inject IPermissionService PermissionService
+@inject NavigationManager Navigation
+@inject ISnackbar Snackbar
+@inject AuthenticationStateProvider AuthStateProvider
+@rendermode InteractiveServer
+
+<PageTitle>Shipment Dashboard - @_shipment?.AWBNo</PageTitle>
+
+@if (_loading)
+{
+    <MudContainer MaxWidth="MaxWidth.Large" Class="mt-4">
+        <MudProgressLinear Indeterminate="true" Color="Color.Primary" />
+    </MudContainer>
+}
+else if (_shipment == null)
+{
+    <MudContainer MaxWidth="MaxWidth.Large" Class="mt-4">
+        <MudAlert Severity="Severity.Error">Shipment not found</MudAlert>
+    </MudContainer>
+}
+else
+{
+    <MudContainer MaxWidth="MaxWidth.Large" Class="mt-4">
+        <MudStack Spacing="4">
+            <!-- Header Section -->
+            <MudPaper Class="pa-4">
+                <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
+                    <MudStack>
+                        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+                            <MudText Typo="Typo.h4">@_shipment.AWBNo</MudText>
+                            @if (_shipment.IsOnHold)
+                            {
+                                <MudChip T="string" Color="Color.Error" Size="Size.Small">ON HOLD</MudChip>
+                            }
+                        </MudStack>
+                        <MudStack Row="true" Spacing="2">
+                            <MudChip T="string" Size="Size.Small" Color="Color.Primary">@_shipment.DocumentTypeId</MudChip>
+                            <MudChip T="string" Size="Size.Small" Color="Color.Secondary">@_shipment.ShipmentModeId</MudChip>
+                            <MudChip T="string" Size="Size.Small" Color="@GetStatusColor(_shipment.CourierStatusId)">@_shipment.CourierStatusId</MudChip>
+                        </MudStack>
+                    </MudStack>
+                    <MudStack Row="true" Spacing="2">
+                        <MudButton Variant="Variant.Outlined" StartIcon="@Icons.Material.Filled.Print" 
+                                   OnClick="PrintAWB">Print AWB</MudButton>
+                        <MudButton Variant="Variant.Outlined" StartIcon="@Icons.Material.Filled.ArrowBack" 
+                                   OnClick="@(() => Navigation.NavigateTo("/awb-list"))">Back to List</MudButton>
+                    </MudStack>
+                </MudStack>
+            </MudPaper>
+
+            <!-- Status & Alerts Section -->
+            @if (_shipment.IsOnHold || _shipment.CourierStatusId == CourierStatus.NotDelivered || _shipment.CourierStatusId == CourierStatus.ReturnToOrigin)
+            {
+                <MudPaper Class="pa-4">
+                    <MudText Typo="Typo.h6" Class="mb-3">Status & Alerts</MudText>
+                    @if (_shipment.IsOnHold)
+                    {
+                        <MudAlert Severity="Severity.Error" Class="mb-2">
+                            <strong>On Hold:</strong> @_shipment.HoldReason
+                            @if (_shipment.HoldDate.HasValue)
+                            {
+                                <span> (since @_shipment.HoldDate.Value.ToString("dd-MMM-yyyy HH:mm"))</span>
+                            }
+                        </MudAlert>
+                    }
+                    @if (_shipment.CourierStatusId == CourierStatus.NotDelivered)
+                    {
+                        <MudAlert Severity="Severity.Warning">Delivery attempted but not successful</MudAlert>
+                    }
+                    @if (_shipment.CourierStatusId == CourierStatus.ReturnToOrigin)
+                    {
+                        <MudAlert Severity="Severity.Warning">Shipment marked for return to origin</MudAlert>
+                    }
+                </MudPaper>
+            }
+
+            <MudGrid>
+                <!-- Customer & Parties Section -->
+                <MudItem xs="12" md="6">
+                    <MudPaper Class="pa-4" Style="height: 100%;">
+                        <MudText Typo="Typo.h6" Class="mb-3">
+                            <MudIcon Icon="@Icons.Material.Filled.People" Size="Size.Small" Class="mr-1" />
+                            Customer & Parties
+                        </MudText>
+                        <MudSimpleTable Dense="true" Hover="true">
+                            <tbody>
+                                <tr><td><strong>Customer</strong></td><td>@_customerName</td></tr>
+                                <tr><td><strong>Account Type</strong></td><td>@_shipment.PaymentModeId</td></tr>
+                                <tr><td><strong>Consignor</strong></td><td>@_shipment.Consignor</td></tr>
+                                <tr><td><strong>Consignee</strong></td><td>@_shipment.Consignee</td></tr>
+                                @if (_shipment.ForwardingAgentId.HasValue)
+                                {
+                                    <tr><td><strong>Forwarding Agent</strong></td><td>@_forwardingAgentName</td></tr>
+                                }
+                            </tbody>
+                        </MudSimpleTable>
+                    </MudPaper>
+                </MudItem>
+
+                <!-- Routing Information Section -->
+                <MudItem xs="12" md="6">
+                    <MudPaper Class="pa-4" Style="height: 100%;">
+                        <MudText Typo="Typo.h6" Class="mb-3">
+                            <MudIcon Icon="@Icons.Material.Filled.Route" Size="Size.Small" Class="mr-1" />
+                            Routing Information
+                        </MudText>
+                        <MudSimpleTable Dense="true" Hover="true">
+                            <tbody>
+                                <tr>
+                                    <td><strong>Origin</strong></td>
+                                    <td>@_shipment.ConsignorCity, @_shipment.ConsignorState, @_shipment.ConsignorCountry</td>
+                                </tr>
+                                <tr>
+                                    <td><strong>Destination</strong></td>
+                                    <td>@_shipment.ConsigneeCity, @_shipment.ConsigneeState, @_shipment.ConsigneeCountry</td>
+                                </tr>
+                                <tr><td><strong>Movement Type</strong></td><td>@_shipment.MovementTypeId</td></tr>
+                                <tr><td><strong>Shipment Mode</strong></td><td>@_shipment.ShipmentModeId</td></tr>
+                            </tbody>
+                        </MudSimpleTable>
+                    </MudPaper>
+                </MudItem>
+
+                <!-- Shipment & Cargo Section -->
+                <MudItem xs="12" md="6">
+                    <MudPaper Class="pa-4" Style="height: 100%;">
+                        <MudText Typo="Typo.h6" Class="mb-3">
+                            <MudIcon Icon="@Icons.Material.Filled.Inventory" Size="Size.Small" Class="mr-1" />
+                            Shipment & Cargo
+                        </MudText>
+                        <MudSimpleTable Dense="true" Hover="true">
+                            <tbody>
+                                <tr><td><strong>Pieces</strong></td><td>@_shipment.Pieces</td></tr>
+                                <tr><td><strong>Actual Weight</strong></td><td>@(_shipment.Weight?.ToString("N2") ?? "-") kg</td></tr>
+                                <tr><td><strong>Chargeable Weight</strong></td><td>@(_shipment.ChargeableWeight?.ToString("N2") ?? "-") kg</td></tr>
+                                <tr><td><strong>Dimensions</strong></td><td>@FormatDimensions()</td></tr>
+                                <tr><td><strong>Package Type</strong></td><td>@_shipment.DocumentTypeId</td></tr>
+                                <tr><td><strong>Description</strong></td><td>@(_shipment.CargoDescription ?? "-")</td></tr>
+                            </tbody>
+                        </MudSimpleTable>
+                    </MudPaper>
+                </MudItem>
+
+                <!-- Compliance & Control Section -->
+                <MudItem xs="12" md="6">
+                    <MudPaper Class="pa-4" Style="height: 100%;">
+                        <MudText Typo="Typo.h6" Class="mb-3">
+                            <MudIcon Icon="@Icons.Material.Filled.Security" Size="Size.Small" Class="mr-1" />
+                            Compliance & Control
+                        </MudText>
+                        <MudSimpleTable Dense="true" Hover="true">
+                            <tbody>
+                                <tr>
+                                    <td><strong>On-Hold Status</strong></td>
+                                    <td>
+                                        @if (_shipment.IsOnHold)
+                                        {
+                                            <MudChip T="string" Color="Color.Error" Size="Size.Small">Yes</MudChip>
+                                        }
+                                        else
+                                        {
+                                            <MudChip T="string" Color="Color.Success" Size="Size.Small">No</MudChip>
+                                        }
+                                    </td>
+                                </tr>
+                                @if (_shipment.IsOnHold)
+                                {
+                                    <tr><td><strong>Hold Reason</strong></td><td>@_shipment.HoldReason</td></tr>
+                                }
+                                <tr>
+                                    <td><strong>COD</strong></td>
+                                    <td>
+                                        @if (_shipment.IsCOD)
+                                        {
+                                            <MudChip T="string" Color="Color.Warning" Size="Size.Small">Yes</MudChip>
+                                        }
+                                        else
+                                        {
+                                            <span>No</span>
+                                        }
+                                    </td>
+                                </tr>
+                                <tr><td><strong>Customs Value</strong></td><td>@(_shipment.CustomsValue?.ToString("N2") ?? "-") @_shipment.Currency</td></tr>
+                            </tbody>
+                        </MudSimpleTable>
+                    </MudPaper>
+                </MudItem>
+
+                <!-- Operational Info Section -->
+                <MudItem xs="12" md="6">
+                    <MudPaper Class="pa-4" Style="height: 100%;">
+                        <MudText Typo="Typo.h6" Class="mb-3">
+                            <MudIcon Icon="@Icons.Material.Filled.LocalShipping" Size="Size.Small" Class="mr-1" />
+                            Operational Info
+                        </MudText>
+                        <MudSimpleTable Dense="true" Hover="true">
+                            <tbody>
+                                <tr><td><strong>Transaction Date</strong></td><td>@_shipment.TransactionDate.ToString("dd-MMM-yyyy")</td></tr>
+                                <tr><td><strong>Pickup Date</strong></td><td>@(_shipment.PickedUpDate?.ToString("dd-MMM-yyyy HH:mm") ?? "-")</td></tr>
+                                <tr><td><strong>Picked By</strong></td><td>@(_shipment.PickedBy ?? "-")</td></tr>
+                                <tr><td><strong>Delivered Date</strong></td><td>@(_shipment.DeliveredDate?.ToString("dd-MMM-yyyy HH:mm") ?? "-")</td></tr>
+                                <tr><td><strong>Delivered To</strong></td><td>@(_shipment.DeliveredTo ?? "-")</td></tr>
+                            </tbody>
+                        </MudSimpleTable>
+                    </MudPaper>
+                </MudItem>
+
+                <!-- Manifest / MAWB Summary (if applicable) -->
+                @if (_shipment.MAWBId.HasValue || !string.IsNullOrEmpty(_shipment.BagNo))
+                {
+                    <MudItem xs="12" md="6">
+                        <MudPaper Class="pa-4" Style="height: 100%;">
+                            <MudText Typo="Typo.h6" Class="mb-3">
+                                <MudIcon Icon="@Icons.Material.Filled.FlightTakeoff" Size="Size.Small" Class="mr-1" />
+                                Manifest / MAWB
+                            </MudText>
+                            <MudSimpleTable Dense="true" Hover="true">
+                                <tbody>
+                                    @if (!string.IsNullOrEmpty(_shipment.MAWBNo))
+                                    {
+                                        <tr><td><strong>MAWB Number</strong></td><td>@_shipment.MAWBNo</td></tr>
+                                    }
+                                    @if (!string.IsNullOrEmpty(_shipment.BagNo))
+                                    {
+                                        <tr><td><strong>Bag Number</strong></td><td>@_shipment.BagNo</td></tr>
+                                    }
+                                    @if (_shipment.BaggedAt.HasValue)
+                                    {
+                                        <tr><td><strong>Bagged At</strong></td><td>@_shipment.BaggedAt.Value.ToString("dd-MMM-yyyy HH:mm")</td></tr>
+                                    }
+                                    @if (!string.IsNullOrEmpty(_shipment.ForwardingAWBNo))
+                                    {
+                                        <tr><td><strong>Forwarding AWB</strong></td><td>@_shipment.ForwardingAWBNo</td></tr>
+                                    }
+                                </tbody>
+                            </MudSimpleTable>
+                        </MudPaper>
+                    </MudItem>
+                }
+
+                <!-- Financial Snapshot (permission-based) -->
+                @if (_canViewFinancials)
+                {
+                    <MudItem xs="12">
+                        <MudPaper Class="pa-4">
+                            <MudText Typo="Typo.h6" Class="mb-3">
+                                <MudIcon Icon="@Icons.Material.Filled.AttachMoney" Size="Size.Small" Class="mr-1" />
+                                Financial Snapshot
+                            </MudText>
+                            <MudGrid>
+                                <MudItem xs="12" md="4">
+                                    <MudSimpleTable Dense="true" Hover="true">
+                                        <tbody>
+                                            @if (_canViewPricing)
+                                            {
+                                                <tr><td><strong>Courier Charge</strong></td><td>@(_shipment.CourierCharge?.ToString("N2") ?? "-")</td></tr>
+                                                <tr><td><strong>Other Charges</strong></td><td>@(_shipment.OtherCharge?.ToString("N2") ?? "-")</td></tr>
+                                                <tr><td><strong>Fuel Surcharge</strong></td><td>@(_shipment.FuelSurcharge?.ToString("N2") ?? "-")</td></tr>
+                                            }
+                                            <tr><td><strong>Net Total</strong></td><td><strong>@(_shipment.NetTotal?.ToString("N2") ?? "-")</strong></td></tr>
+                                        </tbody>
+                                    </MudSimpleTable>
+                                </MudItem>
+                                <MudItem xs="12" md="4">
+                                    <MudSimpleTable Dense="true" Hover="true">
+                                        <tbody>
+                                            @if (_shipment.IsCOD)
+                                            {
+                                                <tr><td><strong>COD Amount</strong></td><td>@(_shipment.CODAmount?.ToString("N2") ?? "-")</td></tr>
+                                                <tr>
+                                                    <td><strong>COD Collected</strong></td>
+                                                    <td>
+                                                        @if (_shipment.CODCollected)
+                                                        {
+                                                            <MudChip T="string" Color="Color.Success" Size="Size.Small">Yes</MudChip>
+                                                        }
+                                                        else
+                                                        {
+                                                            <MudChip T="string" Color="Color.Warning" Size="Size.Small">No</MudChip>
+                                                        }
+                                                    </td>
+                                                </tr>
+                                            }
+                                            <tr><td><strong>Invoice #</strong></td><td>@(_shipment.InvoiceId?.ToString() ?? "Not Invoiced")</td></tr>
+                                        </tbody>
+                                    </MudSimpleTable>
+                                </MudItem>
+                                @if (_canViewMargin)
+                                {
+                                    <MudItem xs="12" md="4">
+                                        <MudSimpleTable Dense="true" Hover="true">
+                                            <tbody>
+                                                @if (_canViewCost)
+                                                {
+                                                    <tr><td><strong>Forwarding Charge</strong></td><td>@(_shipment.ForwardingCharge?.ToString("N2") ?? "-")</td></tr>
+                                                    <tr><td><strong>Spot Rate</strong></td><td>@(_shipment.SpotRate?.ToString("N2") ?? "-")</td></tr>
+                                                }
+                                                <tr><td><strong>Margin %</strong></td><td>@(_shipment.MarginPercent?.ToString("N2") ?? "-")%</td></tr>
+                                            </tbody>
+                                        </MudSimpleTable>
+                                    </MudItem>
+                                }
+                            </MudGrid>
+                        </MudPaper>
+                    </MudItem>
+                }
+
+                <!-- User Notes Section -->
+                <MudItem xs="12">
+                    <MudPaper Class="pa-4">
+                        <MudText Typo="Typo.h6" Class="mb-3">
+                            <MudIcon Icon="@Icons.Material.Filled.Comment" Size="Size.Small" Class="mr-1" />
+                            User Notes
+                        </MudText>
+
+                        @if (_canAddNotes)
+                        {
+                            <MudStack Row="true" Spacing="2" Class="mb-4">
+                                <MudTextField @bind-Value="_newNoteText" Label="Add a note..." Variant="Variant.Outlined"
+                                              Lines="2" FullWidth="true" Placeholder="@_mentionPlaceholder" />
+                                <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="AddNote"
+                                           Disabled="@string.IsNullOrWhiteSpace(_newNoteText)">Add</MudButton>
+                            </MudStack>
+                        }
+
+                        @if (_notes.Any())
+                        {
+                            <MudList T="ShipmentNote" Dense="true">
+                                @foreach (var note in _notes)
+                                {
+                                    <MudListItem T="ShipmentNote">
+                                        <div class="d-flex justify-space-between align-center">
+                                            <div>
+                                                <MudText Typo="Typo.caption" Color="Color.Primary">
+                                                    <strong>@note.AuthorName</strong> - @note.CreatedAt.ToString("dd-MMM-yyyy HH:mm")
+                                                </MudText>
+                                                <MudText>@((MarkupString)FormatNoteBody(note.Body))</MudText>
+                                            </div>
+                                            @if (_canDeleteNotes && !note.IsDeleted)
+                                            {
+                                                <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small"
+                                                               Color="Color.Error" OnClick="@(() => DeleteNote(note))" />
+                                            }
+                                        </div>
+                                    </MudListItem>
+                                    <MudDivider />
+                                }
+                            </MudList>
+                        }
+                        else
+                        {
+                            <MudText Color="Color.Secondary">No notes yet. Be the first to add one!</MudText>
+                        }
+                    </MudPaper>
+                </MudItem>
+            </MudGrid>
+        </MudStack>
+    </MudContainer>
+}
+
+@code {
+    [Parameter]
+    public long Id { get; set; }
+
+    private InscanMaster? _shipment;
+    private List<ShipmentNote> _notes = new();
+    private bool _loading = true;
+    private string _newNoteText = string.Empty;
+    private string? _customerName;
+    private string? _forwardingAgentName;
+
+    private bool _canViewPricing;
+    private bool _canViewMargin;
+    private bool _canViewFinancials;
+    private bool _canViewCost;
+    private bool _canAddNotes;
+    private bool _canDeleteNotes;
+
+    private long? _currentUserId;
+    private string? _currentUserName;
+    private const string _mentionPlaceholder = "Type @ to mention a user...";
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadData();
+    }
+
+    private async Task LoadData()
+    {
+        _loading = true;
+        try
+        {
+            var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+            var userIdClaim = authState.User.FindFirst("UserId")?.Value;
+            if (long.TryParse(userIdClaim, out var userId))
+            {
+                _currentUserId = userId;
+                var user = await DbContext.Users.FindAsync(userId);
+                _currentUserName = user?.FullName ?? user?.Username;
+            }
+
+            var permissions = await PermissionService.GetUserPermissionsAsync(_currentUserId);
+            _canViewPricing = permissions.Contains(FeatureCodes.PricingView);
+            _canViewMargin = permissions.Contains(FeatureCodes.MarginView);
+            _canViewFinancials = permissions.Contains(FeatureCodes.FinancialsView);
+            _canViewCost = permissions.Contains(FeatureCodes.CostView);
+            _canAddNotes = permissions.Contains(FeatureCodes.NotesAdd);
+            _canDeleteNotes = permissions.Contains(FeatureCodes.NotesDelete);
+
+            _shipment = await DbContext.InscanMasters
+                .Include(s => s.Notes.Where(n => !n.IsDeleted))
+                .ThenInclude(n => n.Mentions)
+                .FirstOrDefaultAsync(s => s.Id == Id);
+
+            if (_shipment != null)
+            {
+                _notes = _shipment.Notes.OrderByDescending(n => n.CreatedAt).ToList();
+
+                if (_shipment.CustomerId.HasValue)
+                {
+                    var customer = await DbContext.Parties.FindAsync(_shipment.CustomerId.Value);
+                    _customerName = customer?.Name;
+                }
+
+                if (_shipment.ForwardingAgentId.HasValue)
+                {
+                    var agent = await DbContext.Parties.FindAsync(_shipment.ForwardingAgentId.Value);
+                    _forwardingAgentName = agent?.Name;
+                }
+            }
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private string FormatDimensions()
+    {
+        if (_shipment?.Length == null && _shipment?.Width == null && _shipment?.Height == null)
+            return "-";
+
+        return $"{_shipment.Length?.ToString("N1") ?? "-"} x {_shipment.Width?.ToString("N1") ?? "-"} x {_shipment.Height?.ToString("N1") ?? "-"} cm";
+    }
+
+    private Color GetStatusColor(CourierStatus status) => status switch
+    {
+        CourierStatus.Delivered => Color.Success,
+        CourierStatus.OnHold => Color.Error,
+        CourierStatus.Cancelled => Color.Dark,
+        CourierStatus.NotDelivered or CourierStatus.ReturnToOrigin => Color.Warning,
+        CourierStatus.OutForDelivery or CourierStatus.InTransit => Color.Info,
+        _ => Color.Default
+    };
+
+    private async Task AddNote()
+    {
+        if (string.IsNullOrWhiteSpace(_newNoteText) || _currentUserId == null) return;
+
+        var note = new ShipmentNote
+        {
+            ShipmentId = Id,
+            AuthorUserId = _currentUserId.Value,
+            AuthorName = _currentUserName ?? "Unknown",
+            Body = _newNoteText,
+            CreatedAt = DateTime.UtcNow
+        };
+
+        var mentions = ParseMentions(_newNoteText);
+        foreach (var mention in mentions)
+        {
+            note.Mentions.Add(new ShipmentNoteMention
+            {
+                MentionedUserId = mention.userId,
+                MentionedUserName = mention.userName,
+                CreatedAt = DateTime.UtcNow
+            });
+        }
+
+        DbContext.ShipmentNotes.Add(note);
+        await DbContext.SaveChangesAsync();
+
+        _newNoteText = string.Empty;
+        _notes.Insert(0, note);
+        Snackbar.Add("Note added", Severity.Success);
+    }
+
+    private async Task DeleteNote(ShipmentNote note)
+    {
+        note.IsDeleted = true;
+        note.ModifiedAt = DateTime.UtcNow;
+        await DbContext.SaveChangesAsync();
+        _notes.Remove(note);
+        Snackbar.Add("Note deleted", Severity.Success);
+    }
+
+    private List<(long userId, string userName)> ParseMentions(string text)
+    {
+        var mentions = new List<(long, string)>();
+        var regex = new System.Text.RegularExpressions.Regex(@"@(\w+)");
+        var matches = regex.Matches(text);
+
+        foreach (System.Text.RegularExpressions.Match match in matches)
+        {
+            var username = match.Groups[1].Value;
+            var user = DbContext.Users.FirstOrDefault(u => u.Username.ToLower() == username.ToLower());
+            if (user != null)
+            {
+                mentions.Add((user.Id, user.FullName ?? user.Username));
+            }
+        }
+
+        return mentions;
+    }
+
+    private string FormatNoteBody(string body)
+    {
+        var regex = new System.Text.RegularExpressions.Regex(@"@(\w+)");
+        return regex.Replace(body, "<span style='color: #1976d2; font-weight: 500;'>@$1</span>");
+    }
+
+    private void PrintAWB()
+    {
+        Navigation.NavigateTo($"/api/report/awb/{Id}", forceLoad: true);
+    }
+}
