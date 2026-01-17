@@ -35,7 +35,7 @@ The application is built on .NET 8 Blazor Server, utilizing a modular architectu
     - **AWB Tracking**: Detailed history of shipment status updates.
     - **Pickup to AWB Conversion** (Two-Step Process):
         1. **INSCAN (Warehouse Receiving)**: `/pickup-inscan` page receives collected shipments into warehouse, marking them as inscanned without creating AWBs.
-        2. **AWB Conversion**: `/awb-entry` page with "Convert from Pickup Request" dialog to select pending shipments from inscanned pickups and create AWBs with auto-generated numbers.
+        2. **AWB Conversion**: Shipments list page (`/awb-list`) has "Convert from Pickup" button that opens the conversion dialog in AWB Entry with auto-generated numbers.
     - **Pickup Management**: End-to-end workflow from customer request to shipment collection and inscan, including multi-shipment requests.
     - **Outscan/DRS Management**: Workflow for dispatching shipments to couriers via Delivery Run Sheets (DRS), including barcode scanning and status updates.
 - **Financial Features**:

@@ -404,8 +404,10 @@
 
 @code {
     [Parameter] public long Id { get; set; }
+    [SupplyParameterFromQuery] public bool convertPickup { get; set; }
 
     private InscanMaster _inscan = new();
+    private bool _pickupDialogOpened = false;
     private MudForm _form = null!;
     private bool _formIsValid;
     private DateTime? _transactionDate = DateTime.Today;
@@ -464,6 +466,16 @@
         }
     }
 
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender && convertPickup && Id == 0 && !_pickupDialogOpened)
+        {
+            _pickupDialogOpened = true;
+            await OpenPickupRequestSelector();
+            StateHasChanged();
+        }
+    }
+
     private async Task<string> GenerateFallbackAWBNo()
     {
         var today = DateTime.Today.ToString("yyyyMMdd");
@@ -485,9 +497,9 @@
         }
     }
     
-    private async Task PopulateFromPickupRequest()
+    private Task PopulateFromPickupRequest()
     {
-        if (_sourcePickupRequest == null || _sourceShipment == null) return;
+        if (_sourcePickupRequest == null || _sourceShipment == null) return Task.CompletedTask;
         
         _inscan.PickupRequestId = _sourcePickupRequest.Id;
         _inscan.PickupRequestShipmentId = _sourceShipment.Id;
@@ -537,6 +549,7 @@
         
         Snackbar.Add($"Loaded data from Pickup Request {_sourcePickupRequest.PickupNo}", Severity.Info);
         StateHasChanged();
+        return Task.CompletedTask;
     }
     
     private void ClearPickupSource()
