@@ -101,6 +101,11 @@ The application is built on .NET 8 Blazor Server, utilizing a modular architectu
 - **Party Masters Seed Data**:
     - **Co-Loaders**: 5 sample co-loader companies (FastTrack Logistics, Global Freight Partners, Swift Cargo Solutions, TransWorld Shipping, Pacific Logistics) with Account Receivable nature.
     - **Forwarding Agents**: 5 major carriers (DHL, FedEx, Aramex, UPS, TNT) with Account Payable nature.
+- **Demo Pickup Requests & Shipments Seed Data**:
+    - **Pickup Requests**: 8 demo pickup requests across 4 statuses (PickupRequest, AssignedForCollection, ShipmentCollected, Inscanned) with realistic Indian addresses and destinations.
+    - **AWB/Shipments**: 6 demo AWB entries across 3 statuses (PickedUp, InscanAtOrigin, OutForDelivery) linked to a demo customer.
+    - **Demo Parties**: Automatically creates Demo Customer Ltd and Rajesh Kumar (delivery agent) if no customers/couriers exist.
+    - **Auto-Seed**: Data seeds on first startup if PickupRequests table is empty.
 - **Return to Shipper (RTS)**:
     - **RTS Workflow**: When courier delivers a shipment, the receiver can send a return shipment back to the original shipper with swapped addresses.
     - **InscanMaster RTS Fields**: IsRTS flag, OriginalShipmentId linking to parent, RTSChargeMode (Free/Chargeable), RTSCreatedAt timestamp, RTSReason.
