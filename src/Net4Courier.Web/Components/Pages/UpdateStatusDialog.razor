@@ -1,0 +1,162 @@
+@using MudBlazor
+@using Microsoft.EntityFrameworkCore
+@using Net4Courier.Infrastructure.Data
+@using Net4Courier.Operations.Entities
+@using Net4Courier.Web.Services
+@inject ApplicationDbContext DbContext
+@inject ShipmentStatusService StatusService
+@inject ISnackbar Snackbar
+
+<MudDialog>
+    <TitleContent>
+        <MudText Typo="Typo.h6">
+            <MudIcon Icon="@Icons.Material.Filled.Update" Class="mr-2" />
+            Update Status - @Shipment.AWBNo
+        </MudText>
+    </TitleContent>
+    <DialogContent>
+        <MudStack Spacing="4">
+            <MudText Typo="Typo.body2" Color="Color.Secondary">
+                Current Status: <strong>@Shipment.CourierStatusId</strong>
+            </MudText>
+            
+            <MudDivider />
+            
+            <MudSelect T="long?" 
+                       @bind-Value="_selectedGroupId" 
+                       Label="Status Group"
+                       Variant="Variant.Outlined"
+                       AnchorOrigin="Origin.BottomCenter">
+                @foreach (var group in _statusGroups)
+                {
+                    <MudSelectItem Value="@((long?)group.Id)">
+                        @group.Name
+                    </MudSelectItem>
+                }
+            </MudSelect>
+            
+            @if (_selectedGroupId.HasValue)
+            {
+                <MudSelect T="long?" 
+                           @bind-Value="_selectedStatusId" 
+                           Label="New Status"
+                           Variant="Variant.Outlined"
+                           AnchorOrigin="Origin.BottomCenter">
+                    @foreach (var status in GetFilteredStatuses())
+                    {
+                        <MudSelectItem Value="@((long?)status.Id)">
+                            @status.Name
+                        </MudSelectItem>
+                    }
+                </MudSelect>
+            }
+            
+            <MudTextField @bind-Value="_location"
+                          Label="Location"
+                          Variant="Variant.Outlined"
+                          Placeholder="e.g., Mumbai Hub" />
+            
+            <MudTextField @bind-Value="_remarks"
+                          Label="Remarks"
+                          Variant="Variant.Outlined"
+                          Lines="3"
+                          Placeholder="Optional notes..." />
+        </MudStack>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Cancel" Variant="Variant.Text">Cancel</MudButton>
+        <MudButton OnClick="UpdateStatus" 
+                   Color="Color.Primary" 
+                   Variant="Variant.Filled"
+                   Disabled="@(!_selectedStatusId.HasValue || _isSaving)">
+            @if (_isSaving)
+            {
+                <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" />
+            }
+            Update Status
+        </MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] MudDialogInstance MudDialog { get; set; } = null!;
+    [Parameter] public InscanMaster Shipment { get; set; } = new();
+
+    private List<ShipmentStatusGroup> _statusGroups = new();
+    private List<ShipmentStatus> _allStatuses = new();
+    private long? _selectedGroupId;
+    private long? _selectedStatusId;
+    private string _location = "";
+    private string _remarks = "";
+    private bool _isSaving = false;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _statusGroups = await DbContext.ShipmentStatusGroups
+            .Where(g => g.IsActive)
+            .OrderBy(g => g.SequenceNo)
+            .ToListAsync();
+            
+        _allStatuses = await DbContext.ShipmentStatuses
+            .Where(s => s.IsActive)
+            .OrderBy(s => s.SequenceNo)
+            .ToListAsync();
+    }
+
+    private IEnumerable<ShipmentStatus> GetFilteredStatuses()
+    {
+        if (!_selectedGroupId.HasValue) return Enumerable.Empty<ShipmentStatus>();
+        return _allStatuses.Where(s => s.StatusGroupId == _selectedGroupId.Value);
+    }
+
+    private async Task UpdateStatus()
+    {
+        if (!_selectedStatusId.HasValue) return;
+
+        _isSaving = true;
+        StateHasChanged();
+
+        try
+        {
+            var status = _allStatuses.FirstOrDefault(s => s.Id == _selectedStatusId.Value);
+            if (status == null)
+            {
+                Snackbar.Add("Status not found", Severity.Error);
+                return;
+            }
+
+            var result = await StatusService.SetStatus(
+                inscanMasterId: Shipment.Id,
+                statusCode: status.Code,
+                eventType: "MANUAL_UPDATE",
+                branchId: null,
+                locationName: string.IsNullOrWhiteSpace(_location) ? null : _location.Trim(),
+                userId: null,
+                userName: "System User",
+                remarks: string.IsNullOrWhiteSpace(_remarks) ? null : _remarks.Trim(),
+                isAutomatic: false
+            );
+
+            if (result != null)
+            {
+                Snackbar.Add($"Status updated to: {status.Name}", Severity.Success);
+                MudDialog.Close(DialogResult.Ok(true));
+            }
+            else
+            {
+                Snackbar.Add("Failed to update status", Severity.Error);
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _isSaving = false;
+            StateHasChanged();
+        }
+    }
+
+    private void Cancel() => MudDialog.Cancel();
+}
