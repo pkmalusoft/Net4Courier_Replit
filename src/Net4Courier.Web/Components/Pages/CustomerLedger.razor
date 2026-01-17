@@ -1,0 +1,233 @@
+@page "/customer/ledger"
+@layout CustomerLayout
+@inject ApplicationDbContext DbContext
+@inject NavigationManager NavigationManager
+@inject Microsoft.AspNetCore.Components.Authorization.AuthenticationStateProvider AuthStateProvider
+@using Microsoft.EntityFrameworkCore
+@using Net4Courier.Infrastructure.Data
+@using Net4Courier.Finance.Entities
+@using Net4Courier.Masters.Entities
+
+<PageTitle>My Ledger - Net4Courier</PageTitle>
+
+<MudContainer MaxWidth="MaxWidth.Large" Class="py-4">
+    <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center" Class="mb-4">
+        <MudText Typo="Typo.h5">My Account Ledger</MudText>
+        <MudStack Row="true" Spacing="2">
+            <MudDateRangePicker @bind-DateRange="_dateRange" Label="Date Range" Variant="Variant.Outlined" 
+                                Class="mt-0" Style="width: 300px;" />
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="LoadLedger">Apply</MudButton>
+        </MudStack>
+    </MudStack>
+    
+    <MudGrid Class="mb-4">
+        <MudItem xs="12" sm="4">
+            <MudCard Style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white;">
+                <MudCardContent>
+                    <MudStack AlignItems="AlignItems.Center" Spacing="1">
+                        <MudIcon Icon="@Icons.Material.Filled.Receipt" Size="Size.Large" />
+                        <MudText Typo="Typo.h4">@_totalDebits.ToString("N2")</MudText>
+                        <MudText Typo="Typo.body2">Total Invoiced</MudText>
+                    </MudStack>
+                </MudCardContent>
+            </MudCard>
+        </MudItem>
+        <MudItem xs="12" sm="4">
+            <MudCard Style="background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%); color: white;">
+                <MudCardContent>
+                    <MudStack AlignItems="AlignItems.Center" Spacing="1">
+                        <MudIcon Icon="@Icons.Material.Filled.Payments" Size="Size.Large" />
+                        <MudText Typo="Typo.h4">@_totalCredits.ToString("N2")</MudText>
+                        <MudText Typo="Typo.body2">Total Paid</MudText>
+                    </MudStack>
+                </MudCardContent>
+            </MudCard>
+        </MudItem>
+        <MudItem xs="12" sm="4">
+            <MudCard Style="background: linear-gradient(135deg, #f5576c 0%, #f093fb 100%); color: white;">
+                <MudCardContent>
+                    <MudStack AlignItems="AlignItems.Center" Spacing="1">
+                        <MudIcon Icon="@Icons.Material.Filled.AccountBalance" Size="Size.Large" />
+                        <MudText Typo="Typo.h4">@_closingBalance.ToString("N2")</MudText>
+                        <MudText Typo="Typo.body2">Current Balance</MudText>
+                    </MudStack>
+                </MudCardContent>
+            </MudCard>
+        </MudItem>
+    </MudGrid>
+    
+    @if (_ledgerEntries.Any())
+    {
+        <MudPaper Class="pa-2" Elevation="2">
+            <MudText Typo="Typo.subtitle2" Class="pa-2">Opening Balance: @_openingBalance.ToString("N2")</MudText>
+        </MudPaper>
+        
+        <MudTable Items="@_ledgerEntries" Hover="true" Striped="true" Dense="true" Elevation="2" Class="mt-2">
+            <HeaderContent>
+                <MudTh>Date</MudTh>
+                <MudTh>Particulars</MudTh>
+                <MudTh>Reference</MudTh>
+                <MudTh Style="text-align: right;">Debit</MudTh>
+                <MudTh Style="text-align: right;">Credit</MudTh>
+                <MudTh Style="text-align: right;">Balance</MudTh>
+            </HeaderContent>
+            <RowTemplate>
+                <MudTd DataLabel="Date">@context.Date.ToString("dd MMM yyyy")</MudTd>
+                <MudTd DataLabel="Particulars">@context.Particulars</MudTd>
+                <MudTd DataLabel="Reference">@context.Reference</MudTd>
+                <MudTd DataLabel="Debit" Style="text-align: right;">
+                    @(context.Debit > 0 ? context.Debit.ToString("N2") : "-")
+                </MudTd>
+                <MudTd DataLabel="Credit" Style="text-align: right;">
+                    @(context.Credit > 0 ? context.Credit.ToString("N2") : "-")
+                </MudTd>
+                <MudTd DataLabel="Balance" Style="text-align: right;">@context.RunningBalance.ToString("N2")</MudTd>
+            </RowTemplate>
+        </MudTable>
+        
+        <MudPaper Class="pa-2 mt-2" Elevation="2">
+            <MudStack Row="true" Justify="Justify.SpaceBetween">
+                <MudText Typo="Typo.subtitle2">Closing Balance:</MudText>
+                <MudText Typo="Typo.subtitle1" Color="@(_closingBalance >= 0 ? Color.Error : Color.Success)">
+                    <strong>@_closingBalance.ToString("N2")</strong>
+                </MudText>
+            </MudStack>
+        </MudPaper>
+    }
+    else
+    {
+        <MudPaper Class="pa-6 text-center" Elevation="0">
+            <MudIcon Icon="@Icons.Material.Filled.MenuBook" Size="Size.Large" Color="Color.Secondary" />
+            <MudText Typo="Typo.h6" Class="mt-2">No transactions yet</MudText>
+            <MudText Typo="Typo.body2" Color="Color.Secondary">Your account transactions will appear here</MudText>
+        </MudPaper>
+    }
+</MudContainer>
+
+@code {
+    private List<LedgerEntry> _ledgerEntries = new();
+    private DateRange? _dateRange;
+    private long? _customerId;
+    private decimal _openingBalance;
+    private decimal _closingBalance;
+    private decimal _totalDebits;
+    private decimal _totalCredits;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _dateRange = new DateRange(DateTime.Today.AddMonths(-3), DateTime.Today);
+        await LoadCustomerId();
+        await LoadLedger();
+    }
+
+    private async Task LoadCustomerId()
+    {
+        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+        var user = authState.User;
+        
+        if (user.Identity?.IsAuthenticated == true)
+        {
+            var userIdClaim = user.FindFirst("UserId")?.Value;
+            if (long.TryParse(userIdClaim, out var userId))
+            {
+                var dbUser = await DbContext.Users.FindAsync(userId);
+                if (dbUser != null)
+                {
+                    var party = await DbContext.Parties
+                        .FirstOrDefaultAsync(p => p.Email == dbUser.Email && !p.IsDeleted);
+                    if (party != null)
+                    {
+                        _customerId = party.Id;
+                    }
+                }
+            }
+        }
+    }
+
+    private async Task LoadLedger()
+    {
+        _ledgerEntries.Clear();
+        _openingBalance = 0;
+        _totalDebits = 0;
+        _totalCredits = 0;
+        
+        if (!_customerId.HasValue || _dateRange?.Start == null || _dateRange?.End == null)
+            return;
+
+        var fromDate = DateTime.SpecifyKind(_dateRange.Start.Value, DateTimeKind.Utc);
+        var toDate = DateTime.SpecifyKind(_dateRange.End.Value.AddDays(1), DateTimeKind.Utc);
+
+        var invoicesBefore = await DbContext.Invoices
+            .Where(i => i.CustomerId == _customerId && !i.IsDeleted && i.InvoiceDate < fromDate)
+            .SumAsync(i => i.NetTotal) ?? 0;
+
+        var receiptsBefore = await DbContext.Receipts
+            .Where(r => r.CustomerId == _customerId && !r.IsDeleted && r.ReceiptDate < fromDate)
+            .SumAsync(r => (decimal?)r.Amount) ?? 0;
+
+        _openingBalance = invoicesBefore - receiptsBefore;
+        var runningBalance = _openingBalance;
+
+        var invoices = await DbContext.Invoices
+            .Where(i => i.CustomerId == _customerId && !i.IsDeleted && 
+                   i.InvoiceDate >= fromDate && i.InvoiceDate < toDate)
+            .OrderBy(i => i.InvoiceDate)
+            .Select(i => new { i.InvoiceDate, i.InvoiceNo, NetTotal = i.NetTotal ?? 0 })
+            .ToListAsync();
+
+        var receipts = await DbContext.Receipts
+            .Where(r => r.CustomerId == _customerId && !r.IsDeleted && 
+                   r.ReceiptDate >= fromDate && r.ReceiptDate < toDate)
+            .OrderBy(r => r.ReceiptDate)
+            .Select(r => new { r.ReceiptDate, r.ReceiptNo, r.Amount })
+            .ToListAsync();
+
+        var invoiceEntries = invoices.Select(i => new LedgerEntry { 
+            Date = i.InvoiceDate, 
+            Particulars = "Invoice", 
+            Reference = i.InvoiceNo, 
+            Debit = i.NetTotal, 
+            Credit = 0m 
+        });
+        
+        var receiptEntries = receipts.Select(r => new LedgerEntry { 
+            Date = r.ReceiptDate, 
+            Particulars = "Payment Received", 
+            Reference = r.ReceiptNo ?? "", 
+            Debit = 0m, 
+            Credit = r.Amount ?? 0 
+        });
+        
+        var allEntries = invoiceEntries.Concat(receiptEntries).OrderBy(e => e.Date).ToList();
+
+        foreach (var entry in allEntries)
+        {
+            runningBalance += entry.Debit - entry.Credit;
+            _totalDebits += entry.Debit;
+            _totalCredits += entry.Credit;
+            
+            _ledgerEntries.Add(new LedgerEntry
+            {
+                Date = entry.Date,
+                Particulars = entry.Particulars,
+                Reference = entry.Reference,
+                Debit = entry.Debit,
+                Credit = entry.Credit,
+                RunningBalance = runningBalance
+            });
+        }
+
+        _closingBalance = runningBalance;
+        StateHasChanged();
+    }
+
+    private class LedgerEntry
+    {
+        public DateTime Date { get; set; }
+        public string Particulars { get; set; } = "";
+        public string Reference { get; set; } = "";
+        public decimal Debit { get; set; }
+        public decimal Credit { get; set; }
+        public decimal RunningBalance { get; set; }
+    }
+}

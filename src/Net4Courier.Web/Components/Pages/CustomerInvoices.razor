@@ -1,0 +1,184 @@
+@page "/customer/invoices"
+@layout CustomerLayout
+@inject ApplicationDbContext DbContext
+@inject NavigationManager NavigationManager
+@inject Microsoft.AspNetCore.Components.Authorization.AuthenticationStateProvider AuthStateProvider
+@using Microsoft.EntityFrameworkCore
+@using Net4Courier.Infrastructure.Data
+@using Net4Courier.Finance.Entities
+@using Net4Courier.Masters.Entities
+
+<PageTitle>My Invoices - Net4Courier</PageTitle>
+
+<MudContainer MaxWidth="MaxWidth.Large" Class="py-4">
+    <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center" Class="mb-4">
+        <MudText Typo="Typo.h5">My Invoices</MudText>
+        <MudStack Row="true" Spacing="2">
+            <MudTextField @bind-Value="_searchText" Placeholder="Search invoice..." Variant="Variant.Outlined" 
+                          Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Filled.Search" 
+                          Immediate="true" DebounceInterval="300" Class="mt-0" Style="width: 250px;" />
+        </MudStack>
+    </MudStack>
+    
+    <MudGrid Class="mb-4">
+        <MudItem xs="12" sm="4">
+            <MudCard Style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white;">
+                <MudCardContent>
+                    <MudStack AlignItems="AlignItems.Center" Spacing="1">
+                        <MudIcon Icon="@Icons.Material.Filled.Receipt" Size="Size.Large" />
+                        <MudText Typo="Typo.h4">@_totalInvoices</MudText>
+                        <MudText Typo="Typo.body2">Total Invoices</MudText>
+                    </MudStack>
+                </MudCardContent>
+            </MudCard>
+        </MudItem>
+        <MudItem xs="12" sm="4">
+            <MudCard Style="background: linear-gradient(135deg, #f5576c 0%, #f093fb 100%); color: white;">
+                <MudCardContent>
+                    <MudStack AlignItems="AlignItems.Center" Spacing="1">
+                        <MudIcon Icon="@Icons.Material.Filled.PendingActions" Size="Size.Large" />
+                        <MudText Typo="Typo.h4">@_totalOutstanding.ToString("N2")</MudText>
+                        <MudText Typo="Typo.body2">Outstanding Balance</MudText>
+                    </MudStack>
+                </MudCardContent>
+            </MudCard>
+        </MudItem>
+        <MudItem xs="12" sm="4">
+            <MudCard Style="background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%); color: white;">
+                <MudCardContent>
+                    <MudStack AlignItems="AlignItems.Center" Spacing="1">
+                        <MudIcon Icon="@Icons.Material.Filled.CheckCircle" Size="Size.Large" />
+                        <MudText Typo="Typo.h4">@_paidInvoices</MudText>
+                        <MudText Typo="Typo.body2">Paid Invoices</MudText>
+                    </MudStack>
+                </MudCardContent>
+            </MudCard>
+        </MudItem>
+    </MudGrid>
+    
+    @if (_invoices.Any())
+    {
+        <MudTable Items="@FilteredInvoices" Hover="true" Striped="true" Dense="true" Elevation="2">
+            <HeaderContent>
+                <MudTh>Invoice No</MudTh>
+                <MudTh>Date</MudTh>
+                <MudTh>AWBs</MudTh>
+                <MudTh Style="text-align: right;">Amount</MudTh>
+                <MudTh Style="text-align: right;">Paid</MudTh>
+                <MudTh Style="text-align: right;">Balance</MudTh>
+                <MudTh>Status</MudTh>
+                <MudTh>Actions</MudTh>
+            </HeaderContent>
+            <RowTemplate>
+                <MudTd DataLabel="Invoice No">@context.InvoiceNo</MudTd>
+                <MudTd DataLabel="Date">@context.InvoiceDate.ToString("dd MMM yyyy")</MudTd>
+                <MudTd DataLabel="AWBs">@context.Details.Count</MudTd>
+                <MudTd DataLabel="Amount" Style="text-align: right;">@((context.NetTotal ?? 0).ToString("N2"))</MudTd>
+                <MudTd DataLabel="Paid" Style="text-align: right;">@((context.PaidAmount ?? 0).ToString("N2"))</MudTd>
+                <MudTd DataLabel="Balance" Style="text-align: right;">@((context.BalanceAmount ?? 0).ToString("N2"))</MudTd>
+                <MudTd DataLabel="Status">
+                    <MudChip T="string" Color="@GetStatusColor(context)" Size="Size.Small">
+                        @GetStatusText(context)
+                    </MudChip>
+                </MudTd>
+                <MudTd DataLabel="Actions">
+                    <MudIconButton Icon="@Icons.Material.Filled.PictureAsPdf" Color="Color.Error" Size="Size.Small"
+                                   OnClick="@(() => DownloadPdf(context.Id))" Title="Download PDF" />
+                    <MudIconButton Icon="@Icons.Material.Filled.Visibility" Color="Color.Primary" Size="Size.Small"
+                                   OnClick="@(() => ViewDetails(context.Id))" Title="View Details" />
+                </MudTd>
+            </RowTemplate>
+        </MudTable>
+    }
+    else
+    {
+        <MudPaper Class="pa-6 text-center" Elevation="0">
+            <MudIcon Icon="@Icons.Material.Filled.Receipt" Size="Size.Large" Color="Color.Secondary" />
+            <MudText Typo="Typo.h6" Class="mt-2">No invoices yet</MudText>
+            <MudText Typo="Typo.body2" Color="Color.Secondary">Your invoices will appear here once generated</MudText>
+        </MudPaper>
+    }
+</MudContainer>
+
+@code {
+    private List<Invoice> _invoices = new();
+    private string _searchText = "";
+    private long? _customerId;
+    private int _totalInvoices;
+    private int _paidInvoices;
+    private decimal _totalOutstanding;
+
+    private IEnumerable<Invoice> FilteredInvoices => string.IsNullOrWhiteSpace(_searchText)
+        ? _invoices
+        : _invoices.Where(i => i.InvoiceNo.Contains(_searchText, StringComparison.OrdinalIgnoreCase));
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadCustomerId();
+        await LoadInvoices();
+    }
+
+    private async Task LoadCustomerId()
+    {
+        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+        var user = authState.User;
+        
+        if (user.Identity?.IsAuthenticated == true)
+        {
+            var userIdClaim = user.FindFirst("UserId")?.Value;
+            if (long.TryParse(userIdClaim, out var userId))
+            {
+                var dbUser = await DbContext.Users.FindAsync(userId);
+                if (dbUser != null)
+                {
+                    var party = await DbContext.Parties
+                        .FirstOrDefaultAsync(p => p.Email == dbUser.Email && !p.IsDeleted);
+                    if (party != null)
+                    {
+                        _customerId = party.Id;
+                    }
+                }
+            }
+        }
+    }
+
+    private async Task LoadInvoices()
+    {
+        if (_customerId.HasValue)
+        {
+            _invoices = await DbContext.Invoices
+                .Include(i => i.Details)
+                .Where(i => i.CustomerId == _customerId && !i.IsDeleted)
+                .OrderByDescending(i => i.InvoiceDate)
+                .ToListAsync();
+            
+            _totalInvoices = _invoices.Count;
+            _paidInvoices = _invoices.Count(i => (i.BalanceAmount ?? 0) <= 0);
+            _totalOutstanding = _invoices.Sum(i => i.BalanceAmount ?? 0);
+        }
+    }
+
+    private Color GetStatusColor(Invoice inv)
+    {
+        if ((inv.BalanceAmount ?? 0) <= 0) return Color.Success;
+        if ((inv.PaidAmount ?? 0) > 0) return Color.Warning;
+        return Color.Error;
+    }
+
+    private string GetStatusText(Invoice inv)
+    {
+        if ((inv.BalanceAmount ?? 0) <= 0) return "Paid";
+        if ((inv.PaidAmount ?? 0) > 0) return "Partial";
+        return "Unpaid";
+    }
+
+    private void DownloadPdf(long invoiceId)
+    {
+        NavigationManager.NavigateTo($"/invoice-pdf/{invoiceId}", true);
+    }
+
+    private void ViewDetails(long invoiceId)
+    {
+        NavigationManager.NavigateTo($"/customer/invoice/{invoiceId}");
+    }
+}

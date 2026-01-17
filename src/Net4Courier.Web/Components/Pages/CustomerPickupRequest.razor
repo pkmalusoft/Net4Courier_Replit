@@ -76,10 +76,37 @@
     <MudPaper Class="pa-4 mb-4" Elevation="2">
         <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center" Class="mb-3">
             <MudText Typo="Typo.subtitle1">Shipments (@_shipments.Count)</MudText>
-            <MudButton Variant="Variant.Outlined" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add" OnClick="AddShipment">
-                Add Shipment
-            </MudButton>
+            <MudStack Row="true" Spacing="2">
+                <MudFileUpload T="IBrowserFile" Accept=".csv,.xlsx,.xls" FilesChanged="OnFileUpload" MaximumFileCount="1">
+                    <ActivatorContent>
+                        <MudButton Variant="Variant.Outlined" Color="Color.Secondary" StartIcon="@Icons.Material.Filled.Upload">
+                            Upload CSV/Excel
+                        </MudButton>
+                    </ActivatorContent>
+                </MudFileUpload>
+                <MudButton Variant="Variant.Text" Color="Color.Info" StartIcon="@Icons.Material.Filled.Download" OnClick="DownloadTemplate">
+                    Template
+                </MudButton>
+                <MudButton Variant="Variant.Outlined" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add" OnClick="AddShipment">
+                    Add Shipment
+                </MudButton>
+            </MudStack>
         </MudStack>
+        
+        @if (_uploadErrors.Any())
+        {
+            <MudAlert Severity="Severity.Warning" Class="mb-3" ShowCloseIcon="true" CloseIconClicked="() => _uploadErrors.Clear()">
+                <MudText Typo="Typo.body2"><strong>Upload Warnings:</strong></MudText>
+                @foreach (var error in _uploadErrors.Take(5))
+                {
+                    <MudText Typo="Typo.caption">@error</MudText>
+                }
+                @if (_uploadErrors.Count > 5)
+                {
+                    <MudText Typo="Typo.caption">...and @(_uploadErrors.Count - 5) more</MudText>
+                }
+            </MudAlert>
+        }
         
         @if (_shipments.Count == 0)
         {
@@ -187,6 +214,8 @@
     </MudPaper>
 </MudContainer>
 
+@inject IJSRuntime JSRuntime
+
 @code {
     private PickupRequest _entity = new();
     private List<PickupRequestShipment> _shipments = new();
@@ -197,6 +226,7 @@
     private long? _selectedAddressId;
     private Party? _customerParty;
     private long? _customerId;
+    private List<string> _uploadErrors = new();
 
     protected override async Task OnInitializedAsync()
     {
@@ -317,5 +347,117 @@
             .Where(p => p.RequestDate >= today)
             .CountAsync();
         return $"PU{DateTime.UtcNow:yyyyMMdd}{(count + 1):D4}";
+    }
+
+    private async Task OnFileUpload(IBrowserFile file)
+    {
+        _uploadErrors.Clear();
+        
+        try
+        {
+            using var stream = file.OpenReadStream(maxAllowedSize: 5 * 1024 * 1024);
+            using var reader = new StreamReader(stream);
+            var content = await reader.ReadToEndAsync();
+            
+            var lines = content.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries);
+            
+            if (lines.Length < 2)
+            {
+                Snackbar.Add("File is empty or has no data rows", Severity.Warning);
+                return;
+            }
+            
+            var headers = lines[0].Split(',').Select(h => h.Trim().ToLower()).ToArray();
+            var nameIdx = Array.FindIndex(headers, h => h.Contains("name") || h.Contains("consignee"));
+            var phoneIdx = Array.FindIndex(headers, h => h.Contains("phone") || h.Contains("mobile"));
+            var addressIdx = Array.FindIndex(headers, h => h.Contains("address"));
+            var cityIdx = Array.FindIndex(headers, h => h.Contains("city"));
+            var postalIdx = Array.FindIndex(headers, h => h.Contains("postal") || h.Contains("pin") || h.Contains("zip"));
+            var piecesIdx = Array.FindIndex(headers, h => h.Contains("piece") || h.Contains("qty"));
+            var weightIdx = Array.FindIndex(headers, h => h.Contains("weight"));
+            var descIdx = Array.FindIndex(headers, h => h.Contains("desc") || h.Contains("content"));
+            var refIdx = Array.FindIndex(headers, h => h.Contains("ref") || h.Contains("order"));
+            
+            int imported = 0;
+            for (int i = 1; i < lines.Length; i++)
+            {
+                try
+                {
+                    var cols = ParseCsvLine(lines[i]);
+                    if (cols.Length == 0) continue;
+                    
+                    var shipment = new PickupRequestShipment
+                    {
+                        LineNo = _shipments.Count + 1,
+                        Consignee = GetCol(cols, nameIdx),
+                        ConsigneePhone = GetCol(cols, phoneIdx),
+                        ConsigneeAddress1 = GetCol(cols, addressIdx),
+                        ConsigneeCity = GetCol(cols, cityIdx),
+                        ConsigneePostalCode = GetCol(cols, postalIdx),
+                        CargoDescription = GetCol(cols, descIdx),
+                        ReferenceNo = GetCol(cols, refIdx),
+                        DocumentTypeId = DocumentType.Parcel,
+                        PaymentModeId = PaymentMode.Prepaid
+                    };
+                    
+                    if (int.TryParse(GetCol(cols, piecesIdx), out var pieces))
+                        shipment.Pieces = pieces;
+                    else
+                        shipment.Pieces = 1;
+                    
+                    if (decimal.TryParse(GetCol(cols, weightIdx), out var weight))
+                        shipment.Weight = weight;
+                    
+                    if (string.IsNullOrWhiteSpace(shipment.Consignee) || string.IsNullOrWhiteSpace(shipment.ConsigneeCity))
+                    {
+                        _uploadErrors.Add($"Row {i + 1}: Missing required fields (name or city)");
+                        continue;
+                    }
+                    
+                    _shipments.Add(shipment);
+                    imported++;
+                }
+                catch (Exception ex)
+                {
+                    _uploadErrors.Add($"Row {i + 1}: {ex.Message}");
+                }
+            }
+            
+            Snackbar.Add($"Imported {imported} shipments from file", Severity.Success);
+            StateHasChanged();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error reading file: {ex.Message}", Severity.Error);
+        }
+    }
+
+    private string[] ParseCsvLine(string line)
+    {
+        var result = new List<string>();
+        var inQuotes = false;
+        var current = "";
+        
+        foreach (var c in line)
+        {
+            if (c == '"') { inQuotes = !inQuotes; }
+            else if (c == ',' && !inQuotes) { result.Add(current.Trim()); current = ""; }
+            else { current += c; }
+        }
+        result.Add(current.Trim());
+        return result.ToArray();
+    }
+
+    private string GetCol(string[] cols, int idx) => idx >= 0 && idx < cols.Length ? cols[idx] : "";
+
+    private async Task DownloadTemplate()
+    {
+        var csv = "ReceiverName,Phone,Address,City,PostalCode,Pieces,Weight,Description,Reference\n";
+        csv += "John Doe,+971501234567,123 Main St,Dubai,12345,1,0.5,Documents,ORD-001\n";
+        csv += "Jane Smith,+971509876543,456 Oak Ave,Abu Dhabi,54321,2,1.5,Parcel,ORD-002";
+        
+        var bytes = System.Text.Encoding.UTF8.GetBytes(csv);
+        var base64 = Convert.ToBase64String(bytes);
+        await JSRuntime.InvokeVoidAsync("eval", $"{{ const a=document.createElement('a'); a.href='data:text/csv;base64,{base64}'; a.download='shipment_template.csv'; a.click(); }}");
     }
 }
