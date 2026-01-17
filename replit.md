@@ -69,11 +69,12 @@ The application is built on .NET 8 Blazor Server, utilizing a modular architectu
     - **Offline Support**: IndexedDB storage for offline POD capture with sync when online.
 - **Shipment Status Timeline**:
     - **Database-Driven Status Management**: Flexible status groups and statuses configurable via admin UI instead of hardcoded enums.
-    - **9 Status Groups**: Pre-Pickup, Collection, Origin Warehouse, Transit, Destination Warehouse, Delivery, Exception/Return, Billing, Closed with 27+ baseline statuses.
+    - **9 Status Groups**: Pre-Pickup, Collection, Origin Warehouse, Transit, Destination Warehouse, Delivery, Exception/Return, Billing, Closed with 31 baseline statuses.
     - **Timeline History**: Complete chronological record of every status change with user, location, timestamp, and remarks.
-    - **Automatic Status Updates**: Integrated into PickupInscan (SHIPMENT_COLLECTED, INSCAN_ORIGIN), Outscan/DRS (OUT_FOR_DELIVERY), POD capture (DELIVERED, POD_CAPTURED, DELIVERY_FAILED), and Invoice generation (INVOICED).
+    - **Automatic Status Updates**: Integrated into AWB Entry (QC_COMPLETED), Outscan/DRS (OUT_FOR_DELIVERY), POD capture (DELIVERED, POD_CAPTURED, DELIVERY_FAILED, RETURN_TO_ORIGIN), RTS (RTS_REQUESTED), and Invoice generation (INVOICED).
+    - **DRS Outscan Filtering**: Only shipments with status ID 7 (INSCAN_ORIGIN) or 21 (RETURN_COMPLETED) are available for outscan to ensure proper workflow sequence.
     - **AWB Timeline Component**: Visual timeline display on AWB details page with color-coded status groups.
-    - **Status Management Admin Page**: CRUD operations for status groups and statuses with sequence ordering.
+    - **Status Management Admin Page**: CRUD operations for status groups and statuses with sequence ordering, displaying status IDs.
     - **CourierStatus Mapping**: Optional mapping from database statuses to legacy CourierStatus enum for backward compatibility.
 - **MAWB Processing (Master Airwaybill)**:
     - **MasterAirwaybill Entity**: Stores MAWB header info including origin/destination cities, carrier details, flight info, departure/arrival times.
