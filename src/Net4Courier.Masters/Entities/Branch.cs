@@ -19,6 +19,12 @@ public class Branch : BaseEntity
     public bool IsHeadOffice { get; set; } = false;
     public bool IsActive { get; set; } = true;
     
+    // AWB Configuration
+    public string? AWBPrefix { get; set; }
+    public long AWBStartingNumber { get; set; } = 1;
+    public int AWBIncrement { get; set; } = 1;
+    public long AWBLastUsedNumber { get; set; } = 0;
+    
     public virtual Company Company { get; set; } = null!;
     public virtual Country? Country { get; set; }
     public virtual State? State { get; set; }

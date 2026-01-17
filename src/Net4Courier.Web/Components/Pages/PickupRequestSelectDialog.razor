@@ -1,0 +1,206 @@
+@using Microsoft.EntityFrameworkCore
+@using Net4Courier.Infrastructure.Data
+@using Net4Courier.Operations.Entities
+@using Net4Courier.Web.Models
+@inject ApplicationDbContext DbContext
+
+<MudDialog>
+    <TitleContent>
+        <MudText Typo="Typo.h6">
+            <MudIcon Icon="@Icons.Material.Filled.LocalShipping" Class="mr-2" />
+            Select Pickup Request to Convert
+        </MudText>
+    </TitleContent>
+    <DialogContent>
+        <MudGrid Spacing="2" Class="mb-3">
+            <MudItem xs="12" md="4">
+                <MudTextField @bind-Value="_searchString" Label="Search" Placeholder="Pickup No, Customer..." 
+                              Variant="Variant.Outlined" Margin="Margin.Dense" Immediate="true"
+                              Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Filled.Search" />
+            </MudItem>
+            <MudItem xs="12" md="4">
+                <MudDatePicker @bind-Date="_fromDate" Label="From Date" Variant="Variant.Outlined" 
+                               Margin="Margin.Dense" DateFormat="dd/MM/yyyy" />
+            </MudItem>
+            <MudItem xs="12" md="4">
+                <MudDatePicker @bind-Date="_toDate" Label="To Date" Variant="Variant.Outlined" 
+                               Margin="Margin.Dense" DateFormat="dd/MM/yyyy" />
+            </MudItem>
+        </MudGrid>
+        
+        <MudTable Items="@FilteredPickups" Hover="true" Dense="true" Striped="true" Loading="@_loading"
+                  T="PickupRequest" RowClass="cursor-pointer" OnRowClick="@(e => SelectPickup(e.Item))">
+            <HeaderContent>
+                <MudTh>Pickup No</MudTh>
+                <MudTh>Customer</MudTh>
+                <MudTh>Request Date</MudTh>
+                <MudTh>Shipments</MudTh>
+                <MudTh>Status</MudTh>
+            </HeaderContent>
+            <RowTemplate>
+                <MudTd DataLabel="Pickup No">
+                    <MudText Typo="Typo.body2"><strong>@context.PickupNo</strong></MudText>
+                </MudTd>
+                <MudTd DataLabel="Customer">@context.CustomerName</MudTd>
+                <MudTd DataLabel="Request Date">@context.RequestDate.ToString("dd/MM/yyyy")</MudTd>
+                <MudTd DataLabel="Shipments">
+                    @{
+                        var pendingCount = context.Shipments?.Count(s => s.Status == ShipmentLineStatus.Pending) ?? 0;
+                        var totalCount = context.Shipments?.Count ?? 0;
+                    }
+                    <MudChip T="string" Size="Size.Small" Color="@(pendingCount > 0 ? Color.Warning : Color.Default)">
+                        @pendingCount / @totalCount pending
+                    </MudChip>
+                </MudTd>
+                <MudTd DataLabel="Status">
+                    <MudChip T="string" Size="Size.Small" Color="@GetStatusColor(context.Status)">
+                        @context.Status.ToString()
+                    </MudChip>
+                </MudTd>
+            </RowTemplate>
+            <NoRecordsContent>
+                <MudText Color="Color.Secondary">No unconverted pickup requests found</MudText>
+            </NoRecordsContent>
+        </MudTable>
+        
+        @if (_selectedPickup != null)
+        {
+            <MudPaper Class="pa-3 mt-3" Elevation="1" Style="background-color: #e3f2fd;">
+                <MudText Typo="Typo.subtitle2" Color="Color.Primary" Class="mb-2">
+                    Selected: @_selectedPickup.PickupNo - @_selectedPickup.CustomerName
+                </MudText>
+                <MudText Typo="Typo.caption">Select a shipment line to convert:</MudText>
+                <MudList T="PickupRequestShipment" Dense="true">
+                    @foreach (var shipment in _selectedPickup.Shipments?.Where(s => s.Status == ShipmentLineStatus.Pending) ?? Enumerable.Empty<PickupRequestShipment>())
+                    {
+                        <MudListItem OnClick="@(() => SelectShipment(shipment))" 
+                                     Class="@(_selectedShipment?.Id == shipment.Id ? "mud-primary-text" : "")">
+                            <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
+                                <MudStack Spacing="0">
+                                    <MudText Typo="Typo.body2">
+                                        <strong>Line @shipment.LineNo:</strong> @shipment.Consignee
+                                    </MudText>
+                                    <MudText Typo="Typo.caption">
+                                        @shipment.ConsigneeCity, @shipment.ConsigneeCountry | 
+                                        @(shipment.Pieces ?? 0) pcs, @(shipment.Weight ?? 0) kg
+                                    </MudText>
+                                </MudStack>
+                                @if (_selectedShipment?.Id == shipment.Id)
+                                {
+                                    <MudIcon Icon="@Icons.Material.Filled.CheckCircle" Color="Color.Primary" />
+                                }
+                            </MudStack>
+                        </MudListItem>
+                    }
+                </MudList>
+            </MudPaper>
+        }
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Cancel">Cancel</MudButton>
+        <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="Confirm" 
+                   Disabled="@(_selectedShipment == null)">
+            Convert Selected
+        </MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] MudDialogInstance MudDialog { get; set; } = null!;
+    
+    private List<PickupRequest> _pickups = new();
+    private bool _loading = true;
+    private string _searchString = "";
+    private DateTime? _fromDate;
+    private DateTime? _toDate;
+    private PickupRequest? _selectedPickup;
+    private PickupRequestShipment? _selectedShipment;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _fromDate = DateTime.Today.AddDays(-30);
+        _toDate = DateTime.Today;
+        await LoadPickups();
+    }
+
+    private async Task LoadPickups()
+    {
+        _loading = true;
+        _pickups = await DbContext.PickupRequests
+            .Include(p => p.Shipments)
+            .Where(p => !p.IsDeleted && !p.IsConverted)
+            .Where(p => p.Status == PickupStatus.ShipmentCollected || p.Status == PickupStatus.Inscanned)
+            .Where(p => p.Shipments.Any(s => s.Status == ShipmentLineStatus.Pending))
+            .OrderByDescending(p => p.RequestDate)
+            .ToListAsync();
+        _loading = false;
+    }
+
+    private IEnumerable<PickupRequest> FilteredPickups
+    {
+        get
+        {
+            var result = _pickups.AsEnumerable();
+            
+            if (!string.IsNullOrWhiteSpace(_searchString))
+            {
+                result = result.Where(p =>
+                    p.PickupNo.Contains(_searchString, StringComparison.OrdinalIgnoreCase) ||
+                    (p.CustomerName?.Contains(_searchString, StringComparison.OrdinalIgnoreCase) ?? false));
+            }
+            
+            if (_fromDate.HasValue)
+            {
+                result = result.Where(p => p.RequestDate.Date >= _fromDate.Value.Date);
+            }
+            
+            if (_toDate.HasValue)
+            {
+                result = result.Where(p => p.RequestDate.Date <= _toDate.Value.Date);
+            }
+            
+            return result;
+        }
+    }
+
+    private void SelectPickup(PickupRequest pickup)
+    {
+        _selectedPickup = pickup;
+        _selectedShipment = null;
+        
+        var pendingShipments = pickup.Shipments?.Where(s => s.Status == ShipmentLineStatus.Pending).ToList();
+        if (pendingShipments?.Count == 1)
+        {
+            _selectedShipment = pendingShipments.First();
+        }
+    }
+
+    private void SelectShipment(PickupRequestShipment shipment)
+    {
+        _selectedShipment = shipment;
+    }
+
+    private Color GetStatusColor(PickupStatus status) => status switch
+    {
+        PickupStatus.PickupRequest => Color.Info,
+        PickupStatus.AssignedForCollection => Color.Warning,
+        PickupStatus.ShipmentCollected => Color.Success,
+        PickupStatus.Inscanned => Color.Primary,
+        PickupStatus.Cancelled => Color.Error,
+        _ => Color.Default
+    };
+
+    private void Cancel() => MudDialog.Cancel();
+    
+    private void Confirm()
+    {
+        if (_selectedPickup != null && _selectedShipment != null)
+        {
+            MudDialog.Close(DialogResult.Ok(new PickupConversionResult
+            {
+                PickupRequest = _selectedPickup,
+                Shipment = _selectedShipment
+            }));
+        }
+    }
+}

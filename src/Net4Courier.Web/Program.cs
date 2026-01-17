@@ -12,13 +12,8 @@ using QuestPDF.Infrastructure;
 QuestPDF.Settings.License = LicenseType.Community;
 
 var builder = WebApplication.CreateBuilder(args);
-
-var baseDir = AppContext.BaseDirectory;
-if (Directory.Exists(Path.Combine(baseDir, "wwwroot")))
-{
-    builder.Environment.ContentRootPath = baseDir;
-    builder.Environment.WebRootPath = Path.Combine(baseDir, "wwwroot");
-}
+builder.WebHost.UseStaticWebAssets();
+// --- ADD THIS BLOCK ---
 
 builder.Services.Configure<ForwardedHeadersOptions>(options =>
 {
@@ -79,6 +74,7 @@ builder.Services.AddScoped<DRSReconciliationService>();
 builder.Services.AddScoped<InvoicingService>();
 builder.Services.AddScoped<ShipmentStatusService>();
 builder.Services.AddScoped<MAWBService>();
+builder.Services.AddScoped<AWBNumberService>();
 builder.Services.AddScoped<IPermissionService, PermissionService>();
 builder.Services.AddAuthorizationCore();
 builder.Services.AddCascadingAuthenticationState();
@@ -296,6 +292,13 @@ public class DatabaseInitializationService : BackgroundService
                     ""ModifiedBy"" INT
                 );
                 CREATE UNIQUE INDEX IF NOT EXISTS ""IX_ServiceTypes_Code"" ON ""ServiceTypes"" (""Code"");
+            ", stoppingToken);
+
+            await dbContext.Database.ExecuteSqlRawAsync(@"
+                ALTER TABLE ""Branches"" ADD COLUMN IF NOT EXISTS ""AWBPrefix"" VARCHAR(50);
+                ALTER TABLE ""Branches"" ADD COLUMN IF NOT EXISTS ""AWBStartingNumber"" BIGINT NOT NULL DEFAULT 1;
+                ALTER TABLE ""Branches"" ADD COLUMN IF NOT EXISTS ""AWBIncrement"" INT NOT NULL DEFAULT 1;
+                ALTER TABLE ""Branches"" ADD COLUMN IF NOT EXISTS ""AWBLastUsedNumber"" BIGINT NOT NULL DEFAULT 0;
             ", stoppingToken);
 
             var authService = scope.ServiceProvider.GetRequiredService<AuthService>();

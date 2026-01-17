@@ -30,9 +30,13 @@ The application is built on .NET 8 Blazor Server, utilizing a modular architectu
 - **Entity Management**: Comprehensive CRUD operations for core entities like Company, Branch, User, Role, Financial Year, Parties, AWB, Invoices, and Receipts.
 - **Party Classification**: Parties are categorized by `PartyType` (Customer, DeliveryAgent, CoLoader, Supplier, ForwardingAgent) with corresponding `AccountNature` (Receivable/Payable) for accurate financial tracking.
 - **Operations Workflow**:
-    - **AWB Entry**: Full shipment details with auto-generated AWB numbers.
+    - **AWB Entry**: Full shipment details with auto-generated AWB numbers. Includes "Convert from Pickup Request" button to select inscanned pickups and create AWBs with pre-filled data.
+    - **AWB Number Generation**: Branch-based AWB numbering with configurable prefix, starting number, and increment. AWBNumberService generates sequential numbers atomically.
     - **AWB Tracking**: Detailed history of shipment status updates.
-    - **Pickup Management**: End-to-end workflow from customer request to shipment collection and inscan, including multi-shipment requests and conversion to AWB records.
+    - **Pickup to AWB Conversion** (Two-Step Process):
+        1. **INSCAN (Warehouse Receiving)**: `/pickup-inscan` page receives collected shipments into warehouse, marking them as inscanned without creating AWBs.
+        2. **AWB Conversion**: `/awb-entry` page with "Convert from Pickup Request" dialog to select pending shipments from inscanned pickups and create AWBs with auto-generated numbers.
+    - **Pickup Management**: End-to-end workflow from customer request to shipment collection and inscan, including multi-shipment requests.
     - **Outscan/DRS Management**: Workflow for dispatching shipments to couriers via Delivery Run Sheets (DRS), including barcode scanning and status updates.
 - **Financial Features**:
     - **Invoice/Receipt Management**: Comprehensive billing and payment collection with customer autocomplete and receipt allocation.

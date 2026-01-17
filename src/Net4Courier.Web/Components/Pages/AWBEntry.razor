@@ -3,13 +3,45 @@
 @inject ApplicationDbContext DbContext
 @inject NavigationManager NavigationManager
 @inject ISnackbar Snackbar
+@inject IDialogService DialogService
+@inject Net4Courier.Web.Services.AWBNumberService AWBNumberService
 @using Microsoft.EntityFrameworkCore
 @using Net4Courier.Infrastructure.Data
 @using Net4Courier.Masters.Entities
 @using Net4Courier.Operations.Entities
 @using Net4Courier.Kernel.Enums
+@using Net4Courier.Web.Models
 
 <PageTitle>@(Id > 0 ? "Edit AWB" : "New AWB Entry") - Net4Courier</PageTitle>
+
+@if (Id == 0)
+{
+    <MudPaper Class="pa-3 mb-3" Elevation="1" Style="background-color: #e8f5e9;">
+        <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
+            <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="3">
+                <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Transform"
+                           OnClick="OpenPickupRequestSelector">
+                    Convert from Pickup Request
+                </MudButton>
+                @if (_sourcePickupRequest != null)
+                {
+                    <MudChip T="string" Color="Color.Success" Size="Size.Small" OnClose="ClearPickupSource">
+                        From: @_sourcePickupRequest.PickupNo
+                    </MudChip>
+                }
+            </MudStack>
+            <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+                <MudSwitch @bind-Value="_autoGenerateAWB" Label="Auto-Generate AWB" Color="Color.Primary" />
+                @if (_autoGenerateAWB && _currentBranch != null)
+                {
+                    <MudText Typo="Typo.caption" Color="Color.Secondary">
+                        Next: @_nextAWBPreview
+                    </MudText>
+                }
+            </MudStack>
+        </MudStack>
+    </MudPaper>
+}
 
 <MudForm @ref="_form" @bind-IsValid="_formIsValid">
     <MudPaper Class="pa-3 mb-3" Elevation="2">
@@ -382,6 +414,12 @@
     private string? _forwardingAgentName;
     private string _createdBy = "";
     private string _modifiedBy = "";
+    
+    private bool _autoGenerateAWB = true;
+    private Branch? _currentBranch;
+    private string _nextAWBPreview = "";
+    private PickupRequest? _sourcePickupRequest;
+    private PickupRequestShipment? _sourceShipment;
 
     private decimal VolumetricWeight => (_inscan.Length ?? 0) * (_inscan.Width ?? 0) * (_inscan.Height ?? 0) / 5000;
     private decimal ChargeableWeight => Math.Max(_inscan.Weight ?? 0, VolumetricWeight);
@@ -391,6 +429,12 @@
     protected override async Task OnInitializedAsync()
     {
         _customers = await DbContext.Parties.Where(p => p.PartyType == PartyType.Customer && p.IsActive && !p.IsDeleted).OrderBy(p => p.Name).ToListAsync();
+        
+        _currentBranch = await DbContext.Branches.FirstOrDefaultAsync(b => !b.IsDeleted && b.IsActive);
+        if (_currentBranch != null)
+        {
+            _nextAWBPreview = await AWBNumberService.PreviewNextAWBNumber(_currentBranch.Id);
+        }
 
         if (Id > 0)
         {
@@ -406,18 +450,101 @@
         }
         else
         {
-            _inscan.AWBNo = await GenerateAWBNo();
+            if (_autoGenerateAWB && _currentBranch != null)
+            {
+                _inscan.AWBNo = _nextAWBPreview;
+            }
+            else
+            {
+                _inscan.AWBNo = await GenerateFallbackAWBNo();
+            }
             _inscan.TransactionDate = DateTime.UtcNow;
             _inscan.ConsignorCountry = "India";
             _inscan.ConsigneeCountry = "India";
         }
     }
 
-    private async Task<string> GenerateAWBNo()
+    private async Task<string> GenerateFallbackAWBNo()
     {
         var today = DateTime.Today.ToString("yyyyMMdd");
         var count = await DbContext.InscanMasters.CountAsync(i => i.AWBNo.StartsWith(today)) + 1;
         return $"{today}{count:D4}";
+    }
+    
+    private async Task OpenPickupRequestSelector()
+    {
+        var dialog = await DialogService.ShowAsync<PickupRequestSelectDialog>("Select Pickup Request", 
+            new DialogOptions { MaxWidth = MaxWidth.Large, FullWidth = true });
+        var result = await dialog.Result;
+        
+        if (!result!.Canceled && result.Data is PickupConversionResult conversionResult)
+        {
+            _sourcePickupRequest = conversionResult.PickupRequest;
+            _sourceShipment = conversionResult.Shipment;
+            await PopulateFromPickupRequest();
+        }
+    }
+    
+    private async Task PopulateFromPickupRequest()
+    {
+        if (_sourcePickupRequest == null || _sourceShipment == null) return;
+        
+        _inscan.PickupRequestId = _sourcePickupRequest.Id;
+        _inscan.PickupRequestShipmentId = _sourceShipment.Id;
+        
+        _inscan.CustomerId = _sourcePickupRequest.CustomerId;
+        _inscan.Consignor = _sourcePickupRequest.CustomerName;
+        _inscan.ConsignorPhone = _sourcePickupRequest.Phone;
+        _inscan.ConsignorMobile = _sourcePickupRequest.Mobile;
+        _inscan.ConsignorAddress1 = _sourcePickupRequest.PickupAddress;
+        _inscan.ConsignorCity = _sourcePickupRequest.City;
+        _inscan.ConsignorState = _sourcePickupRequest.State;
+        _inscan.ConsignorCountry = _sourcePickupRequest.Country ?? "India";
+        _inscan.ConsignorPostalCode = _sourcePickupRequest.PostalCode;
+        
+        _inscan.Consignee = _sourceShipment.Consignee;
+        _inscan.ConsigneePhone = _sourceShipment.ConsigneePhone;
+        _inscan.ConsigneeMobile = _sourceShipment.ConsigneeMobile;
+        _inscan.ConsigneeAddress1 = _sourceShipment.ConsigneeAddress1;
+        _inscan.ConsigneeCity = _sourceShipment.ConsigneeCity;
+        _inscan.ConsigneeState = _sourceShipment.ConsigneeState;
+        _inscan.ConsigneeCountry = _sourceShipment.ConsigneeCountry ?? "India";
+        _inscan.ConsigneePostalCode = _sourceShipment.ConsigneePostalCode;
+        
+        _inscan.Pieces = _sourceShipment.Pieces ?? 1;
+        _inscan.Weight = _sourceShipment.Weight;
+        _inscan.Length = _sourceShipment.Length;
+        _inscan.Width = _sourceShipment.Width;
+        _inscan.Height = _sourceShipment.Height;
+        _inscan.VolumetricWeight = _sourceShipment.VolumetricWeight;
+        
+        _inscan.CargoDescription = _sourceShipment.CargoDescription;
+        _inscan.SpecialInstructions = _sourceShipment.SpecialInstructions;
+        _inscan.ReferenceNo = _sourceShipment.ReferenceNo ?? _sourcePickupRequest.ReferenceNo;
+        
+        _inscan.PaymentModeId = _sourceShipment.PaymentModeId;
+        _inscan.DocumentTypeId = _sourceShipment.DocumentTypeId;
+        
+        if (!string.IsNullOrEmpty(_sourceShipment.AWBNo))
+        {
+            _inscan.AWBNo = _sourceShipment.AWBNo;
+            _autoGenerateAWB = false;
+        }
+        else if (_autoGenerateAWB && _currentBranch != null)
+        {
+            _inscan.AWBNo = _nextAWBPreview;
+        }
+        
+        Snackbar.Add($"Loaded data from Pickup Request {_sourcePickupRequest.PickupNo}", Severity.Info);
+        StateHasChanged();
+    }
+    
+    private void ClearPickupSource()
+    {
+        _sourcePickupRequest = null;
+        _sourceShipment = null;
+        _inscan.PickupRequestId = null;
+        _inscan.PickupRequestShipmentId = null;
     }
 
     private async Task Save()
@@ -440,17 +567,52 @@
 
         if (Id == 0)
         {
+            if (_autoGenerateAWB && _currentBranch != null)
+            {
+                _inscan.AWBNo = await AWBNumberService.GenerateNextAWBNumber(_currentBranch.Id);
+                _inscan.IsAutoGenerated = true;
+            }
+            
             _inscan.CreatedAt = DateTime.UtcNow;
             _inscan.CourierStatusId = CourierStatus.Pending;
             DbContext.InscanMasters.Add(_inscan);
+            await DbContext.SaveChangesAsync();
+            
+            if (_inscan.PickupRequestId.HasValue && _inscan.PickupRequestShipmentId.HasValue)
+            {
+                var shipmentLine = await DbContext.PickupRequestShipments.FindAsync(_inscan.PickupRequestShipmentId.Value);
+                if (shipmentLine != null)
+                {
+                    shipmentLine.AWBId = _inscan.Id;
+                    shipmentLine.AWBNo = _inscan.AWBNo;
+                    shipmentLine.Status = ShipmentLineStatus.Booked;
+                    shipmentLine.BookedAt = DateTime.UtcNow;
+                }
+                
+                var pickupRequest = await DbContext.PickupRequests
+                    .Include(p => p.Shipments)
+                    .FirstOrDefaultAsync(p => p.Id == _inscan.PickupRequestId.Value);
+                    
+                if (pickupRequest != null)
+                {
+                    var allBooked = pickupRequest.Shipments.All(s => s.Status == ShipmentLineStatus.Booked || s.Status == ShipmentLineStatus.Cancelled);
+                    if (allBooked)
+                    {
+                        pickupRequest.IsConverted = true;
+                        pickupRequest.ConvertedAt = DateTime.UtcNow;
+                    }
+                }
+                
+                await DbContext.SaveChangesAsync();
+            }
         }
         else
         {
             _inscan.ModifiedAt = DateTime.UtcNow;
             DbContext.InscanMasters.Update(_inscan);
+            await DbContext.SaveChangesAsync();
         }
 
-        await DbContext.SaveChangesAsync();
         Snackbar.Add(Id > 0 ? "AWB updated successfully" : "AWB created successfully", Severity.Success);
         NavigationManager.NavigateTo("/awb-list");
     }
