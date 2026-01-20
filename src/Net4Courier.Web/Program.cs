@@ -79,6 +79,8 @@ builder.Services.AddScoped<MAWBService>();
 builder.Services.AddScoped<AWBNumberService>();
 builder.Services.AddScoped<IPermissionService, PermissionService>();
 builder.Services.AddScoped<ImportExcelService>();
+builder.Services.AddScoped<PODUpdateService>();
+builder.Services.AddScoped<PODExcelService>();
 builder.Services.AddAuthorizationCore();
 builder.Services.AddCascadingAuthenticationState();
 

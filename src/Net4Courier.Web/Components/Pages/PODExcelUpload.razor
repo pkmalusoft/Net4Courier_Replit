@@ -1,0 +1,442 @@
+@page "/pod-excel-upload"
+@using MudBlazor
+@using Microsoft.EntityFrameworkCore
+@using Microsoft.AspNetCore.Components.Authorization
+@using Net4Courier.Infrastructure.Data
+@using Net4Courier.Operations.Entities
+@using Net4Courier.Kernel.Enums
+@using Net4Courier.Web.Services
+@inject IDbContextFactory<ApplicationDbContext> DbContextFactory
+@inject ISnackbar Snackbar
+@inject NavigationManager Navigation
+@inject PODExcelService ExcelService
+@inject PODUpdateService PODService
+@inject AuthenticationStateProvider AuthStateProvider
+@inject IJSRuntime JS
+
+<PageTitle>POD Excel Upload - Net4Courier</PageTitle>
+
+<MudContainer MaxWidth="MaxWidth.Large" Class="py-4">
+    <MudPaper Elevation="2" Class="pa-4 mb-4">
+        <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center" Class="mb-4">
+            <MudText Typo="Typo.h5">POD Excel Upload</MudText>
+            <MudStack Row="true" Spacing="2">
+                <MudButton Variant="Variant.Outlined" Color="Color.Secondary" StartIcon="@Icons.Material.Filled.ArrowBack"
+                           OnClick="@(() => Navigation.NavigateTo("/pod-bulk"))" Size="Size.Small">Back to List</MudButton>
+                <MudButton Variant="Variant.Outlined" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Download"
+                           OnClick="DownloadTemplate" Size="Size.Small">Download Template</MudButton>
+                <MudButton Variant="Variant.Outlined" Color="Color.Success" StartIcon="@Icons.Material.Filled.Download"
+                           OnClick="DownloadTemplateWithAwbs" Size="Size.Small">Template with AWBs</MudButton>
+            </MudStack>
+        </MudStack>
+
+        <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-4">
+            Upload an Excel file to update POD (Proof of Delivery) for multiple shipments at once. 
+            Download the template first to ensure correct format.
+        </MudText>
+
+        <MudFileUpload T="IBrowserFile" Accept=".xlsx,.xls" FilesChanged="OnFileSelected" MaximumFileCount="1">
+            <ActivatorContent>
+                <MudPaper @ondragenter="@SetDragClass" @ondragleave="@ClearDragClass" @ondragend="@ClearDragClass"
+                          Height="120px" Outlined="true" Class="@_dragClass">
+                    <MudStack Justify="Justify.Center" AlignItems="AlignItems.Center" Style="height:100%">
+                        <MudIcon Icon="@Icons.Material.Filled.CloudUpload" Size="Size.Large" Color="Color.Primary" />
+                        <MudText>Drag and drop Excel file here or click to browse</MudText>
+                        @if (_selectedFile != null)
+                        {
+                            <MudChip T="string" Color="Color.Info" Size="Size.Small" Icon="@Icons.Material.Filled.AttachFile">
+                                @_selectedFile.Name (@FormatFileSize(_selectedFile.Size))
+                            </MudChip>
+                        }
+                    </MudStack>
+                </MudPaper>
+            </ActivatorContent>
+        </MudFileUpload>
+
+        @if (_selectedFile != null && !_parsing && !_parsed)
+        {
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.UploadFile"
+                       OnClick="ParseFile" Class="mt-4">Parse File</MudButton>
+        }
+    </MudPaper>
+
+    @if (_parsing)
+    {
+        <MudPaper Elevation="2" Class="pa-4 mb-4">
+            <MudProgressLinear Color="Color.Primary" Indeterminate="true" />
+            <MudText Class="mt-2">Parsing Excel file...</MudText>
+        </MudPaper>
+    }
+
+    @if (_parsed && _parseResult != null)
+    {
+        <MudPaper Elevation="2" Class="pa-4 mb-4">
+            <MudText Typo="Typo.h6" Class="mb-3">Preview</MudText>
+            
+            <MudGrid Class="mb-4">
+                <MudItem xs="3">
+                    <MudPaper Class="pa-3 text-center" Elevation="1">
+                        <MudText Typo="Typo.h4" Color="Color.Primary">@_parseResult.Rows.Count</MudText>
+                        <MudText Typo="Typo.caption">Total Rows</MudText>
+                    </MudPaper>
+                </MudItem>
+                <MudItem xs="3">
+                    <MudPaper Class="pa-3 text-center" Elevation="1">
+                        <MudText Typo="Typo.h4" Color="Color.Success">@_parseResult.Rows.Count(r => !HasRowError(r.RowNumber))</MudText>
+                        <MudText Typo="Typo.caption">Valid Rows</MudText>
+                    </MudPaper>
+                </MudItem>
+                <MudItem xs="3">
+                    <MudPaper Class="pa-3 text-center" Elevation="1">
+                        <MudText Typo="Typo.h4" Color="Color.Error">@_parseResult.Errors.Count</MudText>
+                        <MudText Typo="Typo.caption">Errors</MudText>
+                    </MudPaper>
+                </MudItem>
+                <MudItem xs="3">
+                    <MudPaper Class="pa-3 text-center" Elevation="1">
+                        <MudText Typo="Typo.h4" Color="Color.Warning">@_parseResult.Errors.Count(e => !e.IsCritical)</MudText>
+                        <MudText Typo="Typo.caption">Warnings</MudText>
+                    </MudPaper>
+                </MudItem>
+            </MudGrid>
+
+            @if (_parseResult.Errors.Any())
+            {
+                <MudExpansionPanels Class="mb-4">
+                    <MudExpansionPanel Text="@($"Validation Errors ({_parseResult.Errors.Count})")">
+                        <MudTable Items="@_parseResult.Errors" Dense="true" Hover="true" Elevation="0">
+                            <HeaderContent>
+                                <MudTh>Row</MudTh>
+                                <MudTh>Column</MudTh>
+                                <MudTh>Message</MudTh>
+                                <MudTh>Severity</MudTh>
+                            </HeaderContent>
+                            <RowTemplate>
+                                <MudTd>@(context.RowNumber?.ToString() ?? "-")</MudTd>
+                                <MudTd>@(context.Column ?? "-")</MudTd>
+                                <MudTd>@context.Message</MudTd>
+                                <MudTd>
+                                    <MudChip T="string" Size="Size.Small" Color="@(context.IsCritical ? Color.Error : Color.Warning)">
+                                        @(context.IsCritical ? "Error" : "Warning")
+                                    </MudChip>
+                                </MudTd>
+                            </RowTemplate>
+                        </MudTable>
+                    </MudExpansionPanel>
+                </MudExpansionPanels>
+            }
+
+            <MudTable Items="@_parseResult.Rows" Dense="true" Hover="true" Striped="true" Elevation="1">
+                <HeaderContent>
+                    <MudTh>Row</MudTh>
+                    <MudTh>AWB No</MudTh>
+                    <MudTh>Delivery Status</MudTh>
+                    <MudTh>Delivery Date</MudTh>
+                    <MudTh>Received By</MudTh>
+                    <MudTh>Relation</MudTh>
+                    <MudTh>Reason</MudTh>
+                    <MudTh>Status</MudTh>
+                </HeaderContent>
+                <RowTemplate>
+                    <MudTd>@context.RowNumber</MudTd>
+                    <MudTd>@context.AwbNo</MudTd>
+                    <MudTd>@context.DeliveryStatus</MudTd>
+                    <MudTd>@context.DeliveryDate?.ToString("dd-MMM-yyyy")</MudTd>
+                    <MudTd>@context.ReceivedBy</MudTd>
+                    <MudTd>@context.Relation</MudTd>
+                    <MudTd>@context.NonDeliveryReason</MudTd>
+                    <MudTd>
+                        @if (HasRowError(context.RowNumber))
+                        {
+                            <MudIcon Icon="@Icons.Material.Filled.Error" Color="Color.Error" Size="Size.Small" />
+                        }
+                        else
+                        {
+                            <MudIcon Icon="@Icons.Material.Filled.CheckCircle" Color="Color.Success" Size="Size.Small" />
+                        }
+                    </MudTd>
+                </RowTemplate>
+                <NoRecordsContent>
+                    <MudText Class="pa-4">No records found in the file.</MudText>
+                </NoRecordsContent>
+            </MudTable>
+
+            <MudStack Row="true" Spacing="2" Class="mt-4" Justify="Justify.FlexEnd">
+                <MudButton Variant="Variant.Outlined" Color="Color.Secondary" OnClick="ClearFile">Cancel</MudButton>
+                <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.CloudUpload"
+                           OnClick="ProcessUpload" Disabled="@(!_parseResult.IsValid || _processing)">
+                    @if (_processing)
+                    {
+                        <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" />
+                        <text>Processing...</text>
+                    }
+                    else
+                    {
+                        <text>Process @_parseResult.Rows.Count(r => !HasRowError(r.RowNumber)) POD(s)</text>
+                    }
+                </MudButton>
+            </MudStack>
+        </MudPaper>
+    }
+
+    @if (_processComplete && _processResults != null)
+    {
+        <MudPaper Elevation="2" Class="pa-4 mb-4">
+            <MudText Typo="Typo.h6" Class="mb-3">Processing Results</MudText>
+            
+            <MudGrid Class="mb-4">
+                <MudItem xs="4">
+                    <MudPaper Class="pa-3 text-center" Elevation="1">
+                        <MudText Typo="Typo.h4" Color="Color.Success">@_processResults.Count(r => r.Success)</MudText>
+                        <MudText Typo="Typo.caption">Successful</MudText>
+                    </MudPaper>
+                </MudItem>
+                <MudItem xs="4">
+                    <MudPaper Class="pa-3 text-center" Elevation="1">
+                        <MudText Typo="Typo.h4" Color="Color.Error">@_processResults.Count(r => !r.Success)</MudText>
+                        <MudText Typo="Typo.caption">Failed</MudText>
+                    </MudPaper>
+                </MudItem>
+                <MudItem xs="4">
+                    <MudPaper Class="pa-3 text-center" Elevation="1">
+                        <MudText Typo="Typo.h4" Color="Color.Primary">@_processResults.Count</MudText>
+                        <MudText Typo="Typo.caption">Total</MudText>
+                    </MudPaper>
+                </MudItem>
+            </MudGrid>
+
+            <MudTable Items="@_processResults" Dense="true" Hover="true" Striped="true" Elevation="1">
+                <HeaderContent>
+                    <MudTh>AWB No</MudTh>
+                    <MudTh>Status</MudTh>
+                    <MudTh>Message</MudTh>
+                </HeaderContent>
+                <RowTemplate>
+                    <MudTd>@context.AwbNo</MudTd>
+                    <MudTd>
+                        <MudChip T="string" Size="Size.Small" Color="@(context.Success ? Color.Success : Color.Error)">
+                            @(context.Success ? "Success" : "Failed")
+                        </MudChip>
+                    </MudTd>
+                    <MudTd>@(context.ErrorMessage ?? "POD updated successfully")</MudTd>
+                </RowTemplate>
+            </MudTable>
+
+            <MudStack Row="true" Spacing="2" Class="mt-4" Justify="Justify.FlexEnd">
+                <MudButton Variant="Variant.Outlined" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Download"
+                           OnClick="DownloadResultsReport">Download Results Report</MudButton>
+                <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="ClearAll">Upload Another File</MudButton>
+            </MudStack>
+        </MudPaper>
+    }
+</MudContainer>
+
+@code {
+    private IBrowserFile? _selectedFile;
+    private bool _parsing;
+    private bool _parsed;
+    private bool _processing;
+    private bool _processComplete;
+    private PODExcelParseResult? _parseResult;
+    private List<PODUpdateResult>? _processResults;
+    private string _dragClass = "d-flex flex-column justify-center align-center mud-width-full py-8";
+    private static string DefaultDragClass = "d-flex flex-column justify-center align-center mud-width-full py-8";
+
+    private long? _currentUserId;
+    private long? _currentBranchId;
+
+    protected override void OnInitialized()
+    {
+        try
+        {
+            if (AuthStateProvider is AppAuthStateProvider authProvider)
+            {
+                _currentUserId = authProvider.CurrentUser?.Id;
+                _currentBranchId = authProvider.CurrentBranch?.Id;
+            }
+        }
+        catch
+        {
+        }
+    }
+
+    private void OnFileSelected(IBrowserFile file)
+    {
+        _selectedFile = file;
+        _parsed = false;
+        _parseResult = null;
+        _processComplete = false;
+        _processResults = null;
+        ClearDragClass();
+    }
+
+    private async Task ParseFile()
+    {
+        if (_selectedFile == null) return;
+
+        _parsing = true;
+        StateHasChanged();
+
+        try
+        {
+            using var stream = _selectedFile.OpenReadStream(maxAllowedSize: 10 * 1024 * 1024);
+            using var memoryStream = new MemoryStream();
+            await stream.CopyToAsync(memoryStream);
+            memoryStream.Position = 0;
+
+            _parseResult = ExcelService.ParseExcel(memoryStream);
+            _parsed = true;
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error parsing file: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _parsing = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task ProcessUpload()
+    {
+        if (_parseResult == null || !_parseResult.IsValid) return;
+
+        _processing = true;
+        StateHasChanged();
+
+        try
+        {
+            var requests = _parseResult.Rows
+                .Where(r => !HasRowError(r.RowNumber))
+                .Select(r => new PODUpdateRequest
+                {
+                    AwbNo = r.AwbNo,
+                    DeliveryStatus = PODUpdateService.ParseDeliveryStatus(r.DeliveryStatus) ?? DeliveryStatus.Delivered,
+                    DeliveryDate = r.DeliveryDate,
+                    ReceivedBy = r.ReceivedBy,
+                    Relation = PODUpdateService.ParseRelation(r.Relation),
+                    NonDeliveryReason = PODUpdateService.ParseNonDeliveryReason(r.NonDeliveryReason),
+                    Remarks = r.Remarks
+                })
+                .ToList();
+
+            _processResults = await PODService.UpdateBatchPODAsync(requests, _currentUserId, _currentBranchId);
+            _processComplete = true;
+
+            var successCount = _processResults.Count(r => r.Success);
+            var failCount = _processResults.Count(r => !r.Success);
+
+            if (failCount == 0)
+            {
+                Snackbar.Add($"All {successCount} POD(s) updated successfully!", Severity.Success);
+            }
+            else
+            {
+                Snackbar.Add($"Processed: {successCount} success, {failCount} failed", Severity.Warning);
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error processing upload: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _processing = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task DownloadTemplate()
+    {
+        try
+        {
+            var templateBytes = ExcelService.GenerateTemplate();
+            var fileName = $"POD_Template_{DateTime.Now:yyyyMMdd}.xlsx";
+            await DownloadFile(templateBytes, fileName, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error generating template: {ex.Message}", Severity.Error);
+        }
+    }
+
+    private async Task DownloadTemplateWithAwbs()
+    {
+        try
+        {
+            await using var dbContext = await DbContextFactory.CreateDbContextAsync();
+            
+            var awbs = await dbContext.InscanMasters
+                .Where(i => !i.IsDeleted && 
+                       i.CourierStatusId != CourierStatus.Delivered && 
+                       i.CourierStatusId != CourierStatus.Cancelled)
+                .OrderByDescending(i => i.TransactionDate)
+                .Take(100)
+                .Select(i => new { i.AWBNo, i.Consignee, i.ConsigneeCity, i.CourierStatusId })
+                .ToListAsync();
+
+            var awbList = awbs.Select(a => (a.AWBNo ?? "", a.Consignee ?? "", a.ConsigneeCity ?? "", a.CourierStatusId.ToString())).ToList();
+            var templateBytes = ExcelService.GenerateTemplate(awbList);
+            var fileName = $"POD_Template_WithAWBs_{DateTime.Now:yyyyMMdd}.xlsx";
+            await DownloadFile(templateBytes, fileName, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error generating template: {ex.Message}", Severity.Error);
+        }
+    }
+
+    private async Task DownloadResultsReport()
+    {
+        if (_processResults == null) return;
+
+        try
+        {
+            var reportBytes = ExcelService.GenerateErrorReport(_processResults);
+            var fileName = $"POD_Upload_Results_{DateTime.Now:yyyyMMddHHmmss}.xlsx";
+            await DownloadFile(reportBytes, fileName, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error generating report: {ex.Message}", Severity.Error);
+        }
+    }
+
+    private async Task DownloadFile(byte[] content, string fileName, string contentType)
+    {
+        var base64 = Convert.ToBase64String(content);
+        await JS.InvokeVoidAsync("downloadFileFromBase64", base64, fileName, contentType);
+    }
+
+    private bool HasRowError(int rowNumber)
+    {
+        return _parseResult?.Errors.Any(e => e.RowNumber == rowNumber && e.IsCritical) ?? false;
+    }
+
+    private void ClearFile()
+    {
+        _selectedFile = null;
+        _parsed = false;
+        _parseResult = null;
+    }
+
+    private void ClearAll()
+    {
+        _selectedFile = null;
+        _parsed = false;
+        _parseResult = null;
+        _processComplete = false;
+        _processResults = null;
+    }
+
+    private void SetDragClass() => _dragClass = $"{DefaultDragClass} mud-border-primary";
+    private void ClearDragClass() => _dragClass = DefaultDragClass;
+
+    private string FormatFileSize(long bytes)
+    {
+        if (bytes < 1024) return $"{bytes} B";
+        if (bytes < 1024 * 1024) return $"{bytes / 1024.0:F1} KB";
+        return $"{bytes / (1024.0 * 1024.0):F1} MB";
+    }
+}

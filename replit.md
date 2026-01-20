@@ -53,6 +53,14 @@ The application is built on .NET 8 Blazor Server, utilizing a modular architectu
 - **Proof of Delivery (POD)**:
     - **Mobile POD Capture**: Touch-friendly interface for delivery agents with photo evidence, digital signature, GPS location, and delivery status options.
     - **Offline Support**: IndexedDB storage for offline capture with sync.
+    - **Bulk POD Update**: Multi-select grid to update POD for multiple AWBs at once at `/pod-bulk`.
+    - **Excel Batch Upload**: Download template, fill POD data, upload Excel file for batch processing at `/pod-excel-upload`.
+        - Template includes: AWB No, Delivery Status, Delivery Date, Received By, Relation, Non-Delivery Reason, Remarks
+        - "Template with AWBs" button pre-populates eligible shipments
+        - Validation with per-row error reporting
+        - Downloadable results report showing success/failure for each AWB
+    - **PODUpdateService**: Centralized service for single and batch POD updates with validation.
+    - **PODExcelService**: Handles Excel template generation, parsing, and results report generation.
 - **Shipment Status Timeline**:
     - **Database-Driven Status Management**: Flexible status groups and statuses configurable via admin UI.
     - **Timeline History**: Chronological record of status changes.
