@@ -101,7 +101,26 @@ public class AuthService
                 await _context.SaveChangesAsync();
                 Console.WriteLine("Admin user created successfully");
             }
-            else if (string.IsNullOrEmpty(adminUser.PasswordHash) || !adminUser.PasswordHash.StartsWith("$2"))
+
+            var hasUserBranch = await _context.UserBranches.AnyAsync(ub => ub.UserId == adminUser.Id);
+            if (!hasUserBranch)
+            {
+                var defaultBranch = await _context.Branches.FirstOrDefaultAsync(b => b.IsActive);
+                if (defaultBranch != null)
+                {
+                    var userBranch = new UserBranch
+                    {
+                        UserId = adminUser.Id,
+                        BranchId = defaultBranch.Id,
+                        IsDefault = true
+                    };
+                    _context.UserBranches.Add(userBranch);
+                    await _context.SaveChangesAsync();
+                    Console.WriteLine($"Admin assigned to branch: {defaultBranch.Name}");
+                }
+            }
+
+            if (string.IsNullOrEmpty(adminUser.PasswordHash) || !adminUser.PasswordHash.StartsWith("$2"))
             {
                 adminUser.PasswordHash = BCrypt.Net.BCrypt.HashPassword("Admin@123");
                 await _context.SaveChangesAsync();
