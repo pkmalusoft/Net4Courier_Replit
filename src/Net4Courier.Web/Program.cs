@@ -78,6 +78,7 @@ builder.Services.AddScoped<ShipmentStatusService>();
 builder.Services.AddScoped<MAWBService>();
 builder.Services.AddScoped<AWBNumberService>();
 builder.Services.AddScoped<IPermissionService, PermissionService>();
+builder.Services.AddScoped<ImportExcelService>();
 builder.Services.AddAuthorizationCore();
 builder.Services.AddCascadingAuthenticationState();
 

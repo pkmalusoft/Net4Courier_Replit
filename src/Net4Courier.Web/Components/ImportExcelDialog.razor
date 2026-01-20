@@ -1,0 +1,393 @@
+@using Microsoft.EntityFrameworkCore
+@using Net4Courier.Infrastructure.Data
+@using Net4Courier.Kernel.Enums
+@using Net4Courier.Web.Services
+@inject IDbContextFactory<ApplicationDbContext> DbFactory
+@inject ImportExcelService ExcelService
+@inject ISnackbar Snackbar
+@inject IJSRuntime JSRuntime
+@inject NavigationManager Navigation
+
+<MudDialog>
+    <TitleContent>
+        <MudText Typo="Typo.h6">
+            <MudIcon Icon="@Icons.Material.Filled.CloudUpload" Class="mr-2" />
+            Import Shipments via Excel
+        </MudText>
+    </TitleContent>
+    <DialogContent>
+        <MudTabs @bind-ActivePanelIndex="_activeStep" Rounded="true" ApplyEffectsToContainer="true" PanelClass="pa-4">
+            <MudTabPanel Text="1. Download" Icon="@Icons.Material.Filled.Download" Disabled="false">
+                <MudText Typo="Typo.body1" Class="mb-4">
+                    First, download the Excel template for the transport mode you need. The template contains two sheets:
+                </MudText>
+                <MudList T="string">
+                    <MudListItem Icon="@Icons.Material.Filled.Description">
+                        <strong>Header</strong> - Import metadata (MAWB/BL number, origin, destination, carrier info)
+                    </MudListItem>
+                    <MudListItem Icon="@Icons.Material.Filled.TableRows">
+                        <strong>Shipments</strong> - AWB details (consignee, weight, pieces, contents)
+                    </MudListItem>
+                </MudList>
+                
+                <MudDivider Class="my-4" />
+                
+                <MudText Typo="Typo.subtitle2" Class="mb-3">Select Transport Mode:</MudText>
+                <MudButtonGroup OverrideStyles="false" Class="mb-4">
+                    <MudButton Variant="@(_selectedMode == ImportMode.Air ? Variant.Filled : Variant.Outlined)" 
+                               Color="Color.Primary" 
+                               OnClick="@(() => _selectedMode = ImportMode.Air)"
+                               StartIcon="@Icons.Material.Filled.Flight">
+                        Air
+                    </MudButton>
+                    <MudButton Variant="@(_selectedMode == ImportMode.Sea ? Variant.Filled : Variant.Outlined)" 
+                               Color="Color.Primary" 
+                               OnClick="@(() => _selectedMode = ImportMode.Sea)"
+                               StartIcon="@Icons.Material.Filled.DirectionsBoat">
+                        Sea
+                    </MudButton>
+                    <MudButton Variant="@(_selectedMode == ImportMode.Land ? Variant.Filled : Variant.Outlined)" 
+                               Color="Color.Primary" 
+                               OnClick="@(() => _selectedMode = ImportMode.Land)"
+                               StartIcon="@Icons.Material.Filled.LocalShipping">
+                        Land
+                    </MudButton>
+                </MudButtonGroup>
+                
+                <MudButton Variant="Variant.Filled" 
+                           Color="Color.Success" 
+                           StartIcon="@Icons.Material.Filled.Download"
+                           OnClick="DownloadTemplate"
+                           FullWidth="true"
+                           Size="Size.Large">
+                    Download @_selectedMode Template
+                </MudButton>
+                
+                <MudButton Variant="Variant.Text" 
+                           Color="Color.Primary" 
+                           OnClick="@(() => _activeStep = 1)"
+                           Class="mt-4"
+                           FullWidth="true">
+                    Next: Upload File
+                </MudButton>
+            </MudTabPanel>
+            
+            <MudTabPanel Text="2. Upload" Icon="@Icons.Material.Filled.Upload" Disabled="false">
+                <MudText Typo="Typo.body1" Class="mb-4">
+                    Upload your completed Excel file. Make sure all required fields (marked with *) are filled.
+                </MudText>
+                
+                <MudFileUpload T="IBrowserFile" 
+                               FilesChanged="OnFileSelected" 
+                               Accept=".xlsx,.xls"
+                               MaximumFileCount="1">
+                    <ButtonTemplate>
+                        <MudPaper Outlined="true" 
+                                  Class="pa-8 d-flex flex-column align-center justify-center" 
+                                  Style="border-style: dashed; cursor: pointer; min-height: 200px;"
+                                  @onclick="@context.Actions.ClearAsync">
+                            @if (_uploadedFile == null)
+                            {
+                                <MudIcon Icon="@Icons.Material.Filled.CloudUpload" Size="Size.Large" Color="Color.Primary" />
+                                <MudText Typo="Typo.h6" Class="mt-4">Click or drag file here</MudText>
+                                <MudText Typo="Typo.caption" Color="Color.Secondary">Excel files only (.xlsx, .xls)</MudText>
+                                <MudButton HtmlTag="label"
+                                           Variant="Variant.Filled"
+                                           Color="Color.Primary"
+                                           Class="mt-4"
+                                           for="@context.Id">
+                                    Select File
+                                </MudButton>
+                            }
+                            else
+                            {
+                                <MudIcon Icon="@Icons.Material.Filled.InsertDriveFile" Size="Size.Large" Color="Color.Success" />
+                                <MudText Typo="Typo.h6" Class="mt-4">@_uploadedFile.Name</MudText>
+                                <MudText Typo="Typo.caption" Color="Color.Secondary">@FormatFileSize(_uploadedFile.Size)</MudText>
+                                <MudButton HtmlTag="label"
+                                           Variant="Variant.Outlined"
+                                           Color="Color.Primary"
+                                           Class="mt-4"
+                                           for="@context.Id">
+                                    Change File
+                                </MudButton>
+                            }
+                        </MudPaper>
+                    </ButtonTemplate>
+                </MudFileUpload>
+                
+                @if (_isProcessing)
+                {
+                    <MudProgressLinear Color="Color.Primary" Indeterminate="true" Class="mt-4" />
+                    <MudText Typo="Typo.caption" Class="mt-2" Align="Align.Center">Processing file...</MudText>
+                }
+            </MudTabPanel>
+            
+            <MudTabPanel Text="3. Preview" Icon="@Icons.Material.Filled.Preview" Disabled="@(_parseResult == null)">
+                @if (_parseResult != null)
+                {
+                    @if (_parseResult.Errors.Any())
+                    {
+                        <MudAlert Severity="@(_parseResult.IsValid ? Severity.Warning : Severity.Error)" Class="mb-4">
+                            @(_parseResult.Errors.Count) validation issue(s) found
+                        </MudAlert>
+                        
+                        <MudExpansionPanels Class="mb-4">
+                            <MudExpansionPanel Text="View Errors" Icon="@Icons.Material.Filled.Error">
+                                <MudSimpleTable Dense="true" Striped="true">
+                                    <thead>
+                                        <tr>
+                                            <th>Sheet</th>
+                                            <th>Row</th>
+                                            <th>Column</th>
+                                            <th>Message</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        @foreach (var error in _parseResult.Errors.Take(20))
+                                        {
+                                            <tr>
+                                                <td>@error.Sheet</td>
+                                                <td>@(error.RowNumber?.ToString() ?? "-")</td>
+                                                <td>@(error.Column ?? "-")</td>
+                                                <td style="color: @(error.IsCritical ? "red" : "orange")">@error.Message</td>
+                                            </tr>
+                                        }
+                                    </tbody>
+                                </MudSimpleTable>
+                                @if (_parseResult.Errors.Count > 20)
+                                {
+                                    <MudText Typo="Typo.caption" Class="mt-2">...and @(_parseResult.Errors.Count - 20) more</MudText>
+                                }
+                            </MudExpansionPanel>
+                        </MudExpansionPanels>
+                    }
+                    else
+                    {
+                        <MudAlert Severity="Severity.Success" Class="mb-4">
+                            File validated successfully!
+                        </MudAlert>
+                    }
+                    
+                    @if (_parseResult.Header != null)
+                    {
+                        <MudText Typo="Typo.subtitle1" Class="mb-2"><strong>Import Header</strong></MudText>
+                        <MudSimpleTable Dense="true" Striped="true" Class="mb-4">
+                            <tbody>
+                                <tr><td><strong>Mode</strong></td><td>@_parseResult.Header.ImportMode</td></tr>
+                                <tr><td><strong>Master Reference</strong></td><td>@_parseResult.Header.MasterReferenceNumber</td></tr>
+                                <tr><td><strong>Origin</strong></td><td>@_parseResult.Header.OriginCountry @(_parseResult.Header.OriginCity ?? "")</td></tr>
+                                <tr><td><strong>Destination</strong></td><td>@_parseResult.Header.DestinationCountry @(_parseResult.Header.DestinationCity ?? "")</td></tr>
+                                <tr><td><strong>ETA</strong></td><td>@(_parseResult.Header.ETA?.ToString("dd/MM/yyyy") ?? "-")</td></tr>
+                                <tr><td><strong>Carrier</strong></td><td>@(_parseResult.Header.CarrierName ?? "-")</td></tr>
+                            </tbody>
+                        </MudSimpleTable>
+                    }
+                    
+                    <MudText Typo="Typo.subtitle1" Class="mb-2"><strong>Shipments (@_parseResult.Shipments.Count)</strong></MudText>
+                    <div style="max-height: 300px; overflow-y: auto;">
+                        <MudSimpleTable Dense="true" Striped="true">
+                            <thead>
+                                <tr>
+                                    <th>AWB No</th>
+                                    <th>Consignee</th>
+                                    <th>Country</th>
+                                    <th>Pcs</th>
+                                    <th>Weight</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var shipment in _parseResult.Shipments.Take(50))
+                                {
+                                    var hasError = _parseResult.Errors.Any(e => e.RowNumber == shipment.RowNumber);
+                                    <tr style="@(hasError ? "background-color: #ffebee;" : "")">
+                                        <td>@shipment.AWBNo</td>
+                                        <td>@shipment.ConsigneeName</td>
+                                        <td>@shipment.ConsigneeCountry</td>
+                                        <td>@shipment.Pieces</td>
+                                        <td>@shipment.Weight.ToString("N2") kg</td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </MudSimpleTable>
+                    </div>
+                    @if (_parseResult.Shipments.Count > 50)
+                    {
+                        <MudText Typo="Typo.caption" Class="mt-2">Showing first 50 of @_parseResult.Shipments.Count shipments</MudText>
+                    }
+                    
+                    @if (_parseResult.IsValid)
+                    {
+                        <MudDivider Class="my-4" />
+                        <MudButton Variant="Variant.Filled" 
+                                   Color="Color.Primary" 
+                                   StartIcon="@Icons.Material.Filled.CloudUpload"
+                                   OnClick="ExecuteImport"
+                                   Disabled="_isSaving"
+                                   FullWidth="true"
+                                   Size="Size.Large">
+                            @if (_isSaving)
+                            {
+                                <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" />
+                                <span>Importing...</span>
+                            }
+                            else
+                            {
+                                <span>Import @_parseResult.Shipments.Count Shipment(s)</span>
+                            }
+                        </MudButton>
+                    }
+                    else
+                    {
+                        <MudAlert Severity="Severity.Error" Class="mt-4">
+                            Cannot proceed with import. Please fix the validation errors and re-upload.
+                        </MudAlert>
+                    }
+                }
+            </MudTabPanel>
+        </MudTabs>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Cancel">Cancel</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] 
+    private MudDialogInstance? MudDialog { get; set; }
+    
+    private int _activeStep = 0;
+    private ImportMode _selectedMode = ImportMode.Air;
+    private IBrowserFile? _uploadedFile;
+    private ImportExcelParseResult? _parseResult;
+    private bool _isProcessing;
+    private bool _isSaving;
+
+    private async Task DownloadTemplate()
+    {
+        try
+        {
+            var bytes = ExcelService.GenerateTemplate(_selectedMode);
+            var fileName = $"ImportTemplate_{_selectedMode}_{DateTime.Now:yyyyMMdd}.xlsx";
+            
+            var base64 = Convert.ToBase64String(bytes);
+            await JSRuntime.InvokeVoidAsync("downloadFile", fileName, base64, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+            
+            Snackbar.Add($"{_selectedMode} template downloaded!", Severity.Success);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error downloading template: {ex.Message}", Severity.Error);
+        }
+    }
+
+    private async Task OnFileSelected(IBrowserFile file)
+    {
+        if (file == null) return;
+        
+        _uploadedFile = file;
+        _isProcessing = true;
+        StateHasChanged();
+        
+        try
+        {
+            using var stream = file.OpenReadStream(maxAllowedSize: 10 * 1024 * 1024);
+            using var ms = new MemoryStream();
+            await stream.CopyToAsync(ms);
+            ms.Position = 0;
+            
+            _parseResult = ExcelService.ParseExcel(ms);
+            
+            if (_parseResult.Header != null)
+            {
+                _selectedMode = _parseResult.Header.ImportMode;
+            }
+            
+            _activeStep = 2;
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error reading file: {ex.Message}", Severity.Error);
+            _parseResult = null;
+        }
+        finally
+        {
+            _isProcessing = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task ExecuteImport()
+    {
+        if (_parseResult == null || !_parseResult.IsValid || _parseResult.Header == null)
+        {
+            Snackbar.Add("Cannot import: validation errors exist", Severity.Error);
+            return;
+        }
+        
+        _isSaving = true;
+        StateHasChanged();
+        
+        try
+        {
+            using var context = await DbFactory.CreateDbContextAsync();
+            using var transaction = await context.Database.BeginTransactionAsync();
+            
+            try
+            {
+                long? branchId = null;
+                long? companyId = null;
+                long? financialYearId = null;
+                
+                var branch = await context.Branches.FirstOrDefaultAsync(b => b.IsActive && !b.IsDeleted);
+                if (branch != null)
+                {
+                    branchId = branch.Id;
+                    companyId = branch.CompanyId;
+                }
+                
+                var financialYear = await context.FinancialYears.FirstOrDefaultAsync(fy => fy.IsActive && !fy.IsDeleted);
+                if (financialYear != null)
+                {
+                    financialYearId = financialYear.Id;
+                }
+                
+                var importMaster = ExcelService.CreateImportMaster(_parseResult.Header, branchId, companyId, financialYearId);
+                context.ImportMasters.Add(importMaster);
+                await context.SaveChangesAsync();
+                
+                var shipments = ExcelService.CreateImportShipments(_parseResult.Shipments, importMaster.Id);
+                context.ImportShipments.AddRange(shipments);
+                await context.SaveChangesAsync();
+                
+                await transaction.CommitAsync();
+                
+                Snackbar.Add($"Successfully imported {shipments.Count} shipments!", Severity.Success);
+                MudDialog?.Close(DialogResult.Ok(importMaster.Id));
+            }
+            catch
+            {
+                await transaction.RollbackAsync();
+                throw;
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error saving import: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _isSaving = false;
+            StateHasChanged();
+        }
+    }
+
+    private void Cancel() => MudDialog?.Cancel();
+
+    private string FormatFileSize(long bytes)
+    {
+        if (bytes < 1024) return $"{bytes} B";
+        if (bytes < 1024 * 1024) return $"{bytes / 1024.0:N1} KB";
+        return $"{bytes / (1024.0 * 1024.0):N1} MB";
+    }
+}

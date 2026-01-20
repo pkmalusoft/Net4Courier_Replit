@@ -444,6 +444,17 @@ public class ImportExcelService
                 });
             }
             
+            if (shipment.Pieces <= 0)
+            {
+                errors.Add(new ImportValidationError 
+                { 
+                    Sheet = "Shipments", 
+                    RowNumber = row, 
+                    Column = "Pieces", 
+                    Message = "Pieces must be greater than 0" 
+                });
+            }
+            
             shipments.Add(shipment);
             row++;
             
@@ -465,6 +476,23 @@ public class ImportExcelService
             { 
                 Sheet = "Shipments", 
                 Message = "No shipments found in the Excel file" 
+            });
+        }
+        
+        var duplicateAwbs = shipments
+            .GroupBy(s => s.AWBNo.ToUpperInvariant())
+            .Where(g => g.Count() > 1)
+            .Select(g => g.Key)
+            .ToList();
+        
+        foreach (var dup in duplicateAwbs)
+        {
+            var dupRows = shipments.Where(s => s.AWBNo.ToUpperInvariant() == dup).Select(s => s.RowNumber);
+            errors.Add(new ImportValidationError 
+            { 
+                Sheet = "Shipments", 
+                Column = "AWB No",
+                Message = $"Duplicate AWB '{dup}' found in rows {string.Join(", ", dupRows)}" 
             });
         }
         
@@ -490,7 +518,7 @@ public class ImportExcelService
             BranchId = branchId,
             ImportMode = header.ImportMode,
             MasterReferenceType = header.ImportMode == ImportMode.Air ? MasterReferenceType.MAWB : 
-                                  header.ImportMode == ImportMode.Sea ? MasterReferenceType.BL : MasterReferenceType.TruckNo,
+                                  header.ImportMode == ImportMode.Sea ? MasterReferenceType.BL : MasterReferenceType.TruckWaybill,
             MasterReferenceNumber = header.MasterReferenceNumber,
             OriginCountryName = header.OriginCountry,
             OriginCityName = header.OriginCity,
