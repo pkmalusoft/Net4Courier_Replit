@@ -32,6 +32,7 @@ This comprehensive knowledge base covers all aspects of Net4Courier - from picku
    - [Inscan (Warehouse Receiving)](#inscan-warehouse-receiving)
    - [AWB Entry & Shipments](#awb-entry--shipments)
    - [Process Manifest (MAWB)](#process-manifest-mawb)
+   - [Import Module (Air/Sea/Land)](#import-module-airsealand)
    - [DRS-Outscan (Dispatch)](#drs-outscan-dispatch)
    - [Proof of Delivery (POD)](#proof-of-delivery-pod)
    - [Return to Shipper (RTS)](#return-to-shipper-rts)
@@ -810,6 +811,112 @@ MAWB, master airwaybill, manifest, bagging, bag shipment, flight manifest, carri
 
 ---
 
+## Import Module (Air/Sea/Land)
+
+**Navigation:** Import Operations → Import Dashboard
+
+**Purpose:** Manage incoming shipments from international or domestic sources via air, sea, or land transport.
+
+### Import Modes
+
+| Mode | Identifier | Use Case |
+|------|------------|----------|
+| **Air** | MAWB (Master Airwaybill) | International air freight |
+| **Sea** | BL (Bill of Lading) | Ocean cargo |
+| **Land** | Truck/Vehicle Number | Road transport |
+
+### Import Dashboard (`/import-dashboard`)
+
+The dashboard provides:
+- **Summary Cards**: Total imports, pending customs, cleared, in transit
+- **Filters**: Date range, mode, status, origin
+- **Import List**: All imports with key details and actions
+
+### Create New Import (`/import-entry`)
+
+**Step 1: Select Import Mode**
+- Choose Air, Sea, or Land
+
+**Step 2: Enter Header Details**
+
+| Field | Air Mode | Sea Mode | Land Mode |
+|-------|----------|----------|-----------|
+| Reference | MAWB Number | Bill of Lading | Truck Number |
+| Carrier | Airline Name | Shipping Line | Transport Company |
+| Origin | Origin Airport | Port of Loading | Origin City |
+| Destination | Dest. Airport | Port of Discharge | Destination City |
+| ETA | Flight ETA | Vessel ETA | Truck ETA |
+
+**Step 3: Add Shipments**
+- Enter individual AWB/shipment details
+- Or use Excel Import for bulk entry
+
+### Customs Processing (`/import-customs`)
+
+**Purpose:** Process customs clearance for import shipments.
+
+**Workflow:**
+1. Select import awaiting clearance
+2. Review shipment details (HS Code, Value)
+3. For each shipment, set:
+   - **Customs Status**: Cleared, Held, Duty Pending, Rejected
+   - **Duty Amount**: If applicable
+   - **Clearance Date**: When cleared
+4. Upload supporting documents if required
+5. Bulk update available for multiple shipments
+
+**Clearance Statuses:**
+
+| Status | Description |
+|--------|-------------|
+| Pending | Awaiting customs processing |
+| Cleared | Approved and released |
+| Held for Inspection | Physical inspection required |
+| Duty Pending | Payment awaited |
+| Rejected | Not cleared, return required |
+
+### Excel Import (`/import-excel-upload`)
+
+**Purpose:** Bulk import creation via Excel upload.
+
+**Template Structure:**
+- **Sheet 1: Header** - Import metadata (MAWB/BL, carrier, dates)
+- **Sheet 2: Shipments** - Individual AWB details
+
+**Workflow:**
+1. Click **"Download Template"** (mode-specific)
+2. Fill in header and shipment details
+3. Click **"Upload"** and select file
+4. Review validation:
+   - Required fields check
+   - Positive values validation
+   - Duplicate AWB detection
+5. Preview valid/error rows
+6. Click **"Import"** to process
+7. System creates import with all shipments
+
+**Template Columns (Shipments):**
+- AWB Number, Shipper Name, Consignee Name
+- Pieces, Weight, Description
+- Customs Value, HS Code
+- Origin, Destination
+
+### Import Statuses
+
+| Status | Description |
+|--------|-------------|
+| Created | Import header created |
+| Arrived | Shipment arrived at destination |
+| In Customs | Undergoing customs processing |
+| Cleared | All customs formalities complete |
+| Released | Ready for local delivery |
+| Completed | All shipments delivered |
+
+### Keywords
+import, air import, sea import, land import, MAWB, bill of lading, customs, clearance, duty, HS code, excel import, bulk import, carrier, freight, cargo, customs processing, import dashboard
+
+---
+
 ## DRS-Outscan (Dispatch)
 
 **Navigation:** Sorting/Hub Operations → DRS-Outscan
@@ -902,8 +1009,58 @@ DRS, delivery run sheet, outscan, dispatch, last mile, delivery agent, courier d
 - Data stored locally (IndexedDB)
 - Auto-syncs when connection restored
 
+### Bulk POD Update
+
+**Navigation:** Operations → POD → Bulk Update (`/pod-bulk`)
+
+For updating multiple PODs at once using a grid interface:
+1. Filter by date range, DRS number, or courier
+2. Select multiple AWBs using checkboxes
+3. Apply status update to all selected
+4. Confirm and submit
+
+### POD Excel Batch Upload
+
+**Navigation:** Operations → POD → Excel Upload (`/pod-excel-upload`)
+
+For processing large batches of POD updates via Excel:
+
+**Step 1: Download Template**
+- Click **"Download Template"** for blank template, OR
+- Click **"Template with AWBs"** to pre-populate with pending deliveries
+
+**Step 2: Fill Template**
+The Excel template includes these columns:
+
+| Column | Required | Description |
+|--------|----------|-------------|
+| AWB No | Yes | Shipment number |
+| Delivery Status | Yes | Delivered, Not Delivered, Partial, Refused |
+| Delivery Date | Yes | Date of delivery (YYYY-MM-DD) |
+| Received By | For Delivered | Name of person who received |
+| Relation | Optional | Self, Relative, Guard, Colleague, etc. |
+| Non-Delivery Reason | For Not Delivered | Address Wrong, Customer Unavailable, etc. |
+| Remarks | Optional | Additional notes |
+
+**Step 3: Upload and Validate**
+- Click **"Upload"** and select your filled Excel file
+- System validates each row:
+  - AWB exists in system
+  - Shipment is eligible for POD (out for delivery)
+  - Required fields are filled
+  - Status value is valid
+- Preview shows valid rows (green) and errors (red)
+
+**Step 4: Process Updates**
+- Click **"Process POD Updates"** to apply changes
+- System updates:
+  - POD status in InscanMaster
+  - AWB Tracking history
+  - Shipment timeline
+- Download **Results Report** showing success/failure per AWB
+
 ### Keywords
-POD, proof of delivery, delivery confirmation, signature, photo evidence, GPS, location, COD collection, delivered, refused, not delivered, mobile capture, delivery status
+POD, proof of delivery, delivery confirmation, signature, photo evidence, GPS, location, COD collection, delivered, refused, not delivered, mobile capture, delivery status, bulk POD, excel upload, batch update, POD template
 
 ---
 
@@ -1774,19 +1931,44 @@ company setup, company master, company profile, organization setup
 
 ## Branch Management
 
-**Navigation:** System Settings → Branches / Locations
+**Navigation:** System Settings → Branches
 
-**Purpose:** Manage branch/location master data.
+**Purpose:** Manage branch/location master data with multi-branch support.
 
 ### Branch Details
-- Branch code (used in AWB prefix)
-- Branch name
-- Address
-- Contact person
-- Linked company
+- **Branch Code** - Used in AWB prefix for unique numbering
+- **Branch Name** - Display name (e.g., "Dubai Main Office")
+- **Currency Code/Symbol** - Branch-specific currency (e.g., AED, USD)
+- **Address** - Complete physical address with city, state, country
+- **Manager Name** - Branch manager contact
+- **Linked Company** - Parent company relationship
+- **VAT Percentage** - Tax rate for this branch
+- **Is Head Office** - Flag for main branch
+
+### AWB Number Configuration
+Each branch can have its own AWB numbering sequence:
+- **AWB Prefix** - Unique prefix (e.g., "DXB", "SHJ")
+- **Starting Number** - First AWB number to use
+- **Increment** - Step value (typically 1)
+- **Last Used Number** - Tracks current sequence
+
+### Multi-Branch User Access
+- Users can be assigned to **multiple branches** via User-Branch assignments
+- Each assignment has an **IsDefault** flag for primary branch
+- **Branch-Restricted Login**: Users with multiple branches see a branch selection dropdown after entering credentials
+- Dashboard header displays: **Company Name | Branch Name | User Name**
+- All operations are scoped to the user's selected branch
+
+### Warehouse Management
+Each branch can have multiple warehouses at `/warehouses`:
+- **Warehouse Code/Name** - Identification
+- **Capacity** - Storage capacity in units
+- **Address** - Physical location
+- **Contact Person** - Warehouse manager
+- **Status** - Active/Inactive
 
 ### Keywords
-branch, location, office, hub, warehouse, branch master
+branch, location, office, hub, warehouse, branch master, currency, multi-branch, user branch, branch assignment, AWB prefix
 
 ---
 
