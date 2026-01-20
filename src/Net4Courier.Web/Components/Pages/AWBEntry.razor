@@ -254,8 +254,22 @@
                                  Variant="Variant.Outlined" Margin="Margin.Dense" Format="N2" />
             </MudItem>
             <MudItem xs="6" md="2">
-                <MudNumericField @bind-Value="_inscan.OtherCharge" Label="ODA/Other Charges" 
-                                 Variant="Variant.Outlined" Margin="Margin.Dense" Format="N2" />
+                <MudTextField Value="@((_inscan.OtherCharge ?? 0).ToString("N2"))" Label="ODA/Other Charges" 
+                              Variant="Variant.Outlined" Margin="Margin.Dense" ReadOnly="true"
+                              Adornment="Adornment.End" AdornmentIcon="@Icons.Material.Filled.Add"
+                              OnAdornmentClick="OpenOtherChargesDialog" AdornmentColor="Color.Primary" />
+            </MudItem>
+            <MudItem xs="12">
+                @if (_selectedOtherCharges.Any())
+                {
+                    <MudStack Row="true" Wrap="Wrap.Wrap" Spacing="1">
+                        @foreach (var charge in _selectedOtherCharges)
+                        {
+                            <MudChip T="string" Color="Color.Primary" Size="Size.Small">@charge.ChargeName: @charge.Amount.ToString("N2")</MudChip>
+                        }
+                        <MudText Typo="Typo.caption"><strong>Total: @_selectedOtherCharges.Sum(c => c.Amount).ToString("N2")</strong></MudText>
+                    </MudStack>
+                }
             </MudItem>
             <MudItem xs="6" md="2">
                 <MudNumericField @bind-Value="_inscan.TaxPercent" Label="Tax %" 
@@ -422,6 +436,7 @@
     private string _nextAWBPreview = "";
     private PickupRequest? _sourcePickupRequest;
     private PickupRequestShipment? _sourceShipment;
+    private List<OtherChargeSelection> _selectedOtherCharges = new();
 
     private decimal VolumetricWeight => (_inscan.Length ?? 0) * (_inscan.Width ?? 0) * (_inscan.Height ?? 0) / 5000;
     private decimal ChargeableWeight => Math.Max(_inscan.Weight ?? 0, VolumetricWeight);
@@ -448,6 +463,7 @@
                 _bookingTime = _inscan.TransactionDate.ToLocalTime().TimeOfDay;
                 _createdBy = $"{_inscan.CreatedBy} | {_inscan.CreatedAt:dd-MMM}";
                 _modifiedBy = _inscan.ModifiedAt.HasValue ? $"{_inscan.ModifiedBy} | {_inscan.ModifiedAt:dd-MMM}" : "";
+                await LoadExistingOtherCharges();
             }
         }
         else
@@ -625,6 +641,8 @@
             DbContext.InscanMasters.Update(_inscan);
             await DbContext.SaveChangesAsync();
         }
+        
+        await SaveOtherCharges();
 
         Snackbar.Add(Id > 0 ? "AWB updated successfully" : "AWB created successfully", Severity.Success);
         NavigationManager.NavigateTo("/awb-list");
@@ -633,5 +651,79 @@
     private void Cancel()
     {
         NavigationManager.NavigateTo("/awb-list");
+    }
+
+    private async Task OpenOtherChargesDialog()
+    {
+        var existingCharges = _selectedOtherCharges.Select(c => new AWBOtherCharge
+        {
+            OtherChargeTypeId = c.ChargeTypeId,
+            Amount = c.Amount
+        }).ToList();
+        var parameters = new DialogParameters<OtherChargesDialog>
+        {
+            { x => x.ExistingCharges, existingCharges }
+        };
+        var dialog = await DialogService.ShowAsync<OtherChargesDialog>("Select Other Charges", parameters,
+            new DialogOptions { MaxWidth = MaxWidth.Small, FullWidth = true });
+        var result = await dialog.Result;
+
+        if (result != null && !result.Canceled && result.Data is List<AWBOtherCharge> selectedCharges)
+        {
+            var chargeTypes = await DbContext.OtherChargeTypes.ToListAsync();
+            _selectedOtherCharges = selectedCharges.Select(c => new OtherChargeSelection
+            {
+                ChargeTypeId = c.OtherChargeTypeId,
+                ChargeName = chargeTypes.FirstOrDefault(ct => ct.Id == c.OtherChargeTypeId)?.Name ?? "Unknown",
+                Amount = c.Amount
+            }).ToList();
+            _inscan.OtherCharge = _selectedOtherCharges.Sum(c => c.Amount);
+        }
+    }
+
+    private async Task LoadExistingOtherCharges()
+    {
+        if (Id > 0)
+        {
+            var charges = await DbContext.AWBOtherCharges
+                .Include(c => c.OtherChargeType)
+                .Where(c => c.InscanId == Id)
+                .ToListAsync();
+            _selectedOtherCharges = charges.Select(c => new OtherChargeSelection
+            {
+                ChargeTypeId = c.OtherChargeTypeId,
+                ChargeName = c.OtherChargeType?.Name ?? "Unknown",
+                Amount = c.Amount
+            }).ToList();
+            _inscan.OtherCharge = _selectedOtherCharges.Sum(c => c.Amount);
+        }
+    }
+
+    private async Task SaveOtherCharges()
+    {
+        var inscanId = _inscan.Id;
+        if (inscanId > 0)
+        {
+            var existingCharges = await DbContext.AWBOtherCharges.Where(c => c.InscanId == inscanId).ToListAsync();
+            DbContext.AWBOtherCharges.RemoveRange(existingCharges);
+
+            foreach (var charge in _selectedOtherCharges)
+            {
+                DbContext.AWBOtherCharges.Add(new AWBOtherCharge
+                {
+                    InscanId = inscanId,
+                    OtherChargeTypeId = charge.ChargeTypeId,
+                    Amount = charge.Amount
+                });
+            }
+            await DbContext.SaveChangesAsync();
+        }
+    }
+
+    private class OtherChargeSelection
+    {
+        public long ChargeTypeId { get; set; }
+        public string ChargeName { get; set; } = string.Empty;
+        public decimal Amount { get; set; }
     }
 }
