@@ -18,6 +18,9 @@ public class AuthService
         var user = await _context.Users
             .Include(u => u.Role)
             .Include(u => u.Branch)
+            .Include(u => u.UserBranches)
+                .ThenInclude(ub => ub.Branch)
+                    .ThenInclude(b => b.Company)
             .FirstOrDefaultAsync(u => u.Username == username && u.IsActive);
 
         if (user == null)
@@ -30,6 +33,37 @@ public class AuthService
         await _context.SaveChangesAsync();
 
         return user;
+    }
+    
+    public async Task<List<Branch>> GetUserBranchesAsync(long userId)
+    {
+        var userBranches = await _context.UserBranches
+            .Include(ub => ub.Branch)
+                .ThenInclude(b => b.Company)
+            .Where(ub => ub.UserId == userId && ub.Branch.IsActive && !ub.IsDeleted)
+            .Select(ub => ub.Branch)
+            .ToListAsync();
+            
+        if (!userBranches.Any())
+        {
+            var user = await _context.Users
+                .Include(u => u.Branch)
+                    .ThenInclude(b => b!.Company)
+                .FirstOrDefaultAsync(u => u.Id == userId);
+            if (user?.Branch != null)
+            {
+                userBranches.Add(user.Branch);
+            }
+        }
+        
+        return userBranches;
+    }
+    
+    public async Task<Branch?> GetBranchWithCompanyAsync(long branchId)
+    {
+        return await _context.Branches
+            .Include(b => b.Company)
+            .FirstOrDefaultAsync(b => b.Id == branchId);
     }
 
     public async Task SeedAdminUserAsync()

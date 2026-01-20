@@ -1,0 +1,107 @@
+@using Microsoft.EntityFrameworkCore
+@using Net4Courier.Infrastructure.Data
+@using Net4Courier.Masters.Entities
+@inject IDbContextFactory<ApplicationDbContext> DbContextFactory
+
+<MudDialog>
+    <TitleContent>
+        <MudText Typo="Typo.h6">
+            <MudIcon Icon="@Icons.Material.Filled.Warehouse" Class="mr-2" />
+            @(IsNew ? "Add New Warehouse" : "Edit Warehouse")
+        </MudText>
+    </TitleContent>
+    <DialogContent>
+        <MudForm @ref="_form" @bind-IsValid="_formIsValid">
+            <MudGrid>
+                <MudItem xs="12" md="6">
+                    <MudTextField @bind-Value="Warehouse.Name" Label="Warehouse Name" Required="true" RequiredError="Warehouse name is required"
+                                  Variant="Variant.Outlined" />
+                </MudItem>
+                <MudItem xs="12" md="6">
+                    <MudTextField @bind-Value="Warehouse.Code" Label="Warehouse Code" Variant="Variant.Outlined" />
+                </MudItem>
+                <MudItem xs="12" md="6">
+                    <MudSelect T="long" @bind-Value="Warehouse.BranchId" Label="Branch" Required="true" RequiredError="Branch is required" Variant="Variant.Outlined">
+                        @foreach (var branch in Branches)
+                        {
+                            <MudSelectItem T="long" Value="@branch.Id">@branch.Name</MudSelectItem>
+                        }
+                    </MudSelect>
+                </MudItem>
+                <MudItem xs="12" md="6">
+                    <MudTextField @bind-Value="Warehouse.ContactPerson" Label="Contact Person" Variant="Variant.Outlined" />
+                </MudItem>
+                <MudItem xs="12" md="6">
+                    <MudTextField @bind-Value="Warehouse.Phone" Label="Phone" Variant="Variant.Outlined" />
+                </MudItem>
+                <MudItem xs="12" md="6">
+                    <MudTextField @bind-Value="Warehouse.Email" Label="Email" InputType="InputType.Email" Variant="Variant.Outlined" />
+                </MudItem>
+                <MudItem xs="12">
+                    <MudTextField @bind-Value="Warehouse.Address" Label="Address" Variant="Variant.Outlined" Lines="2" />
+                </MudItem>
+                
+                <MudItem xs="12">
+                    <MudDivider Class="my-2" />
+                    <MudText Typo="Typo.subtitle2" Class="mb-2">Capacity Information</MudText>
+                </MudItem>
+                
+                <MudItem xs="12" md="6">
+                    <MudNumericField @bind-Value="Warehouse.CapacitySquareMeters" Label="Capacity (sq meters)" Format="N2" Variant="Variant.Outlined" />
+                </MudItem>
+                <MudItem xs="12" md="6">
+                    <MudNumericField @bind-Value="Warehouse.MaxPalletCapacity" Label="Max Pallet Capacity" Variant="Variant.Outlined" />
+                </MudItem>
+                
+                <MudItem xs="12">
+                    <MudDivider Class="my-2" />
+                </MudItem>
+                
+                <MudItem xs="12">
+                    <MudStack Row="true" Spacing="4">
+                        <MudSwitch @bind-Value="Warehouse.IsDefault" Label="Is Default" Color="Color.Primary" />
+                        <MudSwitch @bind-Value="Warehouse.IsActive" Label="Active" Color="Color.Success" />
+                    </MudStack>
+                </MudItem>
+            </MudGrid>
+        </MudForm>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Cancel">Cancel</MudButton>
+        <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="Save" Disabled="!_formIsValid">Save</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] MudDialogInstance MudDialog { get; set; } = null!;
+    [Parameter] public Warehouse Warehouse { get; set; } = new();
+    [Parameter] public bool IsNew { get; set; }
+    [Parameter] public List<Branch> Branches { get; set; } = new();
+
+    private MudForm _form = null!;
+    private bool _formIsValid;
+
+    private async Task Save()
+    {
+        await _form.Validate();
+        if (!_formIsValid) return;
+
+        await using var dbContext = await DbContextFactory.CreateDbContextAsync();
+        
+        if (IsNew)
+        {
+            Warehouse.CreatedAt = DateTime.UtcNow;
+            dbContext.Warehouses.Add(Warehouse);
+        }
+        else
+        {
+            Warehouse.ModifiedAt = DateTime.UtcNow;
+            dbContext.Warehouses.Update(Warehouse);
+        }
+
+        await dbContext.SaveChangesAsync();
+        MudDialog.Close(DialogResult.Ok(Warehouse));
+    }
+
+    private void Cancel() => MudDialog.Cancel();
+}

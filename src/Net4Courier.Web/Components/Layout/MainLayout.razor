@@ -155,25 +155,14 @@
             
             if (user.Identity?.IsAuthenticated == true)
             {
-                _userName = user.Identity.Name ?? "User";
+                var fullName = user.FindFirst("FullName")?.Value;
+                _userName = !string.IsNullOrEmpty(fullName) ? fullName : (user.Identity.Name ?? "User");
                 _userInitial = _userName.Length > 0 ? _userName[0].ToString().ToUpper() : "U";
                 
-                await using var dbContext = await DbFactory.CreateDbContextAsync();
+                _companyName = user.FindFirst("CompanyName")?.Value ?? "No Company";
+                _branchName = user.FindFirst("BranchName")?.Value ?? "No Branch";
                 
-                var userIdClaim = user.FindFirst("UserId")?.Value;
-                if (int.TryParse(userIdClaim, out var userId))
-                {
-                    var dbUser = await dbContext.Users
-                        .Include(u => u.Branch)
-                        .ThenInclude(b => b!.Company)
-                        .FirstOrDefaultAsync(u => u.Id == userId);
-                    
-                    if (dbUser != null)
-                    {
-                        _companyName = dbUser.Branch?.Company?.Name ?? "No Company";
-                        _branchName = dbUser.Branch?.Name ?? "No Branch";
-                    }
-                }
+                await using var dbContext = await DbFactory.CreateDbContextAsync();
                 
                 var currentPeriod = await dbContext.FinancialPeriods
                     .Where(fp => fp.Status == Net4Courier.Masters.Entities.PeriodStatus.Open && !fp.IsDeleted)

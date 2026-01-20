@@ -14,6 +14,8 @@ public class ApplicationDbContext : DbContext
     public DbSet<Company> Companies => Set<Company>();
     public DbSet<Branch> Branches => Set<Branch>();
     public DbSet<User> Users => Set<User>();
+    public DbSet<UserBranch> UserBranches => Set<UserBranch>();
+    public DbSet<Warehouse> Warehouses => Set<Warehouse>();
     public DbSet<Role> Roles => Set<Role>();
     public DbSet<RolePermission> RolePermissions => Set<RolePermission>();
     public DbSet<FeaturePermission> FeaturePermissions => Set<FeaturePermission>();
@@ -111,6 +113,8 @@ public class ApplicationDbContext : DbContext
             entity.HasKey(e => e.Id);
             entity.Property(e => e.Name).HasMaxLength(200).IsRequired();
             entity.Property(e => e.Code).HasMaxLength(50);
+            entity.Property(e => e.CurrencyCode).HasMaxLength(10).HasDefaultValue("USD");
+            entity.Property(e => e.CurrencySymbol).HasMaxLength(10);
             entity.HasIndex(e => new { e.CompanyId, e.Code }).IsUnique();
             entity.HasOne(e => e.Company)
                   .WithMany(c => c.Branches)
@@ -122,6 +126,34 @@ public class ApplicationDbContext : DbContext
                   .OnDelete(DeleteBehavior.Restrict);
             entity.HasOne(e => e.City).WithMany().HasForeignKey(e => e.CityId)
                   .OnDelete(DeleteBehavior.Restrict);
+        });
+        
+        modelBuilder.Entity<Warehouse>(entity =>
+        {
+            entity.ToTable("Warehouses");
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Name).HasMaxLength(200).IsRequired();
+            entity.Property(e => e.Code).HasMaxLength(50);
+            entity.HasIndex(e => new { e.BranchId, e.Code }).IsUnique();
+            entity.HasOne(e => e.Branch)
+                  .WithMany(b => b.Warehouses)
+                  .HasForeignKey(e => e.BranchId)
+                  .OnDelete(DeleteBehavior.Cascade);
+        });
+        
+        modelBuilder.Entity<UserBranch>(entity =>
+        {
+            entity.ToTable("UserBranches");
+            entity.HasKey(e => e.Id);
+            entity.HasIndex(e => new { e.UserId, e.BranchId }).IsUnique();
+            entity.HasOne(e => e.User)
+                  .WithMany(u => u.UserBranches)
+                  .HasForeignKey(e => e.UserId)
+                  .OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne(e => e.Branch)
+                  .WithMany(b => b.UserBranches)
+                  .HasForeignKey(e => e.BranchId)
+                  .OnDelete(DeleteBehavior.Cascade);
         });
 
         modelBuilder.Entity<User>(entity =>

@@ -1,0 +1,228 @@
+@page "/warehouses"
+@inject IDbContextFactory<ApplicationDbContext> DbContextFactory
+@inject IDialogService DialogService
+@inject ISnackbar Snackbar
+@inject AuthenticationStateProvider AuthStateProvider
+@using Microsoft.EntityFrameworkCore
+@using Microsoft.AspNetCore.Components.Authorization
+@using Net4Courier.Infrastructure.Data
+@using Net4Courier.Masters.Entities
+@using Net4Courier.Web.Services
+
+<PageTitle>Warehouses - Net4Courier</PageTitle>
+
+<MudText Typo="Typo.h4" GutterBottom="true">Warehouses</MudText>
+
+<MudPaper Class="pa-4 mb-4" Elevation="2">
+    <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
+        <MudStack Row="true" Spacing="2" AlignItems="AlignItems.Center">
+            <MudTextField @bind-Value="_searchString" Placeholder="Search warehouses..." Adornment="Adornment.Start" 
+                          AdornmentIcon="@Icons.Material.Filled.Search" IconSize="Size.Medium" Class="mt-0" Immediate="true" Style="min-width: 250px;" />
+            <MudSelect T="long?" @bind-Value="_selectedBranchId" Label="Filter by Branch" Variant="Variant.Outlined" 
+                       Clearable="true" Style="min-width: 200px;" Class="mt-0">
+                @foreach (var branch in _branches)
+                {
+                    <MudSelectItem T="long?" Value="@((long?)branch.Id)">@branch.Name</MudSelectItem>
+                }
+            </MudSelect>
+        </MudStack>
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add" OnClick="OpenCreateDialog">
+            Add Warehouse
+        </MudButton>
+    </MudStack>
+</MudPaper>
+
+<MudPaper Elevation="2">
+    <MudTable Items="@_filteredWarehouses" Hover="true" Striped="true" Loading="@_loading" LoadingProgressColor="Color.Primary">
+        <HeaderContent>
+            <MudTh><MudTableSortLabel SortBy="new Func<Warehouse, object>(x => x.Code ?? string.Empty)">Code</MudTableSortLabel></MudTh>
+            <MudTh><MudTableSortLabel SortBy="new Func<Warehouse, object>(x => x.Name)">Name</MudTableSortLabel></MudTh>
+            <MudTh>Branch Name</MudTh>
+            <MudTh>Contact Person</MudTh>
+            <MudTh>Phone</MudTh>
+            <MudTh>Capacity (sqm)</MudTh>
+            <MudTh>Is Default</MudTh>
+            <MudTh>Status</MudTh>
+            <MudTh Style="width: 150px;">Actions</MudTh>
+        </HeaderContent>
+        <RowTemplate>
+            <MudTd DataLabel="Code">@context.Code</MudTd>
+            <MudTd DataLabel="Name">@context.Name</MudTd>
+            <MudTd DataLabel="Branch Name">@context.Branch?.Name</MudTd>
+            <MudTd DataLabel="Contact Person">@context.ContactPerson</MudTd>
+            <MudTd DataLabel="Phone">@context.Phone</MudTd>
+            <MudTd DataLabel="Capacity (sqm)">@context.CapacitySquareMeters?.ToString("N2")</MudTd>
+            <MudTd DataLabel="Is Default">
+                <MudIcon Icon="@(context.IsDefault ? Icons.Material.Filled.CheckCircle : Icons.Material.Filled.Cancel)" 
+                         Color="@(context.IsDefault ? Color.Success : Color.Default)" Size="Size.Small" />
+            </MudTd>
+            <MudTd DataLabel="Status">
+                <MudChip T="string" Color="@(context.IsActive ? Color.Success : Color.Error)" Size="Size.Small">
+                    @(context.IsActive ? "Active" : "Inactive")
+                </MudChip>
+            </MudTd>
+            <MudTd>
+                <MudIconButton Icon="@Icons.Material.Filled.Edit" Size="Size.Small" Color="Color.Primary" OnClick="@(() => OpenEditDialog(context))" />
+                <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" Color="Color.Error" OnClick="@(() => DeleteWarehouse(context))" />
+            </MudTd>
+        </RowTemplate>
+        <NoRecordsContent>
+            <MudText>No warehouses found.</MudText>
+        </NoRecordsContent>
+    </MudTable>
+</MudPaper>
+
+@code {
+    private List<Warehouse> _warehouses = new();
+    private List<Branch> _branches = new();
+    private HashSet<long> _userBranchIds = new();
+    private bool _loading = true;
+    private string _searchString = "";
+    private long? _selectedBranchId;
+
+    private IEnumerable<Warehouse> _filteredWarehouses => _warehouses.Where(FilterFunc);
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadUserBranches();
+        await LoadData();
+    }
+    
+    private async Task LoadUserBranches()
+    {
+        var authProvider = (AppAuthStateProvider)AuthStateProvider;
+        var currentBranch = authProvider.CurrentBranch;
+        var currentUser = authProvider.CurrentUser;
+        
+        if (currentUser != null)
+        {
+            await using var dbContext = await DbContextFactory.CreateDbContextAsync();
+            var userBranches = await dbContext.UserBranches
+                .Where(ub => ub.UserId == currentUser.Id && !ub.IsDeleted)
+                .Select(ub => ub.BranchId)
+                .ToListAsync();
+                
+            if (userBranches.Any())
+            {
+                _userBranchIds = userBranches.ToHashSet();
+            }
+            else if (currentBranch != null)
+            {
+                _userBranchIds = new HashSet<long> { currentBranch.Id };
+            }
+        }
+    }
+
+    private async Task LoadData()
+    {
+        _loading = true;
+        await using var dbContext = await DbContextFactory.CreateDbContextAsync();
+        
+        if (_userBranchIds.Any())
+        {
+            _branches = await dbContext.Branches
+                .Where(b => b.IsActive && !b.IsDeleted && _userBranchIds.Contains(b.Id))
+                .OrderBy(b => b.Name)
+                .ToListAsync();
+                
+            _warehouses = await dbContext.Warehouses
+                .Include(w => w.Branch)
+                .Where(w => !w.IsDeleted && _userBranchIds.Contains(w.BranchId))
+                .OrderBy(w => w.Name)
+                .ToListAsync();
+        }
+        else
+        {
+            _branches = await dbContext.Branches
+                .Where(b => b.IsActive && !b.IsDeleted)
+                .OrderBy(b => b.Name)
+                .ToListAsync();
+                
+            _warehouses = await dbContext.Warehouses
+                .Include(w => w.Branch)
+                .Where(w => !w.IsDeleted)
+                .OrderBy(w => w.Name)
+                .ToListAsync();
+        }
+            
+        _loading = false;
+    }
+
+    private bool FilterFunc(Warehouse warehouse)
+    {
+        var matchesSearch = string.IsNullOrWhiteSpace(_searchString) ||
+               warehouse.Name.Contains(_searchString, StringComparison.OrdinalIgnoreCase) ||
+               (warehouse.Code?.Contains(_searchString, StringComparison.OrdinalIgnoreCase) ?? false) ||
+               (warehouse.ContactPerson?.Contains(_searchString, StringComparison.OrdinalIgnoreCase) ?? false);
+        
+        var matchesBranch = !_selectedBranchId.HasValue || warehouse.BranchId == _selectedBranchId.Value;
+        
+        return matchesSearch && matchesBranch;
+    }
+
+    private async Task OpenCreateDialog()
+    {
+        await using var dbContext = await DbContextFactory.CreateDbContextAsync();
+        var branches = await dbContext.Branches.Where(b => b.IsActive && !b.IsDeleted).ToListAsync();
+        
+        var parameters = new DialogParameters<WarehouseDialog> 
+        { 
+            { x => x.Warehouse, new Warehouse() }, 
+            { x => x.IsNew, true }, 
+            { x => x.Branches, branches } 
+        };
+        var dialog = await DialogService.ShowAsync<WarehouseDialog>("Add Warehouse", parameters, new DialogOptions { MaxWidth = MaxWidth.Medium, FullWidth = true });
+        var result = await dialog.Result;
+        
+        if (!result!.Canceled)
+        {
+            await LoadData();
+            Snackbar.Add("Warehouse created successfully", Severity.Success);
+        }
+    }
+
+    private async Task OpenEditDialog(Warehouse warehouse)
+    {
+        await using var dbContext = await DbContextFactory.CreateDbContextAsync();
+        var branches = await dbContext.Branches.Where(b => b.IsActive && !b.IsDeleted).ToListAsync();
+        
+        var warehouseToEdit = await dbContext.Warehouses
+            .Include(w => w.Branch)
+            .FirstOrDefaultAsync(w => w.Id == warehouse.Id);
+            
+        if (warehouseToEdit == null) return;
+        
+        var parameters = new DialogParameters<WarehouseDialog> 
+        { 
+            { x => x.Warehouse, warehouseToEdit }, 
+            { x => x.IsNew, false }, 
+            { x => x.Branches, branches } 
+        };
+        var dialog = await DialogService.ShowAsync<WarehouseDialog>("Edit Warehouse", parameters, new DialogOptions { MaxWidth = MaxWidth.Medium, FullWidth = true });
+        var result = await dialog.Result;
+        
+        if (!result!.Canceled)
+        {
+            await LoadData();
+            Snackbar.Add("Warehouse updated successfully", Severity.Success);
+        }
+    }
+
+    private async Task DeleteWarehouse(Warehouse warehouse)
+    {
+        var confirm = await DialogService.ShowMessageBox("Confirm Delete", $"Are you sure you want to delete {warehouse.Name}?", yesText: "Delete", cancelText: "Cancel");
+        
+        if (confirm == true)
+        {
+            await using var dbContext = await DbContextFactory.CreateDbContextAsync();
+            var warehouseToDelete = await dbContext.Warehouses.FindAsync(warehouse.Id);
+            if (warehouseToDelete != null)
+            {
+                warehouseToDelete.IsDeleted = true;
+                await dbContext.SaveChangesAsync();
+            }
+            await LoadData();
+            Snackbar.Add("Warehouse deleted successfully", Severity.Success);
+        }
+    }
+}

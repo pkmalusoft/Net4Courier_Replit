@@ -19,6 +19,10 @@ public class Branch : BaseEntity
     public bool IsHeadOffice { get; set; } = false;
     public bool IsActive { get; set; } = true;
     
+    // Currency for this branch
+    public string CurrencyCode { get; set; } = "USD";
+    public string? CurrencySymbol { get; set; }
+    
     // AWB Configuration
     public string? AWBPrefix { get; set; }
     public long AWBStartingNumber { get; set; } = 1;
@@ -29,4 +33,6 @@ public class Branch : BaseEntity
     public virtual Country? Country { get; set; }
     public virtual State? State { get; set; }
     public virtual City? City { get; set; }
+    public virtual ICollection<Warehouse> Warehouses { get; set; } = new List<Warehouse>();
+    public virtual ICollection<UserBranch> UserBranches { get; set; } = new List<UserBranch>();
 }

@@ -49,15 +49,6 @@
                     </MudSelect>
                 </MudItem>
                 <MudItem xs="12" md="6">
-                    <MudSelect T="long?" @bind-Value="User.BranchId" Label="Branch" Variant="Variant.Outlined" AnchorOrigin="Origin.BottomCenter">
-                        <MudSelectItem T="long?" Value="@((long?)null)">-- Select Branch --</MudSelectItem>
-                        @foreach (var branch in _branches)
-                        {
-                            <MudSelectItem T="long?" Value="@branch.Id">@branch.Name</MudSelectItem>
-                        }
-                    </MudSelect>
-                </MudItem>
-                <MudItem xs="12" md="6">
                     <MudSelect T="long?" @bind-Value="User.UserTypeId" Label="User Type" Variant="Variant.Outlined" AnchorOrigin="Origin.BottomCenter">
                         <MudSelectItem T="long?" Value="@((long?)null)">-- Select User Type --</MudSelectItem>
                         @foreach (var userType in _userTypes)
@@ -68,6 +59,51 @@
                 </MudItem>
                 <MudItem xs="12" md="6">
                     <MudSwitch @bind-Value="User.IsActive" Label="Active" Color="Color.Primary" />
+                </MudItem>
+                
+                <MudItem xs="12">
+                    <MudDivider Class="my-2" />
+                    <MudText Typo="Typo.subtitle1" Class="mb-2">
+                        <MudIcon Icon="@Icons.Material.Filled.Store" Size="Size.Small" Class="mr-1" />
+                        Assigned Branches
+                    </MudText>
+                    <MudText Typo="Typo.caption" Color="Color.Secondary" Class="mb-3">
+                        Select branches this user can login to. Mark one as default.
+                    </MudText>
+                </MudItem>
+                
+                <MudItem xs="12">
+                    <MudPaper Outlined="true" Class="pa-3">
+                        @if (_branches.Any())
+                        {
+                            <MudStack Spacing="2">
+                                @foreach (var branch in _branches)
+                                {
+                                    var isAssigned = _selectedBranchIds.Contains(branch.Id);
+                                    var isDefault = _defaultBranchId == branch.Id;
+                                    <MudStack Row="true" AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween">
+                                        <MudCheckBox T="bool" Value="@isAssigned" ValueChanged="@((bool val) => ToggleBranch(branch.Id, val))" 
+                                                     Label="@($"{branch.Company?.Name} - {branch.Name}")" 
+                                                     Color="Color.Primary" Dense="true" />
+                                        @if (isAssigned)
+                                        {
+                                            <MudChip T="string" Size="Size.Small" 
+                                                     Color="@(isDefault ? Color.Primary : Color.Default)"
+                                                     Variant="@(isDefault ? Variant.Filled : Variant.Outlined)"
+                                                     OnClick="@(() => SetDefaultBranch(branch.Id))"
+                                                     Class="cursor-pointer">
+                                                @(isDefault ? "Default" : "Set as Default")
+                                            </MudChip>
+                                        }
+                                    </MudStack>
+                                }
+                            </MudStack>
+                        }
+                        else
+                        {
+                            <MudText Color="Color.Secondary">No branches available</MudText>
+                        }
+                    </MudPaper>
                 </MudItem>
             </MudGrid>
         </MudForm>
@@ -90,12 +126,57 @@
     private List<Role> _roles = new();
     private List<Branch> _branches = new();
     private List<UserType> _userTypes = new();
+    
+    private HashSet<long> _selectedBranchIds = new();
+    private long? _defaultBranchId;
 
     protected override async Task OnInitializedAsync()
     {
         _roles = await DbContext.Roles.Where(r => r.IsActive && !r.IsDeleted).OrderBy(r => r.Name).ToListAsync();
-        _branches = await DbContext.Branches.Where(b => b.IsActive && !b.IsDeleted).OrderBy(b => b.Name).ToListAsync();
+        _branches = await DbContext.Branches
+            .Include(b => b.Company)
+            .Where(b => b.IsActive && !b.IsDeleted)
+            .OrderBy(b => b.Company.Name)
+            .ThenBy(b => b.Name)
+            .ToListAsync();
         _userTypes = await DbContext.UserTypes.Where(ut => ut.IsActive && !ut.IsDeleted).OrderBy(ut => ut.Name).ToListAsync();
+        
+        if (!IsNew && User.Id > 0)
+        {
+            var userBranches = await DbContext.UserBranches
+                .Where(ub => ub.UserId == User.Id && !ub.IsDeleted)
+                .ToListAsync();
+            _selectedBranchIds = userBranches.Select(ub => ub.BranchId).ToHashSet();
+            _defaultBranchId = userBranches.FirstOrDefault(ub => ub.IsDefault)?.BranchId;
+            
+            if (!_selectedBranchIds.Any() && User.BranchId.HasValue)
+            {
+                _selectedBranchIds.Add(User.BranchId.Value);
+                _defaultBranchId = User.BranchId;
+            }
+        }
+    }
+    
+    private void ToggleBranch(long branchId, bool isSelected)
+    {
+        if (isSelected)
+        {
+            _selectedBranchIds.Add(branchId);
+            if (_defaultBranchId == null)
+                _defaultBranchId = branchId;
+        }
+        else
+        {
+            _selectedBranchIds.Remove(branchId);
+            if (_defaultBranchId == branchId)
+                _defaultBranchId = _selectedBranchIds.FirstOrDefault();
+        }
+    }
+    
+    private void SetDefaultBranch(long branchId)
+    {
+        if (_selectedBranchIds.Contains(branchId))
+            _defaultBranchId = branchId;
     }
 
     private async Task Save()
@@ -111,12 +192,44 @@
             }
             User.PasswordHash = AuthService.HashPassword(_password);
             User.CreatedAt = DateTime.UtcNow;
+            User.BranchId = _defaultBranchId;
             DbContext.Users.Add(User);
+            await DbContext.SaveChangesAsync();
+            
+            foreach (var branchId in _selectedBranchIds)
+            {
+                var userBranch = new UserBranch
+                {
+                    UserId = User.Id,
+                    BranchId = branchId,
+                    IsDefault = branchId == _defaultBranchId,
+                    CreatedAt = DateTime.UtcNow
+                };
+                DbContext.UserBranches.Add(userBranch);
+            }
         }
         else
         {
             User.ModifiedAt = DateTime.UtcNow;
+            User.BranchId = _defaultBranchId;
             DbContext.Users.Update(User);
+            
+            var existingUserBranches = await DbContext.UserBranches
+                .Where(ub => ub.UserId == User.Id)
+                .ToListAsync();
+            DbContext.UserBranches.RemoveRange(existingUserBranches);
+            
+            foreach (var branchId in _selectedBranchIds)
+            {
+                var userBranch = new UserBranch
+                {
+                    UserId = User.Id,
+                    BranchId = branchId,
+                    IsDefault = branchId == _defaultBranchId,
+                    CreatedAt = DateTime.UtcNow
+                };
+                DbContext.UserBranches.Add(userBranch);
+            }
         }
 
         await DbContext.SaveChangesAsync();

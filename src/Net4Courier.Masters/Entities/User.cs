@@ -18,4 +18,5 @@ public class User : BaseEntity
     public virtual Branch? Branch { get; set; }
     public virtual Role? Role { get; set; }
     public virtual UserType? UserType { get; set; }
+    public virtual ICollection<UserBranch> UserBranches { get; set; } = new List<UserBranch>();
 }

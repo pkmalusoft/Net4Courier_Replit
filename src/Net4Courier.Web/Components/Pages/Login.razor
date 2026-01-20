@@ -2,6 +2,7 @@
 @layout Net4Courier.Web.Components.Layout.EmptyLayout
 @using Net4Courier.Infrastructure.Services
 @using Net4Courier.Web.Services
+@using Net4Courier.Masters.Entities
 @using Microsoft.AspNetCore.Components.Authorization
 @inject AuthService AuthService
 @inject AuthenticationStateProvider AuthStateProvider
@@ -12,60 +13,118 @@
         <div class="login-content">
             <img src="images/logo.png" alt="Net4Courier" class="login-logo" />
             
-            <MudText Typo="Typo.subtitle1" Align="Align.Center" Color="Color.Secondary" Class="mb-6">
-                Sign in to your account
-            </MudText>
-            
-            @if (!string.IsNullOrEmpty(_errorMessage))
+            @if (_loginStep == LoginStep.Credentials)
             {
-                <MudAlert Severity="Severity.Error" Dense="true" Class="mb-4">@_errorMessage</MudAlert>
+                <MudText Typo="Typo.subtitle1" Align="Align.Center" Color="Color.Secondary" Class="mb-6">
+                    Sign in to your account
+                </MudText>
+                
+                @if (!string.IsNullOrEmpty(_errorMessage))
+                {
+                    <MudAlert Severity="Severity.Error" Dense="true" Class="mb-4">@_errorMessage</MudAlert>
+                }
+
+                <MudTextField @bind-Value="_username" 
+                              Label="Username" 
+                              Variant="Variant.Outlined"
+                              Adornment="Adornment.Start"
+                              AdornmentIcon="@Icons.Material.Filled.Person"
+                              Required="true"
+                              Immediate="true"
+                              Class="mb-4"
+                              OnKeyDown="HandleKeyDown" />
+
+                <MudTextField @bind-Value="_password" 
+                              Label="Password" 
+                              Variant="Variant.Outlined"
+                              InputType="@_passwordInputType"
+                              Adornment="Adornment.End"
+                              AdornmentIcon="@_passwordIcon"
+                              OnAdornmentClick="TogglePasswordVisibility"
+                              Required="true"
+                              Immediate="true"
+                              Class="mb-2"
+                              OnKeyDown="HandleKeyDown" />
+
+                <div class="d-flex justify-end mb-4">
+                    <MudLink Href="/forgot-password" Color="Color.Primary" Typo="Typo.body2">
+                        Forgot Password?
+                    </MudLink>
+                </div>
+
+                <MudButton Variant="Variant.Filled" 
+                           Color="Color.Primary" 
+                           FullWidth="true"
+                           Size="Size.Large"
+                           Disabled="@_isLoading"
+                           OnClick="HandleValidateCredentials"
+                           Class="login-btn">
+                    @if (_isLoading)
+                    {
+                        <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" />
+                        <span>Validating...</span>
+                    }
+                    else
+                    {
+                        <span>Continue</span>
+                    }
+                </MudButton>
             }
-
-            <MudTextField @bind-Value="_username" 
-                          Label="Username" 
-                          Variant="Variant.Outlined"
-                          Adornment="Adornment.Start"
-                          AdornmentIcon="@Icons.Material.Filled.Person"
-                          Required="true"
-                          Immediate="true"
-                          Class="mb-4"
-                          OnKeyDown="HandleKeyDown" />
-
-            <MudTextField @bind-Value="_password" 
-                          Label="Password" 
-                          Variant="Variant.Outlined"
-                          InputType="@_passwordInputType"
-                          Adornment="Adornment.End"
-                          AdornmentIcon="@_passwordIcon"
-                          OnAdornmentClick="TogglePasswordVisibility"
-                          Required="true"
-                          Immediate="true"
-                          Class="mb-2"
-                          OnKeyDown="HandleKeyDown" />
-
-            <div class="d-flex justify-end mb-4">
-                <MudLink Href="/forgot-password" Color="Color.Primary" Typo="Typo.body2">
-                    Forgot Password?
-                </MudLink>
-            </div>
-
-            <MudButton Variant="Variant.Filled" 
-                       Color="Color.Primary" 
-                       FullWidth="true"
-                       Size="Size.Large"
-                       Disabled="@_isLoading"
-                       OnClick="HandleLogin"
-                       Class="login-btn">
-                @if (_isLoading)
+            else if (_loginStep == LoginStep.BranchSelection)
+            {
+                <MudText Typo="Typo.subtitle1" Align="Align.Center" Color="Color.Secondary" Class="mb-2">
+                    Welcome, @(_validatedUser?.FullName ?? _validatedUser?.Username)
+                </MudText>
+                <MudText Typo="Typo.body2" Align="Align.Center" Color="Color.Secondary" Class="mb-6">
+                    Select your branch to continue
+                </MudText>
+                
+                @if (!string.IsNullOrEmpty(_errorMessage))
                 {
-                    <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" />
-                    <span>Signing in...</span>
+                    <MudAlert Severity="Severity.Error" Dense="true" Class="mb-4">@_errorMessage</MudAlert>
                 }
-                else
-                {
-                    <span>Sign In</span>
-                }
-            </MudButton>
+
+                <MudSelect T="long?" @bind-Value="_selectedBranchId" 
+                           Label="Branch" 
+                           Variant="Variant.Outlined"
+                           AnchorOrigin="Origin.BottomCenter"
+                           Required="true"
+                           Class="mb-4">
+                    @foreach (var branch in _availableBranches)
+                    {
+                        <MudSelectItem T="long?" Value="@branch.Id">
+                            @branch.Company?.Name - @branch.Name
+                        </MudSelectItem>
+                    }
+                </MudSelect>
+
+                <MudButton Variant="Variant.Filled" 
+                           Color="Color.Primary" 
+                           FullWidth="true"
+                           Size="Size.Large"
+                           Disabled="@(_isLoading || !_selectedBranchId.HasValue)"
+                           OnClick="HandleLogin"
+                           Class="login-btn mb-3">
+                    @if (_isLoading)
+                    {
+                        <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" />
+                        <span>Signing in...</span>
+                    }
+                    else
+                    {
+                        <span>Sign In</span>
+                    }
+                </MudButton>
+                
+                <MudButton Variant="Variant.Text" 
+                           Color="Color.Default" 
+                           FullWidth="true"
+                           OnClick="GoBackToCredentials"
+                           Class="mb-2">
+                    <MudIcon Icon="@Icons.Material.Filled.ArrowBack" Size="Size.Small" Class="mr-1" />
+                    Back to Login
+                </MudButton>
+            }
 
             <div class="d-flex justify-center mt-4">
                 <MudLink Href="/knowledge-base" Color="Color.Primary" Typo="Typo.body2">
@@ -144,6 +203,9 @@
 </style>
 
 @code {
+    private enum LoginStep { Credentials, BranchSelection }
+    
+    private LoginStep _loginStep = LoginStep.Credentials;
     private string _username = "";
     private string _password = "";
     private string _errorMessage = "";
@@ -151,6 +213,10 @@
     private bool _showPassword = false;
     private InputType _passwordInputType = InputType.Password;
     private string _passwordIcon = Icons.Material.Filled.VisibilityOff;
+    
+    private User? _validatedUser;
+    private List<Branch> _availableBranches = new();
+    private long? _selectedBranchId;
 
     private void TogglePasswordVisibility()
     {
@@ -162,10 +228,10 @@
     private async Task HandleKeyDown(KeyboardEventArgs e)
     {
         if (e.Key == "Enter")
-            await HandleLogin();
+            await HandleValidateCredentials();
     }
 
-    private async Task HandleLogin()
+    private async Task HandleValidateCredentials()
     {
         _errorMessage = "";
 
@@ -189,9 +255,60 @@
                 return;
             }
             
+            _validatedUser = user;
+            _availableBranches = await AuthService.GetUserBranchesAsync(user.Id);
+            
+            if (_availableBranches.Count == 0)
+            {
+                var authProvider = (AppAuthStateProvider)AuthStateProvider;
+                authProvider.Login(user);
+                Navigation.NavigateTo("/");
+            }
+            else if (_availableBranches.Count == 1)
+            {
+                var authProvider = (AppAuthStateProvider)AuthStateProvider;
+                authProvider.Login(user, _availableBranches[0]);
+                Navigation.NavigateTo("/");
+            }
+            else
+            {
+                var defaultBranch = _availableBranches.FirstOrDefault(b => 
+                    user.UserBranches.Any(ub => ub.BranchId == b.Id && ub.IsDefault));
+                _selectedBranchId = defaultBranch?.Id ?? _availableBranches[0].Id;
+                _loginStep = LoginStep.BranchSelection;
+            }
+        }
+        catch (Exception ex)
+        {
+            _errorMessage = "Login failed. Please try again.";
+            Console.WriteLine($"[LOGIN] EXCEPTION: {ex.Message}");
+        }
+        finally
+        {
+            _isLoading = false;
+        }
+    }
+    
+    private async Task HandleLogin()
+    {
+        if (_validatedUser == null || !_selectedBranchId.HasValue) return;
+        
+        _isLoading = true;
+        _errorMessage = "";
+        StateHasChanged();
+        
+        try
+        {
+            var selectedBranch = _availableBranches.FirstOrDefault(b => b.Id == _selectedBranchId.Value);
+            if (selectedBranch == null)
+            {
+                _errorMessage = "You are not authorized to access this branch.";
+                _isLoading = false;
+                return;
+            }
+            
             var authProvider = (AppAuthStateProvider)AuthStateProvider;
-            authProvider.Login(user);
-
+            authProvider.Login(_validatedUser, selectedBranch);
             Navigation.NavigateTo("/");
         }
         catch (Exception ex)
@@ -203,5 +320,14 @@
         {
             _isLoading = false;
         }
+    }
+    
+    private void GoBackToCredentials()
+    {
+        _loginStep = LoginStep.Credentials;
+        _validatedUser = null;
+        _availableBranches.Clear();
+        _selectedBranchId = null;
+        _errorMessage = "";
     }
 }

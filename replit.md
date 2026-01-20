@@ -71,6 +71,13 @@ The application is built on .NET 8 Blazor Server, utilizing a modular architectu
 - **Return to Shipper (RTS)**: Workflow for return shipments with address swapping, charge modes, and status tracking.
 - **Modern Login Page**: Split-screen design with courier illustration on left and compact vertical login card on right. Features Net4Courier logo, username/password fields, Forgot Password link, and responsive mobile layout.
 - **Forgot Password Page**: Matching split-screen design at `/forgot-password` for password reset requests.
+- **Multi-Branch Management**:
+    - **Branch Concept**: Every company has one or more branches, each with its own currency (CurrencyCode, CurrencySymbol).
+    - **Warehouse Management**: Branches have multiple warehouses with capacity, address, and contact info at `/warehouses`.
+    - **User-Branch Assignments**: Many-to-many relationship via UserBranch junction table with IsDefault flag.
+    - **Branch-Restricted Login**: Users can only login to branches they are assigned to. Login page shows branch selection dropdown for users with multiple branches.
+    - **Dashboard Header**: Shows Company Name | Branch Name | User Name from authentication claims.
+    - **Scoped Access**: Warehouse management page is scoped to user's assigned branches.
 - **Import Module (Air/Sea/Land)**:
     - **ImportMaster Entity**: Stores import header info with mode-specific fields (MAWB, BL, Truck).
     - **ImportBag/ImportShipment Entities**: Bag and shipment tracking within imports.
