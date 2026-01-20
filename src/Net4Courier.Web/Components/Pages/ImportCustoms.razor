@@ -74,17 +74,62 @@ else
         </MudItem>
     </MudGrid>
 
+    <MudPaper Class="pa-4 mb-4" Elevation="2" Style="background: linear-gradient(135deg, #e3f2fd 0%, #bbdefb 100%);">
+        <MudText Typo="Typo.h6" Class="mb-3">
+            <MudIcon Icon="@Icons.Material.Filled.FlightLand" Class="mr-2" />
+            Select MAWB for Customs Processing
+        </MudText>
+        <MudGrid>
+            <MudItem xs="12" sm="6" md="4">
+                <MudSelect T="long?" Value="_selectedMawbId" ValueChanged="OnMawbSelected" Label="Master Airway Bill (MAWB)" 
+                           Variant="Variant.Filled" Dense="true" Clearable="true" AnchorOrigin="Origin.BottomCenter">
+                    <MudSelectItem T="long?" Value="@((long?)null)">-- All MAWBs --</MudSelectItem>
+                    @foreach (var mawb in _mawbList)
+                    {
+                        <MudSelectItem T="long?" Value="@mawb.Id">
+                            @mawb.MasterReferenceNumber (@mawb.PendingCount pending)
+                        </MudSelectItem>
+                    }
+                </MudSelect>
+            </MudItem>
+            @if (_selectedMawbId.HasValue)
+            {
+                var selectedMawb = _mawbList.FirstOrDefault(m => m.Id == _selectedMawbId);
+                if (selectedMawb != null)
+                {
+                    <MudItem xs="12" sm="6" md="8">
+                        <MudStack Row="true" Spacing="3" AlignItems="AlignItems.Center">
+                            <MudChip T="string" Color="Color.Info" Size="Size.Small">@selectedMawb.ImportMode</MudChip>
+                            <MudText Typo="Typo.body2">Origin: <strong>@selectedMawb.OriginCountry</strong></MudText>
+                            <MudText Typo="Typo.body2">Carrier: <strong>@(selectedMawb.CarrierName ?? "-")</strong></MudText>
+                            <MudText Typo="Typo.body2">Total AWBs: <strong>@selectedMawb.TotalShipments</strong></MudText>
+                        </MudStack>
+                    </MudItem>
+                }
+            }
+        </MudGrid>
+    </MudPaper>
+
     <MudPaper Class="pa-4" Elevation="2">
         <div class="d-flex justify-space-between align-center mb-4">
-            <MudText Typo="Typo.h6">Shipments Awaiting Customs</MudText>
+            <MudText Typo="Typo.h6">
+                @if (_selectedMawbId.HasValue)
+                {
+                    <span>AWBs under Selected MAWB</span>
+                }
+                else
+                {
+                    <span>Shipments Awaiting Customs</span>
+                }
+            </MudText>
             <MudStack Row="true" Spacing="2">
                 <MudButton Variant="Variant.Outlined" Color="Color.Primary" StartIcon="@Icons.Material.Filled.CheckCircle"
                            OnClick="BulkClearSelected" Disabled="@(!_selectedShipments.Any())">
                     Clear Selected (@_selectedShipments.Count)
                 </MudButton>
-                <MudButton Variant="Variant.Outlined" Color="Color.Error" StartIcon="@Icons.Material.Filled.Block"
+                <MudButton Variant="Variant.Filled" Color="Color.Error" StartIcon="@Icons.Material.Filled.Block"
                            OnClick="BulkHoldSelected" Disabled="@(!_selectedShipments.Any())">
-                    Hold Selected
+                    Mark as Held by Customs (@_selectedShipments.Count)
                 </MudButton>
             </MudStack>
         </div>
@@ -92,6 +137,7 @@ else
         <MudGrid Class="mb-4">
             <MudItem xs="12" sm="4" md="3">
                 <MudSelect T="ImportShipmentStatus?" Label="Status" @bind-Value="_filterStatus" Variant="Variant.Outlined" Dense="true" Clearable="true">
+                    <MudSelectItem T="ImportShipmentStatus?" Value="@((ImportShipmentStatus?)null)">All Statuses</MudSelectItem>
                     <MudSelectItem T="ImportShipmentStatus?" Value="ImportShipmentStatus.PendingCustoms">Customs Pending</MudSelectItem>
                     <MudSelectItem T="ImportShipmentStatus?" Value="ImportShipmentStatus.CustomsHold">On Hold</MudSelectItem>
                     <MudSelectItem T="ImportShipmentStatus?" Value="ImportShipmentStatus.Cleared">Cleared</MudSelectItem>
@@ -193,10 +239,25 @@ else
 
 <MudDialog @bind-Visible="_holdDialogVisible" Options="new DialogOptions { CloseButton = true, MaxWidth = MaxWidth.Small, FullWidth = true }">
     <TitleContent>
-        <MudText Typo="Typo.h6">Place Shipment on Hold</MudText>
+        <MudText Typo="Typo.h6">
+            @if (_isBulkHold)
+            {
+                <span>Mark @_selectedShipments.Count AWB(s) as Held by Customs</span>
+            }
+            else
+            {
+                <span>Place Shipment on Hold</span>
+            }
+        </MudText>
     </TitleContent>
     <DialogContent>
         <MudStack Spacing="3">
+            @if (_isBulkHold)
+            {
+                <MudAlert Severity="Severity.Warning" Dense="true" Class="mb-2">
+                    You are about to mark <strong>@_selectedShipments.Count</strong> shipment(s) as "Held by Customs".
+                </MudAlert>
+            }
             <MudSelect T="CustomsHoldReason" Label="Hold Reason *" @bind-Value="_holdReason" Variant="Variant.Outlined" Required="true">
                 @foreach (CustomsHoldReason reason in Enum.GetValues(typeof(CustomsHoldReason)))
                 {
@@ -208,13 +269,20 @@ else
         </MudStack>
     </DialogContent>
     <DialogActions>
-        <MudButton OnClick="@(() => _holdDialogVisible = false)">Cancel</MudButton>
+        <MudButton OnClick="@(() => { _holdDialogVisible = false; _isBulkHold = false; })">Cancel</MudButton>
         <MudButton Color="Color.Error" Variant="Variant.Filled" OnClick="ConfirmHold" Disabled="@_processing">
             @if (_processing)
             {
                 <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" />
             }
-            Place on Hold
+            @if (_isBulkHold)
+            {
+                <span>Mark as Held by Customs</span>
+            }
+            else
+            {
+                <span>Place on Hold</span>
+            }
         </MudButton>
     </DialogActions>
 </MudDialog>
@@ -252,12 +320,16 @@ else
     private List<ImportShipment> _shipments = new();
     private HashSet<ImportShipment> _selectedShipments = new();
     
+    private List<MawbListItem> _mawbList = new();
+    private long? _selectedMawbId;
+    
     private ImportShipmentStatus? _filterStatus = ImportShipmentStatus.PendingCustoms;
     private CustomsWorkStatus? _filterWorkStatus;
     private string _searchText = "";
     
     private bool _holdDialogVisible = false;
     private ImportShipment? _holdingShipment;
+    private bool _isBulkHold = false;
     private CustomsHoldReason _holdReason;
     private string _holdNotes = "";
     
@@ -292,8 +364,48 @@ else
         _stats.ClearedToday = await dbContext.ImportShipments
             .CountAsync(s => !s.IsDeleted && s.CustomsClearedAt.HasValue && s.CustomsClearedAt.Value.Date == today);
 
+        await LoadMawbList();
         await LoadShipments();
         _tableLoading = false;
+    }
+
+    private async Task LoadMawbList()
+    {
+        await using var dbContext = await DbFactory.CreateDbContextAsync();
+        
+        var pendingStatuses = new[] { ImportShipmentStatus.PendingCustoms, ImportShipmentStatus.Inscanned, ImportShipmentStatus.CustomsHold };
+        
+        var mawbIds = await dbContext.ImportShipments
+            .Where(s => !s.IsDeleted && pendingStatuses.Contains(s.Status))
+            .Select(s => s.ImportMasterId)
+            .Distinct()
+            .ToListAsync();
+
+        _mawbList = await dbContext.ImportMasters
+            .Where(m => !m.IsDeleted && m.ImportMode == ImportMode.Air && mawbIds.Contains(m.Id))
+            .Select(m => new MawbListItem
+            {
+                Id = m.Id,
+                MasterReferenceNumber = m.MasterReferenceNumber,
+                ImportMode = m.ImportMode.ToString(),
+                OriginCountry = m.OriginCountryName ?? "-",
+                CarrierName = m.CarrierName,
+                TotalShipments = dbContext.ImportShipments.Count(s => s.ImportMasterId == m.Id && !s.IsDeleted),
+                PendingCount = dbContext.ImportShipments.Count(s => s.ImportMasterId == m.Id && !s.IsDeleted && 
+                    pendingStatuses.Contains(s.Status))
+            })
+            .OrderByDescending(m => m.PendingCount)
+            .ThenBy(m => m.MasterReferenceNumber)
+            .ToListAsync();
+    }
+
+    private async Task OnMawbSelected(long? mawbId)
+    {
+        _selectedMawbId = mawbId;
+        _selectedShipments.Clear();
+        _filterStatus = null;
+        await LoadShipments();
+        StateHasChanged();
     }
 
     private async Task LoadShipments()
@@ -304,9 +416,12 @@ else
             .Include(s => s.ImportMaster)
             .Where(s => !s.IsDeleted);
 
+        if (_selectedMawbId.HasValue)
+            query = query.Where(s => s.ImportMasterId == _selectedMawbId.Value);
+
         if (_filterStatus.HasValue)
             query = query.Where(s => s.Status == _filterStatus.Value);
-        else
+        else if (!_selectedMawbId.HasValue)
             query = query.Where(s => s.Status == ImportShipmentStatus.PendingCustoms || 
                                      s.Status == ImportShipmentStatus.CustomsHold ||
                                      s.Status == ImportShipmentStatus.Inscanned);
@@ -335,7 +450,7 @@ else
 
     private async Task ClearFilter()
     {
-        _filterStatus = ImportShipmentStatus.PendingCustoms;
+        _filterStatus = _selectedMawbId.HasValue ? null : ImportShipmentStatus.PendingCustoms;
         _filterWorkStatus = null;
         _searchText = "";
         await ApplyFilter();
@@ -368,6 +483,7 @@ else
 
     private void HoldShipment(ImportShipment shipment)
     {
+        _isBulkHold = false;
         _holdingShipment = shipment;
         _holdReason = CustomsHoldReason.Documentation;
         _holdNotes = "";
@@ -376,23 +492,41 @@ else
 
     private async Task ConfirmHold()
     {
-        if (_holdingShipment == null) return;
-        
         _processing = true;
         try
         {
             await using var dbContext = await DbFactory.CreateDbContextAsync();
-            var entity = await dbContext.ImportShipments.FindAsync(_holdingShipment.Id);
-            if (entity != null)
+            
+            if (_isBulkHold && _selectedShipments.Any())
             {
-                entity.Status = ImportShipmentStatus.CustomsHold;
-                entity.HoldReason = _holdReason;
-                entity.HoldReasonDetails = _holdNotes;
-                entity.ModifiedAt = DateTime.UtcNow;
+                var ids = _selectedShipments.Select(s => s.Id).ToList();
+                var entities = await dbContext.ImportShipments.Where(s => ids.Contains(s.Id)).ToListAsync();
+                foreach (var entity in entities)
+                {
+                    entity.Status = ImportShipmentStatus.CustomsHold;
+                    entity.HoldReason = _holdReason;
+                    entity.HoldReasonDetails = _holdNotes;
+                    entity.ModifiedAt = DateTime.UtcNow;
+                }
                 await dbContext.SaveChangesAsync();
-                Snackbar.Add($"AWB {_holdingShipment.AWBNo} placed on hold", Severity.Warning);
+                Snackbar.Add($"{entities.Count} shipments marked as Held by Customs", Severity.Warning);
             }
+            else if (_holdingShipment != null)
+            {
+                var entity = await dbContext.ImportShipments.FindAsync(_holdingShipment.Id);
+                if (entity != null)
+                {
+                    entity.Status = ImportShipmentStatus.CustomsHold;
+                    entity.HoldReason = _holdReason;
+                    entity.HoldReasonDetails = _holdNotes;
+                    entity.ModifiedAt = DateTime.UtcNow;
+                    await dbContext.SaveChangesAsync();
+                    Snackbar.Add($"AWB {_holdingShipment.AWBNo} placed on hold", Severity.Warning);
+                }
+            }
+            
             _holdDialogVisible = false;
+            _isBulkHold = false;
             await LoadData();
         }
         finally
@@ -432,9 +566,10 @@ else
     private async Task BulkHoldSelected()
     {
         if (!_selectedShipments.Any()) return;
-        _holdingShipment = _selectedShipments.First();
+        _isBulkHold = true;
+        _holdingShipment = null;
         _holdReason = CustomsHoldReason.Documentation;
-        _holdNotes = $"Bulk hold applied to {_selectedShipments.Count} shipments";
+        _holdNotes = "";
         _holdDialogVisible = true;
     }
 
@@ -519,5 +654,16 @@ else
         public int OnHold { get; set; }
         public int InReview { get; set; }
         public int ClearedToday { get; set; }
+    }
+
+    private class MawbListItem
+    {
+        public long Id { get; set; }
+        public string MasterReferenceNumber { get; set; } = string.Empty;
+        public string ImportMode { get; set; } = string.Empty;
+        public string OriginCountry { get; set; } = string.Empty;
+        public string? CarrierName { get; set; }
+        public int TotalShipments { get; set; }
+        public int PendingCount { get; set; }
     }
 }
