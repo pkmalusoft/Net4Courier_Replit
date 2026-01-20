@@ -83,4 +83,5 @@ public class ImportShipment : AuditableEntity
     public virtual ImportMaster? ImportMaster { get; set; }
     public virtual ImportBag? ImportBag { get; set; }
     public virtual ICollection<ImportShipmentNote> Notes { get; set; } = new List<ImportShipmentNote>();
+    public virtual ICollection<ImportShipmentOtherCharge> OtherChargesList { get; set; } = new List<ImportShipmentOtherCharge>();
 }
