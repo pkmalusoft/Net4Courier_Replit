@@ -32,7 +32,6 @@ public class AWBNumberService
 
         branch.AWBLastUsedNumber = nextNumber;
         branch.ModifiedAt = DateTime.UtcNow;
-        await _context.SaveChangesAsync();
 
         var prefix = branch.AWBPrefix ?? "";
         return $"{prefix}{nextNumber}";
