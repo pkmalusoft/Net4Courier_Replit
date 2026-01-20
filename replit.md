@@ -99,6 +99,16 @@ The application is built on .NET 8 Blazor Server, utilizing a modular architectu
         - Transaction-safe import with rollback on errors
         - Uses ClosedXML library for Excel handling
 - **Knowledge Base**: Comprehensive documentation at `/knowledge-base` covering:
+    - **How To Guides** (17 step-by-step tutorials):
+        - Create Company, Branch, Warehouse, Shipment
+        - Create Pickup Requests (Staff and Customer)
+        - User Management (Create Users, Give/Restrict Menu Access)
+        - Party Access (Agents, Customers, Vendors)
+        - Import Operations (Customs Clearance, Excel Upload)
+        - Bulk POD Update
+        - Dashboard Usage (Customer, Pickup)
+        - Courier De-briefing and Receipt Reconciliation
+    - Question Submission Form: Users can suggest new How-To topics at bottom of page
     - Complete operational flow (Pickup Request → Collection → Inscan → AWB → MAWB → DRS → POD → Delivery)
     - Reconciliation (DRS Reconciliation, Courier Day-End, Cash Receipt, Expense Approval, Courier Ledger)
     - Accounts & Finance (General Ledger, Chart of Accounts, Financial Periods, AR Invoicing/Receipts, AP Bills/Payments, Financial Statements)
