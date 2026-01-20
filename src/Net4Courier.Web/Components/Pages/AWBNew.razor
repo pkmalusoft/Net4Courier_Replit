@@ -431,6 +431,60 @@
                 _destCities = _originCities;
             }
         }
+
+        await InitializePaymentModeAccount();
+    }
+
+    private async Task InitializePaymentModeAccount()
+    {
+        _controlAccountId = null;
+        _controlAccountName = string.Empty;
+        _selectedCashAccountId = null;
+
+        if (_inscan.PaymentModeId == PaymentMode.COD || _inscan.PaymentModeId == PaymentMode.CAD)
+        {
+            var controlType = _inscan.PaymentModeId == PaymentMode.COD ? ControlAccountType.CODControl : ControlAccountType.CADControl;
+            var setting = await DbContext.ControlAccountSettings
+                .Include(s => s.AccountHead)
+                .FirstOrDefaultAsync(s => s.AccountType == controlType && !s.IsDeleted);
+            if (setting?.AccountHead != null)
+            {
+                _controlAccountId = setting.AccountHeadId;
+                _controlAccountName = setting.AccountHead.Name;
+            }
+            else
+            {
+                _controlAccountName = _inscan.PaymentModeId == PaymentMode.COD ? "COD Control (Not Configured)" : "CAD Control (Not Configured)";
+            }
+        }
+        else if (_inscan.PaymentModeId == PaymentMode.Prepaid)
+        {
+            var setting = await DbContext.ControlAccountSettings
+                .Include(s => s.AccountHead)
+                .FirstOrDefaultAsync(s => s.AccountType == ControlAccountType.PrepaidControl && !s.IsDeleted);
+            if (setting?.AccountHead != null)
+            {
+                _controlAccountId = setting.AccountHeadId;
+                _controlAccountName = setting.AccountHead.Name;
+            }
+            else
+            {
+                _controlAccountName = "Prepaid Control (Not Configured)";
+            }
+        }
+        else if (_inscan.PaymentModeId == PaymentMode.PickupCash)
+        {
+            var setting = await DbContext.ControlAccountSettings
+                .FirstOrDefaultAsync(s => s.AccountType == ControlAccountType.CashAccount && !s.IsDeleted);
+            if (setting != null)
+            {
+                _selectedCashAccountId = setting.AccountHeadId;
+            }
+            else if (_cashAccounts.Any())
+            {
+                _selectedCashAccountId = _cashAccounts.First().Id;
+            }
+        }
     }
 
     private async Task LoadExistingGeography()
