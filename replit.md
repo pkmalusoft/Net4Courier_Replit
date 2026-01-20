@@ -71,6 +71,18 @@ The application is built on .NET 8 Blazor Server, utilizing a modular architectu
 - **Return to Shipper (RTS)**: Workflow for return shipments with address swapping, charge modes, and status tracking.
 - **Modern Login Page**: Split-screen design with courier illustration on left and compact vertical login card on right. Features Net4Courier logo, username/password fields, Forgot Password link, and responsive mobile layout.
 - **Forgot Password Page**: Matching split-screen design at `/forgot-password` for password reset requests.
+- **Import Module (Air/Sea/Land)**:
+    - **ImportMaster Entity**: Stores import header info with mode-specific fields (MAWB, BL, Truck).
+    - **ImportBag/ImportShipment Entities**: Bag and shipment tracking within imports.
+    - **Import Dashboard**: Summary cards, filters, and import list at `/import-dashboard`.
+    - **Import Entry**: Create/edit imports with mode-specific fields at `/import-entry`.
+    - **Customs Processing**: Bulk customs clearance operations at `/import-customs`.
+    - **Excel Import**: Download templates, upload filled Excel files, preview with validation, and bulk import.
+        - Two-sheet template: Header (metadata) + Shipments (AWB details)
+        - Mode-specific templates for Air, Sea, and Land
+        - Validation: required fields, positive values, duplicate AWB detection
+        - Transaction-safe import with rollback on errors
+        - Uses ClosedXML library for Excel handling
 - **Knowledge Base**: Comprehensive documentation at `/knowledge-base` covering:
     - Complete operational flow (Pickup Request → Collection → Inscan → AWB → MAWB → DRS → POD → Delivery)
     - Reconciliation (DRS Reconciliation, Courier Day-End, Cash Receipt, Expense Approval, Courier Ledger)
@@ -87,3 +99,4 @@ The application is built on .NET 8 Blazor Server, utilizing a modular architectu
 - **Database**: PostgreSQL
 - **UI Framework**: MudBlazor
 - **Reporting**: QuestPDF
+- **Excel Handling**: ClosedXML
