@@ -1,0 +1,448 @@
+@page "/import-entry"
+@page "/import-entry/{Id:long}"
+@using Microsoft.EntityFrameworkCore
+@using Net4Courier.Infrastructure.Data
+@using Net4Courier.Operations.Entities
+@using Net4Courier.Kernel.Enums
+@using Net4Courier.Masters.Entities
+@inject IDbContextFactory<ApplicationDbContext> DbFactory
+@inject NavigationManager Navigation
+@inject ISnackbar Snackbar
+
+<PageTitle>@(IsNew ? "New Import" : "Edit Import") - Net4Courier</PageTitle>
+
+<MudBreadcrumbs Items="_breadcrumbs" Class="mb-2" />
+
+<MudText Typo="Typo.h4" GutterBottom="true">@(IsNew ? "New Import" : "Edit Import")</MudText>
+
+@if (_loading)
+{
+    <MudProgressLinear Color="Color.Primary" Indeterminate="true" />
+}
+else
+{
+    <MudForm @ref="_form" @bind-IsValid="_formValid">
+        <MudGrid>
+            <MudItem xs="12" md="8">
+                <MudPaper Class="pa-4" Elevation="2">
+                    <MudText Typo="Typo.h6" Class="mb-4">Import Basics</MudText>
+                    
+                    <MudGrid>
+                        <MudItem xs="12" sm="6" md="4">
+                            <MudSelect T="ImportMode" Label="Import Mode *" @bind-Value="_import.ImportMode" 
+                                       Variant="Variant.Outlined" Required="true">
+                                <MudSelectItem Value="ImportMode.Air">
+                                    <MudIcon Icon="@Icons.Material.Filled.Flight" Class="mr-2" /> Air
+                                </MudSelectItem>
+                                <MudSelectItem Value="ImportMode.Sea">
+                                    <MudIcon Icon="@Icons.Material.Filled.DirectionsBoat" Class="mr-2" /> Sea
+                                </MudSelectItem>
+                                <MudSelectItem Value="ImportMode.Land">
+                                    <MudIcon Icon="@Icons.Material.Filled.LocalShipping" Class="mr-2" /> Land
+                                </MudSelectItem>
+                            </MudSelect>
+                        </MudItem>
+                        
+                        <MudItem xs="12" sm="6" md="4">
+                            <MudSelect T="MasterReferenceType" Label="Reference Type *" @bind-Value="_import.MasterReferenceType" 
+                                       Variant="Variant.Outlined" Required="true">
+                                @if (_import.ImportMode == ImportMode.Air)
+                                {
+                                    <MudSelectItem Value="MasterReferenceType.MAWB">MAWB</MudSelectItem>
+                                }
+                                else if (_import.ImportMode == ImportMode.Sea)
+                                {
+                                    <MudSelectItem Value="MasterReferenceType.BL">Bill of Lading</MudSelectItem>
+                                }
+                                else
+                                {
+                                    <MudSelectItem Value="MasterReferenceType.TruckWaybill">Truck Waybill</MudSelectItem>
+                                }
+                            </MudSelect>
+                        </MudItem>
+                        
+                        <MudItem xs="12" sm="6" md="4">
+                            <MudTextField @bind-Value="_import.MasterReferenceNumber" Label="@_referenceLabel" 
+                                          Variant="Variant.Outlined" Required="true" />
+                        </MudItem>
+                        
+                        <MudItem xs="12" sm="6" md="4">
+                            <MudTextField @bind-Value="_import.CarrierName" Label="Carrier Name *" 
+                                          Variant="Variant.Outlined" Required="true" 
+                                          Placeholder="@GetCarrierPlaceholder()" />
+                        </MudItem>
+                        
+                        <MudItem xs="12" sm="6" md="4">
+                            <MudTextField @bind-Value="_import.CarrierCode" Label="Carrier Code" 
+                                          Variant="Variant.Outlined" />
+                        </MudItem>
+                        
+                        <MudItem xs="12" sm="6" md="4">
+                            <MudSelect T="ImportMasterStatus" Label="Status" @bind-Value="_import.Status" 
+                                       Variant="Variant.Outlined">
+                                @foreach (ImportMasterStatus status in Enum.GetValues(typeof(ImportMasterStatus)))
+                                {
+                                    <MudSelectItem Value="status">@status.ToString()</MudSelectItem>
+                                }
+                            </MudSelect>
+                        </MudItem>
+                    </MudGrid>
+
+                    <MudDivider Class="my-4" />
+                    
+                    <MudText Typo="Typo.subtitle1" Class="mb-3">Origin & Destination</MudText>
+                    <MudGrid>
+                        <MudItem xs="12" sm="6">
+                            <MudAutocomplete T="Country" Label="Origin Country *" Value="_originCountry"
+                                             SearchFunc="SearchCountries" ToStringFunc="@(c => c?.Name ?? "")"
+                                             Variant="Variant.Outlined" Required="true" 
+                                             ValueChanged="OnOriginCountryChanged" />
+                        </MudItem>
+                        <MudItem xs="12" sm="6">
+                            <MudTextField @bind-Value="_import.OriginPortCode" 
+                                          Label="@(_import.ImportMode == ImportMode.Sea ? "Port Code" : "Airport Code")" 
+                                          Variant="Variant.Outlined" />
+                        </MudItem>
+                        <MudItem xs="12" sm="6">
+                            <MudAutocomplete T="Country" Label="Destination Country *" Value="_destCountry"
+                                             SearchFunc="SearchCountries" ToStringFunc="@(c => c?.Name ?? "")"
+                                             Variant="Variant.Outlined" Required="true" 
+                                             ValueChanged="OnDestCountryChanged" />
+                        </MudItem>
+                        <MudItem xs="12" sm="6">
+                            <MudTextField @bind-Value="_import.DestinationPortCode" 
+                                          Label="@(_import.ImportMode == ImportMode.Sea ? "Port Code" : "Airport Code")" 
+                                          Variant="Variant.Outlined" />
+                        </MudItem>
+                    </MudGrid>
+
+                    <MudDivider Class="my-4" />
+                    
+                    <MudText Typo="Typo.subtitle1" Class="mb-3">Schedule</MudText>
+                    <MudGrid>
+                        <MudItem xs="12" sm="4">
+                            <MudDatePicker Label="ETD" @bind-Date="_etd" Variant="Variant.Outlined" />
+                        </MudItem>
+                        <MudItem xs="12" sm="4">
+                            <MudDatePicker Label="ETA *" @bind-Date="_eta" Variant="Variant.Outlined" Required="true" />
+                        </MudItem>
+                        <MudItem xs="12" sm="4">
+                            <MudDatePicker Label="Actual Arrival" @bind-Date="_actualArrival" Variant="Variant.Outlined" />
+                        </MudItem>
+                    </MudGrid>
+
+                    <MudDivider Class="my-4" />
+                    
+                    <MudText Typo="Typo.subtitle1" Class="mb-3">Cargo Details</MudText>
+                    <MudGrid>
+                        <MudItem xs="12" sm="4">
+                            <MudNumericField @bind-Value="_import.TotalBags" Label="Total Bags *" 
+                                             Variant="Variant.Outlined" Min="0" Required="true" />
+                        </MudItem>
+                        <MudItem xs="12" sm="4">
+                            <MudNumericField @bind-Value="_import.TotalShipments" Label="Total Shipments *" 
+                                             Variant="Variant.Outlined" Min="0" Required="true" />
+                        </MudItem>
+                        <MudItem xs="12" sm="4">
+                            <MudNumericField @bind-Value="_import.TotalGrossWeight" Label="Total Gross Weight (kg)" 
+                                             Variant="Variant.Outlined" Min="0" Format="N3" />
+                        </MudItem>
+                        <MudItem xs="12" sm="6">
+                            <MudTextField @bind-Value="_import.ImportWarehouseName" Label="Import Warehouse *" 
+                                          Variant="Variant.Outlined" Required="true" />
+                        </MudItem>
+                        <MudItem xs="12" sm="6">
+                            <MudSelect T="CargoType" Label="Cargo Type" @bind-Value="_import.CargoType" 
+                                       Variant="Variant.Outlined">
+                                <MudSelectItem Value="CargoType.Courier">Courier</MudSelectItem>
+                                <MudSelectItem Value="CargoType.Freight">Freight</MudSelectItem>
+                                <MudSelectItem Value="CargoType.Express">Express</MudSelectItem>
+                            </MudSelect>
+                        </MudItem>
+                    </MudGrid>
+                </MudPaper>
+                
+                <MudExpansionPanels Class="mt-4">
+                    <MudExpansionPanel Text="Transport Details (Optional)">
+                        <MudGrid>
+                            @if (_import.ImportMode == ImportMode.Air)
+                            {
+                                <MudItem xs="12" sm="6">
+                                    <MudTextField @bind-Value="_import.FlightNo" Label="Flight Number" 
+                                                  Variant="Variant.Outlined" />
+                                </MudItem>
+                                <MudItem xs="12" sm="6">
+                                    <MudDatePicker Label="Flight Date" @bind-Date="_flightDate" Variant="Variant.Outlined" />
+                                </MudItem>
+                            }
+                            else if (_import.ImportMode == ImportMode.Sea)
+                            {
+                                <MudItem xs="12" sm="6">
+                                    <MudTextField @bind-Value="_import.VesselName" Label="Vessel Name" 
+                                                  Variant="Variant.Outlined" />
+                                </MudItem>
+                                <MudItem xs="12" sm="6">
+                                    <MudTextField @bind-Value="_import.VoyageNumber" Label="Voyage Number" 
+                                                  Variant="Variant.Outlined" />
+                                </MudItem>
+                            }
+                            else
+                            {
+                                <MudItem xs="12" sm="4">
+                                    <MudTextField @bind-Value="_import.TruckNumber" Label="Truck Number" 
+                                                  Variant="Variant.Outlined" />
+                                </MudItem>
+                                <MudItem xs="12" sm="4">
+                                    <MudTextField @bind-Value="_import.DriverName" Label="Driver Name" 
+                                                  Variant="Variant.Outlined" />
+                                </MudItem>
+                                <MudItem xs="12" sm="4">
+                                    <MudTextField @bind-Value="_import.DriverPhone" Label="Driver Phone" 
+                                                  Variant="Variant.Outlined" />
+                                </MudItem>
+                            }
+                            <MudItem xs="12" sm="6">
+                                <MudTextField @bind-Value="_import.ManifestNumber" Label="Manifest Number" 
+                                              Variant="Variant.Outlined" />
+                            </MudItem>
+                            <MudItem xs="12">
+                                <MudTextField @bind-Value="_import.Remarks" Label="Remarks" 
+                                              Variant="Variant.Outlined" Lines="2" />
+                            </MudItem>
+                        </MudGrid>
+                    </MudExpansionPanel>
+                </MudExpansionPanels>
+            </MudItem>
+            
+            <MudItem xs="12" md="4">
+                <MudPaper Class="pa-4" Elevation="2">
+                    <MudText Typo="Typo.h6" Class="mb-4">Actions</MudText>
+                    
+                    <MudStack Spacing="2">
+                        <MudButton Variant="Variant.Filled" Color="Color.Primary" FullWidth="true" 
+                                   OnClick="SaveDraft" Disabled="@(!_formValid || _saving)">
+                            @if (_saving)
+                            {
+                                <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" />
+                            }
+                            <MudIcon Icon="@Icons.Material.Filled.Save" Class="mr-2" />
+                            Save Draft
+                        </MudButton>
+                        
+                        @if (!IsNew)
+                        {
+                            <MudButton Variant="Variant.Outlined" Color="Color.Info" FullWidth="true" 
+                                       Href="@($"/import-bags/{Id}")">
+                                <MudIcon Icon="@Icons.Material.Filled.Inventory2" Class="mr-2" />
+                                Manage Bags
+                            </MudButton>
+                            
+                            <MudButton Variant="Variant.Outlined" Color="Color.Success" FullWidth="true" 
+                                       Href="@($"/import-inscan/{Id}")">
+                                <MudIcon Icon="@Icons.Material.Filled.QrCodeScanner" Class="mr-2" />
+                                Inscan Shipments
+                            </MudButton>
+                        }
+                        
+                        <MudButton Variant="Variant.Text" Color="Color.Default" FullWidth="true" 
+                                   Href="/import-dashboard">
+                            <MudIcon Icon="@Icons.Material.Filled.ArrowBack" Class="mr-2" />
+                            Back to List
+                        </MudButton>
+                    </MudStack>
+                </MudPaper>
+                
+                @if (!IsNew)
+                {
+                    <MudPaper Class="pa-4 mt-4" Elevation="2">
+                        <MudText Typo="Typo.subtitle1" Class="mb-3">Summary</MudText>
+                        <MudStack Spacing="1">
+                            <div class="d-flex justify-space-between">
+                                <MudText Typo="Typo.body2">Import Ref:</MudText>
+                                <MudText Typo="Typo.body2" Class="font-weight-bold">@_import.ImportRefNo</MudText>
+                            </div>
+                            <div class="d-flex justify-space-between">
+                                <MudText Typo="Typo.body2">Status:</MudText>
+                                <MudChip T="string" Size="Size.Small" Color="Color.Primary">@_import.Status.ToString()</MudChip>
+                            </div>
+                            <div class="d-flex justify-space-between">
+                                <MudText Typo="Typo.body2">Created:</MudText>
+                                <MudText Typo="Typo.body2">@_import.CreatedAt.ToString("dd/MM/yyyy")</MudText>
+                            </div>
+                        </MudStack>
+                    </MudPaper>
+                }
+            </MudItem>
+        </MudGrid>
+    </MudForm>
+}
+
+@code {
+    [Parameter] public long? Id { get; set; }
+    
+    private bool IsNew => !Id.HasValue || Id == 0;
+    private bool _loading = true;
+    private bool _saving = false;
+    private MudForm? _form;
+    private bool _formValid = false;
+    
+    private ImportMaster _import = new();
+    private Country? _originCountry;
+    private Country? _destCountry;
+    private DateTime? _eta;
+    private DateTime? _etd;
+    private DateTime? _actualArrival;
+    private DateTime? _flightDate;
+    private List<Country> _countries = new();
+    private string _referenceLabel = "Reference Number *";
+    
+    private List<BreadcrumbItem> _breadcrumbs = new()
+    {
+        new BreadcrumbItem("Import Dashboard", href: "/import-dashboard"),
+        new BreadcrumbItem("Import Entry", href: null, disabled: true)
+    };
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadData();
+        _loading = false;
+    }
+
+    private async Task LoadData()
+    {
+        await using var dbContext = await DbFactory.CreateDbContextAsync();
+        _countries = await dbContext.Countries.Where(c => !c.IsDeleted && c.IsActive).OrderBy(c => c.Name).ToListAsync();
+        
+        if (!IsNew && Id.HasValue)
+        {
+            _import = await dbContext.ImportMasters.FirstOrDefaultAsync(i => i.Id == Id.Value && !i.IsDeleted) 
+                      ?? new ImportMaster();
+            
+            if (_import.OriginCountryId.HasValue)
+                _originCountry = _countries.FirstOrDefault(c => c.Id == _import.OriginCountryId);
+            if (_import.DestinationCountryId.HasValue)
+                _destCountry = _countries.FirstOrDefault(c => c.Id == _import.DestinationCountryId);
+            
+            _eta = _import.ETA;
+            _etd = _import.ETD;
+            _actualArrival = _import.ActualArrivalDate;
+            _flightDate = _import.FlightDate;
+        }
+        else
+        {
+            _import.TransactionDate = DateTime.UtcNow;
+            _import.Status = ImportMasterStatus.Draft;
+        }
+        UpdateReferenceLabel();
+    }
+
+    private void UpdateReferenceLabel()
+    {
+        _referenceLabel = _import.ImportMode switch
+        {
+            ImportMode.Air => "MAWB Number *",
+            ImportMode.Sea => "BL Number *",
+            ImportMode.Land => "Truck Waybill Number *",
+            _ => "Reference Number *"
+        };
+    }
+
+    private Task<IEnumerable<Country>> SearchCountries(string value)
+    {
+        if (string.IsNullOrEmpty(value))
+            return Task.FromResult(_countries.Take(20));
+        
+        return Task.FromResult(_countries.Where(c => c.Name.Contains(value, StringComparison.OrdinalIgnoreCase)).Take(20));
+    }
+
+    private void OnOriginCountryChanged(Country? country)
+    {
+        _originCountry = country;
+        _import.OriginCountryId = country?.Id;
+        _import.OriginCountryName = country?.Name;
+    }
+
+    private void OnDestCountryChanged(Country? country)
+    {
+        _destCountry = country;
+        _import.DestinationCountryId = country?.Id;
+        _import.DestinationCountryName = country?.Name;
+    }
+
+    private string GetReferenceLabel() => _import.ImportMode switch
+    {
+        ImportMode.Air => "MAWB Number",
+        ImportMode.Sea => "BL Number",
+        ImportMode.Land => "Truck Waybill Number",
+        _ => "Reference Number"
+    };
+
+    private string GetCarrierPlaceholder() => _import.ImportMode switch
+    {
+        ImportMode.Air => "e.g. Emirates, Qatar Airways",
+        ImportMode.Sea => "e.g. Maersk, MSC",
+        ImportMode.Land => "e.g. DHL Freight",
+        _ => ""
+    };
+
+    private async Task SaveDraft()
+    {
+        if (_form == null) return;
+        await _form.Validate();
+        if (!_formValid) return;
+
+        _saving = true;
+        try
+        {
+            await using var dbContext = await DbFactory.CreateDbContextAsync();
+            
+            _import.ETA = _eta;
+            _import.ETD = _etd;
+            _import.ActualArrivalDate = _actualArrival;
+            _import.FlightDate = _flightDate;
+            
+            if (IsNew)
+            {
+                _import.ImportRefNo = await GenerateImportRefNo(dbContext);
+                _import.CreatedAt = DateTime.UtcNow;
+                dbContext.ImportMasters.Add(_import);
+            }
+            else
+            {
+                _import.ModifiedAt = DateTime.UtcNow;
+                dbContext.ImportMasters.Update(_import);
+            }
+            
+            await dbContext.SaveChangesAsync();
+            Snackbar.Add("Import saved successfully", Severity.Success);
+            
+            if (IsNew)
+                Navigation.NavigateTo($"/import-entry/{_import.Id}");
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error saving import: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _saving = false;
+        }
+    }
+
+    private async Task<string> GenerateImportRefNo(ApplicationDbContext dbContext)
+    {
+        var prefix = _import.ImportMode switch
+        {
+            ImportMode.Air => "IMP-AIR",
+            ImportMode.Sea => "IMP-SEA",
+            ImportMode.Land => "IMP-LND",
+            _ => "IMP"
+        };
+        
+        var today = DateTime.UtcNow;
+        var count = await dbContext.ImportMasters
+            .CountAsync(i => i.TransactionDate.Date == today.Date) + 1;
+        
+        return $"{prefix}-{today:yyyyMMdd}-{count:D4}";
+    }
+}

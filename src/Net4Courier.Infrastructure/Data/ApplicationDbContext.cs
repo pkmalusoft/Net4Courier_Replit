@@ -73,6 +73,11 @@ public class ApplicationDbContext : DbContext
     public DbSet<ShipmentStatusHistory> ShipmentStatusHistories => Set<ShipmentStatusHistory>();
     
     public DbSet<ServiceType> ServiceTypes => Set<ServiceType>();
+    
+    public DbSet<ImportMaster> ImportMasters => Set<ImportMaster>();
+    public DbSet<ImportBag> ImportBags => Set<ImportBag>();
+    public DbSet<ImportShipment> ImportShipments => Set<ImportShipment>();
+    public DbSet<ImportShipmentNote> ImportShipmentNotes => Set<ImportShipmentNote>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -664,6 +669,129 @@ public class ApplicationDbContext : DbContext
                   .OnDelete(DeleteBehavior.Restrict);
             entity.HasOne(e => e.StatusGroup).WithMany().HasForeignKey(e => e.StatusGroupId)
                   .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        modelBuilder.Entity<ImportMaster>(entity =>
+        {
+            entity.ToTable("ImportMasters");
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.ImportRefNo).HasMaxLength(50).IsRequired();
+            entity.Property(e => e.MasterReferenceNumber).HasMaxLength(50).IsRequired();
+            entity.Property(e => e.OriginCountryName).HasMaxLength(100);
+            entity.Property(e => e.OriginCityName).HasMaxLength(100);
+            entity.Property(e => e.OriginPortCode).HasMaxLength(20);
+            entity.Property(e => e.DestinationCountryName).HasMaxLength(100);
+            entity.Property(e => e.DestinationCityName).HasMaxLength(100);
+            entity.Property(e => e.DestinationPortCode).HasMaxLength(20);
+            entity.Property(e => e.CarrierName).HasMaxLength(100);
+            entity.Property(e => e.CarrierCode).HasMaxLength(20);
+            entity.Property(e => e.FlightNo).HasMaxLength(20);
+            entity.Property(e => e.VesselName).HasMaxLength(100);
+            entity.Property(e => e.VoyageNumber).HasMaxLength(50);
+            entity.Property(e => e.TruckNumber).HasMaxLength(50);
+            entity.Property(e => e.DriverName).HasMaxLength(100);
+            entity.Property(e => e.DriverPhone).HasMaxLength(20);
+            entity.Property(e => e.ManifestNumber).HasMaxLength(50);
+            entity.Property(e => e.ImportWarehouseName).HasMaxLength(100);
+            entity.Property(e => e.Remarks).HasMaxLength(500);
+            entity.Property(e => e.CoLoaderName).HasMaxLength(200);
+            entity.Property(e => e.CoLoaderRefNo).HasMaxLength(50);
+            entity.Property(e => e.CustomsDeclarationNo).HasMaxLength(50);
+            entity.Property(e => e.ExportPermitNo).HasMaxLength(50);
+            entity.Property(e => e.InscannedByUserName).HasMaxLength(100);
+            entity.Property(e => e.ClosedByUserName).HasMaxLength(100);
+            entity.Property(e => e.TotalGrossWeight).HasPrecision(18, 3);
+            entity.Property(e => e.TotalChargeableWeight).HasPrecision(18, 3);
+            entity.HasIndex(e => e.ImportRefNo).IsUnique();
+            entity.HasIndex(e => e.MasterReferenceNumber);
+            entity.HasIndex(e => new { e.BranchId, e.TransactionDate });
+            entity.HasIndex(e => new { e.Status, e.TransactionDate });
+            entity.HasIndex(e => e.ImportMode);
+        });
+
+        modelBuilder.Entity<ImportBag>(entity =>
+        {
+            entity.ToTable("ImportBags");
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.BagNumber).HasMaxLength(50).IsRequired();
+            entity.Property(e => e.SealNumber).HasMaxLength(50);
+            entity.Property(e => e.HandlingCode).HasMaxLength(20);
+            entity.Property(e => e.Remarks).HasMaxLength(500);
+            entity.Property(e => e.InscannedByUserName).HasMaxLength(100);
+            entity.Property(e => e.GrossWeight).HasPrecision(18, 3);
+            entity.Property(e => e.ChargeableWeight).HasPrecision(18, 3);
+            entity.Property(e => e.Length).HasPrecision(18, 2);
+            entity.Property(e => e.Width).HasPrecision(18, 2);
+            entity.Property(e => e.Height).HasPrecision(18, 2);
+            entity.HasIndex(e => new { e.ImportMasterId, e.BagNumber }).IsUnique();
+            entity.HasIndex(e => e.BagNumber);
+            entity.HasOne(e => e.ImportMaster).WithMany(m => m.Bags).HasForeignKey(e => e.ImportMasterId)
+                  .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<ImportShipment>(entity =>
+        {
+            entity.ToTable("ImportShipments");
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.AWBNo).HasMaxLength(50).IsRequired();
+            entity.Property(e => e.ReferenceNo).HasMaxLength(50);
+            entity.Property(e => e.ShipperName).HasMaxLength(200);
+            entity.Property(e => e.ShipperAddress).HasMaxLength(500);
+            entity.Property(e => e.ShipperCity).HasMaxLength(100);
+            entity.Property(e => e.ShipperCountry).HasMaxLength(100);
+            entity.Property(e => e.ShipperPhone).HasMaxLength(20);
+            entity.Property(e => e.ConsigneeName).HasMaxLength(200).IsRequired();
+            entity.Property(e => e.ConsigneeAddress).HasMaxLength(500);
+            entity.Property(e => e.ConsigneeCity).HasMaxLength(100);
+            entity.Property(e => e.ConsigneeState).HasMaxLength(100);
+            entity.Property(e => e.ConsigneeCountry).HasMaxLength(100).IsRequired();
+            entity.Property(e => e.ConsigneePostalCode).HasMaxLength(20);
+            entity.Property(e => e.ConsigneePhone).HasMaxLength(20);
+            entity.Property(e => e.ConsigneeMobile).HasMaxLength(20);
+            entity.Property(e => e.Weight).HasPrecision(18, 3);
+            entity.Property(e => e.VolumetricWeight).HasPrecision(18, 3);
+            entity.Property(e => e.ChargeableWeight).HasPrecision(18, 3);
+            entity.Property(e => e.ContentsDescription).HasMaxLength(500);
+            entity.Property(e => e.SpecialInstructions).HasMaxLength(500);
+            entity.Property(e => e.DeclaredValue).HasPrecision(18, 2);
+            entity.Property(e => e.Currency).HasMaxLength(10);
+            entity.Property(e => e.HSCode).HasMaxLength(20);
+            entity.Property(e => e.DutyAmount).HasPrecision(18, 2);
+            entity.Property(e => e.VATAmount).HasPrecision(18, 2);
+            entity.Property(e => e.OtherCharges).HasPrecision(18, 2);
+            entity.Property(e => e.TotalCustomsCharges).HasPrecision(18, 2);
+            entity.Property(e => e.CODAmount).HasPrecision(18, 2);
+            entity.Property(e => e.HoldReasonDetails).HasMaxLength(500);
+            entity.Property(e => e.ImporterOfRecord).HasMaxLength(200);
+            entity.Property(e => e.CustomsEntryNumber).HasMaxLength(50);
+            entity.Property(e => e.ExaminationRemarks).HasMaxLength(500);
+            entity.Property(e => e.InscannedByUserName).HasMaxLength(100);
+            entity.Property(e => e.CustomsClearedByUserName).HasMaxLength(100);
+            entity.Property(e => e.ReleasedByUserName).HasMaxLength(100);
+            entity.Property(e => e.HandedOverToUserName).HasMaxLength(100);
+            entity.Property(e => e.Remarks).HasMaxLength(500);
+            entity.HasIndex(e => e.AWBNo);
+            entity.HasIndex(e => new { e.ImportMasterId, e.AWBNo }).IsUnique();
+            entity.HasIndex(e => e.ImportBagId);
+            entity.HasIndex(e => e.Status);
+            entity.HasIndex(e => e.CustomsStatus);
+            entity.HasIndex(e => e.HoldReason);
+            entity.HasOne(e => e.ImportMaster).WithMany().HasForeignKey(e => e.ImportMasterId)
+                  .OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(e => e.ImportBag).WithMany(b => b.Shipments).HasForeignKey(e => e.ImportBagId)
+                  .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        modelBuilder.Entity<ImportShipmentNote>(entity =>
+        {
+            entity.ToTable("ImportShipmentNotes");
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.NoteText).HasMaxLength(2000).IsRequired();
+            entity.Property(e => e.AddedByUserName).HasMaxLength(100);
+            entity.HasIndex(e => e.ImportShipmentId);
+            entity.HasIndex(e => e.AddedAt);
+            entity.HasOne(e => e.ImportShipment).WithMany(s => s.Notes).HasForeignKey(e => e.ImportShipmentId)
+                  .OnDelete(DeleteBehavior.Cascade);
         });
     }
 

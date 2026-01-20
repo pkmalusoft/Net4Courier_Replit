@@ -1,0 +1,356 @@
+@page "/import-bags/{ImportId:long}"
+@using Microsoft.EntityFrameworkCore
+@using Net4Courier.Infrastructure.Data
+@using Net4Courier.Operations.Entities
+@using Net4Courier.Kernel.Enums
+@inject IDbContextFactory<ApplicationDbContext> DbFactory
+@inject NavigationManager Navigation
+@inject ISnackbar Snackbar
+@inject IDialogService DialogService
+
+<PageTitle>Manage Import Bags - Net4Courier</PageTitle>
+
+<MudBreadcrumbs Items="_breadcrumbs" Class="mb-2" />
+
+@if (_loading)
+{
+    <MudProgressLinear Color="Color.Primary" Indeterminate="true" />
+}
+else if (_import == null)
+{
+    <MudAlert Severity="Severity.Error">Import not found.</MudAlert>
+}
+else
+{
+    <div class="d-flex justify-space-between align-center mb-4">
+        <div>
+            <MudText Typo="Typo.h4">Manage Bags - @_import.ImportRefNo</MudText>
+            <MudText Typo="Typo.subtitle1" Color="Color.Secondary">
+                @_import.ImportMode | @_import.MasterReferenceNumber | @_import.CarrierName
+            </MudText>
+        </div>
+        <MudChip T="string" Color="@GetStatusColor(_import.Status)" Size="Size.Large">
+            @_import.Status.ToString()
+        </MudChip>
+    </div>
+
+    <MudGrid>
+        <MudItem xs="12" md="8">
+            <MudPaper Class="pa-4" Elevation="2">
+                <div class="d-flex justify-space-between align-center mb-4">
+                    <MudText Typo="Typo.h6">Bags / Containers</MudText>
+                    <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add" 
+                               OnClick="AddBag">
+                        Add Bag
+                    </MudButton>
+                </div>
+
+                <MudTable Items="@_bags" Dense="true" Hover="true" Loading="@_tableLoading">
+                    <HeaderContent>
+                        <MudTh>Bag Number</MudTh>
+                        <MudTh>Type</MudTh>
+                        <MudTh>Shipments</MudTh>
+                        <MudTh>Weight (kg)</MudTh>
+                        <MudTh>Status</MudTh>
+                        <MudTh>Actions</MudTh>
+                    </HeaderContent>
+                    <RowTemplate>
+                        <MudTd DataLabel="Bag Number">@context.BagNumber</MudTd>
+                        <MudTd DataLabel="Type">@context.BagType.ToString()</MudTd>
+                        <MudTd DataLabel="Shipments">
+                            <MudBadge Content="@context.ShipmentCount" Color="Color.Primary">
+                                <MudIcon Icon="@Icons.Material.Filled.Inventory2" />
+                            </MudBadge>
+                        </MudTd>
+                        <MudTd DataLabel="Weight">@(context.GrossWeight?.ToString("N3") ?? "-")</MudTd>
+                        <MudTd DataLabel="Status">
+                            <MudChip T="string" Size="Size.Small" Color="@GetBagStatusColor(context.Status)">
+                                @context.Status.ToString()
+                            </MudChip>
+                        </MudTd>
+                        <MudTd DataLabel="Actions">
+                            <MudIconButton Icon="@Icons.Material.Filled.Edit" Size="Size.Small" Color="Color.Primary" 
+                                           OnClick="@(() => EditBag(context))" Title="Edit Bag" />
+                            <MudIconButton Icon="@Icons.Material.Filled.QrCodeScanner" Size="Size.Small" Color="Color.Success" 
+                                           Href="@($"/import-inscan/{ImportId}?bag={context.Id}")" Title="Inscan Shipments" />
+                            <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" Color="Color.Error" 
+                                           OnClick="@(() => DeleteBag(context))" Title="Delete Bag" 
+                                           Disabled="@(context.ShipmentCount > 0)" />
+                        </MudTd>
+                    </RowTemplate>
+                    <NoRecordsContent>
+                        <MudText Color="Color.Secondary">No bags added yet. Click "Add Bag" to create one.</MudText>
+                    </NoRecordsContent>
+                </MudTable>
+            </MudPaper>
+        </MudItem>
+        
+        <MudItem xs="12" md="4">
+            <MudPaper Class="pa-4" Elevation="2">
+                <MudText Typo="Typo.h6" Class="mb-3">Summary</MudText>
+                <MudStack Spacing="2">
+                    <div class="d-flex justify-space-between">
+                        <MudText Typo="Typo.body2">Expected Bags:</MudText>
+                        <MudText Typo="Typo.body2" Class="font-weight-bold">@_import.TotalBags</MudText>
+                    </div>
+                    <div class="d-flex justify-space-between">
+                        <MudText Typo="Typo.body2">Added Bags:</MudText>
+                        <MudText Typo="Typo.body2" Class="font-weight-bold" Color="@(_bags.Count == _import.TotalBags ? Color.Success : Color.Warning)">
+                            @_bags.Count
+                        </MudText>
+                    </div>
+                    <MudDivider />
+                    <div class="d-flex justify-space-between">
+                        <MudText Typo="Typo.body2">Expected Shipments:</MudText>
+                        <MudText Typo="Typo.body2" Class="font-weight-bold">@_import.TotalShipments</MudText>
+                    </div>
+                    <div class="d-flex justify-space-between">
+                        <MudText Typo="Typo.body2">Inscanned Shipments:</MudText>
+                        <MudText Typo="Typo.body2" Class="font-weight-bold">@_bags.Sum(b => b.ShipmentCount)</MudText>
+                    </div>
+                    <MudDivider />
+                    <div class="d-flex justify-space-between">
+                        <MudText Typo="Typo.body2">Total Weight:</MudText>
+                        <MudText Typo="Typo.body2" Class="font-weight-bold">
+                            @(_bags.Sum(b => b.GrossWeight ?? 0).ToString("N3")) kg
+                        </MudText>
+                    </div>
+                </MudStack>
+            </MudPaper>
+            
+            <MudPaper Class="pa-4 mt-4" Elevation="2">
+                <MudText Typo="Typo.h6" Class="mb-3">Actions</MudText>
+                <MudStack Spacing="2">
+                    <MudButton Variant="Variant.Outlined" Color="Color.Primary" FullWidth="true" 
+                               Href="@($"/import-entry/{ImportId}")">
+                        <MudIcon Icon="@Icons.Material.Filled.Edit" Class="mr-2" />
+                        Edit Import
+                    </MudButton>
+                    <MudButton Variant="Variant.Outlined" Color="Color.Success" FullWidth="true" 
+                               Href="@($"/import-inscan/{ImportId}")">
+                        <MudIcon Icon="@Icons.Material.Filled.QrCodeScanner" Class="mr-2" />
+                        Inscan Shipments
+                    </MudButton>
+                    <MudButton Variant="Variant.Text" Color="Color.Default" FullWidth="true" 
+                               Href="/import-dashboard">
+                        <MudIcon Icon="@Icons.Material.Filled.ArrowBack" Class="mr-2" />
+                        Back to Dashboard
+                    </MudButton>
+                </MudStack>
+            </MudPaper>
+        </MudItem>
+    </MudGrid>
+}
+
+<MudDialog @bind-Visible="_bagDialogVisible" Options="new DialogOptions { CloseButton = true, MaxWidth = MaxWidth.Small, FullWidth = true }">
+    <TitleContent>
+        <MudText Typo="Typo.h6">@(_editingBag.Id == 0 ? "Add Bag" : "Edit Bag")</MudText>
+    </TitleContent>
+    <DialogContent>
+        <MudGrid>
+            <MudItem xs="12">
+                <MudTextField @bind-Value="_editingBag.BagNumber" Label="Bag Number *" Variant="Variant.Outlined" Required="true" />
+            </MudItem>
+            <MudItem xs="12" sm="6">
+                <MudSelect T="BagType" Label="Bag Type" @bind-Value="_editingBag.BagType" Variant="Variant.Outlined">
+                    <MudSelectItem Value="BagType.CourierBag">Courier Bag</MudSelectItem>
+                    <MudSelectItem Value="BagType.Pallet">Pallet</MudSelectItem>
+                    <MudSelectItem Value="BagType.Container">Container</MudSelectItem>
+                    <MudSelectItem Value="BagType.Loose">Loose</MudSelectItem>
+                </MudSelect>
+            </MudItem>
+            <MudItem xs="12" sm="6">
+                <MudNumericField @bind-Value="_editingBag.GrossWeight" Label="Gross Weight (kg)" Variant="Variant.Outlined" Format="N3" />
+            </MudItem>
+            <MudItem xs="12">
+                <MudTextField @bind-Value="_editingBag.SealNumber" Label="Seal Number" Variant="Variant.Outlined" />
+            </MudItem>
+            <MudItem xs="12">
+                <MudTextField @bind-Value="_editingBag.Remarks" Label="Remarks" Variant="Variant.Outlined" Lines="2" />
+            </MudItem>
+        </MudGrid>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="@(() => _bagDialogVisible = false)">Cancel</MudButton>
+        <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="SaveBag" Disabled="@_saving">
+            @if (_saving)
+            {
+                <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" />
+            }
+            Save
+        </MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [Parameter] public long ImportId { get; set; }
+    
+    private bool _loading = true;
+    private bool _tableLoading = false;
+    private bool _saving = false;
+    private bool _bagDialogVisible = false;
+    
+    private ImportMaster? _import;
+    private List<ImportBag> _bags = new();
+    private ImportBag _editingBag = new();
+    
+    private List<BreadcrumbItem> _breadcrumbs = new()
+    {
+        new BreadcrumbItem("Import Dashboard", href: "/import-dashboard"),
+        new BreadcrumbItem("Manage Bags", href: null, disabled: true)
+    };
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadData();
+        _loading = false;
+    }
+
+    private async Task LoadData()
+    {
+        await using var dbContext = await DbFactory.CreateDbContextAsync();
+        
+        _import = await dbContext.ImportMasters
+            .FirstOrDefaultAsync(i => i.Id == ImportId && !i.IsDeleted);
+        
+        if (_import != null)
+        {
+            _bags = await dbContext.ImportBags
+                .Where(b => b.ImportMasterId == ImportId && !b.IsDeleted)
+                .OrderBy(b => b.BagNumber)
+                .ToListAsync();
+        }
+    }
+
+    private void AddBag()
+    {
+        _editingBag = new ImportBag
+        {
+            ImportMasterId = ImportId,
+            BagType = BagType.CourierBag,
+            Status = ImportBagStatus.Expected
+        };
+        _bagDialogVisible = true;
+    }
+
+    private void EditBag(ImportBag bag)
+    {
+        _editingBag = new ImportBag
+        {
+            Id = bag.Id,
+            ImportMasterId = bag.ImportMasterId,
+            BagNumber = bag.BagNumber,
+            BagType = bag.BagType,
+            GrossWeight = bag.GrossWeight,
+            SealNumber = bag.SealNumber,
+            Remarks = bag.Remarks,
+            Status = bag.Status
+        };
+        _bagDialogVisible = true;
+    }
+
+    private async Task SaveBag()
+    {
+        if (string.IsNullOrWhiteSpace(_editingBag.BagNumber))
+        {
+            Snackbar.Add("Bag number is required", Severity.Warning);
+            return;
+        }
+
+        _saving = true;
+        try
+        {
+            await using var dbContext = await DbFactory.CreateDbContextAsync();
+            
+            var existing = await dbContext.ImportBags
+                .FirstOrDefaultAsync(b => b.ImportMasterId == ImportId && 
+                    b.BagNumber == _editingBag.BagNumber && 
+                    b.Id != _editingBag.Id && !b.IsDeleted);
+            
+            if (existing != null)
+            {
+                Snackbar.Add("A bag with this number already exists", Severity.Warning);
+                return;
+            }
+
+            if (_editingBag.Id == 0)
+            {
+                _editingBag.CreatedAt = DateTime.UtcNow;
+                dbContext.ImportBags.Add(_editingBag);
+            }
+            else
+            {
+                var bag = await dbContext.ImportBags.FindAsync(_editingBag.Id);
+                if (bag != null)
+                {
+                    bag.BagNumber = _editingBag.BagNumber;
+                    bag.BagType = _editingBag.BagType;
+                    bag.GrossWeight = _editingBag.GrossWeight;
+                    bag.SealNumber = _editingBag.SealNumber;
+                    bag.Remarks = _editingBag.Remarks;
+                    bag.ModifiedAt = DateTime.UtcNow;
+                }
+            }
+            
+            await dbContext.SaveChangesAsync();
+            Snackbar.Add("Bag saved successfully", Severity.Success);
+            _bagDialogVisible = false;
+            await LoadData();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error saving bag: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _saving = false;
+        }
+    }
+
+    private async Task DeleteBag(ImportBag bag)
+    {
+        var result = await DialogService.ShowMessageBox(
+            "Delete Bag",
+            $"Are you sure you want to delete bag '{bag.BagNumber}'?",
+            yesText: "Delete", cancelText: "Cancel");
+        
+        if (result == true)
+        {
+            await using var dbContext = await DbFactory.CreateDbContextAsync();
+            var entity = await dbContext.ImportBags.FindAsync(bag.Id);
+            if (entity != null)
+            {
+                entity.IsDeleted = true;
+                entity.ModifiedAt = DateTime.UtcNow;
+                await dbContext.SaveChangesAsync();
+                Snackbar.Add("Bag deleted", Severity.Success);
+                await LoadData();
+            }
+        }
+    }
+
+    private Color GetStatusColor(ImportMasterStatus status) => status switch
+    {
+        ImportMasterStatus.Draft => Color.Default,
+        ImportMasterStatus.Confirmed => Color.Info,
+        ImportMasterStatus.InTransit => Color.Primary,
+        ImportMasterStatus.Arrived => Color.Success,
+        ImportMasterStatus.Inscanning => Color.Warning,
+        ImportMasterStatus.Inscanned => Color.Success,
+        ImportMasterStatus.CustomsProcessing => Color.Warning,
+        ImportMasterStatus.Cleared => Color.Success,
+        ImportMasterStatus.Closed => Color.Dark,
+        ImportMasterStatus.Cancelled => Color.Error,
+        _ => Color.Default
+    };
+
+    private Color GetBagStatusColor(ImportBagStatus status) => status switch
+    {
+        ImportBagStatus.Expected => Color.Default,
+        ImportBagStatus.Arrived => Color.Info,
+        ImportBagStatus.Inscanned => Color.Success,
+        ImportBagStatus.Missing => Color.Error,
+        ImportBagStatus.Damaged => Color.Warning,
+        _ => Color.Default
+    };
+}

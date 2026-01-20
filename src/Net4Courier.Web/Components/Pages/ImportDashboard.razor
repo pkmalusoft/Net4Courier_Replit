@@ -1,0 +1,295 @@
+@page "/import-dashboard"
+@using Microsoft.EntityFrameworkCore
+@using Net4Courier.Infrastructure.Data
+@using Net4Courier.Operations.Entities
+@using Net4Courier.Kernel.Enums
+@inject IDbContextFactory<ApplicationDbContext> DbFactory
+@inject NavigationManager Navigation
+@inject IDialogService DialogService
+
+<PageTitle>Import Dashboard - Net4Courier</PageTitle>
+
+<MudText Typo="Typo.h4" GutterBottom="true">Import Dashboard</MudText>
+<MudText Typo="Typo.subtitle1" Class="mb-4" Color="Color.Secondary">Manage incoming shipments from Air, Sea, and Land</MudText>
+
+@if (_isLoading)
+{
+    <MudProgressLinear Color="Color.Primary" Indeterminate="true" />
+}
+else
+{
+    <MudGrid>
+        <MudItem xs="12" sm="6" md="3">
+            <MudPaper Class="pa-4" Elevation="2">
+                <div class="d-flex justify-space-between align-center">
+                    <div>
+                        <MudText Typo="Typo.subtitle2" Color="Color.Secondary">Today's Arrivals</MudText>
+                        <MudText Typo="Typo.h4">@_stats.TodayArrivals</MudText>
+                    </div>
+                    <MudAvatar Color="Color.Primary" Size="Size.Large">
+                        <MudIcon Icon="@Icons.Material.Filled.FlightLand" />
+                    </MudAvatar>
+                </div>
+                <MudText Typo="Typo.caption" Color="Color.Secondary" Class="mt-2">
+                    <MudIcon Icon="@Icons.Material.Filled.Today" Size="Size.Small" /> Expected today
+                </MudText>
+            </MudPaper>
+        </MudItem>
+        
+        <MudItem xs="12" sm="6" md="3">
+            <MudPaper Class="pa-4" Elevation="2">
+                <div class="d-flex justify-space-between align-center">
+                    <div>
+                        <MudText Typo="Typo.subtitle2" Color="Color.Secondary">Pending Inscan</MudText>
+                        <MudText Typo="Typo.h4">@_stats.PendingInscan</MudText>
+                    </div>
+                    <MudAvatar Color="Color.Warning" Size="Size.Large">
+                        <MudIcon Icon="@Icons.Material.Filled.QrCodeScanner" />
+                    </MudAvatar>
+                </div>
+                <MudText Typo="Typo.caption" Color="Color.Warning" Class="mt-2">
+                    <MudIcon Icon="@Icons.Material.Filled.Schedule" Size="Size.Small" /> Awaiting processing
+                </MudText>
+            </MudPaper>
+        </MudItem>
+        
+        <MudItem xs="12" sm="6" md="3">
+            <MudPaper Class="pa-4" Elevation="2">
+                <div class="d-flex justify-space-between align-center">
+                    <div>
+                        <MudText Typo="Typo.subtitle2" Color="Color.Secondary">On-Hold Shipments</MudText>
+                        <MudText Typo="Typo.h4">@_stats.OnHoldShipments</MudText>
+                    </div>
+                    <MudAvatar Color="Color.Error" Size="Size.Large">
+                        <MudIcon Icon="@Icons.Material.Filled.PauseCircle" />
+                    </MudAvatar>
+                </div>
+                <MudText Typo="Typo.caption" Color="Color.Error" Class="mt-2">
+                    <MudIcon Icon="@Icons.Material.Filled.Warning" Size="Size.Small" /> Customs hold
+                </MudText>
+            </MudPaper>
+        </MudItem>
+        
+        <MudItem xs="12" sm="6" md="3">
+            <MudPaper Class="pa-4" Elevation="2">
+                <div class="d-flex justify-space-between align-center">
+                    <div>
+                        <MudText Typo="Typo.subtitle2" Color="Color.Secondary">Cleared Today</MudText>
+                        <MudText Typo="Typo.h4">@_stats.ClearedToday</MudText>
+                    </div>
+                    <MudAvatar Color="Color.Success" Size="Size.Large">
+                        <MudIcon Icon="@Icons.Material.Filled.CheckCircle" />
+                    </MudAvatar>
+                </div>
+                <MudText Typo="Typo.caption" Color="Color.Success" Class="mt-2">
+                    <MudIcon Icon="@Icons.Material.Filled.Verified" Size="Size.Small" /> Ready for delivery
+                </MudText>
+            </MudPaper>
+        </MudItem>
+    </MudGrid>
+
+    <MudPaper Class="pa-4 mt-4" Elevation="2">
+        <div class="d-flex justify-space-between align-center mb-4">
+            <MudText Typo="Typo.h6">Import Masters</MudText>
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add" Href="/import-entry">
+                New Import
+            </MudButton>
+        </div>
+
+        <MudGrid Class="mb-4">
+            <MudItem xs="12" sm="4" md="3">
+                <MudSelect T="ImportMode?" Label="Mode" @bind-Value="_filterMode" Variant="Variant.Outlined" Dense="true" Clearable="true">
+                    <MudSelectItem T="ImportMode?" Value="ImportMode.Air">Air</MudSelectItem>
+                    <MudSelectItem T="ImportMode?" Value="ImportMode.Sea">Sea</MudSelectItem>
+                    <MudSelectItem T="ImportMode?" Value="ImportMode.Land">Land</MudSelectItem>
+                </MudSelect>
+            </MudItem>
+            <MudItem xs="12" sm="4" md="3">
+                <MudSelect T="ImportMasterStatus?" Label="Status" @bind-Value="_filterStatus" Variant="Variant.Outlined" Dense="true" Clearable="true">
+                    @foreach (ImportMasterStatus status in Enum.GetValues(typeof(ImportMasterStatus)))
+                    {
+                        <MudSelectItem T="ImportMasterStatus?" Value="status">@status.ToString()</MudSelectItem>
+                    }
+                </MudSelect>
+            </MudItem>
+            <MudItem xs="12" sm="4" md="3">
+                <MudDatePicker Label="From Date" @bind-Date="_filterFromDate" Variant="Variant.Outlined" Dense="true" />
+            </MudItem>
+            <MudItem xs="12" sm="4" md="2">
+                <MudButton Variant="Variant.Outlined" Color="Color.Primary" OnClick="ApplyFilter" FullWidth="true" Class="mt-1">
+                    <MudIcon Icon="@Icons.Material.Filled.Search" Class="mr-1" /> Filter
+                </MudButton>
+            </MudItem>
+            <MudItem xs="12" sm="4" md="1">
+                <MudButton Variant="Variant.Text" Color="Color.Secondary" OnClick="ClearFilter" FullWidth="true" Class="mt-1">
+                    Clear
+                </MudButton>
+            </MudItem>
+        </MudGrid>
+
+        <MudTable Items="@_imports" Dense="true" Hover="true" Loading="@_tableLoading" Breakpoint="Breakpoint.Sm">
+            <HeaderContent>
+                <MudTh>Import Ref</MudTh>
+                <MudTh>Mode</MudTh>
+                <MudTh>Master No</MudTh>
+                <MudTh>Origin</MudTh>
+                <MudTh>Destination</MudTh>
+                <MudTh>ETA</MudTh>
+                <MudTh>Bags</MudTh>
+                <MudTh>Shipments</MudTh>
+                <MudTh>Status</MudTh>
+                <MudTh>Actions</MudTh>
+            </HeaderContent>
+            <RowTemplate>
+                <MudTd DataLabel="Import Ref">@context.ImportRefNo</MudTd>
+                <MudTd DataLabel="Mode">
+                    <MudChip T="string" Size="Size.Small" Color="@GetModeColor(context.ImportMode)">
+                        @GetModeIcon(context.ImportMode) @context.ImportMode.ToString()
+                    </MudChip>
+                </MudTd>
+                <MudTd DataLabel="Master No">@context.MasterReferenceNumber</MudTd>
+                <MudTd DataLabel="Origin">@context.OriginCityName, @context.OriginCountryName</MudTd>
+                <MudTd DataLabel="Destination">@context.DestinationCityName, @context.DestinationCountryName</MudTd>
+                <MudTd DataLabel="ETA">@(context.ETA?.ToString("dd/MM/yyyy") ?? "-")</MudTd>
+                <MudTd DataLabel="Bags">@context.TotalBags</MudTd>
+                <MudTd DataLabel="Shipments">@context.TotalShipments</MudTd>
+                <MudTd DataLabel="Status">
+                    <MudChip T="string" Size="Size.Small" Color="@GetStatusColor(context.Status)">
+                        @context.Status.ToString()
+                    </MudChip>
+                </MudTd>
+                <MudTd DataLabel="Actions">
+                    <MudIconButton Icon="@Icons.Material.Filled.Visibility" Size="Size.Small" Color="Color.Primary" 
+                                   Href="@($"/import-entry/{context.Id}")" Title="View/Edit" />
+                    <MudIconButton Icon="@Icons.Material.Filled.Inventory2" Size="Size.Small" Color="Color.Info" 
+                                   Href="@($"/import-bags/{context.Id}")" Title="Manage Bags" />
+                    <MudIconButton Icon="@Icons.Material.Filled.QrCodeScanner" Size="Size.Small" Color="Color.Success" 
+                                   Href="@($"/import-inscan/{context.Id}")" Title="Inscan Shipments" />
+                </MudTd>
+            </RowTemplate>
+            <NoRecordsContent>
+                <MudText Color="Color.Secondary">No import records found.</MudText>
+            </NoRecordsContent>
+            <PagerContent>
+                <MudTablePager />
+            </PagerContent>
+        </MudTable>
+    </MudPaper>
+}
+
+@code {
+    private bool _isLoading = true;
+    private bool _tableLoading = false;
+    private DashboardStats _stats = new();
+    private List<ImportMaster> _imports = new();
+
+    private ImportMode? _filterMode;
+    private ImportMasterStatus? _filterStatus;
+    private DateTime? _filterFromDate;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadDashboardData();
+        _isLoading = false;
+    }
+
+    private async Task LoadDashboardData()
+    {
+        await using var dbContext = await DbFactory.CreateDbContextAsync();
+        var today = DateTime.UtcNow.Date;
+
+        _stats.TodayArrivals = await dbContext.ImportMasters
+            .CountAsync(i => !i.IsDeleted && i.ETA.HasValue && i.ETA.Value.Date == today);
+
+        _stats.PendingInscan = await dbContext.ImportMasters
+            .CountAsync(i => !i.IsDeleted && 
+                (i.Status == ImportMasterStatus.Arrived || i.Status == ImportMasterStatus.Inscanning));
+
+        _stats.OnHoldShipments = await dbContext.ImportShipments
+            .CountAsync(s => !s.IsDeleted && 
+                (s.Status == ImportShipmentStatus.CustomsHold || s.Status == ImportShipmentStatus.OnHold));
+
+        _stats.ClearedToday = await dbContext.ImportShipments
+            .CountAsync(s => !s.IsDeleted && s.CustomsClearedAt.HasValue && s.CustomsClearedAt.Value.Date == today);
+
+        await LoadImports();
+    }
+
+    private async Task LoadImports()
+    {
+        _tableLoading = true;
+        StateHasChanged();
+
+        await using var dbContext = await DbFactory.CreateDbContextAsync();
+        var query = dbContext.ImportMasters.Where(i => !i.IsDeleted);
+
+        if (_filterMode.HasValue)
+            query = query.Where(i => i.ImportMode == _filterMode.Value);
+
+        if (_filterStatus.HasValue)
+            query = query.Where(i => i.Status == _filterStatus.Value);
+
+        if (_filterFromDate.HasValue)
+            query = query.Where(i => i.TransactionDate >= _filterFromDate.Value);
+
+        _imports = await query
+            .OrderByDescending(i => i.TransactionDate)
+            .ThenByDescending(i => i.Id)
+            .Take(50)
+            .ToListAsync();
+
+        _tableLoading = false;
+    }
+
+    private async Task ApplyFilter()
+    {
+        await LoadImports();
+    }
+
+    private async Task ClearFilter()
+    {
+        _filterMode = null;
+        _filterStatus = null;
+        _filterFromDate = null;
+        await LoadImports();
+    }
+
+    private Color GetModeColor(ImportMode mode) => mode switch
+    {
+        ImportMode.Air => Color.Info,
+        ImportMode.Sea => Color.Primary,
+        ImportMode.Land => Color.Warning,
+        _ => Color.Default
+    };
+
+    private string GetModeIcon(ImportMode mode) => mode switch
+    {
+        ImportMode.Air => "✈️",
+        ImportMode.Sea => "🚢",
+        ImportMode.Land => "🚚",
+        _ => ""
+    };
+
+    private Color GetStatusColor(ImportMasterStatus status) => status switch
+    {
+        ImportMasterStatus.Draft => Color.Default,
+        ImportMasterStatus.Confirmed => Color.Info,
+        ImportMasterStatus.InTransit => Color.Primary,
+        ImportMasterStatus.Arrived => Color.Success,
+        ImportMasterStatus.Inscanning => Color.Warning,
+        ImportMasterStatus.Inscanned => Color.Success,
+        ImportMasterStatus.CustomsProcessing => Color.Warning,
+        ImportMasterStatus.Cleared => Color.Success,
+        ImportMasterStatus.Closed => Color.Dark,
+        ImportMasterStatus.Cancelled => Color.Error,
+        _ => Color.Default
+    };
+
+    private class DashboardStats
+    {
+        public int TodayArrivals { get; set; }
+        public int PendingInscan { get; set; }
+        public int OnHoldShipments { get; set; }
+        public int ClearedToday { get; set; }
+    }
+}

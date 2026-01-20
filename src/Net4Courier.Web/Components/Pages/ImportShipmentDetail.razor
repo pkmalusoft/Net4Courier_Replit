@@ -1,0 +1,492 @@
+@page "/import-shipment/{Id:long}"
+@using Microsoft.EntityFrameworkCore
+@using Net4Courier.Infrastructure.Data
+@using Net4Courier.Operations.Entities
+@using Net4Courier.Kernel.Enums
+@inject IDbContextFactory<ApplicationDbContext> DbFactory
+@inject NavigationManager Navigation
+@inject ISnackbar Snackbar
+@inject IDialogService DialogService
+
+<PageTitle>Shipment Details - Net4Courier</PageTitle>
+
+<MudBreadcrumbs Items="_breadcrumbs" Class="mb-2" />
+
+@if (_loading)
+{
+    <MudProgressLinear Color="Color.Primary" Indeterminate="true" />
+}
+else if (_shipment == null)
+{
+    <MudAlert Severity="Severity.Error">Shipment not found.</MudAlert>
+}
+else
+{
+    <div class="d-flex justify-space-between align-center mb-4">
+        <div>
+            <MudText Typo="Typo.h4">AWB: @_shipment.AWBNo</MudText>
+            <MudText Typo="Typo.subtitle1" Color="Color.Secondary">
+                Import Ref: @(_shipment.ImportMaster?.ImportRefNo ?? "-")
+            </MudText>
+        </div>
+        <MudChip T="string" Color="@GetStatusColor(_shipment.Status)" Size="Size.Large">
+            @_shipment.Status.ToString()
+        </MudChip>
+    </div>
+
+    <MudTabs Elevation="2" Rounded="true" ApplyEffectsToContainer="true" PanelClass="pa-4">
+        <MudTabPanel Text="Basic Info" Icon="@Icons.Material.Filled.Info">
+            <MudGrid>
+                <MudItem xs="12" md="6">
+                    <MudPaper Class="pa-4" Elevation="0">
+                        <MudText Typo="Typo.h6" Class="mb-3">Shipment Details</MudText>
+                        <MudStack Spacing="2">
+                            <div class="d-flex justify-space-between">
+                                <MudText Typo="Typo.body2" Color="Color.Secondary">AWB Number:</MudText>
+                                <MudText Typo="Typo.body2" Class="font-weight-bold">@_shipment.AWBNo</MudText>
+                            </div>
+                            <div class="d-flex justify-space-between">
+                                <MudText Typo="Typo.body2" Color="Color.Secondary">Pieces:</MudText>
+                                <MudText Typo="Typo.body2">@_shipment.Pieces</MudText>
+                            </div>
+                            <div class="d-flex justify-space-between">
+                                <MudText Typo="Typo.body2" Color="Color.Secondary">Gross Weight:</MudText>
+                                <MudText Typo="Typo.body2">@_shipment.Weight.ToString("N3") kg</MudText>
+                            </div>
+                            <div class="d-flex justify-space-between">
+                                <MudText Typo="Typo.body2" Color="Color.Secondary">Shipment Type:</MudText>
+                                <MudText Typo="Typo.body2">@_shipment.ShipmentType.ToString()</MudText>
+                            </div>
+                            <div class="d-flex justify-space-between">
+                                <MudText Typo="Typo.body2" Color="Color.Secondary">Content Description:</MudText>
+                                <MudText Typo="Typo.body2">@(_shipment.ContentsDescription ?? "-")</MudText>
+                            </div>
+                            <div class="d-flex justify-space-between">
+                                <MudText Typo="Typo.body2" Color="Color.Secondary">HS Code:</MudText>
+                                <MudText Typo="Typo.body2">@(_shipment.HSCode ?? "-")</MudText>
+                            </div>
+                        </MudStack>
+                    </MudPaper>
+                </MudItem>
+                <MudItem xs="12" md="6">
+                    <MudPaper Class="pa-4" Elevation="0">
+                        <MudText Typo="Typo.h6" Class="mb-3">Consignee Details</MudText>
+                        <MudStack Spacing="2">
+                            <div class="d-flex justify-space-between">
+                                <MudText Typo="Typo.body2" Color="Color.Secondary">Name:</MudText>
+                                <MudText Typo="Typo.body2" Class="font-weight-bold">@(_shipment.ConsigneeName ?? "-")</MudText>
+                            </div>
+                            <div class="d-flex justify-space-between">
+                                <MudText Typo="Typo.body2" Color="Color.Secondary">Phone:</MudText>
+                                <MudText Typo="Typo.body2">@(_shipment.ConsigneePhone ?? "-")</MudText>
+                            </div>
+                            <div class="d-flex justify-space-between">
+                                <MudText Typo="Typo.body2" Color="Color.Secondary">Address:</MudText>
+                                <MudText Typo="Typo.body2">@(_shipment.ConsigneeAddress ?? "-")</MudText>
+                            </div>
+                            <div class="d-flex justify-space-between">
+                                <MudText Typo="Typo.body2" Color="Color.Secondary">City:</MudText>
+                                <MudText Typo="Typo.body2">@(_shipment.ConsigneeCity ?? "-")</MudText>
+                            </div>
+                            <div class="d-flex justify-space-between">
+                                <MudText Typo="Typo.body2" Color="Color.Secondary">Postal Code:</MudText>
+                                <MudText Typo="Typo.body2">@(_shipment.ConsigneePostalCode ?? "-")</MudText>
+                            </div>
+                        </MudStack>
+                    </MudPaper>
+                </MudItem>
+            </MudGrid>
+        </MudTabPanel>
+        
+        <MudTabPanel Text="Customs" Icon="@Icons.Material.Filled.Gavel">
+            <MudGrid>
+                <MudItem xs="12" md="6">
+                    <MudPaper Class="pa-4" Elevation="0">
+                        <MudText Typo="Typo.h6" Class="mb-3">Customs Information</MudText>
+                        <MudStack Spacing="2">
+                            <div class="d-flex justify-space-between">
+                                <MudText Typo="Typo.body2" Color="Color.Secondary">Status:</MudText>
+                                <MudChip T="string" Size="Size.Small" Color="@GetStatusColor(_shipment.Status)">
+                                    @_shipment.Status.ToString()
+                                </MudChip>
+                            </div>
+                            <div class="d-flex justify-space-between">
+                                <MudText Typo="Typo.body2" Color="Color.Secondary">Work Status:</MudText>
+                                <MudChip T="string" Size="Size.Small" Color="@GetWorkStatusColor(_shipment.CustomsWorkStatus)">
+                                    @(_shipment.CustomsWorkStatus?.ToString() ?? "Not Started")
+                                </MudChip>
+                            </div>
+                            <div class="d-flex justify-space-between">
+                                <MudText Typo="Typo.body2" Color="Color.Secondary">Declared Value:</MudText>
+                                <MudText Typo="Typo.body2">@(_shipment.DeclaredValue?.ToString("C") ?? "-")</MudText>
+                            </div>
+                            <div class="d-flex justify-space-between">
+                                <MudText Typo="Typo.body2" Color="Color.Secondary">Customs Duty:</MudText>
+                                <MudText Typo="Typo.body2">@(_shipment.DutyAmount?.ToString("C") ?? "-")</MudText>
+                            </div>
+                            <div class="d-flex justify-space-between">
+                                <MudText Typo="Typo.body2" Color="Color.Secondary">Cleared At:</MudText>
+                                <MudText Typo="Typo.body2">@(_shipment.CustomsClearedAt?.ToString("dd/MM/yyyy HH:mm") ?? "-")</MudText>
+                            </div>
+                        </MudStack>
+                    </MudPaper>
+                </MudItem>
+                <MudItem xs="12" md="6">
+                    @if (_shipment.HoldReason != CustomsHoldReason.None)
+                    {
+                        <MudAlert Severity="Severity.Error" Class="mb-4">
+                            <MudText Typo="Typo.subtitle2">Hold Reason: @_shipment.HoldReason.ToString()</MudText>
+                            @if (!string.IsNullOrEmpty(_shipment.HoldReasonDetails))
+                            {
+                                <MudText Typo="Typo.body2">@_shipment.HoldReasonDetails</MudText>
+                            }
+                        </MudAlert>
+                    }
+                    <MudStack Spacing="2">
+                        <MudButton Variant="Variant.Filled" Color="Color.Success" FullWidth="true" 
+                                   OnClick="ClearCustoms" Disabled="@(_shipment.Status == ImportShipmentStatus.Cleared)">
+                            <MudIcon Icon="@Icons.Material.Filled.CheckCircle" Class="mr-2" />
+                            Clear Customs
+                        </MudButton>
+                        <MudButton Variant="Variant.Outlined" Color="Color.Error" FullWidth="true" 
+                                   OnClick="HoldCustoms" Disabled="@(_shipment.Status == ImportShipmentStatus.CustomsHold)">
+                            <MudIcon Icon="@Icons.Material.Filled.Block" Class="mr-2" />
+                            Place on Hold
+                        </MudButton>
+                    </MudStack>
+                </MudItem>
+            </MudGrid>
+        </MudTabPanel>
+        
+        <MudTabPanel Text="@_notesTabLabel" Icon="@Icons.Material.Filled.Comment">
+            <div class="d-flex justify-end mb-4">
+                <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add" OnClick="AddNote">
+                    Add Note
+                </MudButton>
+            </div>
+            
+            @if (_notes.Any())
+            {
+                <MudTimeline TimelineAlign="TimelineAlign.Start">
+                    @foreach (var note in _notes)
+                    {
+                        <MudTimelineItem Color="@GetNoteCategoryColor(note.Category)" Size="Size.Small">
+                            <ItemContent>
+                                <MudCard Elevation="1" Class="mb-2">
+                                    <MudCardContent>
+                                        <div class="d-flex justify-space-between align-center mb-2">
+                                            <MudChip T="string" Size="Size.Small" Color="@GetNoteCategoryColor(note.Category)">
+                                                @note.Category.ToString()
+                                            </MudChip>
+                                            <MudText Typo="Typo.caption" Color="Color.Secondary">
+                                                @note.CreatedAt.ToString("dd/MM/yyyy HH:mm")
+                                            </MudText>
+                                        </div>
+                                        <MudText Typo="Typo.body2">@note.NoteText</MudText>
+                                        @if (!string.IsNullOrEmpty(note.CreatedByName))
+                                        {
+                                            <MudText Typo="Typo.caption" Color="Color.Secondary" Class="mt-2">
+                                                By: @note.CreatedByName
+                                            </MudText>
+                                        }
+                                    </MudCardContent>
+                                </MudCard>
+                            </ItemContent>
+                        </MudTimelineItem>
+                    }
+                </MudTimeline>
+            }
+            else
+            {
+                <MudAlert Severity="Severity.Info">No notes have been added for this shipment.</MudAlert>
+            }
+        </MudTabPanel>
+        
+        <MudTabPanel Text="Audit Trail" Icon="@Icons.Material.Filled.History">
+            <MudStack Spacing="2">
+                <div class="d-flex justify-space-between">
+                    <MudText Typo="Typo.body2" Color="Color.Secondary">Created At:</MudText>
+                    <MudText Typo="Typo.body2">@_shipment.CreatedAt.ToString("dd/MM/yyyy HH:mm")</MudText>
+                </div>
+                <div class="d-flex justify-space-between">
+                    <MudText Typo="Typo.body2" Color="Color.Secondary">Inscanned At:</MudText>
+                    <MudText Typo="Typo.body2">@(_shipment.InscannedAt?.ToString("dd/MM/yyyy HH:mm") ?? "-")</MudText>
+                </div>
+                <div class="d-flex justify-space-between">
+                    <MudText Typo="Typo.body2" Color="Color.Secondary">Last Modified:</MudText>
+                    <MudText Typo="Typo.body2">@(_shipment.ModifiedAt?.ToString("dd/MM/yyyy HH:mm") ?? "-")</MudText>
+                </div>
+                <div class="d-flex justify-space-between">
+                    <MudText Typo="Typo.body2" Color="Color.Secondary">Customs Cleared At:</MudText>
+                    <MudText Typo="Typo.body2">@(_shipment.CustomsClearedAt?.ToString("dd/MM/yyyy HH:mm") ?? "-")</MudText>
+                </div>
+            </MudStack>
+        </MudTabPanel>
+    </MudTabs>
+    
+    <MudPaper Class="pa-4 mt-4" Elevation="2">
+        <MudStack Row="true" Spacing="2">
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="SaveChanges" Disabled="@_saving">
+                @if (_saving)
+                {
+                    <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" />
+                }
+                <MudIcon Icon="@Icons.Material.Filled.Save" Class="mr-2" />
+                Save Changes
+            </MudButton>
+            <MudButton Variant="Variant.Text" Color="Color.Default" Href="/import-customs">
+                <MudIcon Icon="@Icons.Material.Filled.ArrowBack" Class="mr-2" />
+                Back to Customs
+            </MudButton>
+        </MudStack>
+    </MudPaper>
+}
+
+<MudDialog @bind-Visible="_holdDialogVisible" Options="new DialogOptions { CloseButton = true, MaxWidth = MaxWidth.Small, FullWidth = true }">
+    <TitleContent>
+        <MudText Typo="Typo.h6">Place on Hold</MudText>
+    </TitleContent>
+    <DialogContent>
+        <MudStack Spacing="3">
+            <MudSelect T="CustomsHoldReason" Label="Hold Reason *" @bind-Value="_holdReason" Variant="Variant.Outlined" Required="true">
+                @foreach (CustomsHoldReason reason in Enum.GetValues(typeof(CustomsHoldReason)))
+                {
+                    <MudSelectItem Value="reason">@reason.ToString()</MudSelectItem>
+                }
+            </MudSelect>
+            <MudTextField @bind-Value="_holdNotes" Label="Notes" Variant="Variant.Outlined" Lines="3" />
+        </MudStack>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="@(() => _holdDialogVisible = false)">Cancel</MudButton>
+        <MudButton Color="Color.Error" Variant="Variant.Filled" OnClick="ConfirmHold" Disabled="@_processing">
+            Place on Hold
+        </MudButton>
+    </DialogActions>
+</MudDialog>
+
+<MudDialog @bind-Visible="_noteDialogVisible" Options="new DialogOptions { CloseButton = true, MaxWidth = MaxWidth.Small, FullWidth = true }">
+    <TitleContent>
+        <MudText Typo="Typo.h6">Add Note</MudText>
+    </TitleContent>
+    <DialogContent>
+        <MudStack Spacing="3">
+            <MudSelect T="NoteCategory" Label="Category" @bind-Value="_noteCategory" Variant="Variant.Outlined">
+                @foreach (NoteCategory cat in Enum.GetValues(typeof(NoteCategory)))
+                {
+                    <MudSelectItem Value="cat">@cat.ToString()</MudSelectItem>
+                }
+            </MudSelect>
+            <MudTextField @bind-Value="_noteText" Label="Note *" Variant="Variant.Outlined" Lines="4" Required="true" />
+        </MudStack>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="@(() => _noteDialogVisible = false)">Cancel</MudButton>
+        <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="SaveNote" Disabled="@_processing">
+            Save Note
+        </MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [Parameter] public long Id { get; set; }
+    
+    private bool _loading = true;
+    private bool _saving = false;
+    private bool _processing = false;
+    
+    private ImportShipment? _shipment;
+    private List<ImportShipmentNote> _notes = new();
+    private string _notesTabLabel = "Notes";
+    
+    private bool _holdDialogVisible = false;
+    private CustomsHoldReason _holdReason;
+    private string _holdNotes = "";
+    
+    private bool _noteDialogVisible = false;
+    private NoteCategory _noteCategory = NoteCategory.General;
+    private string _noteText = "";
+    
+    private List<BreadcrumbItem> _breadcrumbs = new()
+    {
+        new BreadcrumbItem("Import Dashboard", href: "/import-dashboard"),
+        new BreadcrumbItem("Customs", href: "/import-customs"),
+        new BreadcrumbItem("Shipment Details", href: null, disabled: true)
+    };
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadData();
+        _loading = false;
+    }
+
+    private async Task LoadData()
+    {
+        await using var dbContext = await DbFactory.CreateDbContextAsync();
+        
+        _shipment = await dbContext.ImportShipments
+            .Include(s => s.ImportMaster)
+            .Include(s => s.ImportBag)
+            .FirstOrDefaultAsync(s => s.Id == Id && !s.IsDeleted);
+        
+        if (_shipment != null)
+        {
+            _notes = await dbContext.ImportShipmentNotes
+                .Where(n => n.ImportShipmentId == Id && !n.IsDeleted)
+                .OrderByDescending(n => n.CreatedAt)
+                .ToListAsync();
+            _notesTabLabel = $"Notes ({_notes.Count})";
+        }
+    }
+
+    private async Task SaveChanges()
+    {
+        if (_shipment == null) return;
+        
+        _saving = true;
+        try
+        {
+            await using var dbContext = await DbFactory.CreateDbContextAsync();
+            _shipment.ModifiedAt = DateTime.UtcNow;
+            dbContext.ImportShipments.Update(_shipment);
+            await dbContext.SaveChangesAsync();
+            Snackbar.Add("Changes saved", Severity.Success);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _saving = false;
+        }
+    }
+
+    private async Task ClearCustoms()
+    {
+        if (_shipment == null) return;
+        
+        var result = await DialogService.ShowMessageBox(
+            "Clear Customs",
+            "Are you sure you want to clear this shipment for customs?",
+            yesText: "Clear", cancelText: "Cancel");
+        
+        if (result == true)
+        {
+            await using var dbContext = await DbFactory.CreateDbContextAsync();
+            var entity = await dbContext.ImportShipments.FindAsync(_shipment.Id);
+            if (entity != null)
+            {
+                entity.Status = ImportShipmentStatus.Cleared;
+                entity.CustomsClearedAt = DateTime.UtcNow;
+                entity.HoldReason = CustomsHoldReason.None;
+                entity.HoldReasonDetails = null;
+                entity.ModifiedAt = DateTime.UtcNow;
+                await dbContext.SaveChangesAsync();
+                Snackbar.Add("Shipment cleared", Severity.Success);
+                await LoadData();
+            }
+        }
+    }
+
+    private void HoldCustoms()
+    {
+        _holdReason = CustomsHoldReason.Documentation;
+        _holdNotes = "";
+        _holdDialogVisible = true;
+    }
+
+    private async Task ConfirmHold()
+    {
+        if (_shipment == null) return;
+        
+        _processing = true;
+        try
+        {
+            await using var dbContext = await DbFactory.CreateDbContextAsync();
+            var entity = await dbContext.ImportShipments.FindAsync(_shipment.Id);
+            if (entity != null)
+            {
+                entity.Status = ImportShipmentStatus.CustomsHold;
+                entity.HoldReason = _holdReason;
+                entity.HoldReasonDetails = _holdNotes;
+                entity.ModifiedAt = DateTime.UtcNow;
+                await dbContext.SaveChangesAsync();
+                Snackbar.Add("Shipment placed on hold", Severity.Warning);
+            }
+            _holdDialogVisible = false;
+            await LoadData();
+        }
+        finally
+        {
+            _processing = false;
+        }
+    }
+
+    private void AddNote()
+    {
+        _noteCategory = NoteCategory.General;
+        _noteText = "";
+        _noteDialogVisible = true;
+    }
+
+    private async Task SaveNote()
+    {
+        if (_shipment == null || string.IsNullOrWhiteSpace(_noteText)) return;
+        
+        _processing = true;
+        try
+        {
+            await using var dbContext = await DbFactory.CreateDbContextAsync();
+            var note = new ImportShipmentNote
+            {
+                ImportShipmentId = _shipment.Id,
+                Category = _noteCategory,
+                NoteText = _noteText,
+                CreatedAt = DateTime.UtcNow
+            };
+            dbContext.ImportShipmentNotes.Add(note);
+            await dbContext.SaveChangesAsync();
+            Snackbar.Add("Note added", Severity.Success);
+            _noteDialogVisible = false;
+            await LoadData();
+        }
+        finally
+        {
+            _processing = false;
+        }
+    }
+
+    private Color GetStatusColor(ImportShipmentStatus status) => status switch
+    {
+        ImportShipmentStatus.Expected => Color.Default,
+        ImportShipmentStatus.Inscanned => Color.Info,
+        ImportShipmentStatus.PendingCustoms => Color.Warning,
+        ImportShipmentStatus.CustomsHold => Color.Error,
+        ImportShipmentStatus.Cleared => Color.Success,
+        ImportShipmentStatus.OnHold => Color.Error,
+        ImportShipmentStatus.Released => Color.Success,
+        _ => Color.Default
+    };
+
+    private Color GetWorkStatusColor(CustomsWorkStatus? status) => status switch
+    {
+        CustomsWorkStatus.NotStarted => Color.Default,
+        CustomsWorkStatus.DocumentReview => Color.Info,
+        CustomsWorkStatus.Inspection => Color.Warning,
+        CustomsWorkStatus.DutyCalculation => Color.Primary,
+        CustomsWorkStatus.PaymentPending => Color.Warning,
+        CustomsWorkStatus.Completed => Color.Success,
+        _ => Color.Default
+    };
+
+    private Color GetNoteCategoryColor(NoteCategory category) => category switch
+    {
+        NoteCategory.General => Color.Default,
+        NoteCategory.Customs => Color.Warning,
+        NoteCategory.Delivery => Color.Info,
+        NoteCategory.Finance => Color.Success,
+        NoteCategory.Issue => Color.Error,
+        _ => Color.Default
+    };
+}

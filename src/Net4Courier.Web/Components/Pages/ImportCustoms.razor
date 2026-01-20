@@ -1,0 +1,523 @@
+@page "/import-customs"
+@using Microsoft.EntityFrameworkCore
+@using Net4Courier.Infrastructure.Data
+@using Net4Courier.Operations.Entities
+@using Net4Courier.Kernel.Enums
+@inject IDbContextFactory<ApplicationDbContext> DbFactory
+@inject NavigationManager Navigation
+@inject ISnackbar Snackbar
+@inject IDialogService DialogService
+
+<PageTitle>Customs Processing - Net4Courier</PageTitle>
+
+<MudText Typo="Typo.h4" GutterBottom="true">Customs Processing</MudText>
+<MudText Typo="Typo.subtitle1" Class="mb-4" Color="Color.Secondary">Manage customs clearance for imported shipments</MudText>
+
+@if (_loading)
+{
+    <MudProgressLinear Color="Color.Primary" Indeterminate="true" />
+}
+else
+{
+    <MudGrid Class="mb-4">
+        <MudItem xs="12" sm="6" md="3">
+            <MudPaper Class="pa-4" Elevation="2">
+                <div class="d-flex justify-space-between align-center">
+                    <div>
+                        <MudText Typo="Typo.subtitle2" Color="Color.Secondary">Pending Clearance</MudText>
+                        <MudText Typo="Typo.h4">@_stats.PendingClearance</MudText>
+                    </div>
+                    <MudAvatar Color="Color.Warning" Size="Size.Large">
+                        <MudIcon Icon="@Icons.Material.Filled.HourglassEmpty" />
+                    </MudAvatar>
+                </div>
+            </MudPaper>
+        </MudItem>
+        <MudItem xs="12" sm="6" md="3">
+            <MudPaper Class="pa-4" Elevation="2">
+                <div class="d-flex justify-space-between align-center">
+                    <div>
+                        <MudText Typo="Typo.subtitle2" Color="Color.Secondary">On Hold</MudText>
+                        <MudText Typo="Typo.h4" Color="Color.Error">@_stats.OnHold</MudText>
+                    </div>
+                    <MudAvatar Color="Color.Error" Size="Size.Large">
+                        <MudIcon Icon="@Icons.Material.Filled.PauseCircle" />
+                    </MudAvatar>
+                </div>
+            </MudPaper>
+        </MudItem>
+        <MudItem xs="12" sm="6" md="3">
+            <MudPaper Class="pa-4" Elevation="2">
+                <div class="d-flex justify-space-between align-center">
+                    <div>
+                        <MudText Typo="Typo.subtitle2" Color="Color.Secondary">In Review</MudText>
+                        <MudText Typo="Typo.h4">@_stats.InReview</MudText>
+                    </div>
+                    <MudAvatar Color="Color.Info" Size="Size.Large">
+                        <MudIcon Icon="@Icons.Material.Filled.Visibility" />
+                    </MudAvatar>
+                </div>
+            </MudPaper>
+        </MudItem>
+        <MudItem xs="12" sm="6" md="3">
+            <MudPaper Class="pa-4" Elevation="2">
+                <div class="d-flex justify-space-between align-center">
+                    <div>
+                        <MudText Typo="Typo.subtitle2" Color="Color.Secondary">Cleared Today</MudText>
+                        <MudText Typo="Typo.h4" Color="Color.Success">@_stats.ClearedToday</MudText>
+                    </div>
+                    <MudAvatar Color="Color.Success" Size="Size.Large">
+                        <MudIcon Icon="@Icons.Material.Filled.CheckCircle" />
+                    </MudAvatar>
+                </div>
+            </MudPaper>
+        </MudItem>
+    </MudGrid>
+
+    <MudPaper Class="pa-4" Elevation="2">
+        <div class="d-flex justify-space-between align-center mb-4">
+            <MudText Typo="Typo.h6">Shipments Awaiting Customs</MudText>
+            <MudStack Row="true" Spacing="2">
+                <MudButton Variant="Variant.Outlined" Color="Color.Primary" StartIcon="@Icons.Material.Filled.CheckCircle"
+                           OnClick="BulkClearSelected" Disabled="@(!_selectedShipments.Any())">
+                    Clear Selected (@_selectedShipments.Count)
+                </MudButton>
+                <MudButton Variant="Variant.Outlined" Color="Color.Error" StartIcon="@Icons.Material.Filled.Block"
+                           OnClick="BulkHoldSelected" Disabled="@(!_selectedShipments.Any())">
+                    Hold Selected
+                </MudButton>
+            </MudStack>
+        </div>
+
+        <MudGrid Class="mb-4">
+            <MudItem xs="12" sm="4" md="3">
+                <MudSelect T="ImportShipmentStatus?" Label="Status" @bind-Value="_filterStatus" Variant="Variant.Outlined" Dense="true" Clearable="true">
+                    <MudSelectItem T="ImportShipmentStatus?" Value="ImportShipmentStatus.PendingCustoms">Customs Pending</MudSelectItem>
+                    <MudSelectItem T="ImportShipmentStatus?" Value="ImportShipmentStatus.CustomsHold">On Hold</MudSelectItem>
+                    <MudSelectItem T="ImportShipmentStatus?" Value="ImportShipmentStatus.Cleared">Cleared</MudSelectItem>
+                </MudSelect>
+            </MudItem>
+            <MudItem xs="12" sm="4" md="3">
+                <MudSelect T="CustomsWorkStatus?" Label="Work Status" @bind-Value="_filterWorkStatus" Variant="Variant.Outlined" Dense="true" Clearable="true">
+                    @foreach (CustomsWorkStatus status in Enum.GetValues(typeof(CustomsWorkStatus)))
+                    {
+                        <MudSelectItem T="CustomsWorkStatus?" Value="status">@status.ToString()</MudSelectItem>
+                    }
+                </MudSelect>
+            </MudItem>
+            <MudItem xs="12" sm="4" md="3">
+                <MudTextField @bind-Value="_searchText" Label="Search AWB" Variant="Variant.Outlined" Dense="true" 
+                              Adornment="Adornment.End" AdornmentIcon="@Icons.Material.Filled.Search" />
+            </MudItem>
+            <MudItem xs="12" sm="4" md="2">
+                <MudButton Variant="Variant.Outlined" Color="Color.Primary" OnClick="ApplyFilter" FullWidth="true" Class="mt-1">
+                    Filter
+                </MudButton>
+            </MudItem>
+            <MudItem xs="12" sm="4" md="1">
+                <MudButton Variant="Variant.Text" Color="Color.Secondary" OnClick="ClearFilter" FullWidth="true" Class="mt-1">
+                    Clear
+                </MudButton>
+            </MudItem>
+        </MudGrid>
+
+        <MudTable Items="@_shipments" Dense="true" Hover="true" Loading="@_tableLoading" 
+                  MultiSelection="true" @bind-SelectedItems="_selectedShipments">
+            <HeaderContent>
+                <MudTh><MudCheckBox T="bool" /></MudTh>
+                <MudTh>AWB</MudTh>
+                <MudTh>Import Ref</MudTh>
+                <MudTh>Origin</MudTh>
+                <MudTh>Consignee</MudTh>
+                <MudTh>Value</MudTh>
+                <MudTh>Status</MudTh>
+                <MudTh>Work Status</MudTh>
+                <MudTh>Hold Reason</MudTh>
+                <MudTh>Actions</MudTh>
+            </HeaderContent>
+            <RowTemplate>
+                <MudTd><MudCheckBox T="bool" /></MudTd>
+                <MudTd DataLabel="AWB">
+                    <MudText Typo="Typo.body2" Class="font-weight-bold">@context.AWBNo</MudText>
+                </MudTd>
+                <MudTd DataLabel="Import Ref">@(context.ImportMaster?.ImportRefNo ?? "-")</MudTd>
+                <MudTd DataLabel="Origin">@(context.ImportMaster?.OriginCountryName ?? "-")</MudTd>
+                <MudTd DataLabel="Consignee">@context.ConsigneeName</MudTd>
+                <MudTd DataLabel="Value">@(context.DeclaredValue?.ToString("C") ?? "-")</MudTd>
+                <MudTd DataLabel="Status">
+                    <MudChip T="string" Size="Size.Small" Color="@GetStatusColor(context.Status)">
+                        @context.Status.ToString()
+                    </MudChip>
+                </MudTd>
+                <MudTd DataLabel="Work Status">
+                    <MudChip T="string" Size="Size.Small" Color="@GetWorkStatusColor(context.CustomsWorkStatus)">
+                        @(context.CustomsWorkStatus?.ToString() ?? "Not Started")
+                    </MudChip>
+                </MudTd>
+                <MudTd DataLabel="Hold Reason">
+                    @if (context.HoldReason != CustomsHoldReason.None)
+                    {
+                        <MudTooltip Text="@context.HoldReasonDetails">
+                            <MudChip T="string" Size="Size.Small" Color="Color.Error">
+                                @GetHoldReasonDisplay(context.HoldReason)
+                            </MudChip>
+                        </MudTooltip>
+                    }
+                    else
+                    {
+                        <MudText>-</MudText>
+                    }
+                </MudTd>
+                <MudTd DataLabel="Actions">
+                    <MudIconButton Icon="@Icons.Material.Filled.Visibility" Size="Size.Small" Color="Color.Primary" 
+                                   Href="@($"/import-shipment/{context.Id}")" Title="View Details" />
+                    <MudIconButton Icon="@Icons.Material.Filled.CheckCircle" Size="Size.Small" Color="Color.Success" 
+                                   OnClick="@(() => ClearShipment(context))" Title="Clear" 
+                                   Disabled="@(context.Status == ImportShipmentStatus.Cleared)" />
+                    <MudIconButton Icon="@Icons.Material.Filled.Block" Size="Size.Small" Color="Color.Error" 
+                                   OnClick="@(() => HoldShipment(context))" Title="Hold" 
+                                   Disabled="@(context.Status == ImportShipmentStatus.CustomsHold)" />
+                    <MudIconButton Icon="@Icons.Material.Filled.Comment" Size="Size.Small" Color="Color.Info" 
+                                   OnClick="@(() => AddNote(context))" Title="Add Note" />
+                </MudTd>
+            </RowTemplate>
+            <NoRecordsContent>
+                <MudText Color="Color.Secondary">No shipments found matching your filters.</MudText>
+            </NoRecordsContent>
+            <PagerContent>
+                <MudTablePager />
+            </PagerContent>
+        </MudTable>
+    </MudPaper>
+}
+
+<MudDialog @bind-Visible="_holdDialogVisible" Options="new DialogOptions { CloseButton = true, MaxWidth = MaxWidth.Small, FullWidth = true }">
+    <TitleContent>
+        <MudText Typo="Typo.h6">Place Shipment on Hold</MudText>
+    </TitleContent>
+    <DialogContent>
+        <MudStack Spacing="3">
+            <MudSelect T="CustomsHoldReason" Label="Hold Reason *" @bind-Value="_holdReason" Variant="Variant.Outlined" Required="true">
+                @foreach (CustomsHoldReason reason in Enum.GetValues(typeof(CustomsHoldReason)))
+                {
+                    <MudSelectItem Value="reason">@GetHoldReasonDisplay(reason)</MudSelectItem>
+                }
+            </MudSelect>
+            <MudTextField @bind-Value="_holdNotes" Label="Notes" Variant="Variant.Outlined" Lines="3" 
+                          Placeholder="Add any additional details about this hold..." />
+        </MudStack>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="@(() => _holdDialogVisible = false)">Cancel</MudButton>
+        <MudButton Color="Color.Error" Variant="Variant.Filled" OnClick="ConfirmHold" Disabled="@_processing">
+            @if (_processing)
+            {
+                <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" />
+            }
+            Place on Hold
+        </MudButton>
+    </DialogActions>
+</MudDialog>
+
+<MudDialog @bind-Visible="_noteDialogVisible" Options="new DialogOptions { CloseButton = true, MaxWidth = MaxWidth.Small, FullWidth = true }">
+    <TitleContent>
+        <MudText Typo="Typo.h6">Add Note</MudText>
+    </TitleContent>
+    <DialogContent>
+        <MudStack Spacing="3">
+            <MudSelect T="NoteCategory" Label="Category" @bind-Value="_noteCategory" Variant="Variant.Outlined">
+                @foreach (NoteCategory cat in Enum.GetValues(typeof(NoteCategory)))
+                {
+                    <MudSelectItem Value="cat">@cat.ToString()</MudSelectItem>
+                }
+            </MudSelect>
+            <MudTextField @bind-Value="_noteText" Label="Note *" Variant="Variant.Outlined" Lines="4" 
+                          Placeholder="Enter your note..." Required="true" />
+        </MudStack>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="@(() => _noteDialogVisible = false)">Cancel</MudButton>
+        <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="SaveNote" Disabled="@_processing">
+            Save Note
+        </MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    private bool _loading = true;
+    private bool _tableLoading = false;
+    private bool _processing = false;
+    
+    private CustomsStats _stats = new();
+    private List<ImportShipment> _shipments = new();
+    private HashSet<ImportShipment> _selectedShipments = new();
+    
+    private ImportShipmentStatus? _filterStatus = ImportShipmentStatus.PendingCustoms;
+    private CustomsWorkStatus? _filterWorkStatus;
+    private string _searchText = "";
+    
+    private bool _holdDialogVisible = false;
+    private ImportShipment? _holdingShipment;
+    private CustomsHoldReason _holdReason;
+    private string _holdNotes = "";
+    
+    private bool _noteDialogVisible = false;
+    private ImportShipment? _notingShipment;
+    private NoteCategory _noteCategory = NoteCategory.General;
+    private string _noteText = "";
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadData();
+        _loading = false;
+    }
+
+    private async Task LoadData()
+    {
+        _tableLoading = true;
+        StateHasChanged();
+
+        await using var dbContext = await DbFactory.CreateDbContextAsync();
+        var today = DateTime.UtcNow.Date;
+
+        _stats.PendingClearance = await dbContext.ImportShipments
+            .CountAsync(s => !s.IsDeleted && s.Status == ImportShipmentStatus.PendingCustoms);
+        
+        _stats.OnHold = await dbContext.ImportShipments
+            .CountAsync(s => !s.IsDeleted && s.Status == ImportShipmentStatus.CustomsHold);
+        
+        _stats.InReview = await dbContext.ImportShipments
+            .CountAsync(s => !s.IsDeleted && s.CustomsWorkStatus == CustomsWorkStatus.DocumentReview);
+        
+        _stats.ClearedToday = await dbContext.ImportShipments
+            .CountAsync(s => !s.IsDeleted && s.CustomsClearedAt.HasValue && s.CustomsClearedAt.Value.Date == today);
+
+        await LoadShipments();
+        _tableLoading = false;
+    }
+
+    private async Task LoadShipments()
+    {
+        await using var dbContext = await DbFactory.CreateDbContextAsync();
+        
+        var query = dbContext.ImportShipments
+            .Include(s => s.ImportMaster)
+            .Where(s => !s.IsDeleted);
+
+        if (_filterStatus.HasValue)
+            query = query.Where(s => s.Status == _filterStatus.Value);
+        else
+            query = query.Where(s => s.Status == ImportShipmentStatus.PendingCustoms || 
+                                     s.Status == ImportShipmentStatus.CustomsHold ||
+                                     s.Status == ImportShipmentStatus.Inscanned);
+
+        if (_filterWorkStatus.HasValue)
+            query = query.Where(s => s.CustomsWorkStatus == _filterWorkStatus.Value);
+
+        if (!string.IsNullOrWhiteSpace(_searchText))
+            query = query.Where(s => s.AWBNo.Contains(_searchText));
+
+        _shipments = await query
+            .OrderByDescending(s => s.InscannedAt)
+            .Take(100)
+            .ToListAsync();
+        
+        _selectedShipments.Clear();
+    }
+
+    private async Task ApplyFilter()
+    {
+        _tableLoading = true;
+        StateHasChanged();
+        await LoadShipments();
+        _tableLoading = false;
+    }
+
+    private async Task ClearFilter()
+    {
+        _filterStatus = ImportShipmentStatus.PendingCustoms;
+        _filterWorkStatus = null;
+        _searchText = "";
+        await ApplyFilter();
+    }
+
+    private async Task ClearShipment(ImportShipment shipment)
+    {
+        var result = await DialogService.ShowMessageBox(
+            "Clear Shipment",
+            $"Are you sure you want to mark AWB '{shipment.AWBNo}' as cleared for customs?",
+            yesText: "Clear", cancelText: "Cancel");
+        
+        if (result == true)
+        {
+            await using var dbContext = await DbFactory.CreateDbContextAsync();
+            var entity = await dbContext.ImportShipments.FindAsync(shipment.Id);
+            if (entity != null)
+            {
+                entity.Status = ImportShipmentStatus.Cleared;
+                entity.CustomsClearedAt = DateTime.UtcNow;
+                entity.HoldReason = CustomsHoldReason.None;
+                entity.HoldReasonDetails = null;
+                entity.ModifiedAt = DateTime.UtcNow;
+                await dbContext.SaveChangesAsync();
+                Snackbar.Add($"AWB {shipment.AWBNo} cleared", Severity.Success);
+                await LoadData();
+            }
+        }
+    }
+
+    private void HoldShipment(ImportShipment shipment)
+    {
+        _holdingShipment = shipment;
+        _holdReason = CustomsHoldReason.Documentation;
+        _holdNotes = "";
+        _holdDialogVisible = true;
+    }
+
+    private async Task ConfirmHold()
+    {
+        if (_holdingShipment == null) return;
+        
+        _processing = true;
+        try
+        {
+            await using var dbContext = await DbFactory.CreateDbContextAsync();
+            var entity = await dbContext.ImportShipments.FindAsync(_holdingShipment.Id);
+            if (entity != null)
+            {
+                entity.Status = ImportShipmentStatus.CustomsHold;
+                entity.HoldReason = _holdReason;
+                entity.HoldReasonDetails = _holdNotes;
+                entity.ModifiedAt = DateTime.UtcNow;
+                await dbContext.SaveChangesAsync();
+                Snackbar.Add($"AWB {_holdingShipment.AWBNo} placed on hold", Severity.Warning);
+            }
+            _holdDialogVisible = false;
+            await LoadData();
+        }
+        finally
+        {
+            _processing = false;
+        }
+    }
+
+    private async Task BulkClearSelected()
+    {
+        if (!_selectedShipments.Any()) return;
+        
+        var result = await DialogService.ShowMessageBox(
+            "Clear Selected Shipments",
+            $"Are you sure you want to clear {_selectedShipments.Count} shipments?",
+            yesText: "Clear All", cancelText: "Cancel");
+        
+        if (result == true)
+        {
+            await using var dbContext = await DbFactory.CreateDbContextAsync();
+            var ids = _selectedShipments.Select(s => s.Id).ToList();
+            var entities = await dbContext.ImportShipments.Where(s => ids.Contains(s.Id)).ToListAsync();
+            foreach (var entity in entities)
+            {
+                entity.Status = ImportShipmentStatus.Cleared;
+                entity.CustomsClearedAt = DateTime.UtcNow;
+                entity.HoldReason = CustomsHoldReason.None;
+                entity.HoldReasonDetails = null;
+                entity.ModifiedAt = DateTime.UtcNow;
+            }
+            await dbContext.SaveChangesAsync();
+            Snackbar.Add($"{entities.Count} shipments cleared", Severity.Success);
+            await LoadData();
+        }
+    }
+
+    private async Task BulkHoldSelected()
+    {
+        if (!_selectedShipments.Any()) return;
+        _holdingShipment = _selectedShipments.First();
+        _holdReason = CustomsHoldReason.Documentation;
+        _holdNotes = $"Bulk hold applied to {_selectedShipments.Count} shipments";
+        _holdDialogVisible = true;
+    }
+
+    private void AddNote(ImportShipment shipment)
+    {
+        _notingShipment = shipment;
+        _noteCategory = NoteCategory.General;
+        _noteText = "";
+        _noteDialogVisible = true;
+    }
+
+    private async Task SaveNote()
+    {
+        if (_notingShipment == null || string.IsNullOrWhiteSpace(_noteText)) return;
+        
+        _processing = true;
+        try
+        {
+            await using var dbContext = await DbFactory.CreateDbContextAsync();
+            var note = new ImportShipmentNote
+            {
+                ImportShipmentId = _notingShipment.Id,
+                Category = _noteCategory,
+                NoteText = _noteText,
+                CreatedAt = DateTime.UtcNow
+            };
+            dbContext.ImportShipmentNotes.Add(note);
+            await dbContext.SaveChangesAsync();
+            Snackbar.Add("Note added", Severity.Success);
+            _noteDialogVisible = false;
+        }
+        finally
+        {
+            _processing = false;
+        }
+    }
+
+    private Color GetStatusColor(ImportShipmentStatus status) => status switch
+    {
+        ImportShipmentStatus.Expected => Color.Default,
+        ImportShipmentStatus.Inscanned => Color.Info,
+        ImportShipmentStatus.PendingCustoms => Color.Warning,
+        ImportShipmentStatus.CustomsHold => Color.Error,
+        ImportShipmentStatus.Cleared => Color.Success,
+        ImportShipmentStatus.OnHold => Color.Error,
+        ImportShipmentStatus.Released => Color.Success,
+        _ => Color.Default
+    };
+
+    private Color GetWorkStatusColor(CustomsWorkStatus? status) => status switch
+    {
+        CustomsWorkStatus.NotStarted => Color.Default,
+        CustomsWorkStatus.DocumentReview => Color.Info,
+        CustomsWorkStatus.Inspection => Color.Warning,
+        CustomsWorkStatus.DutyCalculation => Color.Primary,
+        CustomsWorkStatus.PaymentPending => Color.Warning,
+        CustomsWorkStatus.Completed => Color.Success,
+        _ => Color.Default
+    };
+
+    private string GetHoldReasonDisplay(CustomsHoldReason reason) => reason switch
+    {
+        CustomsHoldReason.None => "None",
+        CustomsHoldReason.Valuation => "Valuation Dispute",
+        CustomsHoldReason.Documentation => "Documents Missing",
+        CustomsHoldReason.ProhibitedItems => "Prohibited Items",
+        CustomsHoldReason.InspectionRequired => "Inspection Required",
+        CustomsHoldReason.DutyPaymentPending => "Duty Payment Pending",
+        CustomsHoldReason.ImporterVerification => "Importer Verification",
+        CustomsHoldReason.HSCodeMismatch => "HS Code Mismatch",
+        CustomsHoldReason.WeightDiscrepancy => "Weight Discrepancy",
+        CustomsHoldReason.DescriptionMismatch => "Description Mismatch",
+        CustomsHoldReason.MissingInvoice => "Missing Invoice",
+        CustomsHoldReason.RestrictedGoods => "Restricted Goods",
+        CustomsHoldReason.Other => "Other",
+        _ => reason.ToString()
+    };
+
+    private class CustomsStats
+    {
+        public int PendingClearance { get; set; }
+        public int OnHold { get; set; }
+        public int InReview { get; set; }
+        public int ClearedToday { get; set; }
+    }
+}

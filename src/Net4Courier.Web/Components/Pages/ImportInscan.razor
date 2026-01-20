@@ -1,0 +1,378 @@
+@page "/import-inscan/{ImportId:long}"
+@using Microsoft.EntityFrameworkCore
+@using Net4Courier.Infrastructure.Data
+@using Net4Courier.Operations.Entities
+@using Net4Courier.Kernel.Enums
+@inject IDbContextFactory<ApplicationDbContext> DbFactory
+@inject NavigationManager Navigation
+@inject ISnackbar Snackbar
+@inject IDialogService DialogService
+@inject IJSRuntime JSRuntime
+
+<PageTitle>Import Inscan - Net4Courier</PageTitle>
+
+<MudBreadcrumbs Items="_breadcrumbs" Class="mb-2" />
+
+@if (_loading)
+{
+    <MudProgressLinear Color="Color.Primary" Indeterminate="true" />
+}
+else if (_import == null)
+{
+    <MudAlert Severity="Severity.Error">Import not found.</MudAlert>
+}
+else
+{
+    <div class="d-flex justify-space-between align-center mb-4">
+        <div>
+            <MudText Typo="Typo.h4">Inscan Shipments - @_import.ImportRefNo</MudText>
+            <MudText Typo="Typo.subtitle1" Color="Color.Secondary">
+                @_import.ImportMode | @_import.MasterReferenceNumber
+            </MudText>
+        </div>
+        <MudChip T="string" Color="@GetStatusColor(_import.Status)" Size="Size.Large">
+            @_import.Status.ToString()
+        </MudChip>
+    </div>
+
+    <MudGrid>
+        <MudItem xs="12" md="4">
+            <MudPaper Class="pa-4" Elevation="2">
+                <MudText Typo="Typo.h6" Class="mb-3">Scan Shipment</MudText>
+                
+                <MudSelect T="long?" Label="Select Bag" @bind-Value="_selectedBagId" Variant="Variant.Outlined" Class="mb-3">
+                    <MudSelectItem T="long?" Value="null">All Bags</MudSelectItem>
+                    @foreach (var bag in _bags)
+                    {
+                        <MudSelectItem T="long?" Value="bag.Id">@bag.BagNumber (@bag.ShipmentCount)</MudSelectItem>
+                    }
+                </MudSelect>
+                
+                <MudTextField @ref="_awbInput" @bind-Value="_scanAwb" Label="AWB / Barcode" Variant="Variant.Outlined"
+                              Placeholder="Scan or enter AWB number" Immediate="true"
+                              OnKeyDown="OnScanKeyDown" Adornment="Adornment.End"
+                              AdornmentIcon="@Icons.Material.Filled.QrCodeScanner" />
+                
+                <MudStack Row="true" Spacing="2" Class="mt-3">
+                    <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="ProcessScan" 
+                               Disabled="@(string.IsNullOrWhiteSpace(_scanAwb) || _processing)" FullWidth="true">
+                        @if (_processing)
+                        {
+                            <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" />
+                        }
+                        <MudIcon Icon="@Icons.Material.Filled.Add" Class="mr-2" />
+                        Add Shipment
+                    </MudButton>
+                </MudStack>
+                
+                @if (!string.IsNullOrEmpty(_lastMessage))
+                {
+                    <MudAlert Severity="@_lastSeverity" Class="mt-3" Dense="true">@_lastMessage</MudAlert>
+                }
+            </MudPaper>
+            
+            <MudPaper Class="pa-4 mt-4" Elevation="2">
+                <MudText Typo="Typo.h6" Class="mb-3">Progress</MudText>
+                <MudStack Spacing="2">
+                    <div class="d-flex justify-space-between">
+                        <MudText Typo="Typo.body2">Expected:</MudText>
+                        <MudText Typo="Typo.body2" Class="font-weight-bold">@_import.TotalShipments</MudText>
+                    </div>
+                    <div class="d-flex justify-space-between">
+                        <MudText Typo="Typo.body2">Inscanned:</MudText>
+                        <MudText Typo="Typo.body2" Class="font-weight-bold" Color="Color.Success">@_shipments.Count</MudText>
+                    </div>
+                    <div class="d-flex justify-space-between">
+                        <MudText Typo="Typo.body2">Pending:</MudText>
+                        <MudText Typo="Typo.body2" Class="font-weight-bold" Color="Color.Warning">
+                            @(_import.TotalShipments - _shipments.Count)
+                        </MudText>
+                    </div>
+                    <MudProgressLinear Value="@GetProgress()" Color="Color.Primary" Size="Size.Large" Rounded="true" />
+                    <MudText Typo="Typo.caption" Color="Color.Secondary" Align="Align.Center">
+                        @GetProgress().ToString("N1")% Complete
+                    </MudText>
+                </MudStack>
+            </MudPaper>
+            
+            <MudPaper Class="pa-4 mt-4" Elevation="2">
+                <MudText Typo="Typo.h6" Class="mb-3">Quick Actions</MudText>
+                <MudStack Spacing="2">
+                    <MudButton Variant="Variant.Outlined" Color="Color.Primary" FullWidth="true" 
+                               Href="@($"/import-bags/{ImportId}")">
+                        <MudIcon Icon="@Icons.Material.Filled.Inventory2" Class="mr-2" />
+                        Manage Bags
+                    </MudButton>
+                    <MudButton Variant="Variant.Outlined" Color="Color.Warning" FullWidth="true" 
+                               Href="/import-customs">
+                        <MudIcon Icon="@Icons.Material.Filled.Gavel" Class="mr-2" />
+                        Customs Processing
+                    </MudButton>
+                    <MudButton Variant="Variant.Text" Color="Color.Default" FullWidth="true" 
+                               Href="/import-dashboard">
+                        <MudIcon Icon="@Icons.Material.Filled.ArrowBack" Class="mr-2" />
+                        Back to Dashboard
+                    </MudButton>
+                </MudStack>
+            </MudPaper>
+        </MudItem>
+        
+        <MudItem xs="12" md="8">
+            <MudPaper Class="pa-4" Elevation="2">
+                <div class="d-flex justify-space-between align-center mb-4">
+                    <MudText Typo="Typo.h6">Inscanned Shipments (@_shipments.Count)</MudText>
+                    <MudTextField @bind-Value="_searchText" Placeholder="Search AWB..." Variant="Variant.Outlined" 
+                                  Dense="true" Immediate="true" Adornment="Adornment.Start" 
+                                  AdornmentIcon="@Icons.Material.Filled.Search" Style="max-width: 250px;" />
+                </div>
+
+                <MudTable Items="@FilteredShipments" Dense="true" Hover="true" Loading="@_tableLoading" 
+                          FixedHeader="true" Height="400px">
+                    <HeaderContent>
+                        <MudTh>AWB</MudTh>
+                        <MudTh>Consignee</MudTh>
+                        <MudTh>Weight</MudTh>
+                        <MudTh>Pieces</MudTh>
+                        <MudTh>Bag</MudTh>
+                        <MudTh>Status</MudTh>
+                        <MudTh>Inscanned</MudTh>
+                        <MudTh>Actions</MudTh>
+                    </HeaderContent>
+                    <RowTemplate>
+                        <MudTd DataLabel="AWB">
+                            <MudText Typo="Typo.body2" Class="font-weight-bold">@context.AWBNo</MudText>
+                        </MudTd>
+                        <MudTd DataLabel="Consignee">@context.ConsigneeName</MudTd>
+                        <MudTd DataLabel="Weight">@context.Weight.ToString("N3") kg</MudTd>
+                        <MudTd DataLabel="Pieces">@context.Pieces</MudTd>
+                        <MudTd DataLabel="Bag">@(context.ImportBag?.BagNumber ?? "-")</MudTd>
+                        <MudTd DataLabel="Status">
+                            <MudChip T="string" Size="Size.Small" Color="@GetShipmentStatusColor(context.Status)">
+                                @context.Status.ToString()
+                            </MudChip>
+                        </MudTd>
+                        <MudTd DataLabel="Inscanned">@context.InscannedAt?.ToString("HH:mm")</MudTd>
+                        <MudTd DataLabel="Actions">
+                            <MudIconButton Icon="@Icons.Material.Filled.Visibility" Size="Size.Small" Color="Color.Primary" 
+                                           OnClick="@(() => ViewShipmentDetails(context))" Title="View Details" />
+                            <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" Color="Color.Error" 
+                                           OnClick="@(() => RemoveShipment(context))" Title="Remove" />
+                        </MudTd>
+                    </RowTemplate>
+                    <NoRecordsContent>
+                        <MudText Color="Color.Secondary">No shipments inscanned yet. Start scanning AWB numbers.</MudText>
+                    </NoRecordsContent>
+                    <PagerContent>
+                        <MudTablePager />
+                    </PagerContent>
+                </MudTable>
+            </MudPaper>
+        </MudItem>
+    </MudGrid>
+}
+
+@code {
+    [Parameter] public long ImportId { get; set; }
+    [SupplyParameterFromQuery] public long? Bag { get; set; }
+    
+    private bool _loading = true;
+    private bool _tableLoading = false;
+    private bool _processing = false;
+    
+    private ImportMaster? _import;
+    private List<ImportBag> _bags = new();
+    private List<ImportShipment> _shipments = new();
+    
+    private MudTextField<string>? _awbInput;
+    private string _scanAwb = "";
+    private long? _selectedBagId;
+    private string _searchText = "";
+    private string _lastMessage = "";
+    private Severity _lastSeverity = Severity.Info;
+    
+    private List<BreadcrumbItem> _breadcrumbs = new()
+    {
+        new BreadcrumbItem("Import Dashboard", href: "/import-dashboard"),
+        new BreadcrumbItem("Inscan Shipments", href: null, disabled: true)
+    };
+
+    private IEnumerable<ImportShipment> FilteredShipments => string.IsNullOrWhiteSpace(_searchText)
+        ? _shipments
+        : _shipments.Where(s => s.AWBNo.Contains(_searchText, StringComparison.OrdinalIgnoreCase) ||
+                                (s.ConsigneeName?.Contains(_searchText, StringComparison.OrdinalIgnoreCase) ?? false));
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (Bag.HasValue)
+            _selectedBagId = Bag.Value;
+        
+        await LoadData();
+        _loading = false;
+    }
+
+    private async Task LoadData()
+    {
+        await using var dbContext = await DbFactory.CreateDbContextAsync();
+        
+        _import = await dbContext.ImportMasters
+            .FirstOrDefaultAsync(i => i.Id == ImportId && !i.IsDeleted);
+        
+        if (_import != null)
+        {
+            _bags = await dbContext.ImportBags
+                .Where(b => b.ImportMasterId == ImportId && !b.IsDeleted)
+                .OrderBy(b => b.BagNumber)
+                .ToListAsync();
+            
+            _shipments = await dbContext.ImportShipments
+                .Include(s => s.ImportBag)
+                .Where(s => s.ImportMasterId == ImportId && !s.IsDeleted)
+                .OrderByDescending(s => s.InscannedAt)
+                .ToListAsync();
+        }
+    }
+
+    private async Task OnScanKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter" && !string.IsNullOrWhiteSpace(_scanAwb))
+        {
+            await ProcessScan();
+        }
+    }
+
+    private async Task ProcessScan()
+    {
+        if (string.IsNullOrWhiteSpace(_scanAwb)) return;
+        
+        _processing = true;
+        try
+        {
+            await using var dbContext = await DbFactory.CreateDbContextAsync();
+            
+            var existing = await dbContext.ImportShipments
+                .FirstOrDefaultAsync(s => s.ImportMasterId == ImportId && 
+                    s.AWBNo == _scanAwb.Trim() && !s.IsDeleted);
+            
+            if (existing != null)
+            {
+                _lastMessage = $"AWB {_scanAwb} already inscanned!";
+                _lastSeverity = Severity.Warning;
+                _scanAwb = "";
+                return;
+            }
+            
+            var shipment = new ImportShipment
+            {
+                ImportMasterId = ImportId,
+                ImportBagId = _selectedBagId,
+                AWBNo = _scanAwb.Trim(),
+                Pieces = 1,
+                Status = ImportShipmentStatus.Inscanned,
+                InscannedAt = DateTime.UtcNow,
+                CreatedAt = DateTime.UtcNow
+            };
+            
+            dbContext.ImportShipments.Add(shipment);
+            
+            if (_selectedBagId.HasValue)
+            {
+                var bag = await dbContext.ImportBags.FindAsync(_selectedBagId.Value);
+                if (bag != null)
+                {
+                    bag.ShipmentCount++;
+                    bag.Status = ImportBagStatus.Arrived;
+                }
+            }
+            
+            if (_import != null && _import.Status == ImportMasterStatus.Arrived)
+            {
+                _import.Status = ImportMasterStatus.Inscanning;
+            }
+            
+            await dbContext.SaveChangesAsync();
+            
+            _lastMessage = $"AWB {_scanAwb} inscanned successfully!";
+            _lastSeverity = Severity.Success;
+            _scanAwb = "";
+            
+            await LoadData();
+        }
+        catch (Exception ex)
+        {
+            _lastMessage = $"Error: {ex.Message}";
+            _lastSeverity = Severity.Error;
+        }
+        finally
+        {
+            _processing = false;
+            if (_awbInput != null)
+            {
+                await _awbInput.FocusAsync();
+            }
+        }
+    }
+
+    private async Task RemoveShipment(ImportShipment shipment)
+    {
+        var result = await DialogService.ShowMessageBox(
+            "Remove Shipment",
+            $"Are you sure you want to remove AWB '{shipment.AWBNo}'?",
+            yesText: "Remove", cancelText: "Cancel");
+        
+        if (result == true)
+        {
+            await using var dbContext = await DbFactory.CreateDbContextAsync();
+            var entity = await dbContext.ImportShipments.FindAsync(shipment.Id);
+            if (entity != null)
+            {
+                entity.IsDeleted = true;
+                entity.ModifiedAt = DateTime.UtcNow;
+                
+                if (entity.ImportBagId > 0)
+                {
+                    var bag = await dbContext.ImportBags.FindAsync(entity.ImportBagId);
+                    if (bag != null && bag.ShipmentCount > 0)
+                    {
+                        bag.ShipmentCount--;
+                    }
+                }
+                
+                await dbContext.SaveChangesAsync();
+                Snackbar.Add("Shipment removed", Severity.Success);
+                await LoadData();
+            }
+        }
+    }
+
+    private void ViewShipmentDetails(ImportShipment shipment)
+    {
+        Navigation.NavigateTo($"/import-shipment/{shipment.Id}");
+    }
+
+    private double GetProgress()
+    {
+        if (_import == null || _import.TotalShipments == 0) return 0;
+        return (double)_shipments.Count / _import.TotalShipments * 100;
+    }
+
+    private Color GetStatusColor(ImportMasterStatus status) => status switch
+    {
+        ImportMasterStatus.Draft => Color.Default,
+        ImportMasterStatus.Arrived => Color.Success,
+        ImportMasterStatus.Inscanning => Color.Warning,
+        ImportMasterStatus.Inscanned => Color.Success,
+        _ => Color.Primary
+    };
+
+    private Color GetShipmentStatusColor(ImportShipmentStatus status) => status switch
+    {
+        ImportShipmentStatus.Expected => Color.Default,
+        ImportShipmentStatus.Inscanned => Color.Info,
+        ImportShipmentStatus.PendingCustoms => Color.Warning,
+        ImportShipmentStatus.CustomsHold => Color.Error,
+        ImportShipmentStatus.Cleared => Color.Success,
+        ImportShipmentStatus.OnHold => Color.Error,
+        ImportShipmentStatus.Released => Color.Success,
+        _ => Color.Default
+    };
+}
