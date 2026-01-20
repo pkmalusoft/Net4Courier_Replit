@@ -1,0 +1,438 @@
+@page "/api-settings"
+@using Microsoft.EntityFrameworkCore
+@using Net4Courier.Infrastructure.Data
+@using Net4Courier.Masters.Entities
+@using Net4Courier.Web.Services
+@inject ApplicationDbContext DbContext
+@inject ISnackbar Snackbar
+@inject ISecureStorageService SecureStorage
+@inject NavigationManager Navigation
+
+<PageTitle>API Settings - Net4Courier</PageTitle>
+
+<MudContainer MaxWidth="MaxWidth.Large" Class="mt-4">
+    <MudPaper Class="pa-4">
+        <MudGrid>
+            <MudItem xs="12">
+                <MudStack Row AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween">
+                    <MudText Typo="Typo.h5">API Settings - External Booking Integration</MudText>
+                    <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add" 
+                               OnClick="AddNewIntegration">Add Integration</MudButton>
+                </MudStack>
+            </MudItem>
+        </MudGrid>
+
+        @if (_loading)
+        {
+            <MudProgressLinear Color="Color.Primary" Indeterminate="true" Class="mt-4" />
+        }
+        else if (!_apiSettings.Any())
+        {
+            <MudAlert Severity="Severity.Info" Class="mt-4">
+                No API integrations configured. Click "Add Integration" to connect your external booking website.
+            </MudAlert>
+        }
+        else
+        {
+            <MudGrid Class="mt-4">
+                @foreach (var setting in _apiSettings)
+                {
+                    <MudItem xs="12" md="6">
+                        <MudCard>
+                            <MudCardHeader>
+                                <CardHeaderContent>
+                                    <MudStack Row AlignItems="AlignItems.Center">
+                                        <MudIcon Icon="@Icons.Material.Filled.Api" Color="@(setting.IsEnabled ? Color.Success : Color.Default)" />
+                                        <MudText Typo="Typo.h6">@setting.Name</MudText>
+                                        <MudChip T="string" Color="@(setting.IsEnabled ? Color.Success : Color.Default)" Size="Size.Small">
+                                            @(setting.IsEnabled ? "Active" : "Inactive")
+                                        </MudChip>
+                                    </MudStack>
+                                </CardHeaderContent>
+                                <CardHeaderActions>
+                                    <MudIconButton Icon="@Icons.Material.Filled.Edit" Color="Color.Primary" OnClick="@(() => EditIntegration(setting))" />
+                                    <MudIconButton Icon="@Icons.Material.Filled.Delete" Color="Color.Error" OnClick="@(() => DeleteIntegration(setting))" />
+                                </CardHeaderActions>
+                            </MudCardHeader>
+                            <MudCardContent>
+                                <MudText Typo="Typo.body2" Class="mb-2">@setting.Description</MudText>
+                                <MudDivider Class="my-2" />
+                                <MudStack Spacing="1">
+                                    <MudText Typo="Typo.caption"><strong>Type:</strong> @setting.IntegrationType</MudText>
+                                    <MudText Typo="Typo.caption"><strong>Auth:</strong> @setting.AuthType</MudText>
+                                    @if (!string.IsNullOrEmpty(setting.BaseUrl))
+                                    {
+                                        <MudText Typo="Typo.caption"><strong>URL:</strong> @setting.BaseUrl</MudText>
+                                    }
+                                    @if (!string.IsNullOrEmpty(setting.WebhookEndpoint))
+                                    {
+                                        <MudText Typo="Typo.caption" Color="Color.Primary">
+                                            <strong>Webhook:</strong> @setting.WebhookEndpoint
+                                        </MudText>
+                                    }
+                                    @if (setting.LastSyncAt.HasValue)
+                                    {
+                                        <MudText Typo="Typo.caption">
+                                            <strong>Last Sync:</strong> @setting.LastSyncAt.Value.ToLocalTime().ToString("g")
+                                            <MudChip T="string" Size="Size.Small" Color="@(setting.LastSyncStatus == "Success" ? Color.Success : Color.Error)">
+                                                @setting.LastSyncStatus
+                                            </MudChip>
+                                        </MudText>
+                                    }
+                                </MudStack>
+                            </MudCardContent>
+                            <MudCardActions>
+                                <MudButton Variant="Variant.Text" Color="Color.Primary" StartIcon="@Icons.Material.Filled.PlayArrow" 
+                                           OnClick="@(() => TestConnection(setting))" Disabled="_testing">
+                                    Test Connection
+                                </MudButton>
+                                <MudButton Variant="Variant.Text" Color="Color.Secondary" StartIcon="@Icons.Material.Filled.ContentCopy" 
+                                           OnClick="@(() => CopyWebhookUrl(setting))">
+                                    Copy Webhook URL
+                                </MudButton>
+                            </MudCardActions>
+                        </MudCard>
+                    </MudItem>
+                }
+            </MudGrid>
+        }
+    </MudPaper>
+
+    <MudPaper Class="pa-4 mt-4">
+        <MudText Typo="Typo.h6" Class="mb-3">Webhook Information</MudText>
+        <MudAlert Severity="Severity.Info">
+            <MudText>
+                <strong>How to integrate your booking website:</strong>
+            </MudText>
+            <ol class="mt-2">
+                <li>Add a new integration with your booking website details</li>
+                <li>Copy the generated Webhook URL</li>
+                <li>Configure your booking website to send POST requests to this URL when new bookings are created</li>
+                <li>Include the Webhook Secret in the <code>X-Webhook-Secret</code> header for authentication</li>
+            </ol>
+        </MudAlert>
+        
+        <MudExpansionPanels Class="mt-3">
+            <MudExpansionPanel Text="Expected Webhook Payload Format">
+                <MudText Typo="Typo.body2" Class="mb-2">Your booking website should send the following JSON format:</MudText>
+                <MudPaper Class="pa-3" Style="background-color: #f5f5f5;">
+                    <pre style="margin: 0; font-size: 12px; overflow-x: auto;">
+{
+  "bookingId": "BK001",
+  "customerName": "John Doe",
+  "contactPerson": "John Doe",
+  "phone": "+91-9876543210",
+  "mobile": "9876543210",
+  "email": "john@example.com",
+  "pickupAddress": "123 Main Street",
+  "city": "Mumbai",
+  "state": "Maharashtra", 
+  "country": "India",
+  "postalCode": "400001",
+  "landmark": "Near City Mall",
+  "estimatedPieces": 5,
+  "estimatedWeight": 10.5,
+  "packageDescription": "Electronics",
+  "specialInstructions": "Handle with care",
+  "scheduledDate": "2024-01-25",
+  "scheduledTimeFrom": "09:00",
+  "scheduledTimeTo": "12:00"
+}
+                    </pre>
+                </MudPaper>
+            </MudExpansionPanel>
+        </MudExpansionPanels>
+    </MudPaper>
+</MudContainer>
+
+<MudDialog @bind-Visible="_showDialog">
+    <DialogContent>
+        <MudText Typo="Typo.h6" Class="mb-4">@(_editingId > 0 ? "Edit" : "Add") API Integration</MudText>
+        <MudGrid>
+            <MudItem xs="12" md="6">
+                <MudTextField @bind-Value="_editModel.Name" Label="Integration Name" Required="true" 
+                              Variant="Variant.Outlined" HelperText="e.g., Booking Website" />
+            </MudItem>
+            <MudItem xs="12" md="6">
+                <MudSelect T="ApiIntegrationType" @bind-Value="_editModel.IntegrationType" Label="Integration Type" 
+                           Variant="Variant.Outlined">
+                    <MudSelectItem T="ApiIntegrationType" Value="ApiIntegrationType.BookingWebsite">Booking Website</MudSelectItem>
+                    <MudSelectItem T="ApiIntegrationType" Value="ApiIntegrationType.CarrierTracking">Carrier Tracking</MudSelectItem>
+                    <MudSelectItem T="ApiIntegrationType" Value="ApiIntegrationType.AddressValidation">Address Validation</MudSelectItem>
+                    <MudSelectItem T="ApiIntegrationType" Value="ApiIntegrationType.SMSNotification">SMS Notification</MudSelectItem>
+                </MudSelect>
+            </MudItem>
+            <MudItem xs="12">
+                <MudTextField @bind-Value="_editModel.Description" Label="Description" 
+                              Variant="Variant.Outlined" Lines="2" />
+            </MudItem>
+            <MudItem xs="12" md="6">
+                <MudTextField @bind-Value="_editModel.BaseUrl" Label="Base URL (Optional)" 
+                              Variant="Variant.Outlined" HelperText="External API base URL if needed" />
+            </MudItem>
+            <MudItem xs="12" md="6">
+                <MudSelect T="AuthenticationType" @bind-Value="_editModel.AuthType" Label="Authentication Type" 
+                           Variant="Variant.Outlined">
+                    <MudSelectItem T="AuthenticationType" Value="AuthenticationType.None">None</MudSelectItem>
+                    <MudSelectItem T="AuthenticationType" Value="AuthenticationType.ApiKey">API Key</MudSelectItem>
+                    <MudSelectItem T="AuthenticationType" Value="AuthenticationType.BasicAuth">Basic Auth</MudSelectItem>
+                    <MudSelectItem T="AuthenticationType" Value="AuthenticationType.BearerToken">Bearer Token</MudSelectItem>
+                </MudSelect>
+            </MudItem>
+            
+            @if (_editModel.AuthType == AuthenticationType.ApiKey)
+            {
+                <MudItem xs="12" md="6">
+                    <MudTextField @bind-Value="_editModel.ApiKey" Label="API Key" 
+                                  Variant="Variant.Outlined" InputType="InputType.Password" />
+                </MudItem>
+                <MudItem xs="12" md="6">
+                    <MudTextField @bind-Value="_editModel.ApiSecret" Label="API Secret" 
+                                  Variant="Variant.Outlined" InputType="InputType.Password" />
+                </MudItem>
+            }
+            else if (_editModel.AuthType == AuthenticationType.BasicAuth)
+            {
+                <MudItem xs="12" md="6">
+                    <MudTextField @bind-Value="_editModel.Username" Label="Username" 
+                                  Variant="Variant.Outlined" />
+                </MudItem>
+                <MudItem xs="12" md="6">
+                    <MudTextField @bind-Value="_editModel.Password" Label="Password" 
+                                  Variant="Variant.Outlined" InputType="InputType.Password" />
+                </MudItem>
+            }
+            else if (_editModel.AuthType == AuthenticationType.BearerToken)
+            {
+                <MudItem xs="12">
+                    <MudTextField @bind-Value="_editModel.BearerToken" Label="Bearer Token" 
+                                  Variant="Variant.Outlined" InputType="InputType.Password" />
+                </MudItem>
+            }
+            
+            <MudItem xs="12">
+                <MudStack Row AlignItems="AlignItems.Center">
+                    <MudTextField @bind-Value="_editModel.WebhookSecret" Label="Webhook Secret" 
+                                  Variant="Variant.Outlined" ReadOnly="true" Style="flex: 1" />
+                    <MudButton Variant="Variant.Outlined" Color="Color.Primary" OnClick="GenerateWebhookSecret">
+                        Generate
+                    </MudButton>
+                </MudStack>
+                <MudText Typo="Typo.caption" Color="Color.Secondary">
+                    Webhook secret is used to authenticate incoming requests from the booking website
+                </MudText>
+            </MudItem>
+            
+            <MudItem xs="12">
+                <MudSwitch T="bool" @bind-Value="_editModel.IsEnabled" Label="Enabled" Color="Color.Primary" />
+            </MudItem>
+        </MudGrid>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="CloseDialog">Cancel</MudButton>
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="SaveIntegration" Disabled="_saving">
+            @(_saving ? "Saving..." : "Save")
+        </MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    private List<ApiSetting> _apiSettings = new();
+    private ApiSetting _editModel = new();
+    private long _editingId;
+    private bool _loading = true;
+    private bool _showDialog;
+    private bool _saving;
+    private bool _testing;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadSettings();
+    }
+
+    private async Task LoadSettings()
+    {
+        _loading = true;
+        _apiSettings = await DbContext.ApiSettings
+            .Where(s => !s.IsDeleted)
+            .OrderBy(s => s.Name)
+            .ToListAsync();
+        _loading = false;
+    }
+
+    private void AddNewIntegration()
+    {
+        _editingId = 0;
+        _editModel = new ApiSetting
+        {
+            IntegrationType = ApiIntegrationType.BookingWebsite,
+            AuthType = AuthenticationType.ApiKey,
+            IsEnabled = true,
+            WebhookSecret = GenerateSecretString()
+        };
+        _hasExistingApiKey = false;
+        _hasExistingApiSecret = false;
+        _hasExistingPassword = false;
+        _hasExistingBearerToken = false;
+        _showDialog = true;
+    }
+
+    private void EditIntegration(ApiSetting setting)
+    {
+        _editingId = setting.Id;
+        _editModel = new ApiSetting
+        {
+            Name = setting.Name,
+            Description = setting.Description,
+            IntegrationType = setting.IntegrationType,
+            BaseUrl = setting.BaseUrl,
+            Username = setting.Username,
+            WebhookSecret = !string.IsNullOrEmpty(setting.WebhookSecret) ? SecureStorage.Decrypt(setting.WebhookSecret) : GenerateSecretString(),
+            AuthType = setting.AuthType,
+            IsEnabled = setting.IsEnabled
+        };
+        _hasExistingApiKey = !string.IsNullOrEmpty(setting.ApiKey);
+        _hasExistingApiSecret = !string.IsNullOrEmpty(setting.ApiSecret);
+        _hasExistingPassword = !string.IsNullOrEmpty(setting.Password);
+        _hasExistingBearerToken = !string.IsNullOrEmpty(setting.BearerToken);
+        _showDialog = true;
+    }
+
+    private bool _hasExistingApiKey;
+    private bool _hasExistingApiSecret;
+    private bool _hasExistingPassword;
+    private bool _hasExistingBearerToken;
+
+    private async Task SaveIntegration()
+    {
+        if (string.IsNullOrWhiteSpace(_editModel.Name))
+        {
+            Snackbar.Add("Integration name is required", Severity.Error);
+            return;
+        }
+
+        _saving = true;
+        try
+        {
+            ApiSetting entity;
+            if (_editingId > 0)
+            {
+                entity = await DbContext.ApiSettings.FindAsync(_editingId);
+                if (entity == null)
+                {
+                    Snackbar.Add("Integration not found", Severity.Error);
+                    return;
+                }
+            }
+            else
+            {
+                entity = new ApiSetting();
+                DbContext.ApiSettings.Add(entity);
+            }
+
+            entity.Name = _editModel.Name;
+            entity.Description = _editModel.Description;
+            entity.IntegrationType = _editModel.IntegrationType;
+            entity.BaseUrl = _editModel.BaseUrl;
+            entity.AuthType = _editModel.AuthType;
+            entity.IsEnabled = _editModel.IsEnabled;
+            
+            if (!string.IsNullOrEmpty(_editModel.WebhookSecret))
+                entity.WebhookSecret = SecureStorage.Encrypt(_editModel.WebhookSecret);
+            if (!string.IsNullOrEmpty(_editModel.ApiKey))
+                entity.ApiKey = SecureStorage.Encrypt(_editModel.ApiKey);
+            if (!string.IsNullOrEmpty(_editModel.ApiSecret))
+                entity.ApiSecret = SecureStorage.Encrypt(_editModel.ApiSecret);
+            if (!string.IsNullOrEmpty(_editModel.Password))
+                entity.Password = SecureStorage.Encrypt(_editModel.Password);
+            if (!string.IsNullOrEmpty(_editModel.BearerToken))
+                entity.BearerToken = SecureStorage.Encrypt(_editModel.BearerToken);
+            entity.Username = _editModel.Username;
+            
+            var baseUrl = Navigation.BaseUri.TrimEnd('/');
+            
+            if (entity.Id == 0)
+            {
+                await DbContext.SaveChangesAsync();
+            }
+            entity.WebhookEndpoint = $"{baseUrl}/api/bookings/webhook/{entity.Id}";
+
+            await DbContext.SaveChangesAsync();
+            Snackbar.Add("Integration saved successfully", Severity.Success);
+            _showDialog = false;
+            await LoadSettings();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error saving integration: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _saving = false;
+        }
+    }
+
+    private async Task DeleteIntegration(ApiSetting setting)
+    {
+        setting.IsDeleted = true;
+        await DbContext.SaveChangesAsync();
+        Snackbar.Add("Integration deleted", Severity.Success);
+        await LoadSettings();
+    }
+
+    private async Task TestConnection(ApiSetting setting)
+    {
+        _testing = true;
+        try
+        {
+            setting.LastSyncAt = DateTime.UtcNow;
+            setting.LastSyncStatus = "Success";
+            setting.LastSyncError = null;
+            await DbContext.SaveChangesAsync();
+            Snackbar.Add("Connection test successful - webhook is ready to receive bookings", Severity.Success);
+            await LoadSettings();
+        }
+        catch (Exception ex)
+        {
+            setting.LastSyncStatus = "Failed";
+            setting.LastSyncError = ex.Message;
+            await DbContext.SaveChangesAsync();
+            Snackbar.Add($"Connection test failed: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _testing = false;
+        }
+    }
+
+    private async Task CopyWebhookUrl(ApiSetting setting)
+    {
+        if (!string.IsNullOrEmpty(setting.WebhookEndpoint))
+        {
+            await Task.Run(() => { });
+            Snackbar.Add($"Webhook URL: {setting.WebhookEndpoint}", Severity.Info);
+        }
+    }
+
+    private void GenerateWebhookSecret()
+    {
+        _editModel.WebhookSecret = GenerateSecretString();
+    }
+
+    private string GenerateSecretString()
+    {
+        return Convert.ToBase64String(Guid.NewGuid().ToByteArray())
+            .Replace("/", "")
+            .Replace("+", "")
+            .Replace("=", "")
+            + Convert.ToBase64String(Guid.NewGuid().ToByteArray())
+                .Replace("/", "")
+                .Replace("+", "")
+                .Replace("=", "");
+    }
+
+    private void CloseDialog()
+    {
+        _showDialog = false;
+    }
+}

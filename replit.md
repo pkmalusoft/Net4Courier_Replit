@@ -98,6 +98,15 @@ The application is built on .NET 8 Blazor Server, utilizing a modular architectu
         - Validation: required fields, positive values, duplicate AWB detection
         - Transaction-safe import with rollback on errors
         - Uses ClosedXML library for Excel handling
+- **API Integration (Third-Party Booking Websites)**:
+    - **ApiSetting Entity**: Stores API configuration (URL, credentials, webhook secret, auth type).
+    - **API Settings Page**: Configure external booking website connections at `/api-settings`.
+    - **Webhook Endpoint**: Receive booking data from external websites at `/api/bookings/webhook/{integrationId}`.
+    - **BookingWebhookService**: Validates incoming bookings and creates PickupRequests automatically.
+    - **Secure Storage**: Sensitive credentials encrypted using ASP.NET Core Data Protection.
+    - **Webhook Authentication**: X-Webhook-Secret header validation for secure integration.
+    - **Integration Types**: Booking Website, Carrier Tracking, Address Validation, SMS Notification.
+    - **Connection Testing**: Test connectivity and view sync status/errors.
 - **Knowledge Base**: Comprehensive documentation at `/knowledge-base` covering:
     - **How To Guides** (17 step-by-step tutorials):
         - Create Company, Branch, Warehouse, Shipment

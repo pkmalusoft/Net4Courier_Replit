@@ -80,6 +80,8 @@ public class ApplicationDbContext : DbContext
     public DbSet<ImportBag> ImportBags => Set<ImportBag>();
     public DbSet<ImportShipment> ImportShipments => Set<ImportShipment>();
     public DbSet<ImportShipmentNote> ImportShipmentNotes => Set<ImportShipmentNote>();
+    
+    public DbSet<ApiSetting> ApiSettings => Set<ApiSetting>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -281,6 +283,28 @@ public class ApplicationDbContext : DbContext
                   .OnDelete(DeleteBehavior.Restrict);
             entity.HasOne(e => e.Branch).WithMany().HasForeignKey(e => e.BranchId)
                   .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        modelBuilder.Entity<ApiSetting>(entity =>
+        {
+            entity.ToTable("ApiSettings");
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Name).HasMaxLength(100).IsRequired();
+            entity.Property(e => e.Description).HasMaxLength(500);
+            entity.Property(e => e.BaseUrl).HasMaxLength(500);
+            entity.Property(e => e.ApiKey).HasMaxLength(500);
+            entity.Property(e => e.ApiSecret).HasMaxLength(500);
+            entity.Property(e => e.WebhookSecret).HasMaxLength(100);
+            entity.Property(e => e.WebhookEndpoint).HasMaxLength(500);
+            entity.Property(e => e.Username).HasMaxLength(100);
+            entity.Property(e => e.Password).HasMaxLength(500);
+            entity.Property(e => e.BearerToken).HasMaxLength(2000);
+            entity.Property(e => e.LastSyncStatus).HasMaxLength(50);
+            entity.Property(e => e.LastSyncError).HasMaxLength(2000);
+            entity.Property(e => e.Headers).HasMaxLength(4000);
+            entity.Property(e => e.CustomFields).HasMaxLength(4000);
+            entity.HasIndex(e => new { e.IntegrationType, e.BranchId });
+            entity.HasIndex(e => e.Name);
         });
 
         modelBuilder.Entity<RateCard>(entity =>

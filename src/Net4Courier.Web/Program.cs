@@ -81,6 +81,8 @@ builder.Services.AddScoped<IPermissionService, PermissionService>();
 builder.Services.AddScoped<ImportExcelService>();
 builder.Services.AddScoped<PODUpdateService>();
 builder.Services.AddScoped<PODExcelService>();
+builder.Services.AddScoped<ISecureStorageService, SecureStorageService>();
+builder.Services.AddScoped<BookingWebhookService>();
 builder.Services.AddAuthorizationCore();
 builder.Services.AddCascadingAuthenticationState();
 
@@ -174,6 +176,39 @@ app.MapGet("/api/report/domestic-manifest/{id:long}", async (long id, ReportingS
     var pdf = await reportService.GenerateDomesticManifest(id);
     if (pdf.Length == 0) return Results.NotFound();
     return Results.File(pdf, "application/pdf", $"Domestic-Manifest-{id}.pdf");
+});
+
+app.MapPost("/api/bookings/webhook/{integrationId}", async (
+    string integrationId, 
+    BookingWebhookPayload payload, 
+    HttpContext context,
+    BookingWebhookService webhookService) =>
+{
+    var webhookSecret = context.Request.Headers["X-Webhook-Secret"].FirstOrDefault();
+    
+    if (string.IsNullOrEmpty(webhookSecret))
+    {
+        return Results.Unauthorized();
+    }
+
+    var isValid = await webhookService.ValidateWebhookSecretAsync(integrationId, webhookSecret);
+    if (!isValid)
+    {
+        return Results.Unauthorized();
+    }
+
+    var result = await webhookService.ProcessBookingAsync(payload, integrationId);
+    
+    if (result.Success)
+    {
+        return Results.Ok(new { 
+            success = true, 
+            message = result.Message, 
+            pickupRequestId = result.PickupRequestId 
+        });
+    }
+    
+    return Results.BadRequest(new { success = false, message = result.Message });
 });
 
 app.MapRazorComponents<App>()
