@@ -372,6 +372,197 @@ public class DatabaseInitializationService : BackgroundService
             ", stoppingToken);
 
             await dbContext.Database.ExecuteSqlRawAsync(@"
+                CREATE TABLE IF NOT EXISTS ""ImportMasters"" (
+                    ""Id"" BIGSERIAL PRIMARY KEY,
+                    ""ImportRefNo"" VARCHAR(50) NOT NULL,
+                    ""TransactionDate"" TIMESTAMP WITH TIME ZONE NOT NULL,
+                    ""FinancialYearId"" BIGINT,
+                    ""CompanyId"" BIGINT,
+                    ""BranchId"" BIGINT,
+                    ""ImportMode"" INT NOT NULL DEFAULT 0,
+                    ""MasterReferenceType"" INT NOT NULL DEFAULT 0,
+                    ""MasterReferenceNumber"" VARCHAR(50) NOT NULL,
+                    ""OriginCountryId"" BIGINT,
+                    ""OriginCountryName"" VARCHAR(100),
+                    ""OriginCityId"" BIGINT,
+                    ""OriginCityName"" VARCHAR(100),
+                    ""OriginPortCode"" VARCHAR(20),
+                    ""DestinationCountryId"" BIGINT,
+                    ""DestinationCountryName"" VARCHAR(100),
+                    ""DestinationCityId"" BIGINT,
+                    ""DestinationCityName"" VARCHAR(100),
+                    ""DestinationPortCode"" VARCHAR(20),
+                    ""ETD"" TIMESTAMP WITH TIME ZONE,
+                    ""ETA"" TIMESTAMP WITH TIME ZONE,
+                    ""ActualArrivalDate"" TIMESTAMP WITH TIME ZONE,
+                    ""CarrierName"" VARCHAR(100),
+                    ""CarrierCode"" VARCHAR(20),
+                    ""FlightNo"" VARCHAR(20),
+                    ""FlightDate"" TIMESTAMP WITH TIME ZONE,
+                    ""VesselName"" VARCHAR(100),
+                    ""VoyageNumber"" VARCHAR(50),
+                    ""TruckNumber"" VARCHAR(50),
+                    ""DriverName"" VARCHAR(100),
+                    ""DriverPhone"" VARCHAR(20),
+                    ""ManifestNumber"" VARCHAR(50),
+                    ""CargoType"" INT NOT NULL DEFAULT 0,
+                    ""TotalBags"" INT NOT NULL DEFAULT 0,
+                    ""TotalShipments"" INT NOT NULL DEFAULT 0,
+                    ""TotalGrossWeight"" DECIMAL(18,3),
+                    ""TotalChargeableWeight"" DECIMAL(18,3),
+                    ""TotalPieces"" INT,
+                    ""ImportWarehouseId"" BIGINT,
+                    ""ImportWarehouseName"" VARCHAR(100),
+                    ""Status"" INT NOT NULL DEFAULT 0,
+                    ""Remarks"" VARCHAR(500),
+                    ""CoLoaderName"" VARCHAR(200),
+                    ""CoLoaderId"" BIGINT,
+                    ""CoLoaderRefNo"" VARCHAR(50),
+                    ""CustomsDeclarationNo"" VARCHAR(50),
+                    ""ExportPermitNo"" VARCHAR(50),
+                    ""InscannedAt"" TIMESTAMP WITH TIME ZONE,
+                    ""InscannedByUserId"" BIGINT,
+                    ""InscannedByUserName"" VARCHAR(100),
+                    ""ClosedAt"" TIMESTAMP WITH TIME ZONE,
+                    ""ClosedByUserId"" BIGINT,
+                    ""ClosedByUserName"" VARCHAR(100),
+                    ""IsActive"" BOOLEAN NOT NULL DEFAULT TRUE,
+                    ""IsDeleted"" BOOLEAN NOT NULL DEFAULT FALSE,
+                    ""CreatedAt"" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    ""ModifiedAt"" TIMESTAMP WITH TIME ZONE,
+                    ""CreatedBy"" INT,
+                    ""ModifiedBy"" INT,
+                    ""CreatedByName"" VARCHAR(200),
+                    ""ModifiedByName"" VARCHAR(200)
+                );
+                CREATE UNIQUE INDEX IF NOT EXISTS ""IX_ImportMasters_ImportRefNo"" ON ""ImportMasters"" (""ImportRefNo"");
+                CREATE INDEX IF NOT EXISTS ""IX_ImportMasters_MasterReferenceNumber"" ON ""ImportMasters"" (""MasterReferenceNumber"");
+                CREATE INDEX IF NOT EXISTS ""IX_ImportMasters_BranchId_TransactionDate"" ON ""ImportMasters"" (""BranchId"", ""TransactionDate"");
+            ", stoppingToken);
+
+            await dbContext.Database.ExecuteSqlRawAsync(@"
+                CREATE TABLE IF NOT EXISTS ""ImportBags"" (
+                    ""Id"" BIGSERIAL PRIMARY KEY,
+                    ""ImportMasterId"" BIGINT NOT NULL REFERENCES ""ImportMasters""(""Id"") ON DELETE CASCADE,
+                    ""BagNumber"" VARCHAR(50) NOT NULL,
+                    ""SealNumber"" VARCHAR(50),
+                    ""HandlingCode"" VARCHAR(20),
+                    ""TotalShipments"" INT NOT NULL DEFAULT 0,
+                    ""GrossWeight"" DECIMAL(18,3),
+                    ""ChargeableWeight"" DECIMAL(18,3),
+                    ""Length"" DECIMAL(18,2),
+                    ""Width"" DECIMAL(18,2),
+                    ""Height"" DECIMAL(18,2),
+                    ""Status"" INT NOT NULL DEFAULT 0,
+                    ""Remarks"" VARCHAR(500),
+                    ""InscannedAt"" TIMESTAMP WITH TIME ZONE,
+                    ""InscannedByUserId"" BIGINT,
+                    ""InscannedByUserName"" VARCHAR(100),
+                    ""IsActive"" BOOLEAN NOT NULL DEFAULT TRUE,
+                    ""IsDeleted"" BOOLEAN NOT NULL DEFAULT FALSE,
+                    ""CreatedAt"" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    ""ModifiedAt"" TIMESTAMP WITH TIME ZONE,
+                    ""CreatedBy"" INT,
+                    ""ModifiedBy"" INT,
+                    ""CreatedByName"" VARCHAR(200),
+                    ""ModifiedByName"" VARCHAR(200)
+                );
+                CREATE UNIQUE INDEX IF NOT EXISTS ""IX_ImportBags_ImportMasterId_BagNumber"" ON ""ImportBags"" (""ImportMasterId"", ""BagNumber"");
+                CREATE INDEX IF NOT EXISTS ""IX_ImportBags_BagNumber"" ON ""ImportBags"" (""BagNumber"");
+            ", stoppingToken);
+
+            await dbContext.Database.ExecuteSqlRawAsync(@"
+                CREATE TABLE IF NOT EXISTS ""ImportShipments"" (
+                    ""Id"" BIGSERIAL PRIMARY KEY,
+                    ""ImportMasterId"" BIGINT NOT NULL REFERENCES ""ImportMasters""(""Id"") ON DELETE RESTRICT,
+                    ""ImportBagId"" BIGINT REFERENCES ""ImportBags""(""Id"") ON DELETE RESTRICT,
+                    ""AWBNo"" VARCHAR(50) NOT NULL,
+                    ""ReferenceNo"" VARCHAR(50),
+                    ""ShipperName"" VARCHAR(200),
+                    ""ShipperAddress"" VARCHAR(500),
+                    ""ShipperCity"" VARCHAR(100),
+                    ""ShipperCountry"" VARCHAR(100),
+                    ""ShipperPhone"" VARCHAR(20),
+                    ""ConsigneeName"" VARCHAR(200) NOT NULL,
+                    ""ConsigneeAddress"" VARCHAR(500),
+                    ""ConsigneeCity"" VARCHAR(100),
+                    ""ConsigneeState"" VARCHAR(100),
+                    ""ConsigneeCountry"" VARCHAR(100) NOT NULL,
+                    ""ConsigneePostalCode"" VARCHAR(20),
+                    ""ConsigneePhone"" VARCHAR(20),
+                    ""ConsigneeMobile"" VARCHAR(20),
+                    ""Pieces"" INT NOT NULL DEFAULT 1,
+                    ""Weight"" DECIMAL(18,3),
+                    ""VolumetricWeight"" DECIMAL(18,3),
+                    ""ChargeableWeight"" DECIMAL(18,3),
+                    ""ContentsDescription"" VARCHAR(500),
+                    ""SpecialInstructions"" VARCHAR(500),
+                    ""DeclaredValue"" DECIMAL(18,2),
+                    ""Currency"" VARCHAR(10),
+                    ""HSCode"" VARCHAR(20),
+                    ""DutyAmount"" DECIMAL(18,2),
+                    ""VATAmount"" DECIMAL(18,2),
+                    ""OtherCharges"" DECIMAL(18,2),
+                    ""TotalCustomsCharges"" DECIMAL(18,2),
+                    ""CODAmount"" DECIMAL(18,2),
+                    ""IsCOD"" BOOLEAN NOT NULL DEFAULT FALSE,
+                    ""Status"" INT NOT NULL DEFAULT 0,
+                    ""CustomsStatus"" INT NOT NULL DEFAULT 0,
+                    ""HoldReason"" INT NOT NULL DEFAULT 0,
+                    ""HoldReasonDetails"" VARCHAR(500),
+                    ""ImporterOfRecord"" VARCHAR(200),
+                    ""CustomsEntryNumber"" VARCHAR(50),
+                    ""ExaminationRemarks"" VARCHAR(500),
+                    ""InscannedAt"" TIMESTAMP WITH TIME ZONE,
+                    ""InscannedByUserId"" BIGINT,
+                    ""InscannedByUserName"" VARCHAR(100),
+                    ""CustomsClearedAt"" TIMESTAMP WITH TIME ZONE,
+                    ""CustomsClearedByUserId"" BIGINT,
+                    ""CustomsClearedByUserName"" VARCHAR(100),
+                    ""ReleasedAt"" TIMESTAMP WITH TIME ZONE,
+                    ""ReleasedByUserId"" BIGINT,
+                    ""ReleasedByUserName"" VARCHAR(100),
+                    ""HandedOverAt"" TIMESTAMP WITH TIME ZONE,
+                    ""HandedOverToUserId"" BIGINT,
+                    ""HandedOverToUserName"" VARCHAR(100),
+                    ""ConvertedToAWBId"" BIGINT,
+                    ""Remarks"" VARCHAR(500),
+                    ""IsActive"" BOOLEAN NOT NULL DEFAULT TRUE,
+                    ""IsDeleted"" BOOLEAN NOT NULL DEFAULT FALSE,
+                    ""CreatedAt"" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    ""ModifiedAt"" TIMESTAMP WITH TIME ZONE,
+                    ""CreatedBy"" INT,
+                    ""ModifiedBy"" INT,
+                    ""CreatedByName"" VARCHAR(200),
+                    ""ModifiedByName"" VARCHAR(200)
+                );
+                CREATE INDEX IF NOT EXISTS ""IX_ImportShipments_AWBNo"" ON ""ImportShipments"" (""AWBNo"");
+                CREATE UNIQUE INDEX IF NOT EXISTS ""IX_ImportShipments_ImportMasterId_AWBNo"" ON ""ImportShipments"" (""ImportMasterId"", ""AWBNo"");
+                CREATE INDEX IF NOT EXISTS ""IX_ImportShipments_ImportBagId"" ON ""ImportShipments"" (""ImportBagId"");
+                CREATE INDEX IF NOT EXISTS ""IX_ImportShipments_Status"" ON ""ImportShipments"" (""Status"");
+            ", stoppingToken);
+
+            await dbContext.Database.ExecuteSqlRawAsync(@"
+                CREATE TABLE IF NOT EXISTS ""ImportShipmentNotes"" (
+                    ""Id"" BIGSERIAL PRIMARY KEY,
+                    ""ImportShipmentId"" BIGINT NOT NULL REFERENCES ""ImportShipments""(""Id"") ON DELETE CASCADE,
+                    ""NoteText"" VARCHAR(2000) NOT NULL,
+                    ""AddedAt"" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    ""AddedByUserId"" BIGINT,
+                    ""AddedByUserName"" VARCHAR(100),
+                    ""IsActive"" BOOLEAN NOT NULL DEFAULT TRUE,
+                    ""IsDeleted"" BOOLEAN NOT NULL DEFAULT FALSE,
+                    ""CreatedAt"" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    ""ModifiedAt"" TIMESTAMP WITH TIME ZONE,
+                    ""CreatedBy"" INT,
+                    ""ModifiedBy"" INT,
+                    ""CreatedByName"" VARCHAR(200),
+                    ""ModifiedByName"" VARCHAR(200)
+                );
+                CREATE INDEX IF NOT EXISTS ""IX_ImportShipmentNotes_ImportShipmentId"" ON ""ImportShipmentNotes"" (""ImportShipmentId"");
+            ", stoppingToken);
+
+            await dbContext.Database.ExecuteSqlRawAsync(@"
                 ALTER TABLE ""Branches"" ADD COLUMN IF NOT EXISTS ""AWBPrefix"" VARCHAR(50);
                 ALTER TABLE ""Branches"" ADD COLUMN IF NOT EXISTS ""AWBStartingNumber"" BIGINT NOT NULL DEFAULT 1;
                 ALTER TABLE ""Branches"" ADD COLUMN IF NOT EXISTS ""AWBIncrement"" INT NOT NULL DEFAULT 1;
