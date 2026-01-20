@@ -335,6 +335,43 @@ public class DatabaseInitializationService : BackgroundService
             ", stoppingToken);
 
             await dbContext.Database.ExecuteSqlRawAsync(@"
+                CREATE TABLE IF NOT EXISTS ""ApiSettings"" (
+                    ""Id"" BIGSERIAL PRIMARY KEY,
+                    ""Name"" VARCHAR(200) NOT NULL,
+                    ""Description"" TEXT,
+                    ""IntegrationType"" INT NOT NULL DEFAULT 0,
+                    ""BaseUrl"" VARCHAR(500),
+                    ""ApiKey"" TEXT,
+                    ""ApiSecret"" TEXT,
+                    ""Username"" VARCHAR(200),
+                    ""Password"" TEXT,
+                    ""BearerToken"" TEXT,
+                    ""AuthType"" INT NOT NULL DEFAULT 0,
+                    ""WebhookSecret"" TEXT,
+                    ""WebhookEndpoint"" VARCHAR(500),
+                    ""Headers"" TEXT,
+                    ""CustomFields"" TEXT,
+                    ""TokenExpiry"" TIMESTAMP WITH TIME ZONE,
+                    ""SyncIntervalMinutes"" INT,
+                    ""LastSyncAt"" TIMESTAMP WITH TIME ZONE,
+                    ""LastSyncStatus"" VARCHAR(100),
+                    ""LastSyncError"" TEXT,
+                    ""BranchId"" BIGINT,
+                    ""IsEnabled"" BOOLEAN NOT NULL DEFAULT TRUE,
+                    ""IsActive"" BOOLEAN NOT NULL DEFAULT TRUE,
+                    ""IsDeleted"" BOOLEAN NOT NULL DEFAULT FALSE,
+                    ""CreatedAt"" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    ""ModifiedAt"" TIMESTAMP WITH TIME ZONE,
+                    ""CreatedBy"" INT,
+                    ""ModifiedBy"" INT,
+                    ""CreatedByName"" VARCHAR(200),
+                    ""ModifiedByName"" VARCHAR(200)
+                );
+                CREATE INDEX IF NOT EXISTS ""IX_ApiSettings_Name"" ON ""ApiSettings"" (""Name"");
+                CREATE INDEX IF NOT EXISTS ""IX_ApiSettings_IntegrationType"" ON ""ApiSettings"" (""IntegrationType"");
+            ", stoppingToken);
+
+            await dbContext.Database.ExecuteSqlRawAsync(@"
                 ALTER TABLE ""Branches"" ADD COLUMN IF NOT EXISTS ""AWBPrefix"" VARCHAR(50);
                 ALTER TABLE ""Branches"" ADD COLUMN IF NOT EXISTS ""AWBStartingNumber"" BIGINT NOT NULL DEFAULT 1;
                 ALTER TABLE ""Branches"" ADD COLUMN IF NOT EXISTS ""AWBIncrement"" INT NOT NULL DEFAULT 1;
