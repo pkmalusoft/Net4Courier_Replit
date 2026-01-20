@@ -8,6 +8,25 @@ This comprehensive knowledge base covers all aspects of Net4Courier - from picku
 
 # Table of Contents
 
+0. [How To Guides](#how-to-guides) - Quick step-by-step tutorials
+   - [Create a New Company](#how-to-create-a-new-company)
+   - [Create a New Branch](#how-to-create-a-new-branch)
+   - [Create a New Warehouse](#how-to-create-a-new-warehouse)
+   - [Create a New Shipment](#how-to-create-a-new-shipment)
+   - [Create Pickup Request (Staff)](#how-to-create-a-new-pickup-request-by-staff)
+   - [Create Pickup Request (Customer)](#how-to-create-a-new-pickup-request-by-customers)
+   - [Give Access for Agents/Customers/Vendors](#how-to-give-access-to-the-system-for-agentscustomersvendors)
+   - [Create New Users](#how-to-create-new-users)
+   - [Give Menu Access to Users](#how-to-give-access-to-menu-for-users)
+   - [Restrict Menu Access](#how-to-restrict-menu-access-to-users)
+   - [Process Import Customs Clearance](#how-to-process-import-customs-clearance)
+   - [Create Import via Excel Upload](#how-to-create-import-by-uploading-excel-file)
+   - [Update Bulk POD](#how-to-update-bulk-pod)
+   - [Use Customer Dashboard](#how-to-use-customer-dashboard)
+   - [Use Pickup Dashboard](#how-to-use-pickup-dashboard)
+   - [De-brief Courier (End of Day)](#how-to-de-brief-courier-end-of-day)
+   - [Reconcile Courier Receipts](#how-to-reconcile-courier-receipts)
+
 1. [Operations Flow](#operations-flow)
    - [Pickup Management](#pickup-management)
    - [Inscan (Warehouse Receiving)](#inscan-warehouse-receiving)
@@ -57,6 +76,497 @@ This comprehensive knowledge base covers all aspects of Net4Courier - from picku
 8. [Status Codes Reference](#status-codes-reference)
 
 9. [Quick Reference Index](#quick-reference-index)
+
+---
+
+# How To Guides
+
+Step-by-step tutorials for common tasks in Net4Courier. These guides help you get started quickly with essential operations.
+
+---
+
+## How to Create a New Company
+
+**Navigation:** System Settings > Companies
+
+**Steps:**
+1. Click **"New Company"** button in the top right
+2. Fill in the required company details:
+   - **Company Name** - Official registered name
+   - **Company Code** - Short code (e.g., "NET4")
+   - **Registration Number** - Business registration ID
+   - **Tax Number** - VAT/Tax registration number
+   - **Address** - Complete business address
+   - **Country/State/City** - Select from dropdowns
+   - **Contact Details** - Phone, Email, Website
+3. Optionally upload **Company Logo** (recommended size: 200x80px)
+4. Click **"Save"** to create the company
+
+> **Note:** You need at least one company before creating branches and users.
+
+---
+
+## How to Create a New Branch
+
+**Navigation:** System Settings > Branches
+
+**Steps:**
+1. Click **"New Branch"** button
+2. Select the **Parent Company** from dropdown
+3. Fill in branch details:
+   - **Branch Name** - E.g., "Dubai Main Office"
+   - **Branch Code** - Short code (e.g., "DXB")
+   - **Currency Code** - E.g., "AED"
+   - **Currency Symbol** - E.g., "AED"
+   - **Address Details** - Complete branch address
+   - **Manager Name** and contact information
+4. Configure **AWB Settings**:
+   - **AWB Prefix** - Unique prefix for shipment numbers (e.g., "DXB")
+   - **Starting Number** - First AWB number to use
+   - **Increment** - Usually 1
+5. Set **VAT Percentage** if applicable
+6. Toggle **Is Head Office** if this is the main branch
+7. Click **"Save"**
+
+> **Tip:** Each branch can have its own AWB numbering sequence.
+
+---
+
+## How to Create a New Warehouse
+
+**Navigation:** System Settings > Warehouses
+
+**Steps:**
+1. Click **"New Warehouse"** button
+2. Select the **Branch** this warehouse belongs to
+3. Enter warehouse details:
+   - **Warehouse Name** - E.g., "Main Sorting Hub"
+   - **Warehouse Code** - Short code (e.g., "WH01")
+   - **Capacity** - Storage capacity in units
+   - **Address** - Physical location
+   - **Contact Person** and contact details
+4. Set the warehouse status (Active/Inactive)
+5. Click **"Save"**
+
+> **Note:** Warehouses are used for inscan and sorting operations.
+
+---
+
+## How to Create a New Shipment
+
+**Navigation:** Operations > AWB Entry
+
+**Steps:**
+1. Click **"New AWB"** or use the AWB Entry page
+2. **Shipper Details** (Consignor):
+   - Select existing customer or enter new shipper details
+   - Fill in name, address, phone, and email
+3. **Receiver Details** (Consignee):
+   - Enter complete receiver name and address
+   - Include mobile number for delivery notifications
+4. **Shipment Information**:
+   - **Product Type** - Document, Parcel, Heavy Cargo
+   - **Service Type** - Express, Standard, Economy
+   - **Pieces** - Number of packages
+   - **Weight** - Actual weight in KG
+   - **Dimensions** - L x W x H for volumetric weight
+5. **Payment & Charges**:
+   - **Payment Mode** - Prepaid, Collect, Third Party
+   - System calculates charges based on rate card
+   - Add any special charges if applicable
+6. Click **"Save"** to generate AWB number
+7. Print the **AWB Label** for the shipment
+
+> **Important:** For COD shipments, enter the collection amount in the COD field.
+
+---
+
+## How to Create a New Pickup Request by Staff
+
+**Navigation:** Operations > Pickup Management
+
+**Steps:**
+1. Click **"New Pickup"** button
+2. **Customer Selection**:
+   - Search and select existing customer, OR
+   - Enter new customer details manually
+3. **Pickup Details**:
+   - **Pickup Date** - When to collect
+   - **Time Slot** - Morning/Afternoon/Evening
+   - **Pickup Address** - Verify address is correct
+   - **Contact Person** - Name and phone number
+4. **Shipment Estimate**:
+   - **Expected Pieces** - Approximate count
+   - **Estimated Weight** - Approximate total weight
+   - **Special Instructions** - Handling notes
+5. Click **"Create Pickup Request"**
+6. System assigns a **Pickup Request Number**
+7. Assign to a courier for collection from the dispatch screen
+
+---
+
+## How to Create a New Pickup Request by Customers
+
+**Navigation:** Customer Portal (for logged-in customers)
+
+**For Staff Assisting Customers:**
+1. Navigate to **Pickup Management**
+2. Click **"New Pickup"**
+3. Select **Customer** from the customer dropdown
+4. The system pre-fills customer address
+5. Fill in pickup date, time slot, and expected pieces
+6. Submit the request
+7. Customer receives confirmation via SMS/Email
+
+**Self-Service Portal Features:**
+- Customers can log in to their portal
+- Click "Request Pickup" on their dashboard
+- Fill in shipment details and preferred time
+- Track request status in real-time
+- View pickup history
+
+---
+
+## How to Give Access to the System for Agents, Customers, Vendors
+
+**Navigation:** Masters > Parties + System Settings > Users
+
+**Step 1 - Create the Party Record:**
+1. Go to **Masters > Parties**
+2. Click **"New Party"**
+3. Select **Party Type**:
+   - **Agent** - For delivery partners
+   - **Customer** - For shipping customers
+   - **Vendor** - For service providers
+4. Fill in party details (name, contact, address)
+5. Save the party record
+
+**Step 2 - Create User Account:**
+1. Go to **System Settings > Users**
+2. Click **"New User"**
+3. Fill in:
+   - **Username** - Login ID
+   - **Password** - Secure password
+   - **Full Name** - Display name
+   - **Email** and **Phone**
+   - **User Type** - Agent/Customer/Vendor
+   - **Role** - Assign appropriate role
+4. **Assign Branches** - Select which branches they can access
+5. Click **"Save"**
+
+> **Security Tip:** Each user type has role-based menu restrictions by default.
+
+---
+
+## How to Create New Users
+
+**Navigation:** System Settings > Users
+
+**Steps:**
+1. Click **"New User"** button
+2. Enter **Account Details**:
+   - **Username** - Unique login name
+   - **Password** - Strong password (min 8 characters)
+   - **Confirm Password**
+3. Enter **Personal Information**:
+   - **Full Name**
+   - **Email Address**
+   - **Phone Number**
+4. **Access Configuration**:
+   - **User Type** - Staff, Agent, Customer, Vendor
+   - **Role** - Select from available roles (Admin, Manager, Operator, etc.)
+   - **Default Branch** - Primary working branch
+5. **Branch Assignments**:
+   - Select all branches this user can access
+   - Set one branch as default
+6. Toggle **Is Active** to enable/disable the account
+7. Click **"Save"**
+
+---
+
+## How to Give Access to Menu for Users
+
+**Navigation:** System Settings > Roles
+
+**Steps:**
+1. Go to **Roles Management**
+2. Select the **Role** you want to modify (e.g., "Operations Manager")
+3. Click **"Edit Permissions"**
+4. The system displays all menu items grouped by module:
+   - **Operations** - AWB, Pickup, DRS, POD
+   - **Masters** - Parties, Products, Services
+   - **Finance** - Invoices, Receipts, Journals
+   - **Reports** - All report types
+   - **Settings** - System configuration
+5. **Check** the boxes for menus this role should access
+6. For each menu, set permission level:
+   - **View** - Read-only access
+   - **Create** - Can add new records
+   - **Edit** - Can modify records
+   - **Delete** - Can remove records
+7. Click **"Save Permissions"**
+
+> **Tip:** Create role templates for common job functions.
+
+---
+
+## How to Restrict Menu Access to Users
+
+**Navigation:** System Settings > Roles
+
+**Steps:**
+1. Go to **Roles Management**
+2. Either create a **new restricted role** or modify existing role
+3. Click **"Edit Permissions"**
+4. **Uncheck** menus that should NOT be accessible
+5. For partial access:
+   - Keep **View** checked but uncheck **Create/Edit/Delete**
+   - User can see data but cannot modify
+6. Save the role permissions
+7. **Assign users to this role** in User Management:
+   - Go to Users > Edit User
+   - Change Role dropdown to the restricted role
+   - Save
+
+**Common Restrictions:**
+- **Courier Role:** Only DRS, POD, and tracking access
+- **Customer Role:** Only shipment tracking and pickup requests
+- **Finance Clerk:** Only invoice viewing, no approval
+
+---
+
+## How to Process Import Customs Clearance
+
+**Navigation:** Operations > Import > Customs Clearance
+
+**Steps:**
+1. Go to **Import Dashboard** and find the import awaiting clearance
+2. Click on the import to open details
+3. Navigate to **Customs Clearance** tab or click **"Process Customs"**
+4. For each shipment in the import:
+   - Verify **Customs Value** and **HS Code**
+   - Enter **Duty Amount** if applicable
+   - Select **Clearance Status**:
+     - Cleared
+     - Held for Inspection
+     - Duty Pending
+     - Rejected
+5. For bulk processing:
+   - Select multiple shipments using checkboxes
+   - Click **"Bulk Customs Update"**
+   - Apply same status to all selected items
+6. Upload any **customs documents** if required
+7. Click **"Save Clearance Status"**
+8. Cleared shipments move to the next stage for delivery
+
+---
+
+## How to Create Import by Uploading Excel File
+
+**Navigation:** Operations > Import > Excel Upload
+
+**Steps:**
+1. Click **"Download Template"** button to get the Excel template
+2. Fill in the template with import data:
+   - **Sheet 1: Header** - MAWB/BL number, origin, carrier, etc.
+   - **Sheet 2: Shipments** - Individual AWB details
+3. Select the **Import Mode**:
+   - **Air** - For air freight
+   - **Sea** - For sea cargo
+   - **Land** - For road transport
+4. Click **"Upload Excel"** and select your file
+5. System **validates** the data:
+   - Checks required fields
+   - Validates AWB format
+   - Detects duplicates
+6. Review the **Preview** showing:
+   - Valid rows in green
+   - Errors in red with explanations
+7. Fix any errors by editing the Excel and re-uploading
+8. Click **"Import"** to process valid records
+9. View imported records in the Import Dashboard
+
+> **Template Columns:** AWB No, Shipper, Consignee, Pieces, Weight, Description, etc.
+
+---
+
+## How to Update Bulk POD
+
+**Navigation:** Operations > POD > Excel Upload
+
+**Steps:**
+1. Click **"Download Template"** to get the POD update template
+   - Or click **"Template with AWBs"** to pre-fill pending deliveries
+2. Fill in the Excel template:
+   - **AWB No** - Shipment number
+   - **Delivery Status** - Delivered, Not Delivered, Partial
+   - **Delivery Date** - Date of delivery
+   - **Received By** - Name of person who received
+   - **Relation** - Relation to consignee (Self, Relative, Guard, etc.)
+   - **Non-Delivery Reason** - If not delivered
+   - **Remarks** - Additional notes
+3. Save the Excel file
+4. Click **"Upload"** and select your file
+5. System validates each row:
+   - AWB exists and is out for delivery
+   - Required fields are filled
+   - Status is valid
+6. Review validation results
+7. Click **"Process POD Updates"**
+8. Download the **Results Report** showing success/failure for each AWB
+
+> **Alternative:** Use **Bulk POD Update** at `/pod-bulk` for grid-based updates.
+
+---
+
+## How to Use Customer Dashboard
+
+**Navigation:** CRM > Customer Dashboard
+
+**Features Overview:**
+1. **Summary Cards** - Quick stats for selected customer:
+   - Total Shipments
+   - Pending Deliveries
+   - Outstanding Balance
+   - This Month's Volume
+2. **Search Customer** - Find by name, code, or phone
+3. **Recent Shipments** - Latest 10 shipments with status
+4. **Financial Summary**:
+   - Invoices pending payment
+   - Payment history
+   - Credit limit usage
+5. **Quick Actions**:
+   - Create new pickup request
+   - View shipment history
+   - Generate statement
+
+**How to Use:**
+1. Enter customer name or code in search box
+2. Dashboard loads customer's complete profile
+3. Click on any shipment to track details
+4. Use action buttons for common operations
+5. Export data for analysis if needed
+
+---
+
+## How to Use Pickup Dashboard
+
+**Navigation:** Operations > Pickup Dashboard
+
+**Dashboard Components:**
+1. **Summary Cards**:
+   - Total Requests Today
+   - Pending Assignment
+   - In Progress
+   - Completed Today
+2. **Filters**:
+   - Date range
+   - Status filter
+   - Customer filter
+   - Courier filter
+3. **Request List**:
+   - Pickup number, customer, time slot
+   - Assigned courier
+   - Current status with color coding
+
+**How to Use:**
+1. Review pending pickups at the start of day
+2. **Assign Couriers**:
+   - Select unassigned pickups
+   - Click "Assign"
+   - Choose available courier
+3. **Track Progress**:
+   - Monitor status updates in real-time
+   - View collected vs pending count
+4. **Handle Issues**:
+   - Click on a pickup to see details
+   - Reschedule if needed
+   - Add notes or special instructions
+
+---
+
+## How to De-brief Courier (End of Day)
+
+**Navigation:** Operations > DRS Reconciliation
+
+**Purpose:** Close out a courier's day by reconciling all assigned shipments.
+
+**Steps:**
+1. Go to **DRS Reconciliation** page
+2. Select the **Courier** from dropdown
+3. Select the **DRS Date** (usually today)
+4. Click **"Load DRS"** to see all assigned shipments
+5. **Reconcile Each Shipment**:
+   - **Delivered** - Confirm POD is captured
+   - **Not Delivered** - Select reason, schedule retry
+   - **Return to Hub** - Mark for reattempt
+6. **COD Collection**:
+   - View total COD to be collected
+   - Enter actual amount collected
+   - Note any discrepancies
+7. **Expenses** (if any):
+   - Enter fuel, tolls, or other expenses
+   - Attach receipts if required
+8. Review the **Summary**:
+   - Deliveries: Completed / Total
+   - COD: Collected / Expected
+9. Click **"Submit Day-End"** to close the DRS
+10. Print or save the **Day-End Report** for records
+
+---
+
+## How to Reconcile Courier Receipts
+
+**Navigation:** Finance > Courier Receipts
+
+**Purpose:** Match COD collected by couriers against expected amounts.
+
+**Steps:**
+1. Go to **Courier Receipts** page
+2. Select **Date Range** and **Courier**
+3. Click **"Load Collections"**
+4. The system displays:
+   - All COD shipments delivered by this courier
+   - Expected collection amount
+   - Actual collected (from POD/DRS)
+5. **Verify Amounts**:
+   - Check if collected matches expected
+   - Note any shortfalls or excess
+6. **Record Cash Handover**:
+   - Enter amount received from courier
+   - Select payment method (Cash/Cheque/Transfer)
+   - Add reference number if applicable
+7. **Handle Discrepancies**:
+   - Short collection: Create debit note to courier
+   - Excess collection: Create credit note
+   - Mark disputed items for investigation
+8. Click **"Confirm Receipt"** to finalize
+9. System updates:
+   - Courier ledger
+   - Cash/Bank account
+   - Shipment payment status
+
+> **Report:** Generate Courier Collection Report for audit purposes.
+
+---
+
+## Suggest a New How-To Topic
+
+**Have a question that's not covered here?**
+
+We're constantly improving this knowledge base. If you need help with something not listed above, please:
+
+1. **Contact Support** - Email support@net4courier.com with your question
+2. **Describe the Task** - Tell us what you're trying to accomplish
+3. **Include Screenshots** - If you're stuck on a specific screen
+
+Your suggestions help us improve the system for everyone. Common requests will be added to this guide in future updates.
+
+**Frequently Requested Topics Coming Soon:**
+- How to configure rate cards for specific customers
+- How to set up automated notifications
+- How to generate financial reports
+- How to manage multi-currency transactions
 
 ---
 
