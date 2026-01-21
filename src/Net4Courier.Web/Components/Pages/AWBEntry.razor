@@ -61,8 +61,8 @@
                                Variant="Variant.Outlined" Margin="Margin.Dense" />
             </MudItem>
             <MudItem xs="6" md="2">
-                <MudSelect T="PaymentMode" @bind-Value="_inscan.PaymentModeId" Label="Payment Mode" 
-                           Variant="Variant.Outlined" Margin="Margin.Dense" AnchorOrigin="Origin.BottomCenter">
+                <MudSelect T="PaymentMode" @bind-Value="_inscan.PaymentModeId" @bind-Value:after="OnPaymentModeChanged"
+                           Label="Payment Mode" Variant="Variant.Outlined" Margin="Margin.Dense" AnchorOrigin="Origin.BottomCenter">
                     <MudSelectItem T="PaymentMode" Value="@PaymentMode.PickupCash">Pickup Cash</MudSelectItem>
                     <MudSelectItem T="PaymentMode" Value="@PaymentMode.COD">COD</MudSelectItem>
                     <MudSelectItem T="PaymentMode" Value="@PaymentMode.Account">Account</MudSelectItem>
@@ -71,18 +71,27 @@
                 </MudSelect>
             </MudItem>
             <MudItem xs="6" md="2">
-                <MudSelect T="long?" @bind-Value="_inscan.CustomerId" Label="@GetCustomerLabel()" 
-                           Variant="Variant.Outlined" Margin="Margin.Dense" AnchorOrigin="Origin.BottomCenter"
-                           Required="@IsCustomerRequired()" RequiredError="Customer required for Account payment">
-                    @if (!IsCustomerRequired())
-                    {
-                        <MudSelectItem T="long?" Value="@((long?)null)">-- Walk-in --</MudSelectItem>
-                    }
-                    @foreach (var customer in _customers)
-                    {
-                        <MudSelectItem T="long?" Value="@customer.Id">@customer.Name</MudSelectItem>
-                    }
-                </MudSelect>
+                @if (_inscan.PaymentModeId == PaymentMode.Account)
+                {
+                    <MudSelect T="long?" @bind-Value="_inscan.CustomerId" Label="Customer Account *" 
+                               Variant="Variant.Outlined" Margin="Margin.Dense" AnchorOrigin="Origin.BottomCenter"
+                               Required="true" RequiredError="Customer required for Account payment">
+                        @foreach (var customer in _customers)
+                        {
+                            <MudSelectItem T="long?" Value="@customer.Id">@customer.Name</MudSelectItem>
+                        }
+                    </MudSelect>
+                }
+                else if (_inscan.PaymentModeId == PaymentMode.PickupCash)
+                {
+                    <MudTextField Value="@_controlAccountName" Label="Cash Account" ReadOnly="true"
+                                  Variant="Variant.Outlined" Margin="Margin.Dense" />
+                }
+                else
+                {
+                    <MudTextField Value="@_controlAccountName" Label="Control Account" ReadOnly="true"
+                                  Variant="Variant.Outlined" Margin="Margin.Dense" />
+                }
             </MudItem>
             <MudItem xs="6" md="2">
                 <MudTextField @bind-Value="_inscan.ReferenceNo" Label="Reference No" 
@@ -445,6 +454,8 @@
     private TimeSpan? _bookingTime = DateTime.Now.TimeOfDay;
     private List<Party> _customers = new();
     private List<City> _cities = new();
+    private long? _controlAccountId;
+    private string _controlAccountName = "";
     private City? _selectedConsignorCity;
     private City? _selectedConsigneeCity;
     private string? _forwardingAgentName;
@@ -469,7 +480,64 @@
     
     private bool IsCustomerRequired() => _inscan.PaymentModeId == PaymentMode.Account;
     
-    private string GetCustomerLabel() => IsCustomerRequired() ? "Customer Account *" : "Customer/Account";
+    private async Task OnPaymentModeChanged()
+    {
+        _inscan.CustomerId = null;
+        await LoadPaymentModeAccount(_inscan.PaymentModeId);
+    }
+    
+    private async Task LoadPaymentModeAccount(PaymentMode paymentMode)
+    {
+        _controlAccountId = null;
+        _controlAccountName = "";
+        
+        if (paymentMode == PaymentMode.COD || paymentMode == PaymentMode.CAD)
+        {
+            var controlType = paymentMode == PaymentMode.COD ? ControlAccountType.CODControl : ControlAccountType.CADControl;
+            var setting = await DbContext.ControlAccountSettings
+                .Include(s => s.AccountHead)
+                .FirstOrDefaultAsync(s => s.AccountType == controlType && !s.IsDeleted);
+            if (setting?.AccountHead != null)
+            {
+                _controlAccountId = setting.AccountHeadId;
+                _controlAccountName = setting.AccountHead.Name;
+            }
+            else
+            {
+                _controlAccountName = paymentMode == PaymentMode.COD ? "COD Control (Not Configured)" : "CAD Control (Not Configured)";
+            }
+        }
+        else if (paymentMode == PaymentMode.Prepaid)
+        {
+            var setting = await DbContext.ControlAccountSettings
+                .Include(s => s.AccountHead)
+                .FirstOrDefaultAsync(s => s.AccountType == ControlAccountType.PrepaidControl && !s.IsDeleted);
+            if (setting?.AccountHead != null)
+            {
+                _controlAccountId = setting.AccountHeadId;
+                _controlAccountName = setting.AccountHead.Name;
+            }
+            else
+            {
+                _controlAccountName = "Prepaid Control (Not Configured)";
+            }
+        }
+        else if (paymentMode == PaymentMode.PickupCash)
+        {
+            var setting = await DbContext.ControlAccountSettings
+                .Include(s => s.AccountHead)
+                .FirstOrDefaultAsync(s => s.AccountType == ControlAccountType.CashAccount && !s.IsDeleted);
+            if (setting?.AccountHead != null)
+            {
+                _controlAccountId = setting.AccountHeadId;
+                _controlAccountName = setting.AccountHead.Name;
+            }
+            else
+            {
+                _controlAccountName = "Cash Account (Not Configured)";
+            }
+        }
+    }
 
     protected override async Task OnInitializedAsync()
     {
@@ -510,6 +578,8 @@
             _inscan.ConsignorCountry = "India";
             _inscan.ConsigneeCountry = "India";
         }
+        
+        await LoadPaymentModeAccount(_inscan.PaymentModeId);
     }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
