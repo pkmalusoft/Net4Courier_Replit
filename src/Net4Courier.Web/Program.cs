@@ -563,6 +563,32 @@ public class DatabaseInitializationService : BackgroundService
             ", stoppingToken);
 
             await dbContext.Database.ExecuteSqlRawAsync(@"
+                CREATE TABLE IF NOT EXISTS ""ImportDocuments"" (
+                    ""Id"" BIGSERIAL PRIMARY KEY,
+                    ""ImportMasterId"" BIGINT NOT NULL REFERENCES ""ImportMasters""(""Id"") ON DELETE CASCADE,
+                    ""DocumentType"" INT NOT NULL DEFAULT 1,
+                    ""DocumentTypeName"" VARCHAR(100) NOT NULL,
+                    ""OriginalFileName"" VARCHAR(255) NOT NULL,
+                    ""StoredFileName"" VARCHAR(255) NOT NULL,
+                    ""FilePath"" VARCHAR(500) NOT NULL,
+                    ""ContentType"" VARCHAR(100),
+                    ""FileSize"" BIGINT NOT NULL DEFAULT 0,
+                    ""Description"" VARCHAR(500),
+                    ""UploadedAt"" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    ""UploadedByUserId"" BIGINT,
+                    ""UploadedByUserName"" VARCHAR(100),
+                    ""IsActive"" BOOLEAN NOT NULL DEFAULT TRUE,
+                    ""IsDeleted"" BOOLEAN NOT NULL DEFAULT FALSE,
+                    ""CreatedAt"" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    ""ModifiedAt"" TIMESTAMP WITH TIME ZONE,
+                    ""CreatedBy"" INT,
+                    ""ModifiedBy"" INT
+                );
+                CREATE INDEX IF NOT EXISTS ""IX_ImportDocuments_ImportMasterId"" ON ""ImportDocuments"" (""ImportMasterId"");
+                CREATE INDEX IF NOT EXISTS ""IX_ImportDocuments_DocumentType"" ON ""ImportDocuments"" (""DocumentType"");
+            ", stoppingToken);
+
+            await dbContext.Database.ExecuteSqlRawAsync(@"
                 ALTER TABLE ""Branches"" ADD COLUMN IF NOT EXISTS ""AWBPrefix"" VARCHAR(50);
                 ALTER TABLE ""Branches"" ADD COLUMN IF NOT EXISTS ""AWBStartingNumber"" BIGINT NOT NULL DEFAULT 1;
                 ALTER TABLE ""Branches"" ADD COLUMN IF NOT EXISTS ""AWBIncrement"" INT NOT NULL DEFAULT 1;

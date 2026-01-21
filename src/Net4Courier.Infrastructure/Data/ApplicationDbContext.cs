@@ -83,6 +83,7 @@ public class ApplicationDbContext : DbContext
     public DbSet<ImportBag> ImportBags => Set<ImportBag>();
     public DbSet<ImportShipment> ImportShipments => Set<ImportShipment>();
     public DbSet<ImportShipmentNote> ImportShipmentNotes => Set<ImportShipmentNote>();
+    public DbSet<ImportDocument> ImportDocuments => Set<ImportDocument>();
     
     public DbSet<ApiSetting> ApiSettings => Set<ApiSetting>();
 
@@ -860,6 +861,23 @@ public class ApplicationDbContext : DbContext
             entity.HasIndex(e => e.ImportShipmentId);
             entity.HasIndex(e => e.AddedAt);
             entity.HasOne(e => e.ImportShipment).WithMany(s => s.Notes).HasForeignKey(e => e.ImportShipmentId)
+                  .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<ImportDocument>(entity =>
+        {
+            entity.ToTable("ImportDocuments");
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.DocumentTypeName).HasMaxLength(100).IsRequired();
+            entity.Property(e => e.OriginalFileName).HasMaxLength(255).IsRequired();
+            entity.Property(e => e.StoredFileName).HasMaxLength(255).IsRequired();
+            entity.Property(e => e.FilePath).HasMaxLength(500).IsRequired();
+            entity.Property(e => e.ContentType).HasMaxLength(100);
+            entity.Property(e => e.Description).HasMaxLength(500);
+            entity.Property(e => e.UploadedByUserName).HasMaxLength(100);
+            entity.HasIndex(e => e.ImportMasterId);
+            entity.HasIndex(e => e.DocumentType);
+            entity.HasOne(e => e.ImportMaster).WithMany().HasForeignKey(e => e.ImportMasterId)
                   .OnDelete(DeleteBehavior.Cascade);
         });
     }

@@ -8,6 +8,8 @@
 @inject IDbContextFactory<ApplicationDbContext> DbFactory
 @inject NavigationManager Navigation
 @inject ISnackbar Snackbar
+@inject IDialogService DialogService
+@inject IJSRuntime JSRuntime
 
 <PageTitle>@(IsNew ? "New Import" : "Edit Import") - Net4Courier</PageTitle>
 
@@ -271,6 +273,46 @@ else
                             </div>
                         </MudStack>
                     </MudPaper>
+                    
+                    <MudPaper Class="pa-4 mt-4" Elevation="2">
+                        <div class="d-flex justify-space-between align-center mb-3">
+                            <MudText Typo="Typo.subtitle1">
+                                <MudIcon Icon="@Icons.Material.Filled.AttachFile" Size="Size.Small" Class="mr-1" />
+                                Documents (@_documents.Count)
+                            </MudText>
+                            <MudButton Variant="Variant.Outlined" Size="Size.Small" Color="Color.Primary" 
+                                       OnClick="OpenUploadDialog" StartIcon="@Icons.Material.Filled.Upload">
+                                Upload
+                            </MudButton>
+                        </div>
+                        
+                        @if (_documents.Any())
+                        {
+                            <MudList T="ImportDocument" Dense="true">
+                                @foreach (var doc in _documents)
+                                {
+                                    <MudListItem T="ImportDocument">
+                                        <div class="d-flex justify-space-between align-center" style="width: 100%;">
+                                            <div>
+                                                <MudText Typo="Typo.body2" Class="font-weight-bold">@doc.DocumentTypeName</MudText>
+                                                <MudText Typo="Typo.caption" Color="Color.Secondary">@doc.OriginalFileName</MudText>
+                                            </div>
+                                            <div>
+                                                <MudIconButton Icon="@Icons.Material.Filled.Download" Size="Size.Small" 
+                                                               OnClick="@(() => DownloadDocument(doc))" Title="Download" />
+                                                <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" Color="Color.Error"
+                                                               OnClick="@(() => DeleteDocument(doc))" Title="Delete" />
+                                            </div>
+                                        </div>
+                                    </MudListItem>
+                                }
+                            </MudList>
+                        }
+                        else
+                        {
+                            <MudText Typo="Typo.body2" Color="Color.Secondary" Align="Align.Center">No documents uploaded</MudText>
+                        }
+                    </MudPaper>
                 }
             </MudItem>
         </MudGrid>
@@ -294,6 +336,7 @@ else
     private DateTime? _actualArrival;
     private DateTime? _flightDate;
     private List<Country> _countries = new();
+    private List<ImportDocument> _documents = new();
     private string _referenceLabel = "Reference Number *";
     
     private List<BreadcrumbItem> _breadcrumbs = new()
@@ -327,6 +370,11 @@ else
             _etd = _import.ETD;
             _actualArrival = _import.ActualArrivalDate;
             _flightDate = _import.FlightDate;
+            
+            _documents = await dbContext.ImportDocuments
+                .Where(d => d.ImportMasterId == Id.Value && !d.IsDeleted)
+                .OrderByDescending(d => d.UploadedAt)
+                .ToListAsync();
         }
         else
         {
@@ -444,5 +492,100 @@ else
             .CountAsync(i => i.TransactionDate.Date == today.Date) + 1;
         
         return $"{prefix}-{today:yyyyMMdd}-{count:D4}";
+    }
+    
+    private async Task OpenUploadDialog()
+    {
+        var parameters = new DialogParameters<ImportDocumentDialog>
+        {
+            { x => x.ImportMasterId, _import.Id }
+        };
+        
+        var dialog = await DialogService.ShowAsync<ImportDocumentDialog>("Upload Document", parameters,
+            new DialogOptions { MaxWidth = MaxWidth.Small, FullWidth = true });
+        var result = await dialog.Result;
+        
+        if (!result!.Canceled && result.Data is ImportDocumentDialog.ImportDocumentUploadResult uploadResult)
+        {
+            await SaveUploadedDocument(uploadResult);
+        }
+    }
+    
+    private async Task SaveUploadedDocument(ImportDocumentDialog.ImportDocumentUploadResult uploadResult)
+    {
+        if (uploadResult.File == null) return;
+        
+        try
+        {
+            var uploadsDir = Path.Combine(Directory.GetCurrentDirectory(), "wwwroot", "uploads", "imports", _import.Id.ToString());
+            Directory.CreateDirectory(uploadsDir);
+            
+            var storedFileName = $"{Guid.NewGuid()}{Path.GetExtension(uploadResult.File.Name)}";
+            var filePath = Path.Combine(uploadsDir, storedFileName);
+            
+            await using var stream = new FileStream(filePath, FileMode.Create);
+            await uploadResult.File.OpenReadStream(10 * 1024 * 1024).CopyToAsync(stream);
+            
+            await using var dbContext = await DbFactory.CreateDbContextAsync();
+            var document = new ImportDocument
+            {
+                ImportMasterId = _import.Id,
+                DocumentType = uploadResult.DocumentType,
+                DocumentTypeName = uploadResult.DocumentTypeName,
+                OriginalFileName = uploadResult.File.Name,
+                StoredFileName = storedFileName,
+                FilePath = $"/uploads/imports/{_import.Id}/{storedFileName}",
+                ContentType = uploadResult.File.ContentType,
+                FileSize = uploadResult.File.Size,
+                Description = uploadResult.Description,
+                UploadedAt = DateTime.UtcNow,
+                CreatedAt = DateTime.UtcNow
+            };
+            
+            dbContext.ImportDocuments.Add(document);
+            await dbContext.SaveChangesAsync();
+            
+            _documents.Insert(0, document);
+            Snackbar.Add("Document uploaded successfully", Severity.Success);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Upload failed: {ex.Message}", Severity.Error);
+        }
+    }
+    
+    private async Task DownloadDocument(ImportDocument document)
+    {
+        var url = document.FilePath;
+        await JSRuntime.InvokeVoidAsync("open", url, "_blank");
+    }
+    
+    private async Task DeleteDocument(ImportDocument document)
+    {
+        var confirm = await DialogService.ShowMessageBox(
+            "Delete Document",
+            $"Are you sure you want to delete '{document.OriginalFileName}'?",
+            yesText: "Delete", cancelText: "Cancel");
+        
+        if (confirm != true) return;
+        
+        try
+        {
+            await using var dbContext = await DbFactory.CreateDbContextAsync();
+            var doc = await dbContext.ImportDocuments.FindAsync(document.Id);
+            if (doc != null)
+            {
+                doc.IsDeleted = true;
+                doc.ModifiedAt = DateTime.UtcNow;
+                await dbContext.SaveChangesAsync();
+            }
+            
+            _documents.Remove(document);
+            Snackbar.Add("Document deleted", Severity.Success);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Delete failed: {ex.Message}", Severity.Error);
+        }
     }
 }

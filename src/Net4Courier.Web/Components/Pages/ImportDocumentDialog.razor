@@ -1,0 +1,152 @@
+@using Net4Courier.Operations.Entities
+@using Microsoft.AspNetCore.Components.Forms
+
+<MudDialog>
+    <DialogContent>
+        <MudForm @ref="_form" @bind-IsValid="_formIsValid">
+            <MudGrid Spacing="2">
+                <MudItem xs="12">
+                    <MudSelect T="ImportDocumentType" @bind-Value="_documentType" Label="Document Type" Required="true"
+                               Variant="Variant.Outlined" Margin="Margin.Dense" AnchorOrigin="Origin.BottomCenter">
+                        <MudSelectItem T="ImportDocumentType" Value="ImportDocumentType.CustomsDeclaration">Customs Declaration</MudSelectItem>
+                        <MudSelectItem T="ImportDocumentType" Value="ImportDocumentType.CommercialInvoice">Commercial Invoice</MudSelectItem>
+                        <MudSelectItem T="ImportDocumentType" Value="ImportDocumentType.PackingList">Packing List</MudSelectItem>
+                        <MudSelectItem T="ImportDocumentType" Value="ImportDocumentType.BillOfLading">Bill of Lading</MudSelectItem>
+                        <MudSelectItem T="ImportDocumentType" Value="ImportDocumentType.AirwayBill">Airway Bill</MudSelectItem>
+                        <MudSelectItem T="ImportDocumentType" Value="ImportDocumentType.CertificateOfOrigin">Certificate of Origin</MudSelectItem>
+                        <MudSelectItem T="ImportDocumentType" Value="ImportDocumentType.InsuranceCertificate">Insurance Certificate</MudSelectItem>
+                        <MudSelectItem T="ImportDocumentType" Value="ImportDocumentType.ImportPermit">Import Permit</MudSelectItem>
+                        <MudSelectItem T="ImportDocumentType" Value="ImportDocumentType.DeliveryOrder">Delivery Order</MudSelectItem>
+                        <MudSelectItem T="ImportDocumentType" Value="ImportDocumentType.Other">Other</MudSelectItem>
+                    </MudSelect>
+                </MudItem>
+                <MudItem xs="12">
+                    <MudTextField @bind-Value="_description" Label="Description (Optional)"
+                                  Variant="Variant.Outlined" Margin="Margin.Dense" Lines="2" />
+                </MudItem>
+                <MudItem xs="12">
+                    <MudFileUpload T="IBrowserFile" FilesChanged="OnFileSelected" Accept=".pdf,.jpg,.jpeg,.png,.gif,.doc,.docx,.xls,.xlsx">
+                        <ActivatorContent>
+                            <MudButton Variant="Variant.Outlined" Color="Color.Primary" StartIcon="@Icons.Material.Filled.CloudUpload" FullWidth="true">
+                                @(_selectedFile == null ? "Select File" : _selectedFile.Name)
+                            </MudButton>
+                        </ActivatorContent>
+                    </MudFileUpload>
+                    @if (_selectedFile != null)
+                    {
+                        <MudText Typo="Typo.caption" Color="Color.Secondary" Class="mt-1">
+                            Size: @FormatFileSize(_selectedFile.Size)
+                        </MudText>
+                    }
+                </MudItem>
+                @if (!string.IsNullOrEmpty(_errorMessage))
+                {
+                    <MudItem xs="12">
+                        <MudAlert Severity="Severity.Error">@_errorMessage</MudAlert>
+                    </MudItem>
+                }
+            </MudGrid>
+        </MudForm>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Cancel" Variant="Variant.Text">Cancel</MudButton>
+        <MudButton OnClick="Upload" Color="Color.Primary" Variant="Variant.Filled" 
+                   Disabled="@(!_formIsValid || _selectedFile == null || _uploading)">
+            @if (_uploading)
+            {
+                <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" />
+                <span>Uploading...</span>
+            }
+            else
+            {
+                <span>Upload</span>
+            }
+        </MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] private MudDialogInstance MudDialog { get; set; } = null!;
+    [Parameter] public long ImportMasterId { get; set; }
+    
+    private MudForm _form = null!;
+    private bool _formIsValid;
+    private ImportDocumentType _documentType = ImportDocumentType.Other;
+    private string? _description;
+    private IBrowserFile? _selectedFile;
+    private bool _uploading;
+    private string? _errorMessage;
+    
+    private const long MaxFileSize = 10 * 1024 * 1024; // 10MB
+
+    private void OnFileSelected(IBrowserFile file)
+    {
+        _errorMessage = null;
+        
+        if (file.Size > MaxFileSize)
+        {
+            _errorMessage = "File size exceeds 10MB limit.";
+            _selectedFile = null;
+            return;
+        }
+        
+        _selectedFile = file;
+    }
+    
+    private async Task Upload()
+    {
+        if (_selectedFile == null) return;
+        
+        _uploading = true;
+        _errorMessage = null;
+        
+        try
+        {
+            var result = new ImportDocumentUploadResult
+            {
+                DocumentType = _documentType,
+                DocumentTypeName = GetDocumentTypeName(_documentType),
+                Description = _description,
+                File = _selectedFile
+            };
+            
+            MudDialog.Close(DialogResult.Ok(result));
+        }
+        catch (Exception ex)
+        {
+            _errorMessage = $"Upload failed: {ex.Message}";
+            _uploading = false;
+        }
+    }
+    
+    private void Cancel() => MudDialog.Cancel();
+    
+    private string GetDocumentTypeName(ImportDocumentType type) => type switch
+    {
+        ImportDocumentType.CustomsDeclaration => "Customs Declaration",
+        ImportDocumentType.CommercialInvoice => "Commercial Invoice",
+        ImportDocumentType.PackingList => "Packing List",
+        ImportDocumentType.BillOfLading => "Bill of Lading",
+        ImportDocumentType.AirwayBill => "Airway Bill",
+        ImportDocumentType.CertificateOfOrigin => "Certificate of Origin",
+        ImportDocumentType.InsuranceCertificate => "Insurance Certificate",
+        ImportDocumentType.ImportPermit => "Import Permit",
+        ImportDocumentType.DeliveryOrder => "Delivery Order",
+        _ => "Other"
+    };
+    
+    private string FormatFileSize(long bytes)
+    {
+        if (bytes < 1024) return $"{bytes} B";
+        if (bytes < 1024 * 1024) return $"{bytes / 1024.0:F1} KB";
+        return $"{bytes / (1024.0 * 1024.0):F1} MB";
+    }
+    
+    public class ImportDocumentUploadResult
+    {
+        public ImportDocumentType DocumentType { get; set; }
+        public string DocumentTypeName { get; set; } = string.Empty;
+        public string? Description { get; set; }
+        public IBrowserFile? File { get; set; }
+    }
+}
