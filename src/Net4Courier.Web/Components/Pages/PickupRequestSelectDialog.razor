@@ -69,37 +69,49 @@
                 <MudText Typo="Typo.subtitle2" Color="Color.Primary" Class="mb-2">
                     Selected: @_selectedPickup.PickupNo - @_selectedPickup.CustomerName
                 </MudText>
-                <MudText Typo="Typo.caption">Select a shipment line to convert:</MudText>
-                <MudList T="PickupRequestShipment" Dense="true">
-                    @foreach (var shipment in _selectedPickup.Shipments?.Where(s => s.Status == ShipmentLineStatus.Pending) ?? Enumerable.Empty<PickupRequestShipment>())
-                    {
-                        <MudListItem OnClick="@(() => SelectShipment(shipment))" 
-                                     Class="@(_selectedShipment?.Id == shipment.Id ? "mud-primary-text" : "")">
-                            <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
-                                <MudStack Spacing="0">
-                                    <MudText Typo="Typo.body2">
-                                        <strong>Line @shipment.LineNo:</strong> @shipment.Consignee
-                                    </MudText>
-                                    <MudText Typo="Typo.caption">
-                                        @shipment.ConsigneeCity, @shipment.ConsigneeCountry | 
-                                        @(shipment.Pieces ?? 0) pcs, @(shipment.Weight ?? 0) kg
-                                    </MudText>
+                @{
+                    var pendingShipments = _selectedPickup.Shipments?.Where(s => s.Status == ShipmentLineStatus.Pending).ToList() ?? new List<PickupRequestShipment>();
+                }
+                @if (pendingShipments.Any())
+                {
+                    <MudText Typo="Typo.caption">Select a shipment line to convert:</MudText>
+                    <MudList T="PickupRequestShipment" Dense="true">
+                        @foreach (var shipment in pendingShipments)
+                        {
+                            <MudListItem OnClick="@(() => SelectShipment(shipment))" 
+                                         Class="@(_selectedShipment?.Id == shipment.Id ? "mud-primary-text" : "")">
+                                <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
+                                    <MudStack Spacing="0">
+                                        <MudText Typo="Typo.body2">
+                                            <strong>Line @shipment.LineNo:</strong> @shipment.Consignee
+                                        </MudText>
+                                        <MudText Typo="Typo.caption">
+                                            @shipment.ConsigneeCity, @shipment.ConsigneeCountry | 
+                                            @(shipment.Pieces ?? 0) pcs, @(shipment.Weight ?? 0) kg
+                                        </MudText>
+                                    </MudStack>
+                                    @if (_selectedShipment?.Id == shipment.Id)
+                                    {
+                                        <MudIcon Icon="@Icons.Material.Filled.CheckCircle" Color="Color.Primary" />
+                                    }
                                 </MudStack>
-                                @if (_selectedShipment?.Id == shipment.Id)
-                                {
-                                    <MudIcon Icon="@Icons.Material.Filled.CheckCircle" Color="Color.Primary" />
-                                }
-                            </MudStack>
-                        </MudListItem>
-                    }
-                </MudList>
+                            </MudListItem>
+                        }
+                    </MudList>
+                }
+                else
+                {
+                    <MudAlert Severity="Severity.Info" Dense="true" Class="mt-2">
+                        No shipment line details available. Consignee details will be entered in AWB.
+                    </MudAlert>
+                }
             </MudPaper>
         }
     </DialogContent>
     <DialogActions>
         <MudButton OnClick="Cancel">Cancel</MudButton>
         <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="Confirm" 
-                   Disabled="@(_selectedShipment == null)">
+                   Disabled="@(!CanConfirm)">
             Convert Selected
         </MudButton>
     </DialogActions>
@@ -130,7 +142,6 @@
             .Include(p => p.Shipments)
             .Where(p => !p.IsDeleted && !p.IsConverted)
             .Where(p => p.Status == PickupStatus.ShipmentCollected || p.Status == PickupStatus.Inscanned)
-            .Where(p => p.Shipments.Any(s => s.Status == ShipmentLineStatus.Pending))
             .OrderByDescending(p => p.RequestDate)
             .ToListAsync();
         _loading = false;
@@ -180,6 +191,17 @@
         _selectedShipment = shipment;
     }
 
+    private bool CanConfirm
+    {
+        get
+        {
+            if (_selectedPickup == null) return false;
+            var pendingShipments = _selectedPickup.Shipments?.Where(s => s.Status == ShipmentLineStatus.Pending).ToList();
+            // If there are pending shipments, one must be selected; if no pending shipments, allow conversion
+            return (pendingShipments?.Any() == true && _selectedShipment != null) || (pendingShipments?.Any() != true);
+        }
+    }
+
     private Color GetStatusColor(PickupStatus status) => status switch
     {
         PickupStatus.PickupRequest => Color.Info,
@@ -194,7 +216,7 @@
     
     private void Confirm()
     {
-        if (_selectedPickup != null && _selectedShipment != null)
+        if (_selectedPickup != null && CanConfirm)
         {
             MudDialog.Close(DialogResult.Ok(new PickupConversionResult
             {
