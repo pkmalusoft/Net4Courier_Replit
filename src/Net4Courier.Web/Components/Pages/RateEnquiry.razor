@@ -1,0 +1,405 @@
+@page "/rate-enquiry"
+@using Microsoft.EntityFrameworkCore
+@using Net4Courier.Masters.Entities
+@using Net4Courier.Infrastructure.Data
+@using Net4Courier.Kernel.Enums
+@using Net4Courier.Web.Services
+@inject ApplicationDbContext DbContext
+@inject RatingEngineService RatingEngine
+@inject NavigationManager Navigation
+@rendermode InteractiveServer
+
+<PageTitle>Rate Enquiry | Net4Courier</PageTitle>
+
+<MudContainer MaxWidth="MaxWidth.Large" Class="mt-6 mb-8">
+    <MudGrid>
+        <MudItem xs="12" md="5">
+            <MudPaper Class="pa-6 rate-enquiry-form" Style="background: linear-gradient(135deg, #1a237e 0%, #3949ab 100%); border-radius: 16px;">
+                <MudText Typo="Typo.h5" Style="color: white; font-weight: 600;" Class="mb-4">Get Shipping Rates</MudText>
+                
+                <MudStack Spacing="3">
+                    <div>
+                        <MudText Typo="Typo.caption" Style="color: rgba(255,255,255,0.8);">I am sending from</MudText>
+                        <MudAutocomplete T="City" @bind-Value="_originCity" 
+                                         SearchFunc="SearchCities" 
+                                         ToStringFunc="@(c => c != null ? $"{c.Name}, {GetCountryName(c.CountryId)}" : "")"
+                                         Placeholder="Select origin city"
+                                         Variant="Variant.Filled" 
+                                         Margin="Margin.Dense"
+                                         Style="background: rgba(255,255,255,0.95); border-radius: 8px;" />
+                    </div>
+
+                    <div>
+                        <MudText Typo="Typo.caption" Style="color: rgba(255,255,255,0.8);">to</MudText>
+                        <MudAutocomplete T="City" @bind-Value="_destinationCity" 
+                                         SearchFunc="SearchCities" 
+                                         ToStringFunc="@(c => c != null ? $"{c.Name}, {GetCountryName(c.CountryId)}" : "")"
+                                         Placeholder="Select destination city"
+                                         Variant="Variant.Filled" 
+                                         Margin="Margin.Dense"
+                                         Style="background: rgba(255,255,255,0.95); border-radius: 8px;" />
+                    </div>
+
+                    <MudCheckBox T="bool" @bind-Value="_isResidential" 
+                                 Label="I am shipping to a residence" 
+                                 Style="color: white;"
+                                 Color="Color.Primary" />
+
+                    <MudGrid>
+                        <MudItem xs="6">
+                            <MudText Typo="Typo.caption" Style="color: rgba(255,255,255,0.8);">Type of package</MudText>
+                            <MudSelect T="string" @bind-Value="_packageType" 
+                                       Variant="Variant.Filled" 
+                                       Margin="Margin.Dense"
+                                       Style="background: rgba(255,255,255,0.95); border-radius: 8px;">
+                                <MudSelectItem Value="@("Parcel")">Parcel</MudSelectItem>
+                                <MudSelectItem Value="@("Document")">Document</MudSelectItem>
+                            </MudSelect>
+                        </MudItem>
+                        <MudItem xs="6">
+                            <MudText Typo="Typo.caption" Style="color: rgba(255,255,255,0.8);">Weight of package</MudText>
+                            <MudStack Row="true" Spacing="1">
+                                <MudNumericField T="decimal" @bind-Value="_weight" 
+                                                 Variant="Variant.Filled" 
+                                                 Margin="Margin.Dense"
+                                                 Min="0.1m" Max="999m"
+                                                 Format="N2"
+                                                 Style="background: rgba(255,255,255,0.95); border-radius: 8px;" />
+                                <MudSelect T="string" @bind-Value="_weightUnit" 
+                                           Variant="Variant.Filled" 
+                                           Margin="Margin.Dense"
+                                           Style="background: rgba(255,255,255,0.95); border-radius: 8px; max-width: 70px;">
+                                    <MudSelectItem Value="@("KG")">KG</MudSelectItem>
+                                    <MudSelectItem Value="@("LB")">LB</MudSelectItem>
+                                </MudSelect>
+                            </MudStack>
+                        </MudItem>
+                    </MudGrid>
+
+                    <div>
+                        <MudText Typo="Typo.caption" Style="color: rgba(255,255,255,0.8);">Custom Dimensions (optional)</MudText>
+                        <MudGrid>
+                            <MudItem xs="4">
+                                <MudStack Row="true" Spacing="1">
+                                    <MudNumericField T="decimal" @bind-Value="_length" 
+                                                     Placeholder="Length"
+                                                     Variant="Variant.Filled" 
+                                                     Margin="Margin.Dense"
+                                                     Min="0m"
+                                                     Format="N1"
+                                                     Style="background: rgba(255,255,255,0.95); border-radius: 8px;" />
+                                </MudStack>
+                                <MudText Typo="Typo.caption" Style="color: rgba(255,255,255,0.6);">Length</MudText>
+                            </MudItem>
+                            <MudItem xs="4">
+                                <MudStack Row="true" Spacing="1">
+                                    <MudNumericField T="decimal" @bind-Value="_width" 
+                                                     Placeholder="Width"
+                                                     Variant="Variant.Filled" 
+                                                     Margin="Margin.Dense"
+                                                     Min="0m"
+                                                     Format="N1"
+                                                     Style="background: rgba(255,255,255,0.95); border-radius: 8px;" />
+                                </MudStack>
+                                <MudText Typo="Typo.caption" Style="color: rgba(255,255,255,0.6);">Width</MudText>
+                            </MudItem>
+                            <MudItem xs="4">
+                                <MudStack Row="true" Spacing="1">
+                                    <MudNumericField T="decimal" @bind-Value="_height" 
+                                                     Placeholder="Height"
+                                                     Variant="Variant.Filled" 
+                                                     Margin="Margin.Dense"
+                                                     Min="0m"
+                                                     Format="N1"
+                                                     Style="background: rgba(255,255,255,0.95); border-radius: 8px;" />
+                                </MudStack>
+                                <MudText Typo="Typo.caption" Style="color: rgba(255,255,255,0.6);">Height</MudText>
+                            </MudItem>
+                        </MudGrid>
+                        <MudSelect T="string" @bind-Value="_dimensionUnit" 
+                                   Variant="Variant.Filled" 
+                                   Margin="Margin.Dense"
+                                   Style="background: rgba(255,255,255,0.95); border-radius: 8px; max-width: 80px; margin-top: 8px;">
+                            <MudSelectItem Value="@("CM")">CM</MudSelectItem>
+                            <MudSelectItem Value="@("IN")">IN</MudSelectItem>
+                        </MudSelect>
+                    </div>
+
+                    <MudButton Variant="Variant.Filled" 
+                               Color="Color.Success" 
+                               Size="Size.Large"
+                               OnClick="ShowRates"
+                               Disabled="@_calculating"
+                               FullWidth="true"
+                               Style="border-radius: 8px; font-weight: 600;"
+                               Class="mt-2">
+                        @if (_calculating)
+                        {
+                            <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="me-2" />
+                            <span>Calculating...</span>
+                        }
+                        else
+                        {
+                            <MudIcon Icon="@Icons.Material.Filled.Search" Class="me-2" />
+                            <span>Show Rates</span>
+                        }
+                    </MudButton>
+                </MudStack>
+            </MudPaper>
+        </MudItem>
+
+        <MudItem xs="12" md="7">
+            @if (_hasSearched)
+            {
+                <MudPaper Class="pa-4" Elevation="2" Style="border-radius: 16px;">
+                    <MudText Typo="Typo.h6" Class="mb-4">Available Rates</MudText>
+                    
+                    @if (!string.IsNullOrEmpty(_errorMessage))
+                    {
+                        <MudAlert Severity="Severity.Warning" Class="mb-4">@_errorMessage</MudAlert>
+                    }
+                    else if (_rateResults.Any())
+                    {
+                        <MudSimpleTable Hover="true" Striped="true" Dense="false" Style="border-radius: 8px; overflow: hidden;">
+                            <thead>
+                                <tr style="background-color: #1a237e;">
+                                    <th style="color: white; padding: 16px;">Delivered By</th>
+                                    <th style="color: white; padding: 16px; text-align: right;">Price</th>
+                                    <th style="color: white; padding: 16px; text-align: center;">Action</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var rate in _rateResults)
+                                {
+                                    <tr>
+                                        <td style="padding: 16px;">
+                                            <MudStack Spacing="0">
+                                                <MudText Typo="Typo.subtitle1"><strong>@rate.ServiceName</strong></MudText>
+                                                <MudText Typo="Typo.caption" Color="Color.Secondary">
+                                                    @rate.RateCardName
+                                                    @if (!string.IsNullOrEmpty(rate.ZoneName))
+                                                    {
+                                                        <span> - Zone: @rate.ZoneName</span>
+                                                    }
+                                                </MudText>
+                                                <MudText Typo="Typo.caption" Color="Color.Secondary">
+                                                    Chargeable: @rate.ChargeableWeight.ToString("N2") kg
+                                                </MudText>
+                                            </MudStack>
+                                        </td>
+                                        <td style="padding: 16px; text-align: right;">
+                                            <MudText Typo="Typo.h6" Color="Color.Primary">
+                                                @rate.Currency @rate.TotalCharge.ToString("N2")
+                                            </MudText>
+                                        </td>
+                                        <td style="padding: 16px; text-align: center;">
+                                            <MudButton Variant="Variant.Filled" 
+                                                       Color="Color.Primary" 
+                                                       Size="Size.Small"
+                                                       OnClick="@(() => BookNow(rate))"
+                                                       Style="border-radius: 8px;">
+                                                Book Now
+                                            </MudButton>
+                                        </td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </MudSimpleTable>
+
+                        <MudText Typo="Typo.caption" Color="Color.Secondary" Class="mt-4 text-center">
+                            * Prices are estimates and may vary based on actual weight and dimensions
+                        </MudText>
+                    }
+                    else
+                    {
+                        <MudAlert Severity="Severity.Info">
+                            No rates available for this route. Please contact us for a custom quote.
+                        </MudAlert>
+                    }
+                </MudPaper>
+            }
+            else
+            {
+                <MudPaper Class="pa-8 text-center" Elevation="0" Style="border: 2px dashed #e0e0e0; border-radius: 16px; min-height: 400px; display: flex; align-items: center; justify-content: center;">
+                    <MudStack AlignItems="AlignItems.Center" Spacing="3">
+                        <MudIcon Icon="@Icons.Material.Filled.LocalShipping" Style="font-size: 80px; color: #bdbdbd;" />
+                        <MudText Typo="Typo.h6" Color="Color.Secondary">Enter Shipment Details</MudText>
+                        <MudText Typo="Typo.body2" Color="Color.Secondary">
+                            Fill in the form on the left to get instant shipping rates
+                        </MudText>
+                    </MudStack>
+                </MudPaper>
+            }
+        </MudItem>
+    </MudGrid>
+</MudContainer>
+
+@code {
+    private City? _originCity;
+    private City? _destinationCity;
+    private bool _isResidential = false;
+    private string _packageType = "Parcel";
+    private decimal _weight = 1.0m;
+    private string _weightUnit = "KG";
+    private decimal _length = 0;
+    private decimal _width = 0;
+    private decimal _height = 0;
+    private string _dimensionUnit = "CM";
+    private bool _calculating = false;
+    private bool _hasSearched = false;
+    private string? _errorMessage;
+    private List<RateQuote> _rateResults = new();
+    private Dictionary<long, string> _countryCache = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        _countryCache = await DbContext.Countries
+            .Where(c => c.IsActive && !c.IsDeleted)
+            .ToDictionaryAsync(c => c.Id, c => c.Name);
+    }
+
+    private string GetCountryName(long? countryId)
+    {
+        if (!countryId.HasValue) return "";
+        return _countryCache.TryGetValue(countryId.Value, out var name) ? name : "";
+    }
+
+    private async Task<IEnumerable<City>> SearchCities(string value, CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(value) || value.Length < 2)
+            return Enumerable.Empty<City>();
+
+        return await DbContext.Cities
+            .Where(c => c.IsActive && !c.IsDeleted && c.Name.ToLower().Contains(value.ToLower()))
+            .OrderBy(c => c.Name)
+            .Take(20)
+            .ToListAsync(ct);
+    }
+
+    private async Task ShowRates()
+    {
+        _errorMessage = null;
+        _rateResults.Clear();
+        
+        if (_originCity == null)
+        {
+            _errorMessage = "Please select origin city";
+            _hasSearched = true;
+            return;
+        }
+
+        if (_destinationCity == null)
+        {
+            _errorMessage = "Please select destination city";
+            _hasSearched = true;
+            return;
+        }
+
+        if (_weight <= 0)
+        {
+            _errorMessage = "Please enter a valid weight";
+            _hasSearched = true;
+            return;
+        }
+
+        _calculating = true;
+        _hasSearched = true;
+        StateHasChanged();
+
+        try
+        {
+            var weightInKg = _weightUnit == "LB" ? _weight * 0.453592m : _weight;
+            var lengthInCm = _dimensionUnit == "IN" ? _length * 2.54m : _length;
+            var widthInCm = _dimensionUnit == "IN" ? _width * 2.54m : _width;
+            var heightInCm = _dimensionUnit == "IN" ? _height * 2.54m : _height;
+
+            var movementType = DetermineMovementType(_originCity.CountryId, _destinationCity.CountryId);
+
+            var request = new RatingRequest
+            {
+                MovementType = movementType,
+                PaymentMode = PaymentMode.Prepaid,
+                OriginCountryId = _originCity.CountryId,
+                OriginCityId = _originCity.Id,
+                DestinationCountryId = _destinationCity.CountryId,
+                DestinationCityId = _destinationCity.Id,
+                ActualWeight = weightInKg,
+                Length = lengthInCm,
+                Width = widthInCm,
+                Height = heightInCm,
+                Pieces = 1
+            };
+
+            var result = await RatingEngine.CalculateRate(request);
+
+            if (result.Success)
+            {
+                var branch = await DbContext.Branches.FirstOrDefaultAsync(b => b.IsActive && !b.IsDeleted);
+                var currency = branch?.CurrencyCode ?? "AED";
+
+                _rateResults.Add(new RateQuote
+                {
+                    ServiceName = GetServiceName(movementType),
+                    RateCardName = result.RateCardName,
+                    ZoneName = result.ZoneName,
+                    ChargeableWeight = result.ChargeableWeight,
+                    TotalCharge = result.TotalCharge,
+                    Currency = currency,
+                    RateCardId = result.RateCardId
+                });
+            }
+            else
+            {
+                _errorMessage = result.ErrorMessage ?? "Unable to calculate rate for this route";
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error calculating rate: {ex.Message}");
+            _errorMessage = "An error occurred while calculating rates. Please try again.";
+        }
+        finally
+        {
+            _calculating = false;
+            StateHasChanged();
+        }
+    }
+
+    private MovementType DetermineMovementType(long? originCountryId, long? destCountryId)
+    {
+        if (!originCountryId.HasValue || !destCountryId.HasValue)
+            return MovementType.Domestic;
+
+        if (originCountryId == destCountryId)
+            return MovementType.Domestic;
+
+        return MovementType.InternationalExport;
+    }
+
+    private string GetServiceName(MovementType movementType)
+    {
+        return movementType switch
+        {
+            MovementType.Domestic => "Domestic Express",
+            MovementType.InternationalExport => "International Express",
+            MovementType.InternationalImport => "Import Express",
+            _ => "Standard Delivery"
+        };
+    }
+
+    private void BookNow(RateQuote rate)
+    {
+        Navigation.NavigateTo("/login?redirect=/awb-entry");
+    }
+
+    private class RateQuote
+    {
+        public string ServiceName { get; set; } = "";
+        public string RateCardName { get; set; } = "";
+        public string ZoneName { get; set; } = "";
+        public decimal ChargeableWeight { get; set; }
+        public decimal TotalCharge { get; set; }
+        public string Currency { get; set; } = "AED";
+        public long? RateCardId { get; set; }
+    }
+}
