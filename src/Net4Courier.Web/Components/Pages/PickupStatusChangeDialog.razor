@@ -1,0 +1,215 @@
+@using MudBlazor
+@using Microsoft.EntityFrameworkCore
+@using Microsoft.AspNetCore.Components.Authorization
+@using Net4Courier.Infrastructure.Data
+@using Net4Courier.Operations.Entities
+@using System.Security.Claims
+@inject ApplicationDbContext DbContext
+@inject ISnackbar Snackbar
+@inject AuthenticationStateProvider AuthStateProvider
+
+<MudDialog>
+    <TitleContent>
+        <MudText Typo="Typo.h6">
+            <MudIcon Icon="@Icons.Material.Filled.Update" Class="mr-2" />
+            Update Status - @PickupRequest.PickupNo
+        </MudText>
+    </TitleContent>
+    <DialogContent>
+        <MudStack Spacing="4">
+            <MudGrid>
+                <MudItem xs="6">
+                    <MudText Typo="Typo.caption" Color="Color.Secondary">Current Status</MudText>
+                    <MudChip T="string" Color="@GetStatusColor(PickupRequest.Status)" Size="Size.Small">
+                        @GetStatusText(PickupRequest.Status)
+                    </MudChip>
+                </MudItem>
+                <MudItem xs="6">
+                    <MudText Typo="Typo.caption" Color="Color.Secondary">Changed By</MudText>
+                    <MudText Typo="Typo.body2"><strong>@_currentUserName</strong></MudText>
+                </MudItem>
+            </MudGrid>
+            
+            <MudDivider />
+            
+            <MudSelect T="PickupStatus" 
+                       @bind-Value="_selectedStatus" 
+                       Label="New Status *"
+                       Variant="Variant.Outlined"
+                       Required="true"
+                       AnchorOrigin="Origin.BottomCenter">
+                <MudSelectItem Value="@PickupStatus.PickupRequest">
+                    <div class="d-flex align-center gap-2">
+                        <MudIcon Icon="@Icons.Material.Filled.Circle" Style="color: #ff9800; font-size: 12px;" />
+                        Pickup Request
+                    </div>
+                </MudSelectItem>
+                <MudSelectItem Value="@PickupStatus.AssignedForCollection">
+                    <div class="d-flex align-center gap-2">
+                        <MudIcon Icon="@Icons.Material.Filled.Circle" Style="color: #2196f3; font-size: 12px;" />
+                        Assigned for Collection
+                    </div>
+                </MudSelectItem>
+                <MudSelectItem Value="@PickupStatus.ShipmentCollected">
+                    <div class="d-flex align-center gap-2">
+                        <MudIcon Icon="@Icons.Material.Filled.Circle" Style="color: #4caf50; font-size: 12px;" />
+                        Shipment Collected
+                    </div>
+                </MudSelectItem>
+                <MudSelectItem Value="@PickupStatus.Inscanned">
+                    <div class="d-flex align-center gap-2">
+                        <MudIcon Icon="@Icons.Material.Filled.Circle" Style="color: #9e9e9e; font-size: 12px;" />
+                        Inscanned
+                    </div>
+                </MudSelectItem>
+                <MudSelectItem Value="@PickupStatus.Cancelled">
+                    <div class="d-flex align-center gap-2">
+                        <MudIcon Icon="@Icons.Material.Filled.Circle" Style="color: #f44336; font-size: 12px;" />
+                        Cancelled
+                    </div>
+                </MudSelectItem>
+            </MudSelect>
+            
+            <MudTextField @bind-Value="_remarks"
+                          Label="Reason for Status Change *"
+                          Variant="Variant.Outlined"
+                          Lines="3"
+                          Required="true"
+                          RequiredError="Please provide a reason for this status change"
+                          Placeholder="Enter the reason for this status change..." />
+
+            <MudText Typo="Typo.caption" Color="Color.Secondary" Class="mt-2">
+                <MudIcon Icon="@Icons.Material.Filled.Info" Size="Size.Small" Class="mr-1" />
+                Status change will be recorded with your user details and timestamp for audit purposes.
+            </MudText>
+        </MudStack>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Cancel" Variant="Variant.Text">Cancel</MudButton>
+        <MudButton OnClick="UpdateStatus" 
+                   Color="Color.Primary" 
+                   Variant="Variant.Filled"
+                   Disabled="@(!CanSubmit || _isSaving)">
+            @if (_isSaving)
+            {
+                <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" />
+            }
+            Update Status
+        </MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] MudDialogInstance MudDialog { get; set; } = null!;
+    [Parameter] public PickupRequest PickupRequest { get; set; } = new();
+
+    private PickupStatus _selectedStatus;
+    private string _remarks = "";
+    private bool _isSaving = false;
+    private long? _currentUserId;
+    private string _currentUserName = "Unknown User";
+
+    private bool CanSubmit => _selectedStatus != PickupRequest.Status && !string.IsNullOrWhiteSpace(_remarks);
+
+    protected override async Task OnInitializedAsync()
+    {
+        _selectedStatus = PickupRequest.Status;
+        await LoadUserInfo();
+    }
+
+    private async Task LoadUserInfo()
+    {
+        try
+        {
+            var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+            var user = authState.User;
+
+            if (user.Identity?.IsAuthenticated == true)
+            {
+                var userIdClaim = user.FindFirst("UserId")?.Value;
+                if (long.TryParse(userIdClaim, out var userId))
+                {
+                    _currentUserId = userId;
+                }
+
+                _currentUserName = user.FindFirst("FullName")?.Value 
+                    ?? user.FindFirst(ClaimTypes.Name)?.Value 
+                    ?? user.Identity.Name 
+                    ?? "Unknown User";
+            }
+        }
+        catch
+        {
+            _currentUserName = "System User";
+        }
+    }
+
+    private async Task UpdateStatus()
+    {
+        if (_selectedStatus == PickupRequest.Status || string.IsNullOrWhiteSpace(_remarks)) return;
+
+        _isSaving = true;
+        StateHasChanged();
+
+        try
+        {
+            var pickup = await DbContext.PickupRequests.FindAsync(PickupRequest.Id);
+            if (pickup == null)
+            {
+                Snackbar.Add("Pickup request not found", Severity.Error);
+                return;
+            }
+
+            var previousStatus = pickup.Status;
+            pickup.Status = _selectedStatus;
+            pickup.ModifiedAt = DateTime.UtcNow;
+            pickup.ModifiedBy = (int?)_currentUserId;
+            pickup.ModifiedByName = _currentUserName;
+            
+            if (!string.IsNullOrWhiteSpace(pickup.Remarks))
+            {
+                pickup.Remarks = $"{pickup.Remarks}\n[{DateTime.UtcNow:yyyy-MM-dd HH:mm}] Status changed from {GetStatusText(previousStatus)} to {GetStatusText(_selectedStatus)} by {_currentUserName}: {_remarks}";
+            }
+            else
+            {
+                pickup.Remarks = $"[{DateTime.UtcNow:yyyy-MM-dd HH:mm}] Status changed from {GetStatusText(previousStatus)} to {GetStatusText(_selectedStatus)} by {_currentUserName}: {_remarks}";
+            }
+
+            await DbContext.SaveChangesAsync();
+            
+            Snackbar.Add($"Status updated to: {GetStatusText(_selectedStatus)}", Severity.Success);
+            MudDialog.Close(DialogResult.Ok(true));
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _isSaving = false;
+            StateHasChanged();
+        }
+    }
+
+    private Color GetStatusColor(PickupStatus status) => status switch
+    {
+        PickupStatus.PickupRequest => Color.Warning,
+        PickupStatus.AssignedForCollection => Color.Info,
+        PickupStatus.ShipmentCollected => Color.Success,
+        PickupStatus.Inscanned => Color.Secondary,
+        PickupStatus.Cancelled => Color.Error,
+        _ => Color.Default
+    };
+
+    private string GetStatusText(PickupStatus status) => status switch
+    {
+        PickupStatus.PickupRequest => "Pickup Request",
+        PickupStatus.AssignedForCollection => "Assigned for Collection",
+        PickupStatus.ShipmentCollected => "Shipment Collected",
+        PickupStatus.Inscanned => "Inscanned",
+        PickupStatus.Cancelled => "Cancelled",
+        _ => status.ToString()
+    };
+
+    private void Cancel() => MudDialog.Cancel();
+}
