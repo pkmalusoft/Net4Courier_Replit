@@ -16,24 +16,26 @@
 <MudContainer MaxWidth="MaxWidth.Large" Class="mt-8 mb-8">
     <MudPaper Elevation="3" Class="pa-8 mb-6 text-center">
         <MudText Typo="Typo.h4" Color="Color.Primary" Class="mb-4">Track Your Shipment</MudText>
-        <MudText Typo="Typo.body1" Class="mb-6">Enter your AWB or Reference Number to get the latest status.</MudText>
+        <MudText Typo="Typo.body1" Class="mb-6">Enter your AWB or Reference Number(s) to get the latest status. Separate multiple numbers with commas.</MudText>
         
         <MudGrid Justify="Justify.Center">
             <MudItem xs="12" sm="8" md="6">
                 <MudTextField @bind-Value="_searchTerm" 
-                              Label="Enter Tracking Number" 
+                              Label="Enter Tracking Number(s)" 
+                              Placeholder="e.g., AWB001, AWB002, AWB003"
                               Variant="Variant.Outlined" 
                               Adornment="Adornment.End" 
                               AdornmentIcon="@Icons.Material.Filled.Search" 
-                              OnAdornmentClick="TrackShipment"
+                              OnAdornmentClick="TrackShipments"
                               Immediate="true"
-                              OnKeyDown="@(async e => { if (e.Key == "Enter") await TrackShipment(); })" />
+                              HelperText="Separate multiple AWB numbers with commas"
+                              OnKeyDown="@(async e => { if (e.Key == "Enter") await TrackShipments(); })" />
             </MudItem>
             <MudItem xs="12" sm="4" md="2" Class="d-flex align-center">
                 <MudButton Variant="Variant.Filled" 
                            Color="Color.Primary" 
                            Size="Size.Large" 
-                           OnClick="TrackShipment" 
+                           OnClick="TrackShipments" 
                            FullWidth="true"
                            Disabled="@_isLoading">
                     @if (_isLoading)
@@ -50,119 +52,148 @@
         </MudGrid>
     </MudPaper>
 
-    @if (_shipment != null)
+    @if (_hasSearched && !_isLoading)
     {
-        <MudGrid>
-            <MudItem xs="12" md="4">
-                <MudCard Elevation="3" Class="h-100">
-                    <MudCardHeader>
-                        <CardHeaderContent>
-                            <MudText Typo="Typo.h6">Shipment Details</MudText>
-                            <MudText Typo="Typo.subtitle2" Color="Color.Secondary">@_shipment.AWBNo</MudText>
-                        </CardHeaderContent>
-                        <CardHeaderActions>
-                            <MudChip T="string" Color="@GetStatusColor(_shipment.CourierStatusId)" Size="Size.Small">@GetStatusDisplayName(_shipment.CourierStatusId)</MudChip>
-                        </CardHeaderActions>
-                    </MudCardHeader>
-                    <MudCardContent>
-                        <MudList T="string" Dense="true">
-                            <MudListItem Icon="@Icons.Material.Filled.Person">
-                                <MudText Typo="Typo.caption">Sender</MudText>
-                                <MudText>@(_shipment.Consignor ?? "N/A")</MudText>
-                            </MudListItem>
-                            <MudListItem Icon="@Icons.Material.Filled.PersonOutline">
-                                <MudText Typo="Typo.caption">Receiver</MudText>
-                                <MudText>@(_shipment.Consignee ?? "N/A")</MudText>
-                            </MudListItem>
-                            <MudDivider Class="my-2"/>
-                            <MudListItem Icon="@Icons.Material.Filled.Place">
-                                <MudText Typo="Typo.caption">Origin</MudText>
-                                <MudText>@GetOrigin()</MudText>
-                            </MudListItem>
-                            <MudListItem Icon="@Icons.Material.Filled.Flag">
-                                <MudText Typo="Typo.caption">Destination</MudText>
-                                <MudText>@GetDestination()</MudText>
-                            </MudListItem>
-                            <MudDivider Class="my-2"/>
-                            <MudListItem Icon="@Icons.Material.Filled.Scale">
-                                <MudText Typo="Typo.caption">Weight / Pieces</MudText>
-                                <MudText>@((_shipment.ChargeableWeight ?? _shipment.Weight ?? 0).ToString("0.00")) kg / @(_shipment.Pieces ?? 1) pcs</MudText>
-                            </MudListItem>
-                            <MudListItem Icon="@Icons.Material.Filled.CalendarToday">
-                                <MudText Typo="Typo.caption">Booking Date</MudText>
-                                <MudText>@_shipment.TransactionDate.ToString("dd MMM yyyy")</MudText>
-                            </MudListItem>
-                        </MudList>
-                    </MudCardContent>
-                    <MudCardActions Class="pa-4">
-                        <MudButton Variant="Variant.Filled" 
-                                   Color="Color.Secondary" 
-                                   StartIcon="@Icons.Material.Filled.Edit"
-                                   OnClick="OpenUpdateStatusDialog"
-                                   FullWidth="true">
-                            Update Status
-                        </MudButton>
-                    </MudCardActions>
-                </MudCard>
-            </MudItem>
+        @if (_notFoundAwbs.Any())
+        {
+            <MudAlert Severity="Severity.Warning" Variant="Variant.Filled" Class="mb-4">
+                <MudText>The following AWB number(s) were not found: <strong>@string.Join(", ", _notFoundAwbs)</strong></MudText>
+            </MudAlert>
+        }
 
-            <MudItem xs="12" md="8">
-                <MudCard Elevation="3">
-                    <MudCardHeader>
-                        <CardHeaderContent>
-                            <MudText Typo="Typo.h6">Tracking History</MudText>
-                        </CardHeaderContent>
-                        <CardHeaderActions>
-                            <MudIconButton Icon="@Icons.Material.Filled.Refresh" OnClick="LoadTimeline" />
-                        </CardHeaderActions>
-                    </MudCardHeader>
-                    <MudCardContent>
-                        @if (_timeline.Any())
-                        {
-                            <MudTimeline TimelinePosition="TimelinePosition.Start">
-                                @foreach (var eventItem in _timeline.OrderByDescending(t => t.ChangedAt))
-                                {
-                                    <MudTimelineItem Color="@GetEventColor(eventItem)" Size="Size.Small">
-                                        <ItemOpposite>
-                                            <MudText Typo="Typo.caption" Color="Color.Secondary">
-                                                @eventItem.ChangedAt.ToLocalTime().ToString("dd MMM yyyy")
-                                            </MudText>
-                                            <MudText Typo="Typo.caption" Style="display:block">
-                                                @eventItem.ChangedAt.ToLocalTime().ToString("HH:mm")
-                                            </MudText>
-                                        </ItemOpposite>
-                                        <ItemContent>
-                                            <MudText Typo="Typo.subtitle2">@(eventItem.Status?.Name ?? eventItem.EventType)</MudText>
-                                            <MudText Typo="Typo.body2">@(eventItem.LocationName ?? eventItem.StatusGroup?.Name)</MudText>
-                                            @if (!string.IsNullOrEmpty(eventItem.Remarks))
+        @if (_shipmentResults.Any())
+        {
+            <MudText Typo="Typo.h6" Class="mb-4">Found @_shipmentResults.Count shipment(s)</MudText>
+            
+            @foreach (var result in _shipmentResults)
+            {
+                <MudExpansionPanels Class="mb-4" Elevation="3">
+                    <MudExpansionPanel @bind-IsExpanded="result.IsExpanded">
+                        <TitleContent>
+                            <div class="d-flex align-center gap-4">
+                                <MudIcon Icon="@Icons.Material.Filled.LocalShipping" Color="Color.Primary" />
+                                <div class="flex-grow-1">
+                                    <MudText Typo="Typo.subtitle1"><strong>@result.Shipment.AWBNo</strong></MudText>
+                                    <MudText Typo="Typo.caption">@result.Shipment.Consignor → @result.Shipment.Consignee</MudText>
+                                </div>
+                                <MudChip T="string" Color="@GetStatusColor(result.Shipment.CourierStatusId)" Size="Size.Small">
+                                    @GetStatusDisplayName(result.Shipment.CourierStatusId)
+                                </MudChip>
+                            </div>
+                        </TitleContent>
+                        <ChildContent>
+                            <MudGrid>
+                                <MudItem xs="12" md="4">
+                                    <MudCard Elevation="0" Class="h-100" Style="background-color: var(--mud-palette-background-grey);">
+                                        <MudCardHeader>
+                                            <CardHeaderContent>
+                                                <MudText Typo="Typo.h6">Shipment Details</MudText>
+                                            </CardHeaderContent>
+                                        </MudCardHeader>
+                                        <MudCardContent>
+                                            <MudList T="string" Dense="true">
+                                                <MudListItem Icon="@Icons.Material.Filled.Person">
+                                                    <MudText Typo="Typo.caption">Sender</MudText>
+                                                    <MudText>@(result.Shipment.Consignor ?? "N/A")</MudText>
+                                                </MudListItem>
+                                                <MudListItem Icon="@Icons.Material.Filled.PersonOutline">
+                                                    <MudText Typo="Typo.caption">Receiver</MudText>
+                                                    <MudText>@(result.Shipment.Consignee ?? "N/A")</MudText>
+                                                </MudListItem>
+                                                <MudDivider Class="my-2"/>
+                                                <MudListItem Icon="@Icons.Material.Filled.Place">
+                                                    <MudText Typo="Typo.caption">Origin</MudText>
+                                                    <MudText>@GetOrigin(result.Shipment)</MudText>
+                                                </MudListItem>
+                                                <MudListItem Icon="@Icons.Material.Filled.Flag">
+                                                    <MudText Typo="Typo.caption">Destination</MudText>
+                                                    <MudText>@GetDestination(result.Shipment)</MudText>
+                                                </MudListItem>
+                                                <MudDivider Class="my-2"/>
+                                                <MudListItem Icon="@Icons.Material.Filled.Scale">
+                                                    <MudText Typo="Typo.caption">Weight / Pieces</MudText>
+                                                    <MudText>@((result.Shipment.ChargeableWeight ?? result.Shipment.Weight ?? 0).ToString("0.00")) kg / @(result.Shipment.Pieces ?? 1) pcs</MudText>
+                                                </MudListItem>
+                                                <MudListItem Icon="@Icons.Material.Filled.CalendarToday">
+                                                    <MudText Typo="Typo.caption">Booking Date</MudText>
+                                                    <MudText>@result.Shipment.TransactionDate.ToString("dd MMM yyyy")</MudText>
+                                                </MudListItem>
+                                            </MudList>
+                                        </MudCardContent>
+                                        <MudCardActions Class="pa-4">
+                                            <MudButton Variant="Variant.Filled" 
+                                                       Color="Color.Secondary" 
+                                                       StartIcon="@Icons.Material.Filled.Edit"
+                                                       OnClick="@(() => OpenUpdateStatusDialog(result.Shipment))"
+                                                       FullWidth="true">
+                                                Update Status
+                                            </MudButton>
+                                        </MudCardActions>
+                                    </MudCard>
+                                </MudItem>
+
+                                <MudItem xs="12" md="8">
+                                    <MudCard Elevation="0" Style="background-color: var(--mud-palette-background-grey);">
+                                        <MudCardHeader>
+                                            <CardHeaderContent>
+                                                <MudText Typo="Typo.h6">Tracking History</MudText>
+                                            </CardHeaderContent>
+                                            <CardHeaderActions>
+                                                <MudIconButton Icon="@Icons.Material.Filled.Refresh" OnClick="@(() => LoadTimeline(result))" />
+                                            </CardHeaderActions>
+                                        </MudCardHeader>
+                                        <MudCardContent>
+                                            @if (result.Timeline.Any())
                                             {
-                                                <MudText Typo="Typo.caption" Class="mud-text-secondary">@eventItem.Remarks</MudText>
+                                                <MudTimeline TimelinePosition="TimelinePosition.Start">
+                                                    @foreach (var eventItem in result.Timeline.OrderByDescending(t => t.ChangedAt))
+                                                    {
+                                                        <MudTimelineItem Color="@GetEventColor(eventItem)" Size="Size.Small">
+                                                            <ItemOpposite>
+                                                                <MudText Typo="Typo.caption" Color="Color.Secondary">
+                                                                    @eventItem.ChangedAt.ToLocalTime().ToString("dd MMM yyyy")
+                                                                </MudText>
+                                                                <MudText Typo="Typo.caption" Style="display:block">
+                                                                    @eventItem.ChangedAt.ToLocalTime().ToString("HH:mm")
+                                                                </MudText>
+                                                            </ItemOpposite>
+                                                            <ItemContent>
+                                                                <MudText Typo="Typo.subtitle2">@(eventItem.Status?.Name ?? eventItem.EventType)</MudText>
+                                                                <MudText Typo="Typo.body2">@(eventItem.LocationName ?? eventItem.StatusGroup?.Name)</MudText>
+                                                                @if (!string.IsNullOrEmpty(eventItem.Remarks))
+                                                                {
+                                                                    <MudText Typo="Typo.caption" Class="mud-text-secondary">@eventItem.Remarks</MudText>
+                                                                }
+                                                                @if (!string.IsNullOrEmpty(eventItem.UserName))
+                                                                {
+                                                                    <MudText Typo="Typo.caption" Class="mud-text-disabled">By: @eventItem.UserName</MudText>
+                                                                }
+                                                            </ItemContent>
+                                                        </MudTimelineItem>
+                                                    }
+                                                </MudTimeline>
                                             }
-                                            @if (!string.IsNullOrEmpty(eventItem.UserName))
+                                            else
                                             {
-                                                <MudText Typo="Typo.caption" Class="mud-text-disabled">By: @eventItem.UserName</MudText>
+                                                <MudText Typo="Typo.body2" Color="Color.Secondary" Class="text-center pa-4">
+                                                    No tracking events recorded yet.
+                                                </MudText>
                                             }
-                                        </ItemContent>
-                                    </MudTimelineItem>
-                                }
-                            </MudTimeline>
-                        }
-                        else
-                        {
-                            <MudText Typo="Typo.body2" Color="Color.Secondary" Class="text-center pa-4">
-                                No tracking events recorded yet.
-                            </MudText>
-                        }
-                    </MudCardContent>
-                </MudCard>
-            </MudItem>
-        </MudGrid>
-    }
-    else if (_hasSearched && !_isLoading)
-    {
-        <MudAlert Severity="Severity.Warning" Variant="Variant.Filled" Class="mt-4">
-            No shipment found with tracking number <strong>@_searchTerm</strong>. Please check and try again.
-        </MudAlert>
+                                        </MudCardContent>
+                                    </MudCard>
+                                </MudItem>
+                            </MudGrid>
+                        </ChildContent>
+                    </MudExpansionPanel>
+                </MudExpansionPanels>
+            }
+        }
+        else if (!_notFoundAwbs.Any())
+        {
+            <MudAlert Severity="Severity.Info" Variant="Variant.Filled" Class="mt-4">
+                Please enter one or more AWB numbers to track.
+            </MudAlert>
+        }
     }
 </MudContainer>
 
@@ -172,41 +203,69 @@
     private string _searchTerm = "";
     private bool _isLoading = false;
     private bool _hasSearched = false;
-    private InscanMaster? _shipment;
-    private List<ShipmentStatusHistory> _timeline = new();
+    private List<ShipmentTrackingResult> _shipmentResults = new();
+    private List<string> _notFoundAwbs = new();
+
+    private class ShipmentTrackingResult
+    {
+        public InscanMaster Shipment { get; set; } = null!;
+        public List<ShipmentStatusHistory> Timeline { get; set; } = new();
+        public bool IsExpanded { get; set; } = true;
+    }
 
     protected override async Task OnInitializedAsync()
     {
         if (!string.IsNullOrEmpty(AWBNumber))
         {
             _searchTerm = AWBNumber;
-            await TrackShipment();
+            await TrackShipments();
         }
     }
 
-    private async Task TrackShipment()
+    private async Task TrackShipments()
     {
         if (string.IsNullOrWhiteSpace(_searchTerm)) return;
 
         _isLoading = true;
         _hasSearched = true;
-        _shipment = null;
-        _timeline.Clear();
+        _shipmentResults.Clear();
+        _notFoundAwbs.Clear();
         StateHasChanged();
 
         try
         {
-            _shipment = await DbContext.InscanMasters
-                .FirstOrDefaultAsync(i => i.AWBNo == _searchTerm.Trim().ToUpper() || i.ReferenceNo == _searchTerm.Trim());
+            var awbNumbers = _searchTerm
+                .Split(new[] { ',', ';', '\n', '\r' }, StringSplitOptions.RemoveEmptyEntries)
+                .Select(a => a.Trim().ToUpper())
+                .Where(a => !string.IsNullOrEmpty(a))
+                .Distinct()
+                .ToList();
 
-            if (_shipment != null)
+            foreach (var awb in awbNumbers)
             {
-                await LoadTimeline();
+                var shipment = await DbContext.InscanMasters
+                    .FirstOrDefaultAsync(i => i.AWBNo == awb || i.ReferenceNo == awb);
+
+                if (shipment != null)
+                {
+                    var result = new ShipmentTrackingResult
+                    {
+                        Shipment = shipment,
+                        IsExpanded = awbNumbers.Count == 1
+                    };
+                    
+                    result.Timeline = await StatusService.GetTimeline(shipment.Id);
+                    _shipmentResults.Add(result);
+                }
+                else
+                {
+                    _notFoundAwbs.Add(awb);
+                }
             }
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"Error tracking shipment: {ex.Message}");
+            Console.WriteLine($"Error tracking shipments: {ex.Message}");
         }
         finally
         {
@@ -215,27 +274,25 @@
         }
     }
 
-    private async Task LoadTimeline()
+    private async Task LoadTimeline(ShipmentTrackingResult result)
     {
-        if (_shipment == null) return;
-        
-        _timeline = await StatusService.GetTimeline(_shipment.Id);
+        result.Timeline = await StatusService.GetTimeline(result.Shipment.Id);
         StateHasChanged();
     }
 
-    private string GetOrigin()
+    private string GetOrigin(InscanMaster shipment)
     {
         var parts = new List<string>();
-        if (!string.IsNullOrEmpty(_shipment?.ConsignorCity)) parts.Add(_shipment.ConsignorCity);
-        if (!string.IsNullOrEmpty(_shipment?.ConsignorCountry)) parts.Add(_shipment.ConsignorCountry);
+        if (!string.IsNullOrEmpty(shipment.ConsignorCity)) parts.Add(shipment.ConsignorCity);
+        if (!string.IsNullOrEmpty(shipment.ConsignorCountry)) parts.Add(shipment.ConsignorCountry);
         return parts.Any() ? string.Join(", ", parts) : "N/A";
     }
 
-    private string GetDestination()
+    private string GetDestination(InscanMaster shipment)
     {
         var parts = new List<string>();
-        if (!string.IsNullOrEmpty(_shipment?.ConsigneeCity)) parts.Add(_shipment.ConsigneeCity);
-        if (!string.IsNullOrEmpty(_shipment?.ConsigneeCountry)) parts.Add(_shipment.ConsigneeCountry);
+        if (!string.IsNullOrEmpty(shipment.ConsigneeCity)) parts.Add(shipment.ConsigneeCity);
+        if (!string.IsNullOrEmpty(shipment.ConsigneeCountry)) parts.Add(shipment.ConsigneeCountry);
         return parts.Any() ? string.Join(", ", parts) : "N/A";
     }
 
@@ -289,13 +346,11 @@
         };
     }
 
-    private async Task OpenUpdateStatusDialog()
+    private async Task OpenUpdateStatusDialog(InscanMaster shipment)
     {
-        if (_shipment == null) return;
-
         var parameters = new DialogParameters<UpdateStatusDialog>
         {
-            { x => x.Shipment, _shipment }
+            { x => x.Shipment, shipment }
         };
 
         var options = new DialogOptions 
@@ -310,8 +365,12 @@
 
         if (result != null && !result.Canceled)
         {
-            await LoadTimeline();
-            _shipment = await DbContext.InscanMasters.FirstOrDefaultAsync(i => i.Id == _shipment.Id);
+            var trackingResult = _shipmentResults.FirstOrDefault(r => r.Shipment.Id == shipment.Id);
+            if (trackingResult != null)
+            {
+                await LoadTimeline(trackingResult);
+                trackingResult.Shipment = await DbContext.InscanMasters.FirstOrDefaultAsync(i => i.Id == shipment.Id) ?? shipment;
+            }
             StateHasChanged();
         }
     }
