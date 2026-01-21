@@ -680,6 +680,108 @@ public class DatabaseInitializationService : BackgroundService
                 _logger.LogInformation("Seeded Service Types");
             }
 
+            if (!await dbContext.ImportMasters.AnyAsync(stoppingToken))
+            {
+                var branch = await dbContext.Branches.FirstOrDefaultAsync(stoppingToken);
+                var company = await dbContext.Companies.FirstOrDefaultAsync(stoppingToken);
+                
+                if (branch != null && company != null)
+                {
+                    var imports = new[]
+                    {
+                        new Net4Courier.Operations.Entities.ImportMaster 
+                        { 
+                            ImportRefNo = "IMP20260121001",
+                            TransactionDate = DateTime.UtcNow,
+                            CompanyId = company.Id,
+                            BranchId = branch.Id,
+                            ImportMode = Net4Courier.Kernel.Enums.ImportMode.Air,
+                            MasterReferenceType = Net4Courier.Kernel.Enums.MasterReferenceType.MAWB,
+                            MasterReferenceNumber = "176-12345678",
+                            OriginCountryName = "United Kingdom",
+                            OriginCityName = "London",
+                            OriginPortCode = "LHR",
+                            DestinationCountryName = "United Arab Emirates",
+                            DestinationCityName = "Dubai",
+                            DestinationPortCode = "DXB",
+                            CarrierName = "Emirates",
+                            CarrierCode = "EK",
+                            FlightNo = "EK002",
+                            FlightDate = DateTime.UtcNow.AddDays(-1),
+                            ETA = DateTime.UtcNow,
+                            TotalBags = 3,
+                            TotalShipments = 15,
+                            TotalGrossWeight = 125.5m,
+                            TotalChargeableWeight = 150.0m,
+                            Status = Net4Courier.Kernel.Enums.ImportMasterStatus.Arrived,
+                            Remarks = "Sample import from London",
+                            IsActive = true,
+                            CreatedAt = DateTime.UtcNow,
+                            CreatedByName = "System"
+                        },
+                        new Net4Courier.Operations.Entities.ImportMaster 
+                        { 
+                            ImportRefNo = "IMP20260121002",
+                            TransactionDate = DateTime.UtcNow.AddDays(-2),
+                            CompanyId = company.Id,
+                            BranchId = branch.Id,
+                            ImportMode = Net4Courier.Kernel.Enums.ImportMode.Sea,
+                            MasterReferenceType = Net4Courier.Kernel.Enums.MasterReferenceType.BL,
+                            MasterReferenceNumber = "MAEU123456789",
+                            OriginCountryName = "China",
+                            OriginCityName = "Shanghai",
+                            OriginPortCode = "SHA",
+                            DestinationCountryName = "United Arab Emirates",
+                            DestinationCityName = "Dubai",
+                            DestinationPortCode = "JEA",
+                            CarrierName = "Maersk Line",
+                            VesselName = "MSC Oscar",
+                            VoyageNumber = "VY2601",
+                            ETA = DateTime.UtcNow.AddDays(5),
+                            TotalBags = 10,
+                            TotalShipments = 45,
+                            TotalGrossWeight = 2500.0m,
+                            TotalChargeableWeight = 2500.0m,
+                            Status = Net4Courier.Kernel.Enums.ImportMasterStatus.InTransit,
+                            Remarks = "Sea freight from Shanghai",
+                            IsActive = true,
+                            CreatedAt = DateTime.UtcNow.AddDays(-2),
+                            CreatedByName = "System"
+                        },
+                        new Net4Courier.Operations.Entities.ImportMaster 
+                        { 
+                            ImportRefNo = "IMP20260121003",
+                            TransactionDate = DateTime.UtcNow.AddDays(-1),
+                            CompanyId = company.Id,
+                            BranchId = branch.Id,
+                            ImportMode = Net4Courier.Kernel.Enums.ImportMode.Land,
+                            MasterReferenceType = Net4Courier.Kernel.Enums.MasterReferenceType.TruckWaybill,
+                            MasterReferenceNumber = "TRK-2026-0001",
+                            OriginCountryName = "Oman",
+                            OriginCityName = "Muscat",
+                            DestinationCountryName = "United Arab Emirates",
+                            DestinationCityName = "Dubai",
+                            TruckNumber = "DXB-12345",
+                            DriverName = "Ahmed Hassan",
+                            DriverPhone = "+971501234567",
+                            ETA = DateTime.UtcNow,
+                            TotalBags = 5,
+                            TotalShipments = 25,
+                            TotalGrossWeight = 800.0m,
+                            TotalChargeableWeight = 800.0m,
+                            Status = Net4Courier.Kernel.Enums.ImportMasterStatus.Arrived,
+                            Remarks = "Land shipment from Oman",
+                            IsActive = true,
+                            CreatedAt = DateTime.UtcNow.AddDays(-1),
+                            CreatedByName = "System"
+                        }
+                    };
+                    dbContext.ImportMasters.AddRange(imports);
+                    await dbContext.SaveChangesAsync(stoppingToken);
+                    _logger.LogInformation("Seeded Import Masters");
+                }
+            }
+
             _logger.LogInformation("Database initialization completed successfully");
         }
         catch (Exception ex)
