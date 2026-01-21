@@ -26,6 +26,8 @@ public class InvoicingService
                         i.TransactionDate >= fromDate &&
                         i.TransactionDate <= toDate &&
                         i.InvoiceId == null &&
+                        i.CourierStatusId == CourierStatus.Delivered &&
+                        i.PaymentModeId == PaymentMode.Account &&
                         !i.IsDeleted)
             .OrderBy(i => i.TransactionDate)
             .ThenBy(i => i.AWBNo)
