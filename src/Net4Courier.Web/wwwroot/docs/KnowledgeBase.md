@@ -28,6 +28,9 @@ This comprehensive knowledge base covers all aspects of Net4Courier - from picku
    - [Create a New Shipment (AWB)](#how-to-create-a-new-shipment-awb-entry)
    - [Create Pickup Request (Staff)](#how-to-create-a-pickup-request-staff)
    - [Create Pickup Request (Customer)](#how-to-create-a-pickup-request-customer-self-service)
+   - [Add Shipment Lines to Pickup](#how-to-add-shipment-lines-to-a-pickup-request)
+   - [Convert Pickup Request to AWB](#how-to-convert-pickup-request-to-awb)
+   - [Use City Selection (Geography)](#how-to-use-city-selection-geography-dropdown)
    - [Process Inscan](#how-to-process-inscan-warehouse-receiving)
    - [Create MAWB and Bag Shipments](#how-to-create-mawb-and-bag-shipments)
    - [Create DRS (Delivery Run Sheet)](#how-to-create-drs-delivery-run-sheet)
@@ -715,7 +718,17 @@ Example: DXB100001, DXB100002
    | Destination | Where shipment is going |
    | Special Instructions | "Handle with care", "Call before arrival" |
 
-5. **Save the Request**
+5. **Add Shipment Lines (Consignee Details)**
+   - At least one shipment line is required
+   - For each destination, enter:
+     - Consignee Name (required)
+     - City (select from dropdown - required)
+     - Country (auto-fills from city)
+     - Pieces, Weight, Cargo Description
+   - Click **"+ Add Line"** for multiple destinations
+   - See [How to Add Shipment Lines](#how-to-add-shipment-lines-to-a-pickup-request) for details
+
+6. **Save the Request**
    - Click **"Create Pickup Request"**
    - System assigns **Pickup Request Number**
    - Status: `PICKUP_REQUESTED`
@@ -778,6 +791,153 @@ Requested → Assigned → In Transit → Collected → At Hub
 6. Verify/modify pickup details as needed
 7. Click **"Create Pickup Request"**
 8. Customer receives confirmation notification
+
+---
+
+## How to Add Shipment Lines to a Pickup Request
+
+**Navigation:** Pickup Management → New Pickup or Edit Pickup → Shipment Lines Section
+
+**When to Use:** When recording consignee destinations for packages within a pickup request. Each line represents a separate destination/consignee.
+
+**Prerequisites:** Creating or editing a pickup request.
+
+**Detailed Steps:**
+
+1. **Access Shipment Lines Section**
+   - In the Pickup Request form, scroll to **Shipment Lines** section
+   - A default line is automatically added for new pickups
+
+2. **Enter Consignee Details for Each Line**
+   | Field | Required | Description | Example |
+   |-------|----------|-------------|---------|
+   | Consignee Name | Yes | Recipient name | "ABC Trading LLC" |
+   | Contact Person | No | Contact at destination | "Mohammed Ali" |
+   | Phone | No | Contact phone | "+971 50 123 4567" |
+   | Address | No | Street address | "Warehouse 5, Industrial Area" |
+   | City | Yes | Select from dropdown | "Dubai" |
+   | State | Auto-filled | Auto-populates from city | "Dubai" |
+   | Country | Yes (Auto-filled) | Auto-populates from city | "United Arab Emirates" |
+   | Postal Code | No | ZIP/Postal code | "00000" |
+   | Pieces | No | Number of packages | 2 |
+   | Weight (KG) | No | Package weight | 5.5 |
+   | Cargo Description | No | Contents description | "Documents" |
+
+3. **Add Multiple Lines (Multiple Destinations)**
+   - Click **"+ Add Line"** button to add more destinations
+   - Each line gets a sequential line number
+   - Fill consignee details for each destination
+
+4. **Remove a Line**
+   - Click the **Delete** (trash) icon on the line
+   - Note: Cannot remove if only 1 line exists (minimum required)
+   - Note: Cannot remove lines already booked or linked to AWB
+
+5. **Save Pickup Request**
+   - All shipment lines are saved with the pickup request
+   - Lines are used when converting pickup to AWB
+
+**Business Rules:**
+- Minimum 1 shipment line required per pickup request
+- City must be selected from dropdown (type to search)
+- State and Country auto-populate when city is selected
+- Booked lines cannot be deleted during edit
+
+---
+
+## How to Convert Pickup Request to AWB
+
+**Navigation:** AWB Entry → From Pickup → Select Pickup
+
+**When to Use:** When creating an AWB from a collected/inscanned pickup request.
+
+**Prerequisites:** Pickup request must have status **Collected** or **Inscanned**.
+
+**Detailed Steps:**
+
+1. **Open AWB Entry Page**
+   - Go to **AWB Entry** from the menu
+   - Click **"From Pickup"** button
+
+2. **Select Pickup Request**
+   - Dialog shows eligible pickup requests (Collected/Inscanned status)
+   - Search by pickup number, customer name, or date
+   - Review shipment lines count for each pickup
+   - Click on a pickup to select it
+
+3. **Review Shipment Lines**
+   - If pickup has shipment lines, they are displayed
+   - Each line shows: Consignee, City, Country, Pieces, Weight
+   - Select the line to convert to AWB
+   - If no lines exist, a message prompts to add lines first
+
+4. **Complete AWB Entry**
+   - Shipper details auto-fill from pickup customer
+   - Consignee details auto-fill from selected shipment line
+   - Complete remaining AWB fields (service type, payment mode, etc.)
+   - Click **Save** to create AWB
+
+5. **After Conversion**
+   - Shipment line status updates to **Booked**
+   - AWB is linked to the pickup request
+   - Original pickup can still be tracked
+
+**Conversion Requirements:**
+| Requirement | Description |
+|-------------|-------------|
+| Status | Must be Collected or Inscanned |
+| Shipment Lines | At least 1 line recommended |
+| Customer | Must have valid customer assigned |
+
+---
+
+## How to Use City Selection (Geography Dropdown)
+
+**Navigation:** Any form with City field (Pickup Request, AWB Entry, Party Master, etc.)
+
+**When to Use:** When entering addresses that require city selection.
+
+**Why Dropdown Only:** City selection uses a strict dropdown to ensure data integrity and proper geography hierarchy.
+
+**Detailed Steps:**
+
+1. **Start Typing City Name**
+   - Click on the City field
+   - Begin typing the city name (e.g., "Dub")
+   - Dropdown shows matching cities
+
+2. **Select from Dropdown**
+   - Choose the correct city from the list
+   - Cities show with their state/country for clarity
+   - **Important:** You MUST select from dropdown (free text not allowed)
+
+3. **Automatic State/Country Population**
+   - When you select a city, State and Country auto-fill
+   - These fields become read-only after auto-population
+   - Ensures consistent geography hierarchy
+
+4. **Available UAE Cities:**
+   | City | State/Emirate |
+   |------|---------------|
+   | Dubai | Dubai |
+   | Sharjah | Sharjah |
+   | Abu Dhabi | Abu Dhabi |
+   | Ajman | Ajman |
+   | Ras Al Khaimah | Ras Al Khaimah |
+   | Fujairah | Fujairah |
+   | Umm Al Quwain | Umm Al Quwain |
+   | Al Ain | Abu Dhabi |
+
+5. **If City Not Found**
+   - Contact administrator to add new cities
+   - New cities are added via Geography Masters
+   - Navigation: System Settings → Geography Masters → Cities
+
+**Benefits of Dropdown Selection:**
+- Prevents spelling errors and duplicates
+- Ensures proper State/Country linkage
+- Enables accurate reporting by geography
+- Supports rate calculation by zone
 
 ---
 
