@@ -459,5 +459,8 @@ BEGIN
     END IF;
 END $$;
 
+-- Add IsActive column to PartyAddresses if missing
+ALTER TABLE "PartyAddresses" ADD COLUMN IF NOT EXISTS "IsActive" BOOLEAN NOT NULL DEFAULT TRUE;
+
 -- Verify completion
 SELECT 'Schema fix completed successfully!' as status;
