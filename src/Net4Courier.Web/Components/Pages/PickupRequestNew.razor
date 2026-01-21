@@ -15,13 +15,23 @@
 <MudPaper Class="pa-4" Elevation="2">
     <MudForm @ref="_form" @bind-IsValid="_isValid">
         <MudGrid>
-            <MudItem xs="12" sm="6" md="4">
+            <MudItem xs="12" sm="6" md="3">
                 <MudTextField @bind-Value="_entity.PickupNo" Label="Pickup No" Variant="Variant.Outlined" ReadOnly="true" />
             </MudItem>
-            <MudItem xs="12" sm="6" md="4">
+            <MudItem xs="12" sm="6" md="3">
                 <MudDatePicker @bind-Date="_scheduledDate" Label="Scheduled Date" Variant="Variant.Outlined" DateFormat="dd/MM/yyyy" Required="true" />
             </MudItem>
-            <MudItem xs="12" sm="6" md="4">
+            <MudItem xs="12" sm="6" md="3">
+                <MudSelect T="long?" @bind-Value="_entity.PickupScheduleId" Label="Pickup Schedule" Variant="Variant.Outlined"
+                           AnchorOrigin="Origin.BottomCenter" ValueChanged="OnScheduleChanged">
+                    <MudSelectItem T="long?" Value="@((long?)null)">-- Select Schedule --</MudSelectItem>
+                    @foreach (var schedule in _pickupSchedules)
+                    {
+                        <MudSelectItem T="long?" Value="@((long?)schedule.Id)">@schedule.DisplayText</MudSelectItem>
+                    }
+                </MudSelect>
+            </MudItem>
+            <MudItem xs="12" sm="6" md="3">
                 <MudChip T="string" Color="@GetStatusColor(_entity.Status)">@GetStatusText(_entity.Status)</MudChip>
             </MudItem>
         </MudGrid>
@@ -140,9 +150,15 @@
     private Party? _selectedCustomer;
     private List<PartyAddress> _customerAddresses = new();
     private long? _selectedAddressId;
+    private List<PickupSchedule> _pickupSchedules = new();
 
     protected override async Task OnInitializedAsync()
     {
+        _pickupSchedules = await DbContext.PickupSchedules
+            .Where(s => s.IsActive && !s.IsDeleted)
+            .OrderBy(s => s.SortOrder)
+            .ToListAsync();
+            
         if (Id > 0)
         {
             _isEdit = true;
@@ -164,6 +180,13 @@
             _entity.PickupNo = await GeneratePickupNo();
             _entity.RequestDate = DateTime.UtcNow;
         }
+    }
+    
+    private void OnScheduleChanged(long? scheduleId)
+    {
+        _entity.PickupScheduleId = scheduleId;
+        var schedule = _pickupSchedules.FirstOrDefault(s => s.Id == scheduleId);
+        _entity.PickupScheduleName = schedule?.Name;
     }
 
     private async Task<string> GeneratePickupNo()
