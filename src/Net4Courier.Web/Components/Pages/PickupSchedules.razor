@@ -1,0 +1,291 @@
+@page "/pickup-schedules"
+@using Microsoft.EntityFrameworkCore
+@using Microsoft.AspNetCore.Components.Authorization
+@using Net4Courier.Infrastructure.Data
+@using Net4Courier.Operations.Entities
+@using Net4Courier.Web.Services
+@using ClosedXML.Excel
+@inject IDbContextFactory<ApplicationDbContext> DbContextFactory
+@inject IDialogService DialogService
+@inject ISnackbar Snackbar
+@inject IJSRuntime JSRuntime
+@inject AuthenticationStateProvider AuthStateProvider
+@rendermode InteractiveServer
+
+<PageTitle>Pickup Schedules - Net4Courier</PageTitle>
+
+<MudText Typo="Typo.h4" GutterBottom="true">Pickup Schedules</MudText>
+<MudText Typo="Typo.subtitle1" Class="mb-4" Color="Color.Secondary">Manage pickup time slots for customer scheduling</MudText>
+
+<MudPaper Class="pa-4 mb-4">
+    <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
+        <MudTextField @bind-Value="_searchText" Label="Search" Adornment="Adornment.Start"
+                      AdornmentIcon="@Icons.Material.Filled.Search" Immediate="true" Style="max-width: 300px;" />
+        <MudStack Row="true" Spacing="2">
+            <MudButton Variant="Variant.Outlined" Color="Color.Success" OnClick="ExportToExcel" 
+                       StartIcon="@Icons.Material.Filled.Download">Export Excel</MudButton>
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="OpenAddDialog" 
+                       StartIcon="@Icons.Material.Filled.Add">Add Schedule</MudButton>
+        </MudStack>
+    </MudStack>
+</MudPaper>
+
+@if (_loading)
+{
+    <MudProgressLinear Indeterminate="true" Color="Color.Primary" />
+}
+else
+{
+    <MudPaper Class="pa-4">
+        <MudTable Items="@_filteredSchedules" Hover="true" Striped="true" Dense="true" Bordered="true">
+            <HeaderContent>
+                <MudTh>Name</MudTh>
+                <MudTh>Description</MudTh>
+                <MudTh Style="text-align:center">From Time</MudTh>
+                <MudTh Style="text-align:center">To Time</MudTh>
+                <MudTh Style="text-align:center">Sort Order</MudTh>
+                <MudTh Style="text-align:center">Active</MudTh>
+                <MudTh Style="text-align:center">Actions</MudTh>
+            </HeaderContent>
+            <RowTemplate>
+                <MudTd DataLabel="Name"><strong>@context.Name</strong></MudTd>
+                <MudTd DataLabel="Description">@(context.Description ?? "-")</MudTd>
+                <MudTd DataLabel="From Time" Style="text-align:center">@context.FromTime.ToString(@"hh\:mm")</MudTd>
+                <MudTd DataLabel="To Time" Style="text-align:center">@context.ToTime.ToString(@"hh\:mm")</MudTd>
+                <MudTd DataLabel="Sort Order" Style="text-align:center">@context.SortOrder</MudTd>
+                <MudTd DataLabel="Active" Style="text-align:center">
+                    <MudIcon Icon="@(context.IsActive ? Icons.Material.Filled.CheckCircle : Icons.Material.Filled.Cancel)" 
+                             Color="@(context.IsActive ? Color.Success : Color.Error)" Size="Size.Small" />
+                </MudTd>
+                <MudTd DataLabel="Actions" Style="text-align:center">
+                    <MudIconButton Icon="@Icons.Material.Filled.Edit" Color="Color.Primary" Size="Size.Small"
+                                   OnClick="@(() => OpenEditDialog(context))" Title="Edit" />
+                    <MudIconButton Icon="@Icons.Material.Filled.Delete" Color="Color.Error" Size="Size.Small"
+                                   OnClick="@(() => DeleteSchedule(context))" Title="Delete" />
+                </MudTd>
+            </RowTemplate>
+            <NoRecordsContent>
+                <MudText>No pickup schedules found. Click "Add Schedule" to create one.</MudText>
+            </NoRecordsContent>
+        </MudTable>
+    </MudPaper>
+}
+
+@code {
+    private bool _loading = true;
+    private List<PickupSchedule> _schedules = new();
+    private string _searchText = "";
+    private long? _currentCompanyId;
+    private long? _currentBranchId;
+
+    private IEnumerable<PickupSchedule> _filteredSchedules => _schedules
+        .Where(s => string.IsNullOrEmpty(_searchText) ||
+                    s.Name.Contains(_searchText, StringComparison.OrdinalIgnoreCase) ||
+                    (s.Description?.Contains(_searchText, StringComparison.OrdinalIgnoreCase) ?? false))
+        .OrderBy(s => s.SortOrder);
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadUserContext();
+        await LoadData();
+    }
+
+    private async Task LoadUserContext()
+    {
+        var authProvider = (AppAuthStateProvider)AuthStateProvider;
+        var currentBranch = authProvider.CurrentBranch;
+        var currentUser = authProvider.CurrentUser;
+        
+        if (currentBranch != null)
+        {
+            _currentBranchId = currentBranch.Id;
+            _currentCompanyId = currentBranch.CompanyId;
+        }
+        else if (currentUser != null)
+        {
+            await using var dbContext = await DbContextFactory.CreateDbContextAsync();
+            var defaultBranch = await dbContext.UserBranches
+                .Where(ub => ub.UserId == currentUser.Id && ub.IsDefault)
+                .Select(ub => ub.Branch)
+                .FirstOrDefaultAsync();
+            
+            if (defaultBranch != null)
+            {
+                _currentBranchId = defaultBranch.Id;
+                _currentCompanyId = defaultBranch.CompanyId;
+            }
+        }
+    }
+
+    private async Task LoadData()
+    {
+        _loading = true;
+        StateHasChanged();
+
+        await using var dbContext = await DbContextFactory.CreateDbContextAsync();
+        var query = dbContext.PickupSchedules.Where(s => !s.IsDeleted);
+        
+        if (_currentBranchId.HasValue)
+        {
+            query = query.Where(s => s.BranchId == null || s.BranchId == _currentBranchId);
+        }
+        
+        _schedules = await query
+            .OrderBy(s => s.SortOrder)
+            .ThenBy(s => s.FromTime)
+            .ToListAsync();
+
+        _loading = false;
+        StateHasChanged();
+    }
+
+    private async Task OpenAddDialog()
+    {
+        var parameters = new DialogParameters
+        {
+            ["Schedule"] = new PickupSchedule 
+            { 
+                SortOrder = _schedules.Count + 1,
+                CompanyId = _currentCompanyId,
+                BranchId = _currentBranchId
+            },
+            ["IsNew"] = true
+        };
+
+        var options = new DialogOptions { MaxWidth = MaxWidth.Small, FullWidth = true };
+        var dialog = await DialogService.ShowAsync<PickupScheduleDialog>("Add Pickup Schedule", parameters, options);
+
+        var result = await dialog.Result;
+        if (result != null && !result.Canceled)
+        {
+            var schedule = result.Data as PickupSchedule;
+            if (schedule != null)
+            {
+                schedule.CompanyId = _currentCompanyId;
+                schedule.BranchId = _currentBranchId;
+                schedule.CreatedAt = DateTime.UtcNow;
+                
+                await using var dbContext = await DbContextFactory.CreateDbContextAsync();
+                dbContext.PickupSchedules.Add(schedule);
+                await dbContext.SaveChangesAsync();
+                Snackbar.Add("Pickup schedule added successfully!", Severity.Success);
+                await LoadData();
+            }
+        }
+    }
+
+    private async Task OpenEditDialog(PickupSchedule schedule)
+    {
+        var parameters = new DialogParameters
+        {
+            ["Schedule"] = new PickupSchedule
+            {
+                Id = schedule.Id,
+                Name = schedule.Name,
+                Description = schedule.Description,
+                FromTime = schedule.FromTime,
+                ToTime = schedule.ToTime,
+                SortOrder = schedule.SortOrder,
+                IsActive = schedule.IsActive,
+                CompanyId = schedule.CompanyId,
+                BranchId = schedule.BranchId
+            },
+            ["IsNew"] = false
+        };
+
+        var options = new DialogOptions { MaxWidth = MaxWidth.Small, FullWidth = true };
+        var dialog = await DialogService.ShowAsync<PickupScheduleDialog>("Edit Pickup Schedule", parameters, options);
+
+        var result = await dialog.Result;
+        if (result != null && !result.Canceled)
+        {
+            var updatedSchedule = result.Data as PickupSchedule;
+            if (updatedSchedule != null)
+            {
+                await using var dbContext = await DbContextFactory.CreateDbContextAsync();
+                var existing = await dbContext.PickupSchedules.FindAsync(updatedSchedule.Id);
+                if (existing != null)
+                {
+                    existing.Name = updatedSchedule.Name;
+                    existing.Description = updatedSchedule.Description;
+                    existing.FromTime = updatedSchedule.FromTime;
+                    existing.ToTime = updatedSchedule.ToTime;
+                    existing.SortOrder = updatedSchedule.SortOrder;
+                    existing.IsActive = updatedSchedule.IsActive;
+                    existing.ModifiedAt = DateTime.UtcNow;
+                    await dbContext.SaveChangesAsync();
+                    Snackbar.Add("Pickup schedule updated successfully!", Severity.Success);
+                    await LoadData();
+                }
+            }
+        }
+    }
+
+    private async Task DeleteSchedule(PickupSchedule schedule)
+    {
+        var confirm = await DialogService.ShowMessageBox(
+            "Confirm Delete",
+            $"Are you sure you want to delete the schedule '{schedule.Name}'?",
+            yesText: "Delete", cancelText: "Cancel");
+
+        if (confirm == true)
+        {
+            await using var dbContext = await DbContextFactory.CreateDbContextAsync();
+            var existing = await dbContext.PickupSchedules.FindAsync(schedule.Id);
+            if (existing != null)
+            {
+                existing.IsDeleted = true;
+                existing.ModifiedAt = DateTime.UtcNow;
+                await dbContext.SaveChangesAsync();
+                Snackbar.Add("Pickup schedule deleted successfully!", Severity.Success);
+                await LoadData();
+            }
+        }
+    }
+
+    private async Task ExportToExcel()
+    {
+        try
+        {
+            using var workbook = new XLWorkbook();
+            var worksheet = workbook.Worksheets.Add("Pickup Schedules");
+
+            var headers = new[] { "Name", "Description", "From Time", "To Time", "Sort Order", "Active" };
+            for (int i = 0; i < headers.Length; i++)
+            {
+                worksheet.Cell(1, i + 1).Value = headers[i];
+                worksheet.Cell(1, i + 1).Style.Font.Bold = true;
+                worksheet.Cell(1, i + 1).Style.Fill.BackgroundColor = XLColor.LightGray;
+            }
+
+            int row = 2;
+            foreach (var s in _filteredSchedules)
+            {
+                worksheet.Cell(row, 1).Value = s.Name;
+                worksheet.Cell(row, 2).Value = s.Description ?? "";
+                worksheet.Cell(row, 3).Value = s.FromTime.ToString(@"hh\:mm");
+                worksheet.Cell(row, 4).Value = s.ToTime.ToString(@"hh\:mm");
+                worksheet.Cell(row, 5).Value = s.SortOrder;
+                worksheet.Cell(row, 6).Value = s.IsActive ? "Yes" : "No";
+                row++;
+            }
+
+            worksheet.Columns().AdjustToContents();
+
+            using var stream = new MemoryStream();
+            workbook.SaveAs(stream);
+            var content = stream.ToArray();
+            var fileName = $"PickupSchedules_{DateTime.Now:yyyyMMdd_HHmmss}.xlsx";
+            
+            var base64 = Convert.ToBase64String(content);
+            await JSRuntime.InvokeVoidAsync("downloadFileFromBase64", base64, fileName, 
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+            
+            Snackbar.Add("Excel file exported successfully!", Severity.Success);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error exporting: {ex.Message}", Severity.Error);
+        }
+    }
+}

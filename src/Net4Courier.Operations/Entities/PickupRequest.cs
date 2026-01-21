@@ -9,6 +9,8 @@ public class PickupRequest : AuditableEntity
     public DateTime? ScheduledDate { get; set; }
     public DateTime? ScheduledTimeFrom { get; set; }
     public DateTime? ScheduledTimeTo { get; set; }
+    public long? PickupScheduleId { get; set; }
+    public string? PickupScheduleName { get; set; }
     
     public long? CompanyId { get; set; }
     public long? BranchId { get; set; }

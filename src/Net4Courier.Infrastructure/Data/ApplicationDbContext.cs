@@ -43,6 +43,7 @@ public class ApplicationDbContext : DbContext
     public DbSet<AWBOtherCharge> AWBOtherCharges => Set<AWBOtherCharge>();
     public DbSet<PickupRequest> PickupRequests => Set<PickupRequest>();
     public DbSet<PickupRequestShipment> PickupRequestShipments => Set<PickupRequestShipment>();
+    public DbSet<PickupSchedule> PickupSchedules => Set<PickupSchedule>();
     public DbSet<Vehicle> Vehicles => Set<Vehicle>();
     public DbSet<MasterAirwaybill> MasterAirwaybills => Set<MasterAirwaybill>();
     public DbSet<MAWBBag> MAWBBags => Set<MAWBBag>();
@@ -600,6 +601,16 @@ public class ApplicationDbContext : DbContext
                   .WithMany(p => p.Shipments)
                   .HasForeignKey(e => e.PickupRequestId)
                   .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<PickupSchedule>(entity =>
+        {
+            entity.ToTable("PickupSchedules");
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Name).HasMaxLength(100).IsRequired();
+            entity.Property(e => e.Description).HasMaxLength(500);
+            entity.HasIndex(e => new { e.BranchId, e.IsActive });
+            entity.HasIndex(e => e.SortOrder);
         });
 
         modelBuilder.Entity<Vehicle>(entity =>

@@ -427,5 +427,37 @@ BEGIN
     END IF;
 END $$;
 
+-- PickupSchedules table for pickup time slots
+CREATE TABLE IF NOT EXISTS "PickupSchedules" (
+    "Id" BIGSERIAL PRIMARY KEY,
+    "CompanyId" BIGINT,
+    "BranchId" BIGINT,
+    "Name" VARCHAR(100) NOT NULL,
+    "Description" VARCHAR(500),
+    "FromTime" TIME NOT NULL,
+    "ToTime" TIME NOT NULL,
+    "SortOrder" INTEGER NOT NULL DEFAULT 0,
+    "IsActive" BOOLEAN NOT NULL DEFAULT TRUE,
+    "IsDeleted" BOOLEAN NOT NULL DEFAULT FALSE,
+    "CreatedAt" TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    "CreatedBy" INTEGER,
+    "ModifiedAt" TIMESTAMP,
+    "ModifiedBy" INTEGER
+);
+
+CREATE INDEX IF NOT EXISTS "IX_PickupSchedules_BranchId_IsActive" ON "PickupSchedules"("BranchId", "IsActive");
+CREATE INDEX IF NOT EXISTS "IX_PickupSchedules_SortOrder" ON "PickupSchedules"("SortOrder");
+
+-- Add PickupSchedule fields to PickupRequests
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'PickupRequests' AND column_name = 'PickupScheduleId') THEN
+        ALTER TABLE "PickupRequests" ADD COLUMN "PickupScheduleId" BIGINT;
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'PickupRequests' AND column_name = 'PickupScheduleName') THEN
+        ALTER TABLE "PickupRequests" ADD COLUMN "PickupScheduleName" VARCHAR(100);
+    END IF;
+END $$;
+
 -- Verify completion
 SELECT 'Schema fix completed successfully!' as status;

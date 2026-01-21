@@ -32,6 +32,12 @@ The application is built on .NET 8 Blazor Server, utilizing a modular architectu
     - **AWB Entry & Generation**: Full shipment details with auto-generated, branch-based AWB numbers. Includes conversion from pickup requests.
     - **Pickup to AWB Conversion**: Two-step process: INSCAN (warehouse receiving) then AWB Conversion.
     - **Pickup Management**: End-to-end workflow from customer request to collection and inscan.
+    - **Pickup Schedules**: Configurable time slots for customer scheduling at `/pickup-schedules`. Features include:
+        - Time slot management (Morning, Afternoon, Evening, etc.)
+        - Sort order for display priority
+        - Active/Inactive status toggle
+        - Excel export functionality
+        - Integration with PickupRequest for schedule assignment
     - **Outscan/DRS Management**: Dispatching shipments to couriers via Delivery Run Sheets with barcode scanning.
     - **AWB Tracking**: Detailed history of shipment status updates.
 - **Financial Features**:
