@@ -2,6 +2,7 @@
 @inject ApplicationDbContext DbContext
 @inject ISnackbar Snackbar
 @inject NavigationManager Navigation
+@inject IDialogService DialogService
 @inject Net4Courier.Web.Services.ShipmentStatusService ShipmentStatusService
 @using Microsoft.EntityFrameworkCore
 @using Net4Courier.Infrastructure.Data
@@ -135,6 +136,8 @@ else
             @if (_drs.Status != DRSStatus.Closed)
             {
                 <MudTd>
+                    <MudIconButton Icon="@Icons.Material.Filled.Update" Size="Size.Small" Color="Color.Warning"
+                                   OnClick="@(() => OpenStatusDialog(context))" Title="Update Status" />
                     <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" Color="Color.Error"
                                    OnClick="@(() => RemoveFromDRS(context))" Title="Remove from DRS" />
                 </MudTd>
@@ -334,5 +337,20 @@ else
         _drs.CollectedCOD = _drsDetails.Where(d => d.Status == "Delivered").Sum(d => d.CollectedAmount ?? 0);
         
         await DbContext.SaveChangesAsync();
+    }
+
+    private async Task OpenStatusDialog(DRSDetail detail)
+    {
+        if (detail.Inscan == null) return;
+        
+        var parameters = new DialogParameters<UpdateStatusDialog> { { x => x.Shipment, detail.Inscan } };
+        var dialog = await DialogService.ShowAsync<UpdateStatusDialog>("Update Status", parameters, new DialogOptions { MaxWidth = MaxWidth.Small, FullWidth = true });
+        var result = await dialog.Result;
+        
+        if (!result!.Canceled)
+        {
+            await LoadData();
+            await UpdateDRSCounts();
+        }
     }
 }
