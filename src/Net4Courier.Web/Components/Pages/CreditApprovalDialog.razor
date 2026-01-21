@@ -1,0 +1,105 @@
+@using MudBlazor
+@using Net4Courier.Masters.Entities
+
+<MudDialog>
+    <DialogContent>
+        <MudStack Spacing="3">
+            <MudAlert Severity="@(IsApproval ? Severity.Success : Severity.Warning)" Dense="true">
+                @if (IsApproval)
+                {
+                    <text>You are about to <strong>approve</strong> the credit request for <strong>@Customer.Name</strong></text>
+                }
+                else
+                {
+                    <text>You are about to <strong>reject</strong> the credit request for <strong>@Customer.Name</strong></text>
+                }
+            </MudAlert>
+
+            <MudGrid>
+                <MudItem xs="6">
+                    <MudText Typo="Typo.caption" Color="Color.Secondary">Requested Credit Limit</MudText>
+                    <MudText Typo="Typo.body1"><strong>@((Customer.RequestedCreditLimit ?? 0).ToString("N2"))</strong></MudText>
+                </MudItem>
+                <MudItem xs="6">
+                    <MudText Typo="Typo.caption" Color="Color.Secondary">Requested Credit Days</MudText>
+                    <MudText Typo="Typo.body1"><strong>@(Customer.RequestedCreditDays ?? 0) days</strong></MudText>
+                </MudItem>
+            </MudGrid>
+
+            @if (!string.IsNullOrEmpty(Customer.CreditRequestRemarks))
+            {
+                <div>
+                    <MudText Typo="Typo.caption" Color="Color.Secondary">Request Remarks</MudText>
+                    <MudText Typo="Typo.body2">@Customer.CreditRequestRemarks</MudText>
+                </div>
+            }
+
+            @if (IsApproval)
+            {
+                <MudDivider />
+                <MudText Typo="Typo.subtitle2">Approval Details</MudText>
+                
+                <MudNumericField @bind-Value="_approvedCreditLimit" Label="Approved Credit Limit" 
+                                 Format="N2" Min="0" Required="true" />
+                <MudNumericField @bind-Value="_approvedCreditDays" Label="Approved Credit Days" 
+                                 Min="0" Max="365" Required="true" />
+            }
+
+            <MudTextField @bind-Value="_remarks" Label="@(IsApproval ? "Approval Remarks" : "Rejection Reason")" 
+                          Lines="3" Required="@(!IsApproval)" />
+        </MudStack>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Cancel">Cancel</MudButton>
+        @if (IsApproval)
+        {
+            <MudButton Color="Color.Success" Variant="Variant.Filled" OnClick="Submit" 
+                       Disabled="@(_approvedCreditLimit <= 0)">
+                Approve
+            </MudButton>
+        }
+        else
+        {
+            <MudButton Color="Color.Error" Variant="Variant.Filled" OnClick="Submit"
+                       Disabled="@(string.IsNullOrWhiteSpace(_remarks))">
+                Reject
+            </MudButton>
+        }
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] MudDialogInstance MudDialog { get; set; } = null!;
+    [Parameter] public Party Customer { get; set; } = new();
+    [Parameter] public bool IsApproval { get; set; } = true;
+
+    private decimal _approvedCreditLimit;
+    private int _approvedCreditDays;
+    private string _remarks = "";
+
+    protected override void OnInitialized()
+    {
+        _approvedCreditLimit = Customer.RequestedCreditLimit ?? Customer.CreditLimit;
+        _approvedCreditDays = Customer.RequestedCreditDays ?? Customer.CreditDays;
+    }
+
+    private void Cancel() => MudDialog.Cancel();
+
+    private void Submit()
+    {
+        var result = new CreditApprovalResult
+        {
+            ApprovedCreditLimit = _approvedCreditLimit,
+            ApprovedCreditDays = _approvedCreditDays,
+            Remarks = _remarks
+        };
+        MudDialog.Close(DialogResult.Ok(result));
+    }
+
+    public class CreditApprovalResult
+    {
+        public decimal ApprovedCreditLimit { get; set; }
+        public int ApprovedCreditDays { get; set; }
+        public string? Remarks { get; set; }
+    }
+}

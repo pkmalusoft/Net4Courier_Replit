@@ -1,0 +1,329 @@
+@page "/customer-credit-approval"
+@using Microsoft.EntityFrameworkCore
+@using Net4Courier.Infrastructure.Data
+@using Net4Courier.Masters.Entities
+@using Net4Courier.Web.Services
+@using Microsoft.AspNetCore.Components.Authorization
+@inject ApplicationDbContext DbContext
+@inject IDialogService DialogService
+@inject ISnackbar Snackbar
+@inject AuthenticationStateProvider AuthStateProvider
+@inject NavigationManager Navigation
+@rendermode InteractiveServer
+
+<PageTitle>Customer Credit Approval - Net4Courier</PageTitle>
+
+<MudText Typo="Typo.h4" GutterBottom="true">Customer Credit Approval</MudText>
+<MudText Typo="Typo.subtitle1" Class="mb-4" Color="Color.Secondary">Review and approve credit requests from customers</MudText>
+
+<MudPaper Class="pa-4 mb-4">
+    <MudGrid>
+        <MudItem xs="12" sm="4">
+            <MudSelect T="CreditApprovalStatus?" @bind-Value="_statusFilter" Label="Status Filter" Clearable="true">
+                <MudSelectItem T="CreditApprovalStatus?" Value="CreditApprovalStatus.Pending">Pending</MudSelectItem>
+                <MudSelectItem T="CreditApprovalStatus?" Value="CreditApprovalStatus.Approved">Approved</MudSelectItem>
+                <MudSelectItem T="CreditApprovalStatus?" Value="CreditApprovalStatus.Rejected">Rejected</MudSelectItem>
+            </MudSelect>
+        </MudItem>
+        <MudItem xs="12" sm="4">
+            <MudTextField @bind-Value="_searchText" Label="Search Customer" Adornment="Adornment.Start"
+                          AdornmentIcon="@Icons.Material.Filled.Search" Immediate="true" />
+        </MudItem>
+        <MudItem xs="12" sm="4" Class="d-flex align-center gap-2">
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="LoadData" StartIcon="@Icons.Material.Filled.Refresh">
+                Refresh
+            </MudButton>
+            <MudButton Variant="Variant.Outlined" Color="Color.Success" OnClick="ExportToExcel" StartIcon="@Icons.Material.Filled.Download">
+                Export Excel
+            </MudButton>
+        </MudItem>
+    </MudGrid>
+</MudPaper>
+
+<MudGrid Class="mb-4">
+    <MudItem xs="12" sm="4">
+        <MudPaper Class="pa-4" Elevation="2">
+            <div class="d-flex justify-space-between align-center">
+                <div>
+                    <MudText Typo="Typo.subtitle2" Color="Color.Secondary">Pending Approvals</MudText>
+                    <MudText Typo="Typo.h4">@_pendingCount</MudText>
+                </div>
+                <MudAvatar Color="Color.Warning" Size="Size.Large">
+                    <MudIcon Icon="@Icons.Material.Filled.HourglassEmpty" />
+                </MudAvatar>
+            </div>
+        </MudPaper>
+    </MudItem>
+    <MudItem xs="12" sm="4">
+        <MudPaper Class="pa-4" Elevation="2">
+            <div class="d-flex justify-space-between align-center">
+                <div>
+                    <MudText Typo="Typo.subtitle2" Color="Color.Secondary">Approved This Month</MudText>
+                    <MudText Typo="Typo.h4">@_approvedThisMonth</MudText>
+                </div>
+                <MudAvatar Color="Color.Success" Size="Size.Large">
+                    <MudIcon Icon="@Icons.Material.Filled.CheckCircle" />
+                </MudAvatar>
+            </div>
+        </MudPaper>
+    </MudItem>
+    <MudItem xs="12" sm="4">
+        <MudPaper Class="pa-4" Elevation="2">
+            <div class="d-flex justify-space-between align-center">
+                <div>
+                    <MudText Typo="Typo.subtitle2" Color="Color.Secondary">Rejected This Month</MudText>
+                    <MudText Typo="Typo.h4">@_rejectedThisMonth</MudText>
+                </div>
+                <MudAvatar Color="Color.Error" Size="Size.Large">
+                    <MudIcon Icon="@Icons.Material.Filled.Cancel" />
+                </MudAvatar>
+            </div>
+        </MudPaper>
+    </MudItem>
+</MudGrid>
+
+@if (_loading)
+{
+    <MudProgressLinear Indeterminate="true" Color="Color.Primary" />
+}
+else
+{
+    <MudPaper Class="pa-4">
+        <MudTable Items="@_filteredCustomers" Hover="true" Striped="true" Dense="true" Bordered="true">
+            <HeaderContent>
+                <MudTh>Customer</MudTh>
+                <MudTh>Code</MudTh>
+                <MudTh>Contact</MudTh>
+                <MudTh Style="text-align:right">Requested Limit</MudTh>
+                <MudTh Style="text-align:center">Requested Days</MudTh>
+                <MudTh>Request Date</MudTh>
+                <MudTh>Status</MudTh>
+                <MudTh Style="text-align:center">Actions</MudTh>
+            </HeaderContent>
+            <RowTemplate>
+                <MudTd DataLabel="Customer">
+                    <MudStack Spacing="0">
+                        <MudText Typo="Typo.body2"><strong>@context.Name</strong></MudText>
+                        @if (!string.IsNullOrEmpty(context.Email))
+                        {
+                            <MudText Typo="Typo.caption" Color="Color.Secondary">@context.Email</MudText>
+                        }
+                    </MudStack>
+                </MudTd>
+                <MudTd DataLabel="Code">@context.Code</MudTd>
+                <MudTd DataLabel="Contact">@context.ContactPerson</MudTd>
+                <MudTd DataLabel="Requested Limit" Style="text-align:right">
+                    @(context.RequestedCreditLimit?.ToString("N2") ?? "-")
+                </MudTd>
+                <MudTd DataLabel="Requested Days" Style="text-align:center">
+                    @(context.RequestedCreditDays?.ToString() ?? "-")
+                </MudTd>
+                <MudTd DataLabel="Request Date">
+                    @(context.CreditRequestDate?.ToString("dd-MMM-yyyy") ?? "-")
+                </MudTd>
+                <MudTd DataLabel="Status">
+                    <MudChip T="string" Size="Size.Small" Color="@GetStatusColor(context.CreditApprovalStatus)">
+                        @context.CreditApprovalStatus
+                    </MudChip>
+                </MudTd>
+                <MudTd DataLabel="Actions" Style="text-align:center">
+                    @if (context.CreditApprovalStatus == CreditApprovalStatus.Pending)
+                    {
+                        <MudIconButton Icon="@Icons.Material.Filled.Check" Color="Color.Success" Size="Size.Small"
+                                       OnClick="@(() => OpenApprovalDialog(context, true))" Title="Approve" />
+                        <MudIconButton Icon="@Icons.Material.Filled.Close" Color="Color.Error" Size="Size.Small"
+                                       OnClick="@(() => OpenApprovalDialog(context, false))" Title="Reject" />
+                    }
+                    <MudIconButton Icon="@Icons.Material.Filled.Visibility" Color="Color.Info" Size="Size.Small"
+                                   OnClick="@(() => ViewDetails(context))" Title="View Details" />
+                </MudTd>
+            </RowTemplate>
+            <NoRecordsContent>
+                <MudText>No credit approval requests found.</MudText>
+            </NoRecordsContent>
+        </MudTable>
+    </MudPaper>
+}
+
+@code {
+    private bool _loading = true;
+    private List<Party> _customers = new();
+    private CreditApprovalStatus? _statusFilter = CreditApprovalStatus.Pending;
+    private string _searchText = "";
+    private int _pendingCount = 0;
+    private int _approvedThisMonth = 0;
+    private int _rejectedThisMonth = 0;
+    private string _currentUserName = "";
+
+    private IEnumerable<Party> _filteredCustomers => _customers
+        .Where(c => string.IsNullOrEmpty(_searchText) ||
+                    c.Name.Contains(_searchText, StringComparison.OrdinalIgnoreCase) ||
+                    (c.Code?.Contains(_searchText, StringComparison.OrdinalIgnoreCase) ?? false))
+        .Where(c => !_statusFilter.HasValue || c.CreditApprovalStatus == _statusFilter.Value);
+
+    protected override async Task OnInitializedAsync()
+    {
+        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+        _currentUserName = authState.User.Identity?.Name ?? "System";
+        await LoadData();
+    }
+
+    private async Task LoadData()
+    {
+        _loading = true;
+        StateHasChanged();
+
+        var startOfMonth = new DateTime(DateTime.UtcNow.Year, DateTime.UtcNow.Month, 1, 0, 0, 0, DateTimeKind.Utc);
+
+        _customers = await DbContext.Parties
+            .Where(p => !p.IsDeleted && p.PartyType == PartyType.Customer && 
+                        p.CreditApprovalStatus != CreditApprovalStatus.NotApplicable)
+            .OrderByDescending(p => p.CreditRequestDate)
+            .ToListAsync();
+
+        _pendingCount = _customers.Count(c => c.CreditApprovalStatus == CreditApprovalStatus.Pending);
+        _approvedThisMonth = _customers.Count(c => c.CreditApprovalStatus == CreditApprovalStatus.Approved && 
+                                                   c.CreditApprovalDate >= startOfMonth);
+        _rejectedThisMonth = _customers.Count(c => c.CreditApprovalStatus == CreditApprovalStatus.Rejected && 
+                                                   c.CreditApprovalDate >= startOfMonth);
+
+        _loading = false;
+        StateHasChanged();
+    }
+
+    private Color GetStatusColor(CreditApprovalStatus status) => status switch
+    {
+        CreditApprovalStatus.Pending => Color.Warning,
+        CreditApprovalStatus.Approved => Color.Success,
+        CreditApprovalStatus.Rejected => Color.Error,
+        _ => Color.Default
+    };
+
+    private async Task OpenApprovalDialog(Party customer, bool isApproval)
+    {
+        var parameters = new DialogParameters
+        {
+            ["Customer"] = customer,
+            ["IsApproval"] = isApproval
+        };
+
+        var options = new DialogOptions { MaxWidth = MaxWidth.Small, FullWidth = true };
+        var dialog = await DialogService.ShowAsync<CreditApprovalDialog>(
+            isApproval ? "Approve Credit Request" : "Reject Credit Request", 
+            parameters, options);
+
+        var result = await dialog.Result;
+        if (result != null && !result.Canceled)
+        {
+            var approvalData = result.Data as CreditApprovalResult;
+            if (approvalData != null)
+            {
+                var party = await DbContext.Parties.FindAsync(customer.Id);
+                if (party != null)
+                {
+                    if (isApproval)
+                    {
+                        party.CreditApprovalStatus = CreditApprovalStatus.Approved;
+                        party.CreditLimit = approvalData.ApprovedCreditLimit;
+                        party.CreditDays = approvalData.ApprovedCreditDays;
+                    }
+                    else
+                    {
+                        party.CreditApprovalStatus = CreditApprovalStatus.Rejected;
+                    }
+                    
+                    party.CreditApprovalDate = DateTime.UtcNow;
+                    party.CreditApprovedByUserName = _currentUserName;
+                    party.CreditApprovalRemarks = approvalData.Remarks;
+                    party.ModifiedAt = DateTime.UtcNow;
+
+                    await DbContext.SaveChangesAsync();
+                    Snackbar.Add($"Customer credit request {(isApproval ? "approved" : "rejected")} successfully!", 
+                                 isApproval ? Severity.Success : Severity.Warning);
+                    await LoadData();
+                }
+            }
+        }
+    }
+
+    private async Task ViewDetails(Party customer)
+    {
+        var parameters = new DialogParameters
+        {
+            ["Customer"] = customer
+        };
+
+        var options = new DialogOptions { MaxWidth = MaxWidth.Medium, FullWidth = true };
+        await DialogService.ShowAsync<CreditApprovalDetailsDialog>("Credit Request Details", parameters, options);
+    }
+
+    private async Task ExportToExcel()
+    {
+        try
+        {
+            using var workbook = new ClosedXML.Excel.XLWorkbook();
+            var worksheet = workbook.Worksheets.Add("Credit Approvals");
+
+            var headers = new[] { "Customer Name", "Code", "Contact", "Email", "Phone", 
+                                  "Requested Limit", "Requested Days", "Request Date", 
+                                  "Status", "Current Limit", "Current Days", 
+                                  "Approval Date", "Approved By", "Remarks" };
+            for (int i = 0; i < headers.Length; i++)
+            {
+                worksheet.Cell(1, i + 1).Value = headers[i];
+                worksheet.Cell(1, i + 1).Style.Font.Bold = true;
+                worksheet.Cell(1, i + 1).Style.Fill.BackgroundColor = ClosedXML.Excel.XLColor.LightGray;
+            }
+
+            int row = 2;
+            foreach (var c in _filteredCustomers)
+            {
+                worksheet.Cell(row, 1).Value = c.Name;
+                worksheet.Cell(row, 2).Value = c.Code ?? "";
+                worksheet.Cell(row, 3).Value = c.ContactPerson ?? "";
+                worksheet.Cell(row, 4).Value = c.Email ?? "";
+                worksheet.Cell(row, 5).Value = c.Phone ?? "";
+                worksheet.Cell(row, 6).Value = c.RequestedCreditLimit ?? 0;
+                worksheet.Cell(row, 7).Value = c.RequestedCreditDays ?? 0;
+                worksheet.Cell(row, 8).Value = c.CreditRequestDate?.ToString("dd-MMM-yyyy") ?? "";
+                worksheet.Cell(row, 9).Value = c.CreditApprovalStatus.ToString();
+                worksheet.Cell(row, 10).Value = c.CreditLimit;
+                worksheet.Cell(row, 11).Value = c.CreditDays;
+                worksheet.Cell(row, 12).Value = c.CreditApprovalDate?.ToString("dd-MMM-yyyy") ?? "";
+                worksheet.Cell(row, 13).Value = c.CreditApprovedByUserName ?? "";
+                worksheet.Cell(row, 14).Value = c.CreditApprovalRemarks ?? "";
+                row++;
+            }
+
+            worksheet.Columns().AdjustToContents();
+
+            using var stream = new MemoryStream();
+            workbook.SaveAs(stream);
+            var content = stream.ToArray();
+            var fileName = $"CreditApprovals_{DateTime.Now:yyyyMMdd_HHmmss}.xlsx";
+            
+            var base64 = Convert.ToBase64String(content);
+            await DownloadFile(base64, fileName, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+            
+            Snackbar.Add("Excel file exported successfully!", Severity.Success);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error exporting: {ex.Message}", Severity.Error);
+        }
+    }
+
+    [Inject] private IJSRuntime JSRuntime { get; set; } = default!;
+
+    private async Task DownloadFile(string base64, string fileName, string contentType)
+    {
+        await JSRuntime.InvokeVoidAsync("downloadFileFromBase64", base64, fileName, contentType);
+    }
+
+    public class CreditApprovalResult
+    {
+        public decimal ApprovedCreditLimit { get; set; }
+        public int ApprovedCreditDays { get; set; }
+        public string? Remarks { get; set; }
+    }
+}

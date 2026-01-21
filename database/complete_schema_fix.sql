@@ -395,5 +395,37 @@ BEGIN
     END IF;
 END $$;
 
+-- 11. Add Credit Approval columns to Parties table
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'Parties' AND column_name = 'CreditApprovalStatus') THEN
+        ALTER TABLE "Parties" ADD COLUMN "CreditApprovalStatus" INTEGER DEFAULT 0;
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'Parties' AND column_name = 'RequestedCreditLimit') THEN
+        ALTER TABLE "Parties" ADD COLUMN "RequestedCreditLimit" DECIMAL(18,2);
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'Parties' AND column_name = 'RequestedCreditDays') THEN
+        ALTER TABLE "Parties" ADD COLUMN "RequestedCreditDays" INTEGER;
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'Parties' AND column_name = 'CreditRequestDate') THEN
+        ALTER TABLE "Parties" ADD COLUMN "CreditRequestDate" TIMESTAMP WITH TIME ZONE;
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'Parties' AND column_name = 'CreditRequestRemarks') THEN
+        ALTER TABLE "Parties" ADD COLUMN "CreditRequestRemarks" TEXT;
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'Parties' AND column_name = 'CreditApprovalDate') THEN
+        ALTER TABLE "Parties" ADD COLUMN "CreditApprovalDate" TIMESTAMP WITH TIME ZONE;
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'Parties' AND column_name = 'CreditApprovedByUserId') THEN
+        ALTER TABLE "Parties" ADD COLUMN "CreditApprovedByUserId" BIGINT;
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'Parties' AND column_name = 'CreditApprovedByUserName') THEN
+        ALTER TABLE "Parties" ADD COLUMN "CreditApprovedByUserName" VARCHAR(200);
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'Parties' AND column_name = 'CreditApprovalRemarks') THEN
+        ALTER TABLE "Parties" ADD COLUMN "CreditApprovalRemarks" TEXT;
+    END IF;
+END $$;
+
 -- Verify completion
 SELECT 'Schema fix completed successfully!' as status;

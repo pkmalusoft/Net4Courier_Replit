@@ -18,8 +18,26 @@ public class Party : BaseEntity
     public int CreditDays { get; set; }
     public bool IsActive { get; set; } = true;
     
+    public CreditApprovalStatus CreditApprovalStatus { get; set; } = CreditApprovalStatus.NotApplicable;
+    public decimal? RequestedCreditLimit { get; set; }
+    public int? RequestedCreditDays { get; set; }
+    public DateTime? CreditRequestDate { get; set; }
+    public string? CreditRequestRemarks { get; set; }
+    public DateTime? CreditApprovalDate { get; set; }
+    public long? CreditApprovedByUserId { get; set; }
+    public string? CreditApprovedByUserName { get; set; }
+    public string? CreditApprovalRemarks { get; set; }
+    
     public virtual Company Company { get; set; } = null!;
     public virtual ICollection<PartyAddress> Addresses { get; set; } = new List<PartyAddress>();
+}
+
+public enum CreditApprovalStatus
+{
+    NotApplicable = 0,
+    Pending = 1,
+    Approved = 2,
+    Rejected = 3
 }
 
 public enum PartyType
