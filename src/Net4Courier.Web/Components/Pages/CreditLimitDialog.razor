@@ -1,0 +1,53 @@
+@using Net4Courier.Infrastructure.Data
+@using Microsoft.EntityFrameworkCore
+@inject ApplicationDbContext DbContext
+@inject ISnackbar Snackbar
+
+<MudDialog>
+    <TitleContent>
+        <MudText Typo="Typo.h6">Edit Credit Limit - @CustomerName</MudText>
+    </TitleContent>
+    <DialogContent>
+        <MudStack Spacing="3">
+            <MudNumericField @bind-Value="CreditLimit" Label="Credit Limit" Variant="Variant.Outlined" 
+                             Adornment="Adornment.Start" AdornmentText="AED" />
+            <MudNumericField @bind-Value="CreditDays" Label="Credit Days" Variant="Variant.Outlined" />
+        </MudStack>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Cancel">Cancel</MudButton>
+        <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="Save">Save</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] MudDialogInstance MudDialog { get; set; } = null!;
+
+    [Parameter] public long CustomerId { get; set; }
+    [Parameter] public string CustomerName { get; set; } = "";
+    [Parameter] public decimal CreditLimit { get; set; }
+    [Parameter] public int CreditDays { get; set; }
+
+    private void Cancel() => MudDialog.Cancel();
+
+    private async Task Save()
+    {
+        try
+        {
+            var party = await DbContext.Parties.FindAsync(CustomerId);
+            if (party != null)
+            {
+                party.CreditLimit = CreditLimit;
+                party.CreditDays = CreditDays;
+                party.ModifiedAt = DateTime.UtcNow;
+                await DbContext.SaveChangesAsync();
+                Snackbar.Add("Credit limit updated successfully", Severity.Success);
+                MudDialog.Close(DialogResult.Ok(true));
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error: {ex.Message}", Severity.Error);
+        }
+    }
+}

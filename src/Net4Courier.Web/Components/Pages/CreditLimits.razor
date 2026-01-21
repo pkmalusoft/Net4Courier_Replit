@@ -1,0 +1,168 @@
+@page "/credit-limits"
+@using Net4Courier.Infrastructure.Data
+@using Net4Courier.Masters.Entities
+@using Net4Courier.Kernel.Enums
+@using Microsoft.EntityFrameworkCore
+@inject ApplicationDbContext DbContext
+@inject ISnackbar Snackbar
+@inject IDialogService DialogService
+
+<PageTitle>Credit Limits - Net4Courier</PageTitle>
+
+<MudPaper Class="pa-4">
+    <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center" Class="mb-4">
+        <MudText Typo="Typo.h5">Customer Credit Limits</MudText>
+    </MudStack>
+
+    <MudStack Row="true" Spacing="3" Class="mb-4">
+        <MudTextField @bind-Value="_searchText" Label="Search Customer" Immediate="true" 
+                      Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Filled.Search" Style="width:300px" />
+        <MudSelect T="CreditStatus?" @bind-Value="_statusFilter" Label="Status" Style="width:150px" Clearable="true">
+            <MudSelectItem T="CreditStatus?" Value="@((CreditStatus?)CreditStatus.Normal)">Normal</MudSelectItem>
+            <MudSelectItem T="CreditStatus?" Value="@((CreditStatus?)CreditStatus.Warning)">Warning</MudSelectItem>
+            <MudSelectItem T="CreditStatus?" Value="@((CreditStatus?)CreditStatus.Exceeded)">Exceeded</MudSelectItem>
+            <MudSelectItem T="CreditStatus?" Value="@((CreditStatus?)CreditStatus.Blocked)">Blocked</MudSelectItem>
+        </MudSelect>
+        <MudButton Variant="Variant.Outlined" Color="Color.Primary" OnClick="LoadCustomers">Filter</MudButton>
+    </MudStack>
+
+    <MudTable Items="@_customers" Hover="true" Striped="true" Dense="true" Loading="@_loading">
+        <HeaderContent>
+            <MudTh>Code</MudTh>
+            <MudTh>Customer Name</MudTh>
+            <MudTh Style="text-align:right">Credit Limit</MudTh>
+            <MudTh Style="text-align:right">Current Balance</MudTh>
+            <MudTh Style="text-align:right">Available Credit</MudTh>
+            <MudTh>Credit Days</MudTh>
+            <MudTh>Status</MudTh>
+            <MudTh>Actions</MudTh>
+        </HeaderContent>
+        <RowTemplate>
+            <MudTd>@context.Code</MudTd>
+            <MudTd>@context.Name</MudTd>
+            <MudTd Style="text-align:right">@context.CreditLimit.ToString("N2")</MudTd>
+            <MudTd Style="text-align:right">@context.CurrentBalance.ToString("N2")</MudTd>
+            <MudTd Style="text-align:right">
+                <MudText Color="@(context.AvailableCredit < 0 ? Color.Error : Color.Success)">
+                    @context.AvailableCredit.ToString("N2")
+                </MudText>
+            </MudTd>
+            <MudTd>@context.CreditDays days</MudTd>
+            <MudTd>
+                <MudChip T="string" Size="Size.Small" Color="@GetStatusColor(context.Status)">@context.Status</MudChip>
+            </MudTd>
+            <MudTd>
+                <MudIconButton Icon="@Icons.Material.Filled.Edit" Size="Size.Small" Color="Color.Primary"
+                               OnClick="@(() => EditCreditLimit(context))" Title="Edit Credit Limit" />
+            </MudTd>
+        </RowTemplate>
+        <NoRecordsContent>
+            <MudText>No customers found</MudText>
+        </NoRecordsContent>
+    </MudTable>
+</MudPaper>
+
+@code {
+    private List<CustomerCreditView> _customers = new();
+    private bool _loading = true;
+    private string _searchText = "";
+    private CreditStatus? _statusFilter;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadCustomers();
+    }
+
+    private async Task LoadCustomers()
+    {
+        _loading = true;
+        try
+        {
+            var query = DbContext.Parties
+                .Where(p => p.PartyType == PartyType.Customer && !p.IsDeleted && p.IsActive)
+                .AsQueryable();
+
+            if (!string.IsNullOrWhiteSpace(_searchText))
+            {
+                var search = _searchText.ToLower();
+                query = query.Where(p => p.Name.ToLower().Contains(search) || 
+                                         (p.Code != null && p.Code.ToLower().Contains(search)));
+            }
+
+            var parties = await query.OrderBy(p => p.Name).Take(100).ToListAsync();
+
+            _customers = parties.Select(p => new CustomerCreditView
+            {
+                Id = p.Id,
+                Code = p.Code ?? "",
+                Name = p.Name ?? "",
+                CreditLimit = p.CreditLimit,
+                CreditDays = p.CreditDays,
+                CurrentBalance = 0,
+                AvailableCredit = p.CreditLimit,
+                Status = GetCreditStatus(0, p.CreditLimit)
+            }).ToList();
+
+            if (_statusFilter.HasValue)
+            {
+                _customers = _customers.Where(c => c.Status == _statusFilter.Value).ToList();
+            }
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private CreditStatus GetCreditStatus(decimal balance, decimal limit)
+    {
+        if (limit <= 0) return CreditStatus.Normal;
+        var usage = balance / limit * 100;
+        if (usage >= 100) return CreditStatus.Exceeded;
+        if (usage >= 80) return CreditStatus.Warning;
+        return CreditStatus.Normal;
+    }
+
+    private Color GetStatusColor(CreditStatus status) => status switch
+    {
+        CreditStatus.Normal => Color.Success,
+        CreditStatus.Warning => Color.Warning,
+        CreditStatus.Exceeded => Color.Error,
+        CreditStatus.Blocked => Color.Dark,
+        _ => Color.Default
+    };
+
+    private async Task EditCreditLimit(CustomerCreditView customer)
+    {
+        var parameters = new DialogParameters<CreditLimitDialog>
+        {
+            { x => x.CustomerId, customer.Id },
+            { x => x.CustomerName, customer.Name },
+            { x => x.CreditLimit, customer.CreditLimit },
+            { x => x.CreditDays, customer.CreditDays }
+        };
+
+        var options = new DialogOptions { CloseButton = true, MaxWidth = MaxWidth.Small, FullWidth = true };
+        var dialog = await DialogService.ShowAsync<CreditLimitDialog>("Edit Credit Limit", parameters, options);
+        var result = await dialog.Result;
+
+        if (result != null && !result.Canceled)
+        {
+            await LoadCustomers();
+        }
+    }
+
+    private class CustomerCreditView
+    {
+        public long Id { get; set; }
+        public string Code { get; set; } = "";
+        public string Name { get; set; } = "";
+        public decimal CreditLimit { get; set; }
+        public int CreditDays { get; set; }
+        public decimal CurrentBalance { get; set; }
+        public decimal AvailableCredit { get; set; }
+        public CreditStatus Status { get; set; }
+    }
+
+    private enum CreditStatus { Normal, Warning, Exceeded, Blocked }
+}
