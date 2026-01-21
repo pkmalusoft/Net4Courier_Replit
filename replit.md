@@ -40,6 +40,14 @@ The application is built on .NET 8 Blazor Server, utilizing a modular architectu
     - **Account Head**: Self-referential chart of accounts.
     - **Financial Period Management**: Auto-generated monthly periods with admin control for opening/closing.
     - **Dynamic Other Charges**: Configurable charge types applied during AWB entry.
+    - **Account Receivables (AR)**:
+        - **Customer Master**: Dedicated page for managing customers (filtered Party view by PartyType=Customer).
+        - **Credit Notes**: Issue credits/refunds to customers with status workflow (Draft/Approved/Posted/Cancelled).
+        - **Aging Reports**: Customer aging analysis with 0-30, 31-60, 61-90, 90+ day buckets.
+        - **AR Reports**: Customer statements with running balance, collection summary by payment mode, outstanding invoices.
+    - **Account Payables (AP)**:
+        - **Supplier Master**: Dedicated page for managing suppliers (Vendor, ForwardingAgent, CoLoader, DeliveryAgent).
+        - **Debit Notes**: Record additional charges to vendors with status workflow.
 - **Reporting**: QuestPDF integration for AWB labels, Invoice, and Receipt PDFs.
 - **Automatic Movement Type Calculation**: Determines shipment type (Domestic, International) based on origin/destination.
 - **Rate Card Management**:
