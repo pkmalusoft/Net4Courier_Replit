@@ -462,5 +462,8 @@ END $$;
 -- Add IsActive column to PartyAddresses if missing
 ALTER TABLE "PartyAddresses" ADD COLUMN IF NOT EXISTS "IsActive" BOOLEAN NOT NULL DEFAULT TRUE;
 
+-- Add CustomerAccountNo column to Parties if missing
+ALTER TABLE "Parties" ADD COLUMN IF NOT EXISTS "CustomerAccountNo" VARCHAR(50);
+
 -- Verify completion
 SELECT 'Schema fix completed successfully!' as status;

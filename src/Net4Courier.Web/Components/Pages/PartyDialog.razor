@@ -23,12 +23,27 @@
                     </MudSelect>
                 </MudItem>
                 <MudItem xs="12" md="6">
-                    <MudSelect T="PartyType" @bind-Value="Party.PartyType" Label="Party Type" Variant="Variant.Outlined" AnchorOrigin="Origin.BottomCenter">
-                        <MudSelectItem T="PartyType" Value="@PartyType.Customer">Customer</MudSelectItem>
-                        <MudSelectItem T="PartyType" Value="@PartyType.DeliveryAgent">Delivery Agent</MudSelectItem>
-                        <MudSelectItem T="PartyType" Value="@PartyType.CoLoader">Co-Loader</MudSelectItem>
-                        <MudSelectItem T="PartyType" Value="@PartyType.Supplier">Supplier</MudSelectItem>
-                        <MudSelectItem T="PartyType" Value="@PartyType.ForwardingAgent">Forwarding Agent</MudSelectItem>
+                    <MudSelect T="PartyType" Value="Party.PartyType" ValueChanged="OnPartyTypeChanged" Label="Party Type" Variant="Variant.Outlined" AnchorOrigin="Origin.BottomCenter">
+                        @if (AllowedPartyTypes == null || AllowedPartyTypes.Contains(PartyType.Customer))
+                        {
+                            <MudSelectItem T="PartyType" Value="@PartyType.Customer">Customer</MudSelectItem>
+                        }
+                        @if (AllowedPartyTypes == null || AllowedPartyTypes.Contains(PartyType.DeliveryAgent))
+                        {
+                            <MudSelectItem T="PartyType" Value="@PartyType.DeliveryAgent">Delivery Agent</MudSelectItem>
+                        }
+                        @if (AllowedPartyTypes == null || AllowedPartyTypes.Contains(PartyType.CoLoader))
+                        {
+                            <MudSelectItem T="PartyType" Value="@PartyType.CoLoader">Co-Loader</MudSelectItem>
+                        }
+                        @if (AllowedPartyTypes == null || AllowedPartyTypes.Contains(PartyType.Supplier))
+                        {
+                            <MudSelectItem T="PartyType" Value="@PartyType.Supplier">Supplier</MudSelectItem>
+                        }
+                        @if (AllowedPartyTypes == null || AllowedPartyTypes.Contains(PartyType.ForwardingAgent))
+                        {
+                            <MudSelectItem T="PartyType" Value="@PartyType.ForwardingAgent">Forwarding Agent</MudSelectItem>
+                        }
                     </MudSelect>
                 </MudItem>
                 <MudItem xs="12" md="8">
@@ -38,6 +53,22 @@
                 <MudItem xs="12" md="4">
                     <MudTextField @bind-Value="Party.Code" Label="Code" Variant="Variant.Outlined" />
                 </MudItem>
+                @if (Party.PartyType == PartyType.Customer)
+                {
+                    <MudItem xs="12" md="4">
+                        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+                            <MudSwitch T="bool" Value="_autoGenerateAccountNo" ValueChanged="OnAutoGenerateToggleChanged" Label="Auto-generate" Color="Color.Primary" />
+                        </MudStack>
+                    </MudItem>
+                    <MudItem xs="12" md="8">
+                        <MudTextField @bind-Value="Party.CustomerAccountNo" Label="Customer Account Number" 
+                                      Variant="Variant.Outlined"
+                                      Disabled="@_autoGenerateAccountNo"
+                                      Required="@(!_autoGenerateAccountNo)"
+                                      RequiredError="Account number is required"
+                                      HelperText="@(_autoGenerateAccountNo ? $"Auto-generated: {Party.CustomerAccountNo}" : "Enter account number manually")" />
+                    </MudItem>
+                }
                 <MudItem xs="12" md="6">
                     <MudTextField @bind-Value="Party.ContactPerson" Label="Contact Person" Variant="Variant.Outlined" />
                 </MudItem>
@@ -104,6 +135,7 @@
     [CascadingParameter] MudDialogInstance MudDialog { get; set; } = null!;
     [Parameter] public Party Party { get; set; } = new();
     [Parameter] public bool IsNew { get; set; }
+    [Parameter] public List<PartyType>? AllowedPartyTypes { get; set; }
 
     private MudForm _form = null!;
     private bool _formIsValid;
@@ -114,6 +146,7 @@
     private long? _countryId;
     private long? _cityId;
     private string? _location;
+    private bool _autoGenerateAccountNo = true;
 
     protected override async Task OnInitializedAsync()
     {
@@ -131,11 +164,66 @@
                 _countryId = india.Id;
                 _cities = await DbContext.Cities.Where(c => c.CountryId == india.Id && c.IsActive && !c.IsDeleted).OrderBy(c => c.Name).ToListAsync();
             }
+            
+            _autoGenerateAccountNo = true;
+            await GenerateNextAccountNo();
         }
         else
         {
+            _autoGenerateAccountNo = string.IsNullOrEmpty(Party.CustomerAccountNo);
+            if (_autoGenerateAccountNo)
+            {
+                await GenerateNextAccountNo();
+            }
             await LoadExistingPartyAddress();
         }
+    }
+    
+    private async Task GenerateNextAccountNo()
+    {
+        if (Party.PartyType != PartyType.Customer) return;
+        
+        var maxAccountNo = await DbContext.Parties
+            .Where(p => p.PartyType == PartyType.Customer && !p.IsDeleted && p.CustomerAccountNo != null)
+            .Select(p => p.CustomerAccountNo)
+            .ToListAsync();
+        
+        long maxNum = 0;
+        foreach (var accNo in maxAccountNo)
+        {
+            if (long.TryParse(accNo, out var num) && num > maxNum)
+                maxNum = num;
+        }
+        
+        Party.CustomerAccountNo = (maxNum + 1).ToString().PadLeft(6, '0');
+    }
+
+    private async Task OnPartyTypeChanged(PartyType newType)
+    {
+        Party.PartyType = newType;
+        
+        if (newType == PartyType.Customer && _autoGenerateAccountNo)
+        {
+            await GenerateNextAccountNo();
+        }
+        else if (newType != PartyType.Customer)
+        {
+            Party.CustomerAccountNo = null;
+        }
+        
+        StateHasChanged();
+    }
+
+    private async Task OnAutoGenerateToggleChanged(bool newValue)
+    {
+        _autoGenerateAccountNo = newValue;
+        
+        if (newValue && Party.PartyType == PartyType.Customer)
+        {
+            await GenerateNextAccountNo();
+        }
+        
+        StateHasChanged();
     }
 
     private async Task LoadExistingPartyAddress()
@@ -202,6 +290,11 @@
     {
         await _form.Validate();
         if (!_formIsValid) return;
+
+        if (Party.PartyType == PartyType.Customer && _autoGenerateAccountNo)
+        {
+            await GenerateNextAccountNo();
+        }
 
         if (IsNew)
         {

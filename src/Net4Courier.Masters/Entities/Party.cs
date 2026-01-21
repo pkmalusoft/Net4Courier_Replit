@@ -7,6 +7,7 @@ public class Party : BaseEntity
     public long CompanyId { get; set; }
     public string Name { get; set; } = string.Empty;
     public string? Code { get; set; }
+    public string? CustomerAccountNo { get; set; }
     public PartyType PartyType { get; set; }
     public PartyAccountNature AccountNature { get; set; }
     public string? ContactPerson { get; set; }
