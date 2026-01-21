@@ -3,6 +3,7 @@
 @using Net4Courier.Infrastructure.Data
 @using Net4Courier.Kernel.Enums
 @using Microsoft.EntityFrameworkCore
+@using ClosedXML.Excel
 @inject ApplicationDbContext DbContext
 @inject NavigationManager NavigationManager
 @inject ISnackbar Snackbar
@@ -29,6 +30,8 @@
         <MudTextField @bind-Value="searchText" Label="Search" Immediate="true" 
                       Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Filled.Search" />
         <MudButton Variant="Variant.Outlined" Color="Color.Primary" OnClick="LoadInvoices">Filter</MudButton>
+        <MudButton Variant="Variant.Filled" Color="Color.Success" StartIcon="@Icons.Material.Filled.Download" 
+                   OnClick="DownloadExcel" Disabled="@(invoices.Count == 0)">Download Excel</MudButton>
     </MudStack>
 
     <MudTable Items="@invoices" Hover="true" Striped="true" Dense="true" Loading="@isLoading">
@@ -144,5 +147,56 @@
             InvoiceStatus.Cancelled => Color.Error,
             _ => Color.Default
         };
+    }
+
+    private async Task DownloadExcel()
+    {
+        if (invoices.Count == 0)
+        {
+            Snackbar.Add("No invoices to export", Severity.Warning);
+            return;
+        }
+
+        try
+        {
+            using var workbook = new XLWorkbook();
+            var worksheet = workbook.Worksheets.Add("Invoices");
+
+            var headers = new[] { "Invoice No", "Date", "Customer", "AWBs", "Net Total", "Paid", "Balance", "Status" };
+            for (int i = 0; i < headers.Length; i++)
+            {
+                worksheet.Cell(1, i + 1).Value = headers[i];
+                worksheet.Cell(1, i + 1).Style.Font.Bold = true;
+                worksheet.Cell(1, i + 1).Style.Fill.BackgroundColor = XLColor.LightBlue;
+            }
+
+            int row = 2;
+            foreach (var inv in invoices)
+            {
+                worksheet.Cell(row, 1).Value = inv.InvoiceNo;
+                worksheet.Cell(row, 2).Value = inv.InvoiceDate.ToString("dd-MMM-yyyy");
+                worksheet.Cell(row, 3).Value = inv.CustomerName ?? "";
+                worksheet.Cell(row, 4).Value = inv.TotalAWBs;
+                worksheet.Cell(row, 5).Value = inv.NetTotal ?? 0;
+                worksheet.Cell(row, 6).Value = inv.PaidAmount ?? 0;
+                worksheet.Cell(row, 7).Value = inv.BalanceAmount ?? 0;
+                worksheet.Cell(row, 8).Value = inv.Status.ToString();
+                row++;
+            }
+
+            worksheet.Columns().AdjustToContents();
+
+            using var stream = new MemoryStream();
+            workbook.SaveAs(stream);
+            var content = stream.ToArray();
+            var fileName = $"Invoices_{DateTime.Now:yyyyMMdd_HHmmss}.xlsx";
+
+            await JS.InvokeVoidAsync("downloadFileFromStream", fileName, Convert.ToBase64String(content));
+            Snackbar.Add($"Downloaded {invoices.Count} invoices", Severity.Success);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error exporting: {ex.Message}", Severity.Error);
+        }
     }
 }

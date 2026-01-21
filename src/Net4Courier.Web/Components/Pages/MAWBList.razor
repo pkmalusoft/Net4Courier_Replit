@@ -4,10 +4,12 @@
 @inject IDialogService DialogService
 @inject ISnackbar Snackbar
 @inject MAWBService MawbService
+@inject IJSRuntime JS
 @using Microsoft.EntityFrameworkCore
 @using Net4Courier.Infrastructure.Data
 @using Net4Courier.Operations.Entities
 @using Net4Courier.Web.Services
+@using ClosedXML.Excel
 
 <PageTitle>MAWB List - Net4Courier</PageTitle>
 
@@ -29,6 +31,8 @@
                 <MudSelectItem T="MAWBStatus?" Value="@MAWBStatus.Received">Received</MudSelectItem>
             </MudSelect>
             <MudButton Variant="Variant.Outlined" Color="Color.Primary" OnClick="Search">Search</MudButton>
+            <MudButton Variant="Variant.Filled" Color="Color.Success" StartIcon="@Icons.Material.Filled.Download" 
+                       OnClick="DownloadExcel" Disabled="@(_mawbList.Count == 0)">Download Excel</MudButton>
         </MudStack>
         <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add" Href="/mawb-entry">
             New MAWB
@@ -227,5 +231,61 @@
     private void PrintManifest(long id)
     {
         NavigationManager.NavigateTo($"/api/report/mawb/{id}", true);
+    }
+
+    private async Task DownloadExcel()
+    {
+        if (_mawbList.Count == 0)
+        {
+            Snackbar.Add("No MAWB records to export", Severity.Warning);
+            return;
+        }
+
+        try
+        {
+            using var workbook = new XLWorkbook();
+            var worksheet = workbook.Worksheets.Add("MAWB");
+
+            var headers = new[] { "MAWB No", "Date", "Origin", "Origin Code", "Destination", "Dest Code", 
+                "Carrier", "Flight No", "Bags", "Pieces", "Gross Weight", "Status" };
+            for (int i = 0; i < headers.Length; i++)
+            {
+                worksheet.Cell(1, i + 1).Value = headers[i];
+                worksheet.Cell(1, i + 1).Style.Font.Bold = true;
+                worksheet.Cell(1, i + 1).Style.Fill.BackgroundColor = XLColor.LightBlue;
+            }
+
+            int row = 2;
+            foreach (var m in _mawbList)
+            {
+                worksheet.Cell(row, 1).Value = m.MAWBNo;
+                worksheet.Cell(row, 2).Value = m.TransactionDate.ToString("dd/MM/yyyy");
+                worksheet.Cell(row, 3).Value = m.OriginCityName ?? "";
+                worksheet.Cell(row, 4).Value = m.OriginAirportCode ?? "";
+                worksheet.Cell(row, 5).Value = m.DestinationCityName ?? "";
+                worksheet.Cell(row, 6).Value = m.DestinationAirportCode ?? "";
+                worksheet.Cell(row, 7).Value = m.CarrierName ?? "";
+                worksheet.Cell(row, 8).Value = m.FlightNo ?? "";
+                worksheet.Cell(row, 9).Value = m.TotalBags;
+                worksheet.Cell(row, 10).Value = m.TotalPieces;
+                worksheet.Cell(row, 11).Value = m.TotalGrossWeight;
+                worksheet.Cell(row, 12).Value = m.Status.ToString();
+                row++;
+            }
+
+            worksheet.Columns().AdjustToContents();
+
+            using var stream = new MemoryStream();
+            workbook.SaveAs(stream);
+            var content = stream.ToArray();
+            var fileName = $"MAWB_{DateTime.Now:yyyyMMdd_HHmmss}.xlsx";
+
+            await JS.InvokeVoidAsync("downloadFileFromStream", fileName, Convert.ToBase64String(content));
+            Snackbar.Add($"Downloaded {_mawbList.Count} MAWB records", Severity.Success);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error exporting: {ex.Message}", Severity.Error);
+        }
     }
 }

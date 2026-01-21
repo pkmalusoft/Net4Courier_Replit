@@ -2,6 +2,7 @@
 @using Net4Courier.Finance.Entities
 @using Net4Courier.Infrastructure.Data
 @using Microsoft.EntityFrameworkCore
+@using ClosedXML.Excel
 @inject ApplicationDbContext DbContext
 @inject NavigationManager NavigationManager
 @inject ISnackbar Snackbar
@@ -28,6 +29,8 @@
         <MudTextField @bind-Value="searchText" Label="Search" Immediate="true" 
                       Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Filled.Search" />
         <MudButton Variant="Variant.Outlined" Color="Color.Primary" OnClick="LoadReceipts">Filter</MudButton>
+        <MudButton Variant="Variant.Filled" Color="Color.Success" StartIcon="@Icons.Material.Filled.Download" 
+                   OnClick="DownloadExcel" Disabled="@(receipts.Count == 0)">Download Excel</MudButton>
     </MudStack>
 
     <MudTable Items="@receipts" Hover="true" Striped="true" Dense="true" Loading="@isLoading">
@@ -134,5 +137,56 @@
     private async Task PrintReceipt(long id)
     {
         await JS.InvokeVoidAsync("open", $"/api/report/receipt/{id}", "_blank");
+    }
+
+    private async Task DownloadExcel()
+    {
+        if (receipts.Count == 0)
+        {
+            Snackbar.Add("No receipts to export", Severity.Warning);
+            return;
+        }
+
+        try
+        {
+            using var workbook = new XLWorkbook();
+            var worksheet = workbook.Worksheets.Add("Receipts");
+
+            var headers = new[] { "Receipt No", "Date", "Customer", "Amount", "Payment Mode", "Cheque No", "Transaction Ref", "Allocated" };
+            for (int i = 0; i < headers.Length; i++)
+            {
+                worksheet.Cell(1, i + 1).Value = headers[i];
+                worksheet.Cell(1, i + 1).Style.Font.Bold = true;
+                worksheet.Cell(1, i + 1).Style.Fill.BackgroundColor = XLColor.LightBlue;
+            }
+
+            int row = 2;
+            foreach (var rec in receipts)
+            {
+                worksheet.Cell(row, 1).Value = rec.ReceiptNo;
+                worksheet.Cell(row, 2).Value = rec.ReceiptDate.ToString("dd-MMM-yyyy");
+                worksheet.Cell(row, 3).Value = rec.CustomerName ?? "";
+                worksheet.Cell(row, 4).Value = rec.Amount ?? 0;
+                worksheet.Cell(row, 5).Value = rec.PaymentMode ?? "";
+                worksheet.Cell(row, 6).Value = rec.ChequeNo ?? "";
+                worksheet.Cell(row, 7).Value = rec.TransactionRef ?? "";
+                worksheet.Cell(row, 8).Value = rec.IsAllocated ? "Yes" : "No";
+                row++;
+            }
+
+            worksheet.Columns().AdjustToContents();
+
+            using var stream = new MemoryStream();
+            workbook.SaveAs(stream);
+            var content = stream.ToArray();
+            var fileName = $"Receipts_{DateTime.Now:yyyyMMdd_HHmmss}.xlsx";
+
+            await JS.InvokeVoidAsync("downloadFileFromStream", fileName, Convert.ToBase64String(content));
+            Snackbar.Add($"Downloaded {receipts.Count} receipts", Severity.Success);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error exporting: {ex.Message}", Severity.Error);
+        }
     }
 }
