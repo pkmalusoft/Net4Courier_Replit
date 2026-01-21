@@ -136,10 +136,78 @@
         </MudGrid>
 
         <MudDivider Class="my-4" />
+        <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center" Class="mb-3">
+            <MudText Typo="Typo.h6">Shipment Lines</MudText>
+            <MudButton Variant="Variant.Outlined" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add" OnClick="AddShipmentLine" Size="Size.Small">
+                Add Line
+            </MudButton>
+        </MudStack>
+        
+        @if (!_shipmentLines.Any())
+        {
+            <MudAlert Severity="Severity.Warning" Dense="true" Class="mb-3">
+                At least one shipment line is required. Please add consignee details.
+            </MudAlert>
+        }
+        
+        @foreach (var line in _shipmentLines)
+        {
+            <MudPaper Class="pa-3 mb-3" Elevation="1" Outlined="true">
+                <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center" Class="mb-2">
+                    <MudText Typo="Typo.subtitle2" Color="Color.Primary">Line @line.LineNo</MudText>
+                    @if (_shipmentLines.Count > 1)
+                    {
+                        <MudIconButton Icon="@Icons.Material.Filled.Delete" Color="Color.Error" Size="Size.Small" 
+                                       OnClick="@(() => RemoveShipmentLine(line))" Title="Remove Line" />
+                    }
+                </MudStack>
+                <MudGrid Spacing="2">
+                    <MudItem xs="12" sm="6" md="4">
+                        <MudTextField @bind-Value="line.Consignee" Label="Consignee Name" Variant="Variant.Outlined" 
+                                      Required="true" Margin="Margin.Dense" />
+                    </MudItem>
+                    <MudItem xs="12" sm="6" md="4">
+                        <MudTextField @bind-Value="line.ConsigneeContact" Label="Contact Person" Variant="Variant.Outlined" Margin="Margin.Dense" />
+                    </MudItem>
+                    <MudItem xs="12" sm="6" md="4">
+                        <MudTextField @bind-Value="line.ConsigneePhone" Label="Phone" Variant="Variant.Outlined" Margin="Margin.Dense" />
+                    </MudItem>
+                    <MudItem xs="12" sm="6">
+                        <MudTextField @bind-Value="line.ConsigneeAddress1" Label="Address Line 1" Variant="Variant.Outlined" Margin="Margin.Dense" />
+                    </MudItem>
+                    <MudItem xs="12" sm="6">
+                        <MudTextField @bind-Value="line.ConsigneeAddress2" Label="Address Line 2" Variant="Variant.Outlined" Margin="Margin.Dense" />
+                    </MudItem>
+                    <MudItem xs="12" sm="6" md="3">
+                        <MudTextField @bind-Value="line.ConsigneeCity" Label="City" Variant="Variant.Outlined" Required="true" Margin="Margin.Dense" />
+                    </MudItem>
+                    <MudItem xs="12" sm="6" md="3">
+                        <MudTextField @bind-Value="line.ConsigneeState" Label="State" Variant="Variant.Outlined" Margin="Margin.Dense" />
+                    </MudItem>
+                    <MudItem xs="12" sm="6" md="3">
+                        <MudTextField @bind-Value="line.ConsigneeCountry" Label="Country" Variant="Variant.Outlined" Required="true" Margin="Margin.Dense" />
+                    </MudItem>
+                    <MudItem xs="12" sm="6" md="3">
+                        <MudTextField @bind-Value="line.ConsigneePostalCode" Label="Postal Code" Variant="Variant.Outlined" Margin="Margin.Dense" />
+                    </MudItem>
+                    <MudItem xs="6" sm="3" md="2">
+                        <MudNumericField @bind-Value="line.Pieces" Label="Pieces" Variant="Variant.Outlined" Min="1" Margin="Margin.Dense" />
+                    </MudItem>
+                    <MudItem xs="6" sm="3" md="2">
+                        <MudNumericField @bind-Value="line.Weight" Label="Weight (kg)" Variant="Variant.Outlined" Step="0.5M" Margin="Margin.Dense" />
+                    </MudItem>
+                    <MudItem xs="12" sm="6" md="8">
+                        <MudTextField @bind-Value="line.CargoDescription" Label="Cargo Description" Variant="Variant.Outlined" Margin="Margin.Dense" />
+                    </MudItem>
+                </MudGrid>
+            </MudPaper>
+        }
+
+        <MudDivider Class="my-4" />
         
         <MudGrid>
             <MudItem xs="12" Class="d-flex gap-2 flex-wrap">
-                <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="Save" Disabled="@(!_isValid)">
+                <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="Save" Disabled="@(!_isValid || !_shipmentLines.Any())">
                     @(_isEdit ? "Update" : "Create") Pickup Request
                 </MudButton>
                 <MudButton Variant="Variant.Outlined" Href="/pickup-management">Cancel</MudButton>
@@ -162,6 +230,7 @@
     private List<PickupSchedule> _pickupSchedules = new();
     private City? _selectedCity;
     private Location? _selectedLocation;
+    private List<PickupRequestShipment> _shipmentLines = new();
 
     protected override async Task OnInitializedAsync()
     {
@@ -194,11 +263,26 @@
                     .Include(c => c.Country)
                     .FirstOrDefaultAsync(c => c.Name.ToLower() == _entity.City.ToLower() && c.IsActive && !c.IsDeleted);
             }
+            
+            // Load existing shipment lines
+            _shipmentLines = await DbContext.PickupRequestShipments
+                .Where(s => s.PickupRequestId == Id)
+                .OrderBy(s => s.LineNo)
+                .ToListAsync();
+            
+            // Add default line if none exist
+            if (!_shipmentLines.Any())
+            {
+                AddShipmentLine();
+            }
         }
         else
         {
             _entity.PickupNo = await GeneratePickupNo();
             _entity.RequestDate = DateTime.UtcNow;
+            
+            // Add default shipment line for new pickup
+            AddShipmentLine();
         }
     }
     
@@ -349,14 +433,129 @@
         await Task.CompletedTask;
     }
 
+    private void AddShipmentLine()
+    {
+        var maxLineNo = _shipmentLines.Any() ? _shipmentLines.Max(l => l.LineNo) : 0;
+        _shipmentLines.Add(new PickupRequestShipment
+        {
+            LineNo = maxLineNo + 1,
+            Pieces = 1,
+            Status = ShipmentLineStatus.Pending
+        });
+    }
+
+    private void RemoveShipmentLine(PickupRequestShipment line)
+    {
+        if (_shipmentLines.Count > 1)
+        {
+            _shipmentLines.Remove(line);
+            // Renumber lines
+            var lineNo = 1;
+            foreach (var l in _shipmentLines.OrderBy(x => x.LineNo))
+            {
+                l.LineNo = lineNo++;
+            }
+        }
+    }
+
     private async Task Save()
     {
+        // Server-side validation
+        if (!_shipmentLines.Any())
+        {
+            Snackbar.Add("At least one shipment line is required", Severity.Error);
+            return;
+        }
+        
+        // Validate required fields on each line
+        foreach (var line in _shipmentLines)
+        {
+            if (string.IsNullOrWhiteSpace(line.Consignee))
+            {
+                Snackbar.Add($"Line {line.LineNo}: Consignee name is required", Severity.Error);
+                return;
+            }
+            if (string.IsNullOrWhiteSpace(line.ConsigneeCity))
+            {
+                Snackbar.Add($"Line {line.LineNo}: City is required", Severity.Error);
+                return;
+            }
+            if (string.IsNullOrWhiteSpace(line.ConsigneeCountry))
+            {
+                Snackbar.Add($"Line {line.LineNo}: Country is required", Severity.Error);
+                return;
+            }
+        }
+        
         _entity.ScheduledDate = _scheduledDate.HasValue ? DateTime.SpecifyKind(_scheduledDate.Value, DateTimeKind.Utc) : null;
         
         if (!_isEdit)
         {
             _entity.Status = PickupStatus.PickupRequest;
             DbContext.PickupRequests.Add(_entity);
+            await DbContext.SaveChangesAsync();
+            
+            // Add shipment lines for new pickup
+            foreach (var line in _shipmentLines)
+            {
+                line.PickupRequestId = _entity.Id;
+                DbContext.PickupRequestShipments.Add(line);
+            }
+        }
+        else
+        {
+            // For edit mode, preserve existing lines and update them
+            var existingLines = await DbContext.PickupRequestShipments
+                .Where(s => s.PickupRequestId == _entity.Id)
+                .ToListAsync();
+            
+            var currentLineIds = _shipmentLines.Where(l => l.Id > 0).Select(l => l.Id).ToHashSet();
+            
+            // Remove lines that are no longer present (only if Pending and not linked to AWB)
+            foreach (var existing in existingLines)
+            {
+                if (!currentLineIds.Contains(existing.Id))
+                {
+                    if (existing.Status != ShipmentLineStatus.Pending || existing.AWBId.HasValue)
+                    {
+                        Snackbar.Add($"Cannot remove line {existing.LineNo}: already booked or linked to AWB", Severity.Error);
+                        return;
+                    }
+                    DbContext.PickupRequestShipments.Remove(existing);
+                }
+            }
+            
+            // Update existing and add new lines
+            foreach (var line in _shipmentLines)
+            {
+                if (line.Id > 0)
+                {
+                    // Update existing line
+                    var existing = existingLines.FirstOrDefault(e => e.Id == line.Id);
+                    if (existing != null)
+                    {
+                        existing.LineNo = line.LineNo;
+                        existing.Consignee = line.Consignee;
+                        existing.ConsigneeContact = line.ConsigneeContact;
+                        existing.ConsigneePhone = line.ConsigneePhone;
+                        existing.ConsigneeAddress1 = line.ConsigneeAddress1;
+                        existing.ConsigneeAddress2 = line.ConsigneeAddress2;
+                        existing.ConsigneeCity = line.ConsigneeCity;
+                        existing.ConsigneeState = line.ConsigneeState;
+                        existing.ConsigneeCountry = line.ConsigneeCountry;
+                        existing.ConsigneePostalCode = line.ConsigneePostalCode;
+                        existing.Pieces = line.Pieces;
+                        existing.Weight = line.Weight;
+                        existing.CargoDescription = line.CargoDescription;
+                    }
+                }
+                else
+                {
+                    // Add new line
+                    line.PickupRequestId = _entity.Id;
+                    DbContext.PickupRequestShipments.Add(line);
+                }
+            }
         }
         
         await DbContext.SaveChangesAsync();
