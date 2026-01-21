@@ -73,9 +73,9 @@
             <MudItem xs="6" md="2">
                 @if (_inscan.PaymentModeId == PaymentMode.Account)
                 {
-                    <MudSelect T="long?" @bind-Value="_inscan.CustomerId" Label="Customer Account *" 
-                               Variant="Variant.Outlined" Margin="Margin.Dense" AnchorOrigin="Origin.BottomCenter"
-                               Required="true" RequiredError="Customer required for Account payment">
+                    <MudSelect T="long?" @bind-Value="_inscan.CustomerId" @bind-Value:after="OnCustomerChanged"
+                               Label="Customer Account *" Variant="Variant.Outlined" Margin="Margin.Dense" 
+                               AnchorOrigin="Origin.BottomCenter" Required="true" RequiredError="Customer required for Account payment">
                         @foreach (var customer in _customers)
                         {
                             <MudSelectItem T="long?" Value="@customer.Id">@customer.Name</MudSelectItem>
@@ -93,6 +93,13 @@
                                   Variant="Variant.Outlined" Margin="Margin.Dense" />
                 }
             </MudItem>
+            @if (_inscan.PaymentModeId == PaymentMode.Account && _inscan.CustomerId.HasValue)
+            {
+                <MudItem xs="6" md="2">
+                    <MudCheckBox @bind-Value="_copyCustomerToShipper" @bind-Value:after="OnCopyToShipperChanged"
+                                 Label="Copy to Shipper" Color="Color.Primary" Dense="true" Class="mt-2" />
+                </MudItem>
+            }
             <MudItem xs="6" md="2">
                 <MudTextField @bind-Value="_inscan.ReferenceNo" Label="Reference No" 
                               Variant="Variant.Outlined" Margin="Margin.Dense" />
@@ -456,6 +463,7 @@
     private List<City> _cities = new();
     private long? _controlAccountId;
     private string _controlAccountName = "";
+    private bool _copyCustomerToShipper;
     private City? _selectedConsignorCity;
     private City? _selectedConsigneeCity;
     private string? _forwardingAgentName;
@@ -538,10 +546,64 @@
             }
         }
     }
+    
+    private void OnCustomerChanged()
+    {
+        _copyCustomerToShipper = false;
+    }
+    
+    private void OnCopyToShipperChanged()
+    {
+        if (_copyCustomerToShipper && _inscan.CustomerId.HasValue)
+        {
+            var customer = _customers.FirstOrDefault(c => c.Id == _inscan.CustomerId.Value);
+            if (customer != null)
+            {
+                _inscan.Consignor = customer.Name;
+                _inscan.ConsignorPhone = customer.Phone;
+                _inscan.ConsignorMobile = customer.Mobile;
+                
+                var primaryAddress = customer.Addresses.FirstOrDefault(a => a.AddressType == "Primary" && !a.IsDeleted) 
+                                     ?? customer.Addresses.FirstOrDefault(a => !a.IsDeleted);
+                if (primaryAddress != null)
+                {
+                    var addressParts = new[] { primaryAddress.BuildingName, primaryAddress.Street, primaryAddress.Area }
+                        .Where(s => !string.IsNullOrWhiteSpace(s));
+                    _inscan.ConsignorAddress1 = string.Join(", ", addressParts);
+                    _inscan.ConsignorCity = primaryAddress.City;
+                    _inscan.ConsignorState = primaryAddress.State;
+                    _inscan.ConsignorCountry = primaryAddress.Country;
+                    _inscan.ConsignorPostalCode = primaryAddress.PostalCode;
+                    
+                    var city = _cities.FirstOrDefault(c => 
+                        c.Name == primaryAddress.City && 
+                        (c.Country?.Name == primaryAddress.Country || c.State?.Name == primaryAddress.State));
+                    if (city == null)
+                        city = _cities.FirstOrDefault(c => c.Name == primaryAddress.City);
+                    if (city != null)
+                    {
+                        _selectedConsignorCity = city;
+                    }
+                }
+            }
+        }
+        else if (!_copyCustomerToShipper)
+        {
+            _inscan.Consignor = null;
+            _inscan.ConsignorPhone = null;
+            _inscan.ConsignorMobile = null;
+            _inscan.ConsignorAddress1 = null;
+            _inscan.ConsignorCity = null;
+            _inscan.ConsignorState = null;
+            _inscan.ConsignorCountry = null;
+            _inscan.ConsignorPostalCode = null;
+            _selectedConsignorCity = null;
+        }
+    }
 
     protected override async Task OnInitializedAsync()
     {
-        _customers = await DbContext.Parties.Where(p => p.PartyType == PartyType.Customer && p.IsActive && !p.IsDeleted).OrderBy(p => p.Name).ToListAsync();
+        _customers = await DbContext.Parties.Include(p => p.Addresses).Where(p => p.PartyType == PartyType.Customer && p.IsActive && !p.IsDeleted).OrderBy(p => p.Name).ToListAsync();
         _cities = await DbContext.Cities.Include(c => c.Country).Include(c => c.State).Where(c => c.IsActive).OrderBy(c => c.Name).ToListAsync();
         
         _currentBranch = await DbContext.Branches.FirstOrDefaultAsync(b => !b.IsDeleted && b.IsActive);
