@@ -43,10 +43,19 @@
                               Required="true" Lines="2" />
                 
                 <MudGrid>
-                    <MudItem xs="12" sm="6">
-                        <MudTextField @bind-Value="_entity.City" Label="City" Variant="Variant.Outlined" Required="true" />
+                    <MudItem xs="12" sm="3">
+                        <MudAutocomplete T="City" Label="City" Value="_selectedCity" SearchFunc="SearchCities"
+                                         ToStringFunc="@(c => c?.Name ?? string.Empty)" Variant="Variant.Outlined"
+                                         ShowProgressIndicator="true" Dense="true" ResetValueOnEmptyText="true"
+                                         ValueChanged="OnCitySelected" Required="true" />
                     </MudItem>
-                    <MudItem xs="12" sm="6">
+                    <MudItem xs="12" sm="3">
+                        <MudTextField @bind-Value="_entity.State" Label="State" Variant="Variant.Outlined" ReadOnly="true" />
+                    </MudItem>
+                    <MudItem xs="12" sm="3">
+                        <MudTextField @bind-Value="_entity.Country" Label="Country" Variant="Variant.Outlined" ReadOnly="true" />
+                    </MudItem>
+                    <MudItem xs="12" sm="3">
                         <MudTextField @bind-Value="_entity.PostalCode" Label="Postal Code" Variant="Variant.Outlined" Required="true" />
                     </MudItem>
                 </MudGrid>
@@ -227,6 +236,7 @@
     private Party? _customerParty;
     private long? _customerId;
     private List<string> _uploadErrors = new();
+    private City? _selectedCity;
 
     protected override async Task OnInitializedAsync()
     {
@@ -301,6 +311,40 @@
                 _entity.Landmark = addr.Landmark;
             }
         }
+    }
+
+    private async Task<IEnumerable<City>> SearchCities(string value)
+    {
+        if (string.IsNullOrWhiteSpace(value) || value.Length < 2)
+            return Enumerable.Empty<City>();
+            
+        return await DbContext.Cities
+            .Include(c => c.State)
+            .Include(c => c.Country)
+            .Where(c => c.IsActive && !c.IsDeleted && c.Name.Contains(value))
+            .OrderBy(c => c.Name)
+            .Take(15)
+            .ToListAsync();
+    }
+
+    private async Task OnCitySelected(City? city)
+    {
+        _selectedCity = city;
+        
+        if (city != null)
+        {
+            _entity.City = city.Name;
+            _entity.State = city.State?.Name;
+            _entity.Country = city.Country?.Name;
+        }
+        else
+        {
+            _entity.City = null;
+            _entity.State = null;
+            _entity.Country = null;
+        }
+        
+        await Task.CompletedTask;
     }
 
     private async Task Submit()

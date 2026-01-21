@@ -86,18 +86,27 @@
                 <MudTextField @bind-Value="_entity.PickupAddress" Label="Address" Variant="Variant.Outlined" Required="true" Lines="2" />
             </MudItem>
             <MudItem xs="12" sm="6" md="3">
-                <MudTextField @bind-Value="_entity.City" Label="City" Variant="Variant.Outlined" Required="true" />
+                <MudAutocomplete T="City" Label="City" Value="_selectedCity" SearchFunc="SearchCities"
+                                 ToStringFunc="@(c => c?.Name ?? string.Empty)" Variant="Variant.Outlined"
+                                 ShowProgressIndicator="true" Dense="true" ResetValueOnEmptyText="true"
+                                 ValueChanged="OnCitySelected" Required="true" />
             </MudItem>
             <MudItem xs="12" sm="6" md="3">
-                <MudTextField @bind-Value="_entity.State" Label="State" Variant="Variant.Outlined" />
+                <MudTextField @bind-Value="_entity.State" Label="State" Variant="Variant.Outlined" ReadOnly="true" />
             </MudItem>
             <MudItem xs="12" sm="6" md="3">
-                <MudTextField @bind-Value="_entity.Country" Label="Country" Variant="Variant.Outlined" />
+                <MudTextField @bind-Value="_entity.Country" Label="Country" Variant="Variant.Outlined" ReadOnly="true" />
+            </MudItem>
+            <MudItem xs="12" sm="6" md="3">
+                <MudAutocomplete T="Location" Label="Area / Pincode" Value="_selectedLocation" SearchFunc="SearchLocations"
+                                 ToStringFunc="@(l => l != null ? $"{l.Name} - {l.Pincode}" : string.Empty)" Variant="Variant.Outlined"
+                                 ShowProgressIndicator="true" Dense="true" ResetValueOnEmptyText="true"
+                                 ValueChanged="OnLocationSelected" Disabled="@(_selectedCity == null)" />
             </MudItem>
             <MudItem xs="12" sm="6" md="3">
                 <MudTextField @bind-Value="_entity.PostalCode" Label="Postal Code" Variant="Variant.Outlined" Required="true" />
             </MudItem>
-            <MudItem xs="12">
+            <MudItem xs="12" sm="6" md="9">
                 <MudTextField @bind-Value="_entity.Landmark" Label="Landmark" Variant="Variant.Outlined" />
             </MudItem>
         </MudGrid>
@@ -151,6 +160,8 @@
     private List<PartyAddress> _customerAddresses = new();
     private long? _selectedAddressId;
     private List<PickupSchedule> _pickupSchedules = new();
+    private City? _selectedCity;
+    private Location? _selectedLocation;
 
     protected override async Task OnInitializedAsync()
     {
@@ -258,6 +269,69 @@
                 _entity.Longitude = addr.Longitude;
             }
         }
+    }
+
+    private async Task<IEnumerable<City>> SearchCities(string value)
+    {
+        if (string.IsNullOrWhiteSpace(value) || value.Length < 2)
+            return Enumerable.Empty<City>();
+            
+        return await DbContext.Cities
+            .Include(c => c.State)
+            .Include(c => c.Country)
+            .Where(c => c.IsActive && !c.IsDeleted && c.Name.Contains(value))
+            .OrderBy(c => c.Name)
+            .Take(15)
+            .ToListAsync();
+    }
+
+    private async Task OnCitySelected(City? city)
+    {
+        _selectedCity = city;
+        _selectedLocation = null;
+        
+        if (city != null)
+        {
+            _entity.City = city.Name;
+            _entity.State = city.State?.Name;
+            _entity.Country = city.Country?.Name;
+        }
+        else
+        {
+            _entity.City = null;
+            _entity.State = null;
+            _entity.Country = null;
+        }
+        
+        await Task.CompletedTask;
+    }
+
+    private async Task<IEnumerable<Location>> SearchLocations(string value)
+    {
+        if (_selectedCity == null)
+            return Enumerable.Empty<Location>();
+            
+        var query = DbContext.Locations
+            .Where(l => l.IsActive && !l.IsDeleted && l.CityId == _selectedCity.Id);
+            
+        if (!string.IsNullOrWhiteSpace(value))
+        {
+            query = query.Where(l => l.Name.Contains(value) || (l.Pincode != null && l.Pincode.Contains(value)));
+        }
+        
+        return await query.OrderBy(l => l.Name).Take(15).ToListAsync();
+    }
+
+    private async Task OnLocationSelected(Location? location)
+    {
+        _selectedLocation = location;
+        
+        if (location != null)
+        {
+            _entity.PostalCode = location.Pincode;
+        }
+        
+        await Task.CompletedTask;
     }
 
     private async Task Save()
