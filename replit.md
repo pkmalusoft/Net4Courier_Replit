@@ -48,7 +48,7 @@ The application is built on .NET 8 Blazor Server, utilizing a modular architectu
     - **Account Payables (AP)**:
         - **Supplier Master**: Dedicated page for managing suppliers (Vendor, ForwardingAgent, CoLoader, DeliveryAgent).
         - **Debit Notes**: Record additional charges to vendors with status workflow.
-- **Reporting**: QuestPDF integration for AWB labels, Invoice, and Receipt PDFs.
+- **Reporting**: QuestPDF integration for AWB labels, Invoice, and Receipt PDFs. All reports have Excel export option using ClosedXML.
 - **Automatic Movement Type Calculation**: Determines shipment type (Domestic, International) based on origin/destination.
 - **Rate Card Management**:
     - **Zone Matrix**: Define zones for geographic rate categorization.
