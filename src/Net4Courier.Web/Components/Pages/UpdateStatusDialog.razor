@@ -1,11 +1,14 @@
 @using MudBlazor
 @using Microsoft.EntityFrameworkCore
+@using Microsoft.AspNetCore.Components.Authorization
 @using Net4Courier.Infrastructure.Data
 @using Net4Courier.Operations.Entities
 @using Net4Courier.Web.Services
+@using System.Security.Claims
 @inject ApplicationDbContext DbContext
 @inject ShipmentStatusService StatusService
 @inject ISnackbar Snackbar
+@inject AuthenticationStateProvider AuthStateProvider
 
 <MudDialog>
     <TitleContent>
@@ -16,21 +19,35 @@
     </TitleContent>
     <DialogContent>
         <MudStack Spacing="4">
-            <MudText Typo="Typo.body2" Color="Color.Secondary">
-                Current Status: <strong>@Shipment.CourierStatusId</strong>
-            </MudText>
+            <MudGrid>
+                <MudItem xs="6">
+                    <MudText Typo="Typo.caption" Color="Color.Secondary">Current Status</MudText>
+                    <MudChip T="string" Color="Color.Primary" Size="Size.Small">@Shipment.CourierStatusId</MudChip>
+                </MudItem>
+                <MudItem xs="6">
+                    <MudText Typo="Typo.caption" Color="Color.Secondary">Changed By</MudText>
+                    <MudText Typo="Typo.body2"><strong>@_currentUserName</strong></MudText>
+                </MudItem>
+            </MudGrid>
             
             <MudDivider />
             
             <MudSelect T="long?" 
                        @bind-Value="_selectedGroupId" 
-                       Label="Status Group"
+                       Label="Status Group *"
                        Variant="Variant.Outlined"
+                       Required="true"
                        AnchorOrigin="Origin.BottomCenter">
                 @foreach (var group in _statusGroups)
                 {
                     <MudSelectItem Value="@((long?)group.Id)">
-                        @group.Name
+                        <div class="d-flex align-center gap-2">
+                            @if (!string.IsNullOrEmpty(group.ColorCode))
+                            {
+                                <MudIcon Icon="@Icons.Material.Filled.Circle" Style="@($"color: {group.ColorCode}; font-size: 12px;")" />
+                            }
+                            @group.Name
+                        </div>
                     </MudSelectItem>
                 }
             </MudSelect>
@@ -39,13 +56,18 @@
             {
                 <MudSelect T="long?" 
                            @bind-Value="_selectedStatusId" 
-                           Label="New Status"
+                           Label="New Status *"
                            Variant="Variant.Outlined"
+                           Required="true"
                            AnchorOrigin="Origin.BottomCenter">
                     @foreach (var status in GetFilteredStatuses())
                     {
                         <MudSelectItem Value="@((long?)status.Id)">
                             @status.Name
+                            @if (!string.IsNullOrEmpty(status.TimelineDescription))
+                            {
+                                <MudText Typo="Typo.caption" Color="Color.Secondary"> - @status.TimelineDescription</MudText>
+                            }
                         </MudSelectItem>
                     }
                 </MudSelect>
@@ -54,13 +76,20 @@
             <MudTextField @bind-Value="_location"
                           Label="Location"
                           Variant="Variant.Outlined"
-                          Placeholder="e.g., Mumbai Hub" />
+                          Placeholder="e.g., Dubai Hub, Warehouse A" />
             
             <MudTextField @bind-Value="_remarks"
-                          Label="Remarks"
+                          Label="Reason for Status Change *"
                           Variant="Variant.Outlined"
                           Lines="3"
-                          Placeholder="Optional notes..." />
+                          Required="true"
+                          RequiredError="Please provide a reason for this status change"
+                          Placeholder="Enter the reason for this status change..." />
+
+            <MudText Typo="Typo.caption" Color="Color.Secondary" Class="mt-2">
+                <MudIcon Icon="@Icons.Material.Filled.Info" Size="Size.Small" Class="mr-1" />
+                Status change will be recorded with your user details and timestamp for audit purposes.
+            </MudText>
         </MudStack>
     </DialogContent>
     <DialogActions>
@@ -68,7 +97,7 @@
         <MudButton OnClick="UpdateStatus" 
                    Color="Color.Primary" 
                    Variant="Variant.Filled"
-                   Disabled="@(!_selectedStatusId.HasValue || _isSaving)">
+                   Disabled="@(!CanSubmit || _isSaving)">
             @if (_isSaving)
             {
                 <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" />
@@ -89,9 +118,15 @@
     private string _location = "";
     private string _remarks = "";
     private bool _isSaving = false;
+    private long? _currentUserId;
+    private string _currentUserName = "Unknown User";
+
+    private bool CanSubmit => _selectedStatusId.HasValue && !string.IsNullOrWhiteSpace(_remarks);
 
     protected override async Task OnInitializedAsync()
     {
+        await LoadUserInfo();
+        
         _statusGroups = await DbContext.ShipmentStatusGroups
             .Where(g => g.IsActive)
             .OrderBy(g => g.SequenceNo)
@@ -103,6 +138,33 @@
             .ToListAsync();
     }
 
+    private async Task LoadUserInfo()
+    {
+        try
+        {
+            var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+            var user = authState.User;
+
+            if (user.Identity?.IsAuthenticated == true)
+            {
+                var userIdClaim = user.FindFirst("UserId")?.Value;
+                if (long.TryParse(userIdClaim, out var userId))
+                {
+                    _currentUserId = userId;
+                }
+
+                _currentUserName = user.FindFirst("FullName")?.Value 
+                    ?? user.FindFirst(ClaimTypes.Name)?.Value 
+                    ?? user.Identity.Name 
+                    ?? "Unknown User";
+            }
+        }
+        catch
+        {
+            _currentUserName = "System User";
+        }
+    }
+
     private IEnumerable<ShipmentStatus> GetFilteredStatuses()
     {
         if (!_selectedGroupId.HasValue) return Enumerable.Empty<ShipmentStatus>();
@@ -111,7 +173,7 @@
 
     private async Task UpdateStatus()
     {
-        if (!_selectedStatusId.HasValue) return;
+        if (!_selectedStatusId.HasValue || string.IsNullOrWhiteSpace(_remarks)) return;
 
         _isSaving = true;
         StateHasChanged();
@@ -129,11 +191,11 @@
                 inscanMasterId: Shipment.Id,
                 statusCode: status.Code,
                 eventType: "MANUAL_UPDATE",
-                branchId: null,
+                branchId: Shipment.BranchId,
                 locationName: string.IsNullOrWhiteSpace(_location) ? null : _location.Trim(),
-                userId: null,
-                userName: "System User",
-                remarks: string.IsNullOrWhiteSpace(_remarks) ? null : _remarks.Trim(),
+                userId: _currentUserId,
+                userName: _currentUserName,
+                remarks: _remarks.Trim(),
                 isAutomatic: false
             );
 
