@@ -28,6 +28,7 @@ The application is built on .NET 8 Blazor Server, utilizing a modular architectu
 ### Technical Implementations
 - **Entity Management**: Comprehensive CRUD for Company, Branch, User, Role, Financial Year, Parties, AWB, Invoices, Receipts.
 - **Party Classification**: Parties categorized by `PartyType` with corresponding `AccountNature` for financial tracking.
+- **Customer Account Number**: Auto-generate toggle for 6-digit padded account numbers (e.g., "000001") or manual entry with required validation. Displayed in Customer Master table, search, and Excel export.
 - **Operations Workflow**:
     - **AWB Entry & Generation**: Full shipment details with auto-generated, branch-based AWB numbers. Includes conversion from pickup requests. Features:
         - Auto-Generate AWB toggle disables AWB field for new entries with "Auto-generated" helper text
