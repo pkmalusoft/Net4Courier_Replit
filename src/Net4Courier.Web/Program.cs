@@ -654,8 +654,6 @@ public class DatabaseInitializationService : BackgroundService
                 _logger.LogInformation("Seeded Service Types");
             }
 
-            await SeedDemoPickupRequestsAndShipments(dbContext, stoppingToken);
-
             _logger.LogInformation("Database initialization completed successfully");
         }
         catch (Exception ex)
