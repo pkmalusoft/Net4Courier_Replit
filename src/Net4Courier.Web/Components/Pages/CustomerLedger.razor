@@ -3,10 +3,12 @@
 @inject ApplicationDbContext DbContext
 @inject NavigationManager NavigationManager
 @inject Microsoft.AspNetCore.Components.Authorization.AuthenticationStateProvider AuthStateProvider
+@inject IJSRuntime JSRuntime
 @using Microsoft.EntityFrameworkCore
 @using Net4Courier.Infrastructure.Data
 @using Net4Courier.Finance.Entities
 @using Net4Courier.Masters.Entities
+@using ClosedXML.Excel
 
 <PageTitle>My Ledger - Net4Courier</PageTitle>
 
@@ -17,6 +19,8 @@
             <MudDateRangePicker @bind-DateRange="_dateRange" Label="Date Range" Variant="Variant.Outlined" 
                                 Class="mt-0" Style="width: 300px;" />
             <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="LoadLedger">Apply</MudButton>
+            <MudButton Variant="Variant.Outlined" Color="Color.Success" StartIcon="@Icons.Material.Filled.FileDownload" 
+                       OnClick="DownloadExcel" Disabled="@(!_ledgerEntries.Any())">Excel</MudButton>
         </MudStack>
     </MudStack>
     
@@ -229,5 +233,53 @@
         public decimal Debit { get; set; }
         public decimal Credit { get; set; }
         public decimal RunningBalance { get; set; }
+    }
+
+    private async Task DownloadExcel()
+    {
+        if (!_ledgerEntries.Any()) return;
+
+        using var workbook = new XLWorkbook();
+        var worksheet = workbook.Worksheets.Add("Customer Ledger");
+
+        worksheet.Cell(1, 1).Value = "Customer Ledger";
+        worksheet.Cell(1, 1).Style.Font.Bold = true;
+        worksheet.Cell(1, 1).Style.Font.FontSize = 14;
+        worksheet.Range(1, 1, 1, 6).Merge();
+
+        worksheet.Cell(2, 1).Value = $"Opening Balance: {_openingBalance:N2}";
+
+        var headers = new[] { "Date", "Particulars", "Reference", "Debit", "Credit", "Balance" };
+        for (int i = 0; i < headers.Length; i++)
+        {
+            worksheet.Cell(4, i + 1).Value = headers[i];
+            worksheet.Cell(4, i + 1).Style.Font.Bold = true;
+            worksheet.Cell(4, i + 1).Style.Fill.BackgroundColor = XLColor.LightGray;
+        }
+
+        int row = 5;
+        foreach (var entry in _ledgerEntries)
+        {
+            worksheet.Cell(row, 1).Value = entry.Date.ToString("dd MMM yyyy");
+            worksheet.Cell(row, 2).Value = entry.Particulars;
+            worksheet.Cell(row, 3).Value = entry.Reference;
+            worksheet.Cell(row, 4).Value = entry.Debit;
+            worksheet.Cell(row, 5).Value = entry.Credit;
+            worksheet.Cell(row, 6).Value = entry.RunningBalance;
+            row++;
+        }
+
+        worksheet.Row(row).Style.Font.Bold = true;
+        worksheet.Cell(row, 3).Value = "Total:";
+        worksheet.Cell(row, 4).Value = _totalDebits;
+        worksheet.Cell(row, 5).Value = _totalCredits;
+        worksheet.Cell(row, 6).Value = _closingBalance;
+
+        worksheet.Columns().AdjustToContents();
+
+        using var stream = new MemoryStream();
+        workbook.SaveAs(stream);
+        var fileName = $"CustomerLedger_{DateTime.Now:yyyyMMdd_HHmmss}.xlsx";
+        await JSRuntime.InvokeVoidAsync("downloadFileFromStream", fileName, Convert.ToBase64String(stream.ToArray()));
     }
 }

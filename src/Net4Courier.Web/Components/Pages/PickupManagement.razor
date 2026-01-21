@@ -3,10 +3,12 @@
 @inject NavigationManager NavigationManager
 @inject IDialogService DialogService
 @inject ISnackbar Snackbar
+@inject IJSRuntime JSRuntime
 @using Microsoft.EntityFrameworkCore
 @using Net4Courier.Infrastructure.Data
 @using Net4Courier.Operations.Entities
 @using Net4Courier.Masters.Entities
+@using ClosedXML.Excel
 
 <PageTitle>Pickup Management - Net4Courier</PageTitle>
 
@@ -37,9 +39,13 @@
         <MudItem xs="12" sm="6" md="2">
             <MudButton Variant="Variant.Outlined" Color="Color.Primary" OnClick="Search" FullWidth="true" Class="mt-1">Search</MudButton>
         </MudItem>
-        <MudItem xs="12" sm="6" md="2">
+        <MudItem xs="12" sm="6" md="1">
+            <MudButton Variant="Variant.Outlined" Color="Color.Success" StartIcon="@Icons.Material.Filled.FileDownload" 
+                       OnClick="DownloadExcel" Disabled="@(!_pickups.Any())" FullWidth="true" Class="mt-1">Excel</MudButton>
+        </MudItem>
+        <MudItem xs="12" sm="6" md="1">
             <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add" Href="/pickup-request-new" FullWidth="true" Class="mt-1">
-                New Pickup
+                New
             </MudButton>
         </MudItem>
     </MudGrid>
@@ -275,5 +281,50 @@
             await Search();
             await LoadStatusCounts();
         }
+    }
+
+    private async Task DownloadExcel()
+    {
+        if (!_pickups.Any()) return;
+
+        using var workbook = new XLWorkbook();
+        var worksheet = workbook.Worksheets.Add("Pickups");
+
+        worksheet.Cell(1, 1).Value = "Pickup Management";
+        worksheet.Cell(1, 1).Style.Font.Bold = true;
+        worksheet.Cell(1, 1).Style.Font.FontSize = 14;
+        worksheet.Range(1, 1, 1, 7).Merge();
+
+        var headers = new[] { "Pickup No", "Date", "Customer", "Address", "Est Pieces", "Status", "Courier" };
+        for (int i = 0; i < headers.Length; i++)
+        {
+            worksheet.Cell(3, i + 1).Value = headers[i];
+            worksheet.Cell(3, i + 1).Style.Font.Bold = true;
+            worksheet.Cell(3, i + 1).Style.Fill.BackgroundColor = XLColor.LightGray;
+        }
+
+        int row = 4;
+        foreach (var pickup in _pickups)
+        {
+            worksheet.Cell(row, 1).Value = pickup.PickupNo ?? "";
+            worksheet.Cell(row, 2).Value = pickup.RequestDate.ToString("dd/MM/yyyy HH:mm");
+            worksheet.Cell(row, 3).Value = pickup.CustomerName ?? "";
+            worksheet.Cell(row, 4).Value = $"{pickup.City}, {pickup.PostalCode}";
+            worksheet.Cell(row, 5).Value = pickup.EstimatedPieces;
+            worksheet.Cell(row, 6).Value = GetStatusText(pickup.Status);
+            worksheet.Cell(row, 7).Value = pickup.CourierName ?? "-";
+            row++;
+        }
+
+        worksheet.Row(row).Style.Font.Bold = true;
+        worksheet.Cell(row, 4).Value = "Total:";
+        worksheet.Cell(row, 5).Value = _pickups.Sum(p => p.EstimatedPieces);
+
+        worksheet.Columns().AdjustToContents();
+
+        using var stream = new MemoryStream();
+        workbook.SaveAs(stream);
+        var fileName = $"Pickups_{DateTime.Now:yyyyMMdd_HHmmss}.xlsx";
+        await JSRuntime.InvokeVoidAsync("downloadFileFromStream", fileName, Convert.ToBase64String(stream.ToArray()));
     }
 }

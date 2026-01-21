@@ -3,11 +3,13 @@
 @inject ISnackbar Snackbar
 @inject IDialogService DialogService
 @inject NavigationManager Navigation
+@inject IJSRuntime JSRuntime
 @using Microsoft.EntityFrameworkCore
 @using Net4Courier.Infrastructure.Data
 @using Net4Courier.Operations.Entities
 @using Net4Courier.Masters.Entities
 @using static Net4Courier.Masters.Entities.Party
+@using ClosedXML.Excel
 
 <PageTitle>Outscan / DRS Management - Net4Courier</PageTitle>
 
@@ -60,10 +62,14 @@
 
 <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center" Class="mb-4">
     <MudText Typo="Typo.subtitle1">@_drsList.Count Delivery Run Sheets</MudText>
-    <MudButton Variant="Variant.Filled" Color="Color.Success" StartIcon="@Icons.Material.Filled.Add"
-               OnClick="CreateNewDRS">
-        Create New DRS
-    </MudButton>
+    <MudStack Row="true" Spacing="2">
+        <MudButton Variant="Variant.Outlined" Color="Color.Success" StartIcon="@Icons.Material.Filled.FileDownload"
+                   OnClick="DownloadExcel" Disabled="@(!_drsList.Any())">Excel</MudButton>
+        <MudButton Variant="Variant.Filled" Color="Color.Success" StartIcon="@Icons.Material.Filled.Add"
+                   OnClick="CreateNewDRS">
+            Create New DRS
+        </MudButton>
+    </MudStack>
 </MudStack>
 
 <MudTable Items="@_drsList" Hover="true" Striped="true" Dense="true" Loading="@_loading">
@@ -255,5 +261,52 @@
     private void PrintDRS(DRS drs)
     {
         Navigation.NavigateTo($"/drs-print/{drs.Id}");
+    }
+
+    private async Task DownloadExcel()
+    {
+        if (!_drsList.Any()) return;
+
+        using var workbook = new XLWorkbook();
+        var worksheet = workbook.Worksheets.Add("DRS List");
+
+        worksheet.Cell(1, 1).Value = "Outscan / Delivery Run Sheet";
+        worksheet.Cell(1, 1).Style.Font.Bold = true;
+        worksheet.Cell(1, 1).Style.Font.FontSize = 14;
+        worksheet.Range(1, 1, 1, 8).Merge();
+
+        var headers = new[] { "DRS No", "Date", "Courier", "Vehicle", "AWBs", "Delivered", "COD", "Status" };
+        for (int i = 0; i < headers.Length; i++)
+        {
+            worksheet.Cell(3, i + 1).Value = headers[i];
+            worksheet.Cell(3, i + 1).Style.Font.Bold = true;
+            worksheet.Cell(3, i + 1).Style.Fill.BackgroundColor = XLColor.LightGray;
+        }
+
+        int row = 4;
+        foreach (var drs in _drsList)
+        {
+            worksheet.Cell(row, 1).Value = drs.DRSNo ?? "";
+            worksheet.Cell(row, 2).Value = drs.DRSDate.ToString("dd MMM yyyy");
+            worksheet.Cell(row, 3).Value = drs.DeliveryEmployeeName ?? "";
+            worksheet.Cell(row, 4).Value = drs.VehicleNo ?? "";
+            worksheet.Cell(row, 5).Value = drs.TotalAWBs ?? 0;
+            worksheet.Cell(row, 6).Value = $"{drs.DeliveredCount}/{drs.TotalAWBs ?? 0}";
+            worksheet.Cell(row, 7).Value = drs.TotalCOD ?? 0;
+            worksheet.Cell(row, 8).Value = drs.Status == DRSStatus.Closed ? "Closed" : "Open";
+            row++;
+        }
+
+        worksheet.Row(row).Style.Font.Bold = true;
+        worksheet.Cell(row, 4).Value = "Total:";
+        worksheet.Cell(row, 5).Value = _drsList.Sum(d => d.TotalAWBs ?? 0);
+        worksheet.Cell(row, 7).Value = _drsList.Sum(d => d.TotalCOD ?? 0);
+
+        worksheet.Columns().AdjustToContents();
+
+        using var stream = new MemoryStream();
+        workbook.SaveAs(stream);
+        var fileName = $"DRS_List_{DateTime.Now:yyyyMMdd_HHmmss}.xlsx";
+        await JSRuntime.InvokeVoidAsync("downloadFileFromStream", fileName, Convert.ToBase64String(stream.ToArray()));
     }
 }

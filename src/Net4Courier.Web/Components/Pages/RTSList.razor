@@ -3,10 +3,12 @@
 @inject NavigationManager NavigationManager
 @inject IDialogService DialogService
 @inject ISnackbar Snackbar
+@inject IJSRuntime JSRuntime
 @using Microsoft.EntityFrameworkCore
 @using Net4Courier.Infrastructure.Data
 @using Net4Courier.Operations.Entities
 @using Net4Courier.Kernel.Enums
+@using ClosedXML.Excel
 
 <PageTitle>Return to Shipper (RTS) - Net4Courier</PageTitle>
 
@@ -30,6 +32,8 @@
         </MudSelect>
         <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="Search" StartIcon="@Icons.Material.Filled.Search">Search</MudButton>
         <MudButton Variant="Variant.Outlined" Color="Color.Default" OnClick="ClearFilters">Clear</MudButton>
+        <MudButton Variant="Variant.Outlined" Color="Color.Success" StartIcon="@Icons.Material.Filled.FileDownload" 
+                   OnClick="DownloadExcel" Disabled="@(!_rtsShipments.Any())">Excel</MudButton>
     </MudStack>
 </MudPaper>
 
@@ -184,5 +188,48 @@
     private async Task PrintRTSSlip(long rtsId)
     {
         Snackbar.Add("RTS Slip printing - Feature coming soon", Severity.Info);
+    }
+
+    private async Task DownloadExcel()
+    {
+        if (!_rtsShipments.Any()) return;
+
+        using var workbook = new XLWorkbook();
+        var worksheet = workbook.Worksheets.Add("RTS Shipments");
+
+        worksheet.Cell(1, 1).Value = "Return to Shipper (RTS) List";
+        worksheet.Cell(1, 1).Style.Font.Bold = true;
+        worksheet.Cell(1, 1).Style.Font.FontSize = 14;
+        worksheet.Range(1, 1, 1, 9).Merge();
+
+        var headers = new[] { "AWB", "Original AWB", "Date", "Shipper", "Receiver", "Weight", "Charge Mode", "Status", "Amount" };
+        for (int i = 0; i < headers.Length; i++)
+        {
+            worksheet.Cell(3, i + 1).Value = headers[i];
+            worksheet.Cell(3, i + 1).Style.Font.Bold = true;
+            worksheet.Cell(3, i + 1).Style.Fill.BackgroundColor = XLColor.LightGray;
+        }
+
+        int row = 4;
+        foreach (var rts in _rtsShipments)
+        {
+            worksheet.Cell(row, 1).Value = rts.AWBNo;
+            worksheet.Cell(row, 2).Value = rts.OriginalShipment?.AWBNo ?? "";
+            worksheet.Cell(row, 3).Value = rts.RTSCreatedAt?.ToString("dd/MM/yyyy HH:mm") ?? "";
+            worksheet.Cell(row, 4).Value = rts.Consignor ?? "";
+            worksheet.Cell(row, 5).Value = rts.Consignee ?? "";
+            worksheet.Cell(row, 6).Value = rts.ChargeableWeight ?? 0;
+            worksheet.Cell(row, 7).Value = rts.RTSChargeMode.ToString();
+            worksheet.Cell(row, 8).Value = rts.CourierStatusId.ToString();
+            worksheet.Cell(row, 9).Value = rts.RTSChargeMode == RTSChargeMode.Free ? 0 : (rts.NetTotal ?? 0);
+            row++;
+        }
+
+        worksheet.Columns().AdjustToContents();
+
+        using var stream = new MemoryStream();
+        workbook.SaveAs(stream);
+        var fileName = $"RTS_List_{DateTime.Now:yyyyMMdd_HHmmss}.xlsx";
+        await JSRuntime.InvokeVoidAsync("downloadFileFromStream", fileName, Convert.ToBase64String(stream.ToArray()));
     }
 }

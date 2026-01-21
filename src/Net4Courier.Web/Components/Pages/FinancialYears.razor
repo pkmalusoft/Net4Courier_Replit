@@ -3,9 +3,11 @@
 @inject IDialogService DialogService
 @inject ISnackbar Snackbar
 @inject NavigationManager NavigationManager
+@inject IJSRuntime JSRuntime
 @using Microsoft.EntityFrameworkCore
 @using Net4Courier.Infrastructure.Data
 @using Net4Courier.Masters.Entities
+@using ClosedXML.Excel
 
 <PageTitle>Financial Years - Net4Courier</PageTitle>
 
@@ -15,9 +17,13 @@
     <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
         <MudTextField @bind-Value="_searchString" Placeholder="Search financial years..." Adornment="Adornment.Start" 
                       AdornmentIcon="@Icons.Material.Filled.Search" IconSize="Size.Medium" Class="mt-0" Immediate="true" />
-        <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add" OnClick="OpenCreateDialog">
-            Add Financial Year
-        </MudButton>
+        <MudStack Row="true" Spacing="2">
+            <MudButton Variant="Variant.Outlined" Color="Color.Success" StartIcon="@Icons.Material.Filled.FileDownload" 
+                       OnClick="DownloadExcel" Disabled="@(!_financialYears.Any())">Excel</MudButton>
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add" OnClick="OpenCreateDialog">
+                Add Financial Year
+            </MudButton>
+        </MudStack>
     </MudStack>
 </MudPaper>
 
@@ -157,5 +163,45 @@
     private void ViewPeriods(long yearId)
     {
         NavigationManager.NavigateTo($"/financial-periods?yearId={yearId}");
+    }
+
+    private async Task DownloadExcel()
+    {
+        if (!_financialYears.Any()) return;
+
+        using var workbook = new XLWorkbook();
+        var worksheet = workbook.Worksheets.Add("Financial Years");
+
+        worksheet.Cell(1, 1).Value = "Financial Years";
+        worksheet.Cell(1, 1).Style.Font.Bold = true;
+        worksheet.Cell(1, 1).Style.Font.FontSize = 14;
+        worksheet.Range(1, 1, 1, 6).Merge();
+
+        var headers = new[] { "Name", "Company", "Start Date", "End Date", "Current", "Status" };
+        for (int i = 0; i < headers.Length; i++)
+        {
+            worksheet.Cell(3, i + 1).Value = headers[i];
+            worksheet.Cell(3, i + 1).Style.Font.Bold = true;
+            worksheet.Cell(3, i + 1).Style.Fill.BackgroundColor = XLColor.LightGray;
+        }
+
+        int row = 4;
+        foreach (var fy in _financialYears)
+        {
+            worksheet.Cell(row, 1).Value = fy.Name ?? "";
+            worksheet.Cell(row, 2).Value = fy.Company?.Name ?? "-";
+            worksheet.Cell(row, 3).Value = fy.StartDate.ToString("dd/MM/yyyy");
+            worksheet.Cell(row, 4).Value = fy.EndDate.ToString("dd/MM/yyyy");
+            worksheet.Cell(row, 5).Value = fy.IsCurrent ? "Yes" : "No";
+            worksheet.Cell(row, 6).Value = fy.IsClosed ? "Closed" : "Open";
+            row++;
+        }
+
+        worksheet.Columns().AdjustToContents();
+
+        using var stream = new MemoryStream();
+        workbook.SaveAs(stream);
+        var fileName = $"FinancialYears_{DateTime.Now:yyyyMMdd_HHmmss}.xlsx";
+        await JSRuntime.InvokeVoidAsync("downloadFileFromStream", fileName, Convert.ToBase64String(stream.ToArray()));
     }
 }

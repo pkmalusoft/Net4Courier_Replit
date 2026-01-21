@@ -2,9 +2,11 @@
 @inject ApplicationDbContext DbContext
 @inject IDialogService DialogService
 @inject ISnackbar Snackbar
+@inject IJSRuntime JSRuntime
 @using Microsoft.EntityFrameworkCore
 @using Net4Courier.Infrastructure.Data
 @using Net4Courier.Masters.Entities
+@using ClosedXML.Excel
 
 <PageTitle>Customers - Net4Courier</PageTitle>
 
@@ -17,6 +19,8 @@
         <MudStack Row="true" Spacing="2">
             <MudTextField @bind-Value="_searchString" Placeholder="Search..." Adornment="Adornment.Start" 
                           AdornmentIcon="@Icons.Material.Filled.Search" IconSize="Size.Medium" Class="mt-0" Immediate="true" Style="width:300px" />
+            <MudButton Variant="Variant.Outlined" Color="Color.Success" StartIcon="@Icons.Material.Filled.FileDownload" 
+                       OnClick="DownloadExcel" Disabled="@(!_parties.Any())">Excel</MudButton>
             <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add" OnClick="OpenCreateDialog">
                 Add Customer
             </MudButton>
@@ -152,5 +156,50 @@
             await LoadParties();
             Snackbar.Add("Party deleted successfully", Severity.Success);
         }
+    }
+
+    private async Task DownloadExcel()
+    {
+        if (!_parties.Any()) return;
+
+        using var workbook = new XLWorkbook();
+        var worksheet = workbook.Worksheets.Add("Customers");
+
+        worksheet.Cell(1, 1).Value = "Customers List";
+        worksheet.Cell(1, 1).Style.Font.Bold = true;
+        worksheet.Cell(1, 1).Style.Font.FontSize = 14;
+        worksheet.Range(1, 1, 1, 7).Merge();
+
+        var headers = new[] { "Name", "Code", "Type", "Contact", "Phone", "Credit Limit", "Status" };
+        for (int i = 0; i < headers.Length; i++)
+        {
+            worksheet.Cell(3, i + 1).Value = headers[i];
+            worksheet.Cell(3, i + 1).Style.Font.Bold = true;
+            worksheet.Cell(3, i + 1).Style.Fill.BackgroundColor = XLColor.LightGray;
+        }
+
+        int row = 4;
+        foreach (var party in FilteredParties)
+        {
+            worksheet.Cell(row, 1).Value = party.Name ?? "";
+            worksheet.Cell(row, 2).Value = party.Code ?? "";
+            worksheet.Cell(row, 3).Value = party.PartyType.ToString();
+            worksheet.Cell(row, 4).Value = party.ContactPerson ?? "";
+            worksheet.Cell(row, 5).Value = party.Mobile ?? party.Phone ?? "";
+            worksheet.Cell(row, 6).Value = party.CreditLimit;
+            worksheet.Cell(row, 7).Value = party.IsActive ? "Active" : "Inactive";
+            row++;
+        }
+
+        worksheet.Row(row).Style.Font.Bold = true;
+        worksheet.Cell(row, 5).Value = "Total:";
+        worksheet.Cell(row, 6).Value = FilteredParties.Sum(p => p.CreditLimit);
+
+        worksheet.Columns().AdjustToContents();
+
+        using var stream = new MemoryStream();
+        workbook.SaveAs(stream);
+        var fileName = $"Customers_{DateTime.Now:yyyyMMdd_HHmmss}.xlsx";
+        await JSRuntime.InvokeVoidAsync("downloadFileFromStream", fileName, Convert.ToBase64String(stream.ToArray()));
     }
 }
