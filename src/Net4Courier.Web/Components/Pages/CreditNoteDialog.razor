@@ -1,0 +1,163 @@
+@inject ApplicationDbContext DbContext
+@using Microsoft.EntityFrameworkCore
+@using Net4Courier.Infrastructure.Data
+@using Net4Courier.Finance.Entities
+@using Net4Courier.Masters.Entities
+
+<MudDialog>
+    <TitleContent>
+        <MudText Typo="Typo.h6">
+            <MudIcon Icon="@Icons.Material.Filled.ReceiptLong" Class="mr-2" />
+            @(IsNew ? "New Credit Note" : "Edit Credit Note")
+        </MudText>
+    </TitleContent>
+    <DialogContent>
+        <MudForm @ref="_form" @bind-IsValid="_formIsValid">
+            <MudGrid>
+                <MudItem xs="12" md="6">
+                    <MudTextField @bind-Value="CreditNote.CreditNoteNo" Label="Credit Note No" ReadOnly="@(!IsNew)"
+                                  Variant="Variant.Outlined" HelperText="@(IsNew ? "Auto-generated if blank" : "")" />
+                </MudItem>
+                <MudItem xs="12" md="6">
+                    <MudDatePicker @bind-Date="_creditNoteDate" Label="Date" DateFormat="dd-MMM-yyyy" Required="true"
+                                   Variant="Variant.Outlined" />
+                </MudItem>
+                <MudItem xs="12" md="6">
+                    <MudSelect T="long?" @bind-Value="CreditNote.CustomerId" Label="Customer" Required="true" 
+                               RequiredError="Customer is required" Variant="Variant.Outlined" AnchorOrigin="Origin.BottomCenter">
+                        @foreach (var customer in _customers)
+                        {
+                            <MudSelectItem T="long?" Value="@customer.Id">@customer.Name</MudSelectItem>
+                        }
+                    </MudSelect>
+                </MudItem>
+                <MudItem xs="12" md="6">
+                    <MudSelect T="long?" @bind-Value="CreditNote.InvoiceId" Label="Related Invoice (Optional)" Clearable="true"
+                               Variant="Variant.Outlined" AnchorOrigin="Origin.BottomCenter">
+                        @foreach (var invoice in _invoices)
+                        {
+                            <MudSelectItem T="long?" Value="@invoice.Id">@invoice.InvoiceNo - @invoice.CustomerName</MudSelectItem>
+                        }
+                    </MudSelect>
+                </MudItem>
+                <MudItem xs="12" md="6">
+                    <MudSelect T="CreditNoteReason" @bind-Value="CreditNote.Reason" Label="Reason" Required="true"
+                               Variant="Variant.Outlined" AnchorOrigin="Origin.BottomCenter">
+                        @foreach (var reason in Enum.GetValues<CreditNoteReason>())
+                        {
+                            <MudSelectItem T="CreditNoteReason" Value="@reason">@reason</MudSelectItem>
+                        }
+                    </MudSelect>
+                </MudItem>
+                <MudItem xs="12" md="6">
+                    <MudTextField @bind-Value="CreditNote.ReasonDetails" Label="Reason Details" Variant="Variant.Outlined" />
+                </MudItem>
+                <MudItem xs="12" md="4">
+                    <MudNumericField @bind-Value="CreditNote.Amount" Label="Amount" Required="true" Min="0.01M"
+                                     Variant="Variant.Outlined" Format="N2" />
+                </MudItem>
+                <MudItem xs="12" md="4">
+                    <MudNumericField @bind-Value="CreditNote.TaxPercent" Label="Tax %" Min="0" Max="100"
+                                     Variant="Variant.Outlined" Format="N2" />
+                </MudItem>
+                <MudItem xs="12" md="4">
+                    <MudNumericField Value="@CalculatedNetAmount" Label="Net Amount" ReadOnly="true"
+                                     Variant="Variant.Outlined" Format="N2" />
+                </MudItem>
+                <MudItem xs="12">
+                    <MudTextField @bind-Value="CreditNote.Remarks" Label="Remarks" Lines="2" Variant="Variant.Outlined" />
+                </MudItem>
+            </MudGrid>
+        </MudForm>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Cancel">Cancel</MudButton>
+        <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="Save" Disabled="!_formIsValid">Save</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] MudDialogInstance MudDialog { get; set; } = null!;
+    [Parameter] public CreditNote CreditNote { get; set; } = new();
+    [Parameter] public bool IsNew { get; set; }
+
+    private MudForm _form = null!;
+    private bool _formIsValid;
+    private List<Party> _customers = new();
+    private List<Invoice> _invoices = new();
+    private DateTime? _creditNoteDate;
+
+    private decimal CalculatedNetAmount
+    {
+        get
+        {
+            var taxAmount = CreditNote.Amount * (CreditNote.TaxPercent ?? 0) / 100;
+            return CreditNote.Amount + taxAmount;
+        }
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        _customers = await DbContext.Parties
+            .Where(p => p.PartyType == PartyType.Customer && !p.IsDeleted && p.IsActive)
+            .OrderBy(p => p.Name)
+            .ToListAsync();
+
+        _invoices = await DbContext.Invoices
+            .Where(i => !i.IsDeleted)
+            .OrderByDescending(i => i.InvoiceDate)
+            .Take(100)
+            .ToListAsync();
+
+        if (IsNew)
+        {
+            _creditNoteDate = DateTime.Today;
+        }
+        else
+        {
+            _creditNoteDate = CreditNote.CreditNoteDate;
+        }
+    }
+
+    private async Task Save()
+    {
+        await _form.Validate();
+        if (!_formIsValid) return;
+
+        CreditNote.CreditNoteDate = _creditNoteDate ?? DateTime.Today;
+        
+        var customer = _customers.FirstOrDefault(c => c.Id == CreditNote.CustomerId);
+        CreditNote.CustomerName = customer?.Name;
+
+        if (CreditNote.InvoiceId.HasValue)
+        {
+            var invoice = _invoices.FirstOrDefault(i => i.Id == CreditNote.InvoiceId);
+            CreditNote.InvoiceNo = invoice?.InvoiceNo;
+        }
+
+        CreditNote.TaxAmount = CreditNote.Amount * (CreditNote.TaxPercent ?? 0) / 100;
+        CreditNote.NetAmount = CreditNote.Amount + CreditNote.TaxAmount;
+
+        if (IsNew)
+        {
+            if (string.IsNullOrEmpty(CreditNote.CreditNoteNo))
+            {
+                var maxNo = await DbContext.CreditNotes.MaxAsync(c => (int?)c.Id) ?? 0;
+                CreditNote.CreditNoteNo = $"CN-{(maxNo + 1):D6}";
+            }
+            CreditNote.Status = CreditNoteStatus.Draft;
+            CreditNote.CreatedAt = DateTime.UtcNow;
+            DbContext.CreditNotes.Add(CreditNote);
+        }
+        else
+        {
+            CreditNote.ModifiedAt = DateTime.UtcNow;
+            DbContext.CreditNotes.Update(CreditNote);
+        }
+
+        await DbContext.SaveChangesAsync();
+        MudDialog.Close(DialogResult.Ok(CreditNote));
+    }
+
+    private void Cancel() => MudDialog.Cancel();
+}

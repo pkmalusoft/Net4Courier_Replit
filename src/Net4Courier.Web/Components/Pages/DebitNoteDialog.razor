@@ -1,0 +1,146 @@
+@inject ApplicationDbContext DbContext
+@using Microsoft.EntityFrameworkCore
+@using Net4Courier.Infrastructure.Data
+@using Net4Courier.Finance.Entities
+@using Net4Courier.Masters.Entities
+
+<MudDialog>
+    <TitleContent>
+        <MudText Typo="Typo.h6">
+            <MudIcon Icon="@Icons.Material.Filled.Receipt" Class="mr-2" />
+            @(IsNew ? "New Debit Note" : "Edit Debit Note")
+        </MudText>
+    </TitleContent>
+    <DialogContent>
+        <MudForm @ref="_form" @bind-IsValid="_formIsValid">
+            <MudGrid>
+                <MudItem xs="12" md="6">
+                    <MudTextField @bind-Value="DebitNote.DebitNoteNo" Label="Debit Note No" ReadOnly="@(!IsNew)"
+                                  Variant="Variant.Outlined" HelperText="@(IsNew ? "Auto-generated if blank" : "")" />
+                </MudItem>
+                <MudItem xs="12" md="6">
+                    <MudDatePicker @bind-Date="_debitNoteDate" Label="Date" DateFormat="dd-MMM-yyyy" Required="true"
+                                   Variant="Variant.Outlined" />
+                </MudItem>
+                <MudItem xs="12" md="6">
+                    <MudSelect T="long?" @bind-Value="DebitNote.SupplierId" Label="Supplier" Required="true" 
+                               RequiredError="Supplier is required" Variant="Variant.Outlined" AnchorOrigin="Origin.BottomCenter">
+                        @foreach (var supplier in _suppliers)
+                        {
+                            <MudSelectItem T="long?" Value="@supplier.Id">@supplier.Name</MudSelectItem>
+                        }
+                    </MudSelect>
+                </MudItem>
+                <MudItem xs="12" md="6">
+                    <MudTextField @bind-Value="DebitNote.BillNo" Label="Related Bill No (Optional)" Variant="Variant.Outlined" />
+                </MudItem>
+                <MudItem xs="12" md="6">
+                    <MudSelect T="DebitNoteReason" @bind-Value="DebitNote.Reason" Label="Reason" Required="true"
+                               Variant="Variant.Outlined" AnchorOrigin="Origin.BottomCenter">
+                        @foreach (var reason in Enum.GetValues<DebitNoteReason>())
+                        {
+                            <MudSelectItem T="DebitNoteReason" Value="@reason">@reason</MudSelectItem>
+                        }
+                    </MudSelect>
+                </MudItem>
+                <MudItem xs="12" md="6">
+                    <MudTextField @bind-Value="DebitNote.ReasonDetails" Label="Reason Details" Variant="Variant.Outlined" />
+                </MudItem>
+                <MudItem xs="12" md="4">
+                    <MudNumericField @bind-Value="DebitNote.Amount" Label="Amount" Required="true" Min="0.01M"
+                                     Variant="Variant.Outlined" Format="N2" />
+                </MudItem>
+                <MudItem xs="12" md="4">
+                    <MudNumericField @bind-Value="DebitNote.TaxPercent" Label="Tax %" Min="0" Max="100"
+                                     Variant="Variant.Outlined" Format="N2" />
+                </MudItem>
+                <MudItem xs="12" md="4">
+                    <MudNumericField Value="@CalculatedNetAmount" Label="Net Amount" ReadOnly="true"
+                                     Variant="Variant.Outlined" Format="N2" />
+                </MudItem>
+                <MudItem xs="12">
+                    <MudTextField @bind-Value="DebitNote.Remarks" Label="Remarks" Lines="2" Variant="Variant.Outlined" />
+                </MudItem>
+            </MudGrid>
+        </MudForm>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Cancel">Cancel</MudButton>
+        <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="Save" Disabled="!_formIsValid">Save</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] MudDialogInstance MudDialog { get; set; } = null!;
+    [Parameter] public DebitNote DebitNote { get; set; } = new();
+    [Parameter] public bool IsNew { get; set; }
+
+    private MudForm _form = null!;
+    private bool _formIsValid;
+    private List<Party> _suppliers = new();
+    private DateTime? _debitNoteDate;
+
+    private PartyType[] _supplierTypes = new[] { PartyType.Supplier, PartyType.ForwardingAgent, PartyType.CoLoader, PartyType.DeliveryAgent };
+
+    private decimal CalculatedNetAmount
+    {
+        get
+        {
+            var taxAmount = DebitNote.Amount * (DebitNote.TaxPercent ?? 0) / 100;
+            return DebitNote.Amount + taxAmount;
+        }
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        _suppliers = await DbContext.Parties
+            .Where(p => _supplierTypes.Contains(p.PartyType) && !p.IsDeleted && p.IsActive)
+            .OrderBy(p => p.Name)
+            .ToListAsync();
+
+        if (IsNew)
+        {
+            _debitNoteDate = DateTime.Today;
+        }
+        else
+        {
+            _debitNoteDate = DebitNote.DebitNoteDate;
+        }
+    }
+
+    private async Task Save()
+    {
+        await _form.Validate();
+        if (!_formIsValid) return;
+
+        DebitNote.DebitNoteDate = _debitNoteDate ?? DateTime.Today;
+        
+        var supplier = _suppliers.FirstOrDefault(s => s.Id == DebitNote.SupplierId);
+        DebitNote.SupplierName = supplier?.Name;
+
+        DebitNote.TaxAmount = DebitNote.Amount * (DebitNote.TaxPercent ?? 0) / 100;
+        DebitNote.NetAmount = DebitNote.Amount + DebitNote.TaxAmount;
+
+        if (IsNew)
+        {
+            if (string.IsNullOrEmpty(DebitNote.DebitNoteNo))
+            {
+                var maxNo = await DbContext.DebitNotes.MaxAsync(d => (int?)d.Id) ?? 0;
+                DebitNote.DebitNoteNo = $"DN-{(maxNo + 1):D6}";
+            }
+            DebitNote.Status = DebitNoteStatus.Draft;
+            DebitNote.CreatedAt = DateTime.UtcNow;
+            DbContext.DebitNotes.Add(DebitNote);
+        }
+        else
+        {
+            DebitNote.ModifiedAt = DateTime.UtcNow;
+            DbContext.DebitNotes.Update(DebitNote);
+        }
+
+        await DbContext.SaveChangesAsync();
+        MudDialog.Close(DialogResult.Ok(DebitNote));
+    }
+
+    private void Cancel() => MudDialog.Cancel();
+}

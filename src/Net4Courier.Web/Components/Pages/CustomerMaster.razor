@@ -1,0 +1,196 @@
+@page "/customer-master"
+@inject ApplicationDbContext DbContext
+@inject IDialogService DialogService
+@inject ISnackbar Snackbar
+@inject IJSRuntime JS
+@using Microsoft.EntityFrameworkCore
+@using Net4Courier.Infrastructure.Data
+@using Net4Courier.Masters.Entities
+@using ClosedXML.Excel
+
+<PageTitle>Customer Master - Net4Courier</PageTitle>
+
+<MudPaper Class="pa-4 mb-4" Elevation="2">
+    <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
+        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+            <MudText Typo="Typo.h5">Customer Master</MudText>
+            <MudChip T="string" Size="Size.Small" Color="Color.Success">Account Receivable</MudChip>
+        </MudStack>
+        <MudStack Row="true" Spacing="2">
+            <MudTextField @bind-Value="_searchString" Placeholder="Search..." Adornment="Adornment.Start" 
+                          AdornmentIcon="@Icons.Material.Filled.Search" IconSize="Size.Medium" Class="mt-0" Immediate="true" Style="width:300px" />
+            <MudButton Variant="Variant.Filled" Color="Color.Success" StartIcon="@Icons.Material.Filled.Download" 
+                       OnClick="DownloadExcel" Disabled="@(!FilteredCustomers.Any())">Excel</MudButton>
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add" OnClick="OpenCreateDialog">
+                Add Customer
+            </MudButton>
+        </MudStack>
+    </MudStack>
+    <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mt-2">
+        Manage customers who pay the company for courier services. Customers are account receivables.
+    </MudText>
+</MudPaper>
+
+<MudPaper Elevation="2">
+    <MudTable Items="@FilteredCustomers" Hover="true" Striped="true" Loading="@_loading" LoadingProgressColor="Color.Primary" Dense="true">
+        <HeaderContent>
+            <MudTh><MudTableSortLabel SortBy="new Func<Party, object>(x => x.Name)">Customer Name</MudTableSortLabel></MudTh>
+            <MudTh>Code</MudTh>
+            <MudTh>Contact Person</MudTh>
+            <MudTh>Email</MudTh>
+            <MudTh>Phone</MudTh>
+            <MudTh Style="text-align:right">Credit Limit</MudTh>
+            <MudTh Style="text-align:center">Credit Days</MudTh>
+            <MudTh>Status</MudTh>
+            <MudTh Style="width: 120px;">Actions</MudTh>
+        </HeaderContent>
+        <RowTemplate>
+            <MudTd DataLabel="Customer Name">
+                <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="1">
+                    <MudIcon Icon="@Icons.Material.Filled.Business" Size="Size.Small" Color="Color.Primary" />
+                    <MudText>@context.Name</MudText>
+                </MudStack>
+            </MudTd>
+            <MudTd DataLabel="Code">@context.Code</MudTd>
+            <MudTd DataLabel="Contact">@context.ContactPerson</MudTd>
+            <MudTd DataLabel="Email">@context.Email</MudTd>
+            <MudTd DataLabel="Phone">@(context.Mobile ?? context.Phone)</MudTd>
+            <MudTd DataLabel="Credit Limit" Style="text-align:right">@context.CreditLimit.ToString("N0")</MudTd>
+            <MudTd DataLabel="Credit Days" Style="text-align:center">@context.CreditDays</MudTd>
+            <MudTd DataLabel="Status">
+                <MudChip T="string" Color="@(context.IsActive ? Color.Success : Color.Error)" Size="Size.Small">
+                    @(context.IsActive ? "Active" : "Inactive")
+                </MudChip>
+            </MudTd>
+            <MudTd>
+                <MudIconButton Icon="@Icons.Material.Filled.Edit" Size="Size.Small" Color="Color.Primary" OnClick="@(() => OpenEditDialog(context))" Title="Edit" />
+                <MudIconButton Icon="@Icons.Material.Filled.LocationOn" Size="Size.Small" Color="Color.Info" OnClick="@(() => OpenAddressesDialog(context))" Title="Addresses" />
+                <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" Color="Color.Error" OnClick="@(() => DeleteCustomer(context))" Title="Delete" />
+            </MudTd>
+        </RowTemplate>
+        <NoRecordsContent>
+            <MudText>No customers found.</MudText>
+        </NoRecordsContent>
+    </MudTable>
+</MudPaper>
+
+@code {
+    private List<Party> _customers = new();
+    private bool _loading = true;
+    private string _searchString = "";
+
+    private IEnumerable<Party> FilteredCustomers => _customers.Where(FilterFunc);
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadCustomers();
+    }
+
+    private async Task LoadCustomers()
+    {
+        _loading = true;
+        _customers = await DbContext.Parties
+            .Include(p => p.Company)
+            .Where(p => p.PartyType == PartyType.Customer && !p.IsDeleted)
+            .OrderBy(p => p.Name)
+            .ToListAsync();
+        _loading = false;
+    }
+
+    private bool FilterFunc(Party party)
+    {
+        if (string.IsNullOrWhiteSpace(_searchString))
+            return true;
+        
+        return party.Name.Contains(_searchString, StringComparison.OrdinalIgnoreCase) ||
+               (party.Code?.Contains(_searchString, StringComparison.OrdinalIgnoreCase) ?? false) ||
+               (party.ContactPerson?.Contains(_searchString, StringComparison.OrdinalIgnoreCase) ?? false) ||
+               (party.Email?.Contains(_searchString, StringComparison.OrdinalIgnoreCase) ?? false);
+    }
+
+    private async Task OpenCreateDialog()
+    {
+        var newParty = new Party { PartyType = PartyType.Customer };
+        var parameters = new DialogParameters<PartyDialog> { { x => x.Party, newParty }, { x => x.IsNew, true } };
+        var dialog = await DialogService.ShowAsync<PartyDialog>("Add Customer", parameters, new DialogOptions { MaxWidth = MaxWidth.Medium, FullWidth = true });
+        var result = await dialog.Result;
+        
+        if (!result!.Canceled)
+        {
+            await LoadCustomers();
+            Snackbar.Add("Customer created successfully", Severity.Success);
+        }
+    }
+
+    private async Task OpenEditDialog(Party customer)
+    {
+        var parameters = new DialogParameters<PartyDialog> { { x => x.Party, customer }, { x => x.IsNew, false } };
+        var dialog = await DialogService.ShowAsync<PartyDialog>("Edit Customer", parameters, new DialogOptions { MaxWidth = MaxWidth.Medium, FullWidth = true });
+        var result = await dialog.Result;
+        
+        if (!result!.Canceled)
+        {
+            await LoadCustomers();
+            Snackbar.Add("Customer updated successfully", Severity.Success);
+        }
+    }
+
+    private async Task OpenAddressesDialog(Party customer)
+    {
+        var parameters = new DialogParameters<PartyAddressesDialog> { { x => x.Party, customer } };
+        var dialog = await DialogService.ShowAsync<PartyAddressesDialog>("Customer Addresses", parameters, new DialogOptions { MaxWidth = MaxWidth.Large, FullWidth = true });
+        await dialog.Result;
+    }
+
+    private async Task DeleteCustomer(Party customer)
+    {
+        var confirm = await DialogService.ShowMessageBox("Confirm Delete", $"Are you sure you want to delete {customer.Name}?", yesText: "Delete", cancelText: "Cancel");
+        
+        if (confirm == true)
+        {
+            customer.IsDeleted = true;
+            await DbContext.SaveChangesAsync();
+            await LoadCustomers();
+            Snackbar.Add("Customer deleted successfully", Severity.Success);
+        }
+    }
+
+    private async Task DownloadExcel()
+    {
+        using var workbook = new XLWorkbook();
+        var worksheet = workbook.Worksheets.Add("Customers");
+        
+        var headers = new[] { "Code", "Customer Name", "Contact Person", "Email", "Phone", "Mobile", "Tax Number", "Credit Limit", "Credit Days", "Status" };
+        for (int i = 0; i < headers.Length; i++)
+        {
+            worksheet.Cell(1, i + 1).Value = headers[i];
+            worksheet.Cell(1, i + 1).Style.Font.Bold = true;
+            worksheet.Cell(1, i + 1).Style.Fill.BackgroundColor = XLColor.LightGray;
+        }
+
+        int row = 2;
+        foreach (var customer in FilteredCustomers)
+        {
+            worksheet.Cell(row, 1).Value = customer.Code;
+            worksheet.Cell(row, 2).Value = customer.Name;
+            worksheet.Cell(row, 3).Value = customer.ContactPerson;
+            worksheet.Cell(row, 4).Value = customer.Email;
+            worksheet.Cell(row, 5).Value = customer.Phone;
+            worksheet.Cell(row, 6).Value = customer.Mobile;
+            worksheet.Cell(row, 7).Value = customer.TaxNumber;
+            worksheet.Cell(row, 8).Value = customer.CreditLimit;
+            worksheet.Cell(row, 9).Value = customer.CreditDays;
+            worksheet.Cell(row, 10).Value = customer.IsActive ? "Active" : "Inactive";
+            row++;
+        }
+
+        worksheet.Columns().AdjustToContents();
+
+        using var stream = new MemoryStream();
+        workbook.SaveAs(stream);
+        var content = stream.ToArray();
+        var fileName = $"CustomerMaster_{DateTime.Now:yyyyMMdd_HHmmss}.xlsx";
+        
+        await JS.InvokeVoidAsync("downloadFileFromStream", fileName, Convert.ToBase64String(content));
+    }
+}

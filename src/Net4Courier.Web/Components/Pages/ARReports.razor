@@ -1,0 +1,496 @@
+@page "/ar-reports"
+@inject ApplicationDbContext DbContext
+@inject ISnackbar Snackbar
+@inject IJSRuntime JS
+@using Microsoft.EntityFrameworkCore
+@using Net4Courier.Infrastructure.Data
+@using Net4Courier.Finance.Entities
+@using Net4Courier.Masters.Entities
+@using Net4Courier.Kernel.Enums
+@using ClosedXML.Excel
+
+<PageTitle>AR Reports - Net4Courier</PageTitle>
+
+<MudPaper Class="pa-4 mb-4" Elevation="2">
+    <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
+        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+            <MudText Typo="Typo.h5">Account Receivable Reports</MudText>
+            <MudChip T="string" Size="Size.Small" Color="Color.Success">Account Receivable</MudChip>
+        </MudStack>
+    </MudStack>
+</MudPaper>
+
+<MudTabs Elevation="2" Rounded="true" ApplyEffectsToContainer="true" PanelClass="pa-4">
+    <MudTabPanel Text="Customer Statement">
+        <MudPaper Class="pa-4 mb-4" Elevation="0">
+            <MudStack Row="true" Spacing="3" AlignItems="AlignItems.Center">
+                <MudSelect T="long?" @bind-Value="_statementCustomerId" Label="Customer" Required="true" Style="min-width:250px">
+                    @foreach (var customer in _customers)
+                    {
+                        <MudSelectItem T="long?" Value="@customer.Id">@customer.Name</MudSelectItem>
+                    }
+                </MudSelect>
+                <MudDatePicker @bind-Date="_statementFromDate" Label="From Date" DateFormat="dd-MMM-yyyy" />
+                <MudDatePicker @bind-Date="_statementToDate" Label="To Date" DateFormat="dd-MMM-yyyy" />
+                <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="LoadCustomerStatement">Generate</MudButton>
+                <MudButton Variant="Variant.Filled" Color="Color.Success" StartIcon="@Icons.Material.Filled.Download" 
+                           OnClick="DownloadStatement" Disabled="@(_statementLines.Count == 0)">Excel</MudButton>
+            </MudStack>
+        </MudPaper>
+
+        @if (_selectedCustomer != null)
+        {
+            <MudPaper Class="pa-4 mb-4" Elevation="1">
+                <MudGrid>
+                    <MudItem xs="12" md="4">
+                        <MudText Typo="Typo.subtitle2" Color="Color.Secondary">Customer</MudText>
+                        <MudText Typo="Typo.h6">@_selectedCustomer.Name</MudText>
+                        <MudText Typo="Typo.body2">@_selectedCustomer.Email</MudText>
+                    </MudItem>
+                    <MudItem xs="12" md="4">
+                        <MudText Typo="Typo.subtitle2" Color="Color.Secondary">Opening Balance</MudText>
+                        <MudText Typo="Typo.h6">@_openingBalance.ToString("N2")</MudText>
+                    </MudItem>
+                    <MudItem xs="12" md="4">
+                        <MudText Typo="Typo.subtitle2" Color="Color.Secondary">Closing Balance</MudText>
+                        <MudText Typo="Typo.h6" Color="@(_closingBalance > 0 ? Color.Error : Color.Success)">@_closingBalance.ToString("N2")</MudText>
+                    </MudItem>
+                </MudGrid>
+            </MudPaper>
+        }
+
+        <MudTable Items="@_statementLines" Hover="true" Striped="true" Loading="@_statementLoading" Dense="true">
+            <HeaderContent>
+                <MudTh>Date</MudTh>
+                <MudTh>Type</MudTh>
+                <MudTh>Reference</MudTh>
+                <MudTh>Description</MudTh>
+                <MudTh Style="text-align:right">Debit</MudTh>
+                <MudTh Style="text-align:right">Credit</MudTh>
+                <MudTh Style="text-align:right">Balance</MudTh>
+            </HeaderContent>
+            <RowTemplate>
+                <MudTd DataLabel="Date">@context.Date.ToString("dd-MMM-yyyy")</MudTd>
+                <MudTd DataLabel="Type">
+                    <MudChip T="string" Size="Size.Small" Color="@GetTypeColor(context.Type)">@context.Type</MudChip>
+                </MudTd>
+                <MudTd DataLabel="Reference">@context.Reference</MudTd>
+                <MudTd DataLabel="Description">@context.Description</MudTd>
+                <MudTd DataLabel="Debit" Style="text-align:right">@(context.Debit > 0 ? context.Debit.ToString("N2") : "")</MudTd>
+                <MudTd DataLabel="Credit" Style="text-align:right">@(context.Credit > 0 ? context.Credit.ToString("N2") : "")</MudTd>
+                <MudTd DataLabel="Balance" Style="text-align:right">@context.Balance.ToString("N2")</MudTd>
+            </RowTemplate>
+            <NoRecordsContent>
+                <MudText>Select a customer and date range to generate statement.</MudText>
+            </NoRecordsContent>
+        </MudTable>
+    </MudTabPanel>
+
+    <MudTabPanel Text="Collection Summary">
+        <MudPaper Class="pa-4 mb-4" Elevation="0">
+            <MudStack Row="true" Spacing="3" AlignItems="AlignItems.Center">
+                <MudDatePicker @bind-Date="_collectionFromDate" Label="From Date" DateFormat="dd-MMM-yyyy" />
+                <MudDatePicker @bind-Date="_collectionToDate" Label="To Date" DateFormat="dd-MMM-yyyy" />
+                <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="LoadCollectionSummary">Generate</MudButton>
+                <MudButton Variant="Variant.Filled" Color="Color.Success" StartIcon="@Icons.Material.Filled.Download" 
+                           OnClick="DownloadCollections" Disabled="@(_collectionData.Count == 0)">Excel</MudButton>
+            </MudStack>
+        </MudPaper>
+
+        <MudGrid Class="mb-4">
+            <MudItem xs="12" md="3">
+                <MudPaper Class="pa-4" Elevation="2">
+                    <MudText Typo="Typo.subtitle2" Color="Color.Secondary">Total Receipts</MudText>
+                    <MudText Typo="Typo.h4" Color="Color.Success">@_totalCollections.ToString("N2")</MudText>
+                </MudPaper>
+            </MudItem>
+            <MudItem xs="12" md="3">
+                <MudPaper Class="pa-4" Elevation="2">
+                    <MudText Typo="Typo.subtitle2" Color="Color.Secondary">Receipt Count</MudText>
+                    <MudText Typo="Typo.h4">@_collectionData.Count</MudText>
+                </MudPaper>
+            </MudItem>
+            <MudItem xs="12" md="3">
+                <MudPaper Class="pa-4" Elevation="2">
+                    <MudText Typo="Typo.subtitle2" Color="Color.Secondary">Cash</MudText>
+                    <MudText Typo="Typo.h4">@_cashCollections.ToString("N2")</MudText>
+                </MudPaper>
+            </MudItem>
+            <MudItem xs="12" md="3">
+                <MudPaper Class="pa-4" Elevation="2">
+                    <MudText Typo="Typo.subtitle2" Color="Color.Secondary">Bank</MudText>
+                    <MudText Typo="Typo.h4">@_bankCollections.ToString("N2")</MudText>
+                </MudPaper>
+            </MudItem>
+        </MudGrid>
+
+        <MudTable Items="@_collectionData" Hover="true" Striped="true" Loading="@_collectionLoading" Dense="true">
+            <HeaderContent>
+                <MudTh>Receipt No</MudTh>
+                <MudTh>Date</MudTh>
+                <MudTh>Customer</MudTh>
+                <MudTh>Payment Mode</MudTh>
+                <MudTh>Bank/Ref</MudTh>
+                <MudTh Style="text-align:right">Amount</MudTh>
+            </HeaderContent>
+            <RowTemplate>
+                <MudTd DataLabel="Receipt No">@context.ReceiptNo</MudTd>
+                <MudTd DataLabel="Date">@context.ReceiptDate.ToString("dd-MMM-yyyy")</MudTd>
+                <MudTd DataLabel="Customer">@context.CustomerName</MudTd>
+                <MudTd DataLabel="Payment Mode">@context.PaymentMode</MudTd>
+                <MudTd DataLabel="Bank/Ref">@(context.BankName ?? context.TransactionRef)</MudTd>
+                <MudTd DataLabel="Amount" Style="text-align:right">@context.Amount?.ToString("N2")</MudTd>
+            </RowTemplate>
+            <NoRecordsContent>
+                <MudText>Select a date range to view collection summary.</MudText>
+            </NoRecordsContent>
+        </MudTable>
+    </MudTabPanel>
+
+    <MudTabPanel Text="Outstanding Invoices">
+        <MudPaper Class="pa-4 mb-4" Elevation="0">
+            <MudStack Row="true" Spacing="3" AlignItems="AlignItems.Center">
+                <MudSelect T="long?" @bind-Value="_outstandingCustomerId" Label="Customer" Clearable="true" Style="min-width:250px">
+                    @foreach (var customer in _customers)
+                    {
+                        <MudSelectItem T="long?" Value="@customer.Id">@customer.Name</MudSelectItem>
+                    }
+                </MudSelect>
+                <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="LoadOutstandingInvoices">Generate</MudButton>
+                <MudButton Variant="Variant.Filled" Color="Color.Success" StartIcon="@Icons.Material.Filled.Download" 
+                           OnClick="DownloadOutstanding" Disabled="@(_outstandingInvoices.Count == 0)">Excel</MudButton>
+            </MudStack>
+        </MudPaper>
+
+        <MudPaper Class="pa-4 mb-4" Elevation="1">
+            <MudText Typo="Typo.h6">Total Outstanding: <MudText Inline="true" Color="Color.Error">@_totalOutstanding.ToString("N2")</MudText></MudText>
+        </MudPaper>
+
+        <MudTable Items="@_outstandingInvoices" Hover="true" Striped="true" Loading="@_outstandingLoading" Dense="true">
+            <HeaderContent>
+                <MudTh>Invoice No</MudTh>
+                <MudTh>Date</MudTh>
+                <MudTh>Customer</MudTh>
+                <MudTh>Due Date</MudTh>
+                <MudTh>Days Overdue</MudTh>
+                <MudTh Style="text-align:right">Invoice Total</MudTh>
+                <MudTh Style="text-align:right">Paid</MudTh>
+                <MudTh Style="text-align:right">Balance</MudTh>
+            </HeaderContent>
+            <RowTemplate>
+                <MudTd DataLabel="Invoice No">@context.InvoiceNo</MudTd>
+                <MudTd DataLabel="Date">@context.InvoiceDate.ToString("dd-MMM-yyyy")</MudTd>
+                <MudTd DataLabel="Customer">@context.CustomerName</MudTd>
+                <MudTd DataLabel="Due Date">@context.DueDate?.ToString("dd-MMM-yyyy")</MudTd>
+                <MudTd DataLabel="Days Overdue">
+                    @{
+                        var daysOverdue = context.DueDate.HasValue ? (DateTime.Today - context.DueDate.Value).Days : 0;
+                        if (daysOverdue > 0)
+                        {
+                            <MudChip T="string" Size="Size.Small" Color="Color.Error">@daysOverdue days</MudChip>
+                        }
+                    }
+                </MudTd>
+                <MudTd DataLabel="Invoice Total" Style="text-align:right">@context.NetTotal?.ToString("N2")</MudTd>
+                <MudTd DataLabel="Paid" Style="text-align:right">@context.PaidAmount?.ToString("N2")</MudTd>
+                <MudTd DataLabel="Balance" Style="text-align:right">
+                    <MudText Color="Color.Error" Style="font-weight:bold">@context.BalanceAmount?.ToString("N2")</MudText>
+                </MudTd>
+            </RowTemplate>
+            <NoRecordsContent>
+                <MudText>No outstanding invoices found.</MudText>
+            </NoRecordsContent>
+        </MudTable>
+    </MudTabPanel>
+</MudTabs>
+
+@code {
+    private List<Party> _customers = new();
+
+    private long? _statementCustomerId;
+    private DateTime? _statementFromDate = DateTime.Today.AddMonths(-3);
+    private DateTime? _statementToDate = DateTime.Today;
+    private Party? _selectedCustomer;
+    private List<StatementLine> _statementLines = new();
+    private bool _statementLoading = false;
+    private decimal _openingBalance = 0;
+    private decimal _closingBalance = 0;
+
+    private DateTime? _collectionFromDate = DateTime.Today.AddMonths(-1);
+    private DateTime? _collectionToDate = DateTime.Today;
+    private List<Receipt> _collectionData = new();
+    private bool _collectionLoading = false;
+    private decimal _totalCollections => _collectionData.Sum(r => r.Amount ?? 0);
+    private decimal _cashCollections => _collectionData.Where(r => r.PaymentMode == "Cash").Sum(r => r.Amount ?? 0);
+    private decimal _bankCollections => _collectionData.Where(r => r.PaymentMode != "Cash").Sum(r => r.Amount ?? 0);
+
+    private long? _outstandingCustomerId;
+    private List<Invoice> _outstandingInvoices = new();
+    private bool _outstandingLoading = false;
+    private decimal _totalOutstanding => _outstandingInvoices.Sum(i => i.BalanceAmount ?? 0);
+
+    protected override async Task OnInitializedAsync()
+    {
+        _customers = await DbContext.Parties
+            .Where(p => p.PartyType == PartyType.Customer && !p.IsDeleted && p.IsActive)
+            .OrderBy(p => p.Name)
+            .ToListAsync();
+    }
+
+    private async Task LoadCustomerStatement()
+    {
+        if (!_statementCustomerId.HasValue)
+        {
+            Snackbar.Add("Please select a customer", Severity.Warning);
+            return;
+        }
+
+        _statementLoading = true;
+        _selectedCustomer = _customers.FirstOrDefault(c => c.Id == _statementCustomerId);
+        _statementLines.Clear();
+
+        var invoices = await DbContext.Invoices
+            .Where(i => i.CustomerId == _statementCustomerId && !i.IsDeleted &&
+                       i.InvoiceDate >= _statementFromDate && i.InvoiceDate <= _statementToDate)
+            .OrderBy(i => i.InvoiceDate)
+            .ToListAsync();
+
+        var receipts = await DbContext.Receipts
+            .Where(r => r.CustomerId == _statementCustomerId && !r.IsDeleted &&
+                       r.ReceiptDate >= _statementFromDate && r.ReceiptDate <= _statementToDate)
+            .OrderBy(r => r.ReceiptDate)
+            .ToListAsync();
+
+        var creditNotes = await DbContext.CreditNotes
+            .Where(c => c.CustomerId == _statementCustomerId && !c.IsDeleted &&
+                       c.CreditNoteDate >= _statementFromDate && c.CreditNoteDate <= _statementToDate)
+            .OrderBy(c => c.CreditNoteDate)
+            .ToListAsync();
+
+        var priorInvoices = await DbContext.Invoices
+            .Where(i => i.CustomerId == _statementCustomerId && !i.IsDeleted && i.InvoiceDate < _statementFromDate)
+            .SumAsync(i => i.NetTotal ?? 0);
+
+        var priorReceipts = await DbContext.Receipts
+            .Where(r => r.CustomerId == _statementCustomerId && !r.IsDeleted && r.ReceiptDate < _statementFromDate)
+            .SumAsync(r => r.Amount ?? 0);
+
+        _openingBalance = priorInvoices - priorReceipts;
+
+        foreach (var inv in invoices)
+        {
+            _statementLines.Add(new StatementLine
+            {
+                Date = inv.InvoiceDate,
+                Type = "Invoice",
+                Reference = inv.InvoiceNo,
+                Description = $"Invoice for {inv.TotalAWBs} AWBs",
+                Debit = inv.NetTotal ?? 0
+            });
+        }
+
+        foreach (var rcpt in receipts)
+        {
+            _statementLines.Add(new StatementLine
+            {
+                Date = rcpt.ReceiptDate,
+                Type = "Receipt",
+                Reference = rcpt.ReceiptNo,
+                Description = $"Payment via {rcpt.PaymentMode}",
+                Credit = rcpt.Amount ?? 0
+            });
+        }
+
+        foreach (var cn in creditNotes)
+        {
+            _statementLines.Add(new StatementLine
+            {
+                Date = cn.CreditNoteDate,
+                Type = "Credit Note",
+                Reference = cn.CreditNoteNo,
+                Description = cn.Reason.ToString(),
+                Credit = cn.NetAmount ?? 0
+            });
+        }
+
+        _statementLines = _statementLines.OrderBy(l => l.Date).ThenBy(l => l.Reference).ToList();
+
+        decimal runningBalance = _openingBalance;
+        foreach (var line in _statementLines)
+        {
+            runningBalance = runningBalance + line.Debit - line.Credit;
+            line.Balance = runningBalance;
+        }
+        _closingBalance = runningBalance;
+
+        _statementLoading = false;
+    }
+
+    private async Task LoadCollectionSummary()
+    {
+        _collectionLoading = true;
+        _collectionData = await DbContext.Receipts
+            .Where(r => !r.IsDeleted && r.ReceiptDate >= _collectionFromDate && r.ReceiptDate <= _collectionToDate)
+            .OrderByDescending(r => r.ReceiptDate)
+            .ToListAsync();
+        _collectionLoading = false;
+    }
+
+    private async Task LoadOutstandingInvoices()
+    {
+        _outstandingLoading = true;
+        var query = DbContext.Invoices
+            .Where(i => !i.IsDeleted && i.Status != InvoiceStatus.Cancelled && (i.BalanceAmount ?? i.NetTotal ?? 0) > 0);
+
+        if (_outstandingCustomerId.HasValue)
+            query = query.Where(i => i.CustomerId == _outstandingCustomerId);
+
+        _outstandingInvoices = await query.OrderBy(i => i.DueDate).ThenBy(i => i.InvoiceDate).ToListAsync();
+        _outstandingLoading = false;
+    }
+
+    private Color GetTypeColor(string type) => type switch
+    {
+        "Invoice" => Color.Primary,
+        "Receipt" => Color.Success,
+        "Credit Note" => Color.Info,
+        _ => Color.Default
+    };
+
+    private async Task DownloadStatement()
+    {
+        using var workbook = new XLWorkbook();
+        var worksheet = workbook.Worksheets.Add("Customer Statement");
+
+        worksheet.Cell(1, 1).Value = "Customer Statement";
+        worksheet.Cell(1, 1).Style.Font.Bold = true;
+        worksheet.Cell(2, 1).Value = _selectedCustomer?.Name;
+        worksheet.Cell(3, 1).Value = $"Period: {_statementFromDate:dd-MMM-yyyy} to {_statementToDate:dd-MMM-yyyy}";
+        worksheet.Cell(4, 1).Value = $"Opening Balance: {_openingBalance:N2}";
+
+        var headers = new[] { "Date", "Type", "Reference", "Description", "Debit", "Credit", "Balance" };
+        for (int i = 0; i < headers.Length; i++)
+        {
+            worksheet.Cell(6, i + 1).Value = headers[i];
+            worksheet.Cell(6, i + 1).Style.Font.Bold = true;
+            worksheet.Cell(6, i + 1).Style.Fill.BackgroundColor = XLColor.LightGray;
+        }
+
+        int row = 7;
+        foreach (var line in _statementLines)
+        {
+            worksheet.Cell(row, 1).Value = line.Date.ToString("dd-MMM-yyyy");
+            worksheet.Cell(row, 2).Value = line.Type;
+            worksheet.Cell(row, 3).Value = line.Reference;
+            worksheet.Cell(row, 4).Value = line.Description;
+            worksheet.Cell(row, 5).Value = line.Debit > 0 ? line.Debit : (decimal?)null;
+            worksheet.Cell(row, 6).Value = line.Credit > 0 ? line.Credit : (decimal?)null;
+            worksheet.Cell(row, 7).Value = line.Balance;
+            row++;
+        }
+
+        row++;
+        worksheet.Cell(row, 1).Value = $"Closing Balance: {_closingBalance:N2}";
+        worksheet.Cell(row, 1).Style.Font.Bold = true;
+
+        worksheet.Columns().AdjustToContents();
+
+        using var stream = new MemoryStream();
+        workbook.SaveAs(stream);
+        var content = stream.ToArray();
+        var fileName = $"CustomerStatement_{_selectedCustomer?.Code}_{DateTime.Now:yyyyMMdd}.xlsx";
+        
+        await JS.InvokeVoidAsync("downloadFileFromStream", fileName, Convert.ToBase64String(content));
+    }
+
+    private async Task DownloadCollections()
+    {
+        using var workbook = new XLWorkbook();
+        var worksheet = workbook.Worksheets.Add("Collection Summary");
+
+        worksheet.Cell(1, 1).Value = "Collection Summary";
+        worksheet.Cell(2, 1).Value = $"Period: {_collectionFromDate:dd-MMM-yyyy} to {_collectionToDate:dd-MMM-yyyy}";
+        worksheet.Cell(3, 1).Value = $"Total Collections: {_totalCollections:N2}";
+
+        var headers = new[] { "Receipt No", "Date", "Customer", "Payment Mode", "Bank/Ref", "Amount" };
+        for (int i = 0; i < headers.Length; i++)
+        {
+            worksheet.Cell(5, i + 1).Value = headers[i];
+            worksheet.Cell(5, i + 1).Style.Font.Bold = true;
+            worksheet.Cell(5, i + 1).Style.Fill.BackgroundColor = XLColor.LightGray;
+        }
+
+        int row = 6;
+        foreach (var rcpt in _collectionData)
+        {
+            worksheet.Cell(row, 1).Value = rcpt.ReceiptNo;
+            worksheet.Cell(row, 2).Value = rcpt.ReceiptDate.ToString("dd-MMM-yyyy");
+            worksheet.Cell(row, 3).Value = rcpt.CustomerName;
+            worksheet.Cell(row, 4).Value = rcpt.PaymentMode;
+            worksheet.Cell(row, 5).Value = rcpt.BankName ?? rcpt.TransactionRef;
+            worksheet.Cell(row, 6).Value = rcpt.Amount;
+            row++;
+        }
+
+        worksheet.Columns().AdjustToContents();
+
+        using var stream = new MemoryStream();
+        workbook.SaveAs(stream);
+        var content = stream.ToArray();
+        var fileName = $"CollectionSummary_{DateTime.Now:yyyyMMdd_HHmmss}.xlsx";
+        
+        await JS.InvokeVoidAsync("downloadFileFromStream", fileName, Convert.ToBase64String(content));
+    }
+
+    private async Task DownloadOutstanding()
+    {
+        using var workbook = new XLWorkbook();
+        var worksheet = workbook.Worksheets.Add("Outstanding Invoices");
+
+        worksheet.Cell(1, 1).Value = "Outstanding Invoices";
+        worksheet.Cell(2, 1).Value = $"Total Outstanding: {_totalOutstanding:N2}";
+
+        var headers = new[] { "Invoice No", "Date", "Customer", "Due Date", "Days Overdue", "Invoice Total", "Paid", "Balance" };
+        for (int i = 0; i < headers.Length; i++)
+        {
+            worksheet.Cell(4, i + 1).Value = headers[i];
+            worksheet.Cell(4, i + 1).Style.Font.Bold = true;
+            worksheet.Cell(4, i + 1).Style.Fill.BackgroundColor = XLColor.LightGray;
+        }
+
+        int row = 5;
+        foreach (var inv in _outstandingInvoices)
+        {
+            var daysOverdue = inv.DueDate.HasValue ? Math.Max(0, (DateTime.Today - inv.DueDate.Value).Days) : 0;
+            worksheet.Cell(row, 1).Value = inv.InvoiceNo;
+            worksheet.Cell(row, 2).Value = inv.InvoiceDate.ToString("dd-MMM-yyyy");
+            worksheet.Cell(row, 3).Value = inv.CustomerName;
+            worksheet.Cell(row, 4).Value = inv.DueDate?.ToString("dd-MMM-yyyy");
+            worksheet.Cell(row, 5).Value = daysOverdue > 0 ? daysOverdue : (int?)null;
+            worksheet.Cell(row, 6).Value = inv.NetTotal;
+            worksheet.Cell(row, 7).Value = inv.PaidAmount;
+            worksheet.Cell(row, 8).Value = inv.BalanceAmount;
+            row++;
+        }
+
+        worksheet.Columns().AdjustToContents();
+
+        using var stream = new MemoryStream();
+        workbook.SaveAs(stream);
+        var content = stream.ToArray();
+        var fileName = $"OutstandingInvoices_{DateTime.Now:yyyyMMdd_HHmmss}.xlsx";
+        
+        await JS.InvokeVoidAsync("downloadFileFromStream", fileName, Convert.ToBase64String(content));
+    }
+
+    private class StatementLine
+    {
+        public DateTime Date { get; set; }
+        public string Type { get; set; } = "";
+        public string Reference { get; set; } = "";
+        public string Description { get; set; } = "";
+        public decimal Debit { get; set; }
+        public decimal Credit { get; set; }
+        public decimal Balance { get; set; }
+    }
+}

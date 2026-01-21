@@ -59,6 +59,8 @@ public class ApplicationDbContext : DbContext
     public DbSet<JournalEntry> JournalEntries => Set<JournalEntry>();
     public DbSet<AccountHead> AccountHeads => Set<AccountHead>();
     public DbSet<ControlAccountSetting> ControlAccountSettings => Set<ControlAccountSetting>();
+    public DbSet<CreditNote> CreditNotes => Set<CreditNote>();
+    public DbSet<DebitNote> DebitNotes => Set<DebitNote>();
     
     public DbSet<RateCard> RateCards => Set<RateCard>();
     public DbSet<ZoneCategory> ZoneCategories => Set<ZoneCategory>();
@@ -936,6 +938,46 @@ public class ApplicationDbContext : DbContext
             entity.HasIndex(e => new { e.CompanyId, e.AccountType }).IsUnique();
             entity.HasOne(e => e.AccountHead).WithMany().HasForeignKey(e => e.AccountHeadId)
                   .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        modelBuilder.Entity<CreditNote>(entity =>
+        {
+            entity.ToTable("CreditNotes");
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.CreditNoteNo).HasMaxLength(50).IsRequired();
+            entity.Property(e => e.CustomerName).HasMaxLength(200);
+            entity.Property(e => e.InvoiceNo).HasMaxLength(50);
+            entity.Property(e => e.ReasonDetails).HasMaxLength(500);
+            entity.Property(e => e.Remarks).HasMaxLength(500);
+            entity.Property(e => e.ApprovedBy).HasMaxLength(100);
+            entity.Property(e => e.Amount).HasPrecision(18, 2);
+            entity.Property(e => e.TaxPercent).HasPrecision(5, 2);
+            entity.Property(e => e.TaxAmount).HasPrecision(18, 2);
+            entity.Property(e => e.NetAmount).HasPrecision(18, 2);
+            entity.HasIndex(e => e.CreditNoteNo).IsUnique();
+            entity.HasIndex(e => new { e.CustomerId, e.CreditNoteDate });
+            entity.HasIndex(e => new { e.BranchId, e.CreditNoteDate });
+            entity.HasIndex(e => e.Status);
+        });
+
+        modelBuilder.Entity<DebitNote>(entity =>
+        {
+            entity.ToTable("DebitNotes");
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.DebitNoteNo).HasMaxLength(50).IsRequired();
+            entity.Property(e => e.SupplierName).HasMaxLength(200);
+            entity.Property(e => e.BillNo).HasMaxLength(50);
+            entity.Property(e => e.ReasonDetails).HasMaxLength(500);
+            entity.Property(e => e.Remarks).HasMaxLength(500);
+            entity.Property(e => e.ApprovedBy).HasMaxLength(100);
+            entity.Property(e => e.Amount).HasPrecision(18, 2);
+            entity.Property(e => e.TaxPercent).HasPrecision(5, 2);
+            entity.Property(e => e.TaxAmount).HasPrecision(18, 2);
+            entity.Property(e => e.NetAmount).HasPrecision(18, 2);
+            entity.HasIndex(e => e.DebitNoteNo).IsUnique();
+            entity.HasIndex(e => new { e.SupplierId, e.DebitNoteDate });
+            entity.HasIndex(e => new { e.BranchId, e.DebitNoteDate });
+            entity.HasIndex(e => e.Status);
         });
     }
 }

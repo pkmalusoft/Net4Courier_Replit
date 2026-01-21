@@ -1,0 +1,243 @@
+@page "/credit-notes"
+@inject ApplicationDbContext DbContext
+@inject IDialogService DialogService
+@inject ISnackbar Snackbar
+@inject IJSRuntime JS
+@using Microsoft.EntityFrameworkCore
+@using Net4Courier.Infrastructure.Data
+@using Net4Courier.Finance.Entities
+@using Net4Courier.Masters.Entities
+@using ClosedXML.Excel
+
+<PageTitle>Credit Notes - Net4Courier</PageTitle>
+
+<MudPaper Class="pa-4 mb-4" Elevation="2">
+    <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
+        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+            <MudText Typo="Typo.h5">Credit Notes</MudText>
+            <MudChip T="string" Size="Size.Small" Color="Color.Success">Account Receivable</MudChip>
+        </MudStack>
+        <MudStack Row="true" Spacing="2">
+            <MudButton Variant="Variant.Filled" Color="Color.Success" StartIcon="@Icons.Material.Filled.Download" 
+                       OnClick="DownloadExcel" Disabled="@(_creditNotes.Count == 0)">Excel</MudButton>
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add" OnClick="OpenCreateDialog">
+                New Credit Note
+            </MudButton>
+        </MudStack>
+    </MudStack>
+    <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mt-2">
+        Credit notes reduce customer balance for refunds, adjustments, or discounts.
+    </MudText>
+</MudPaper>
+
+<MudPaper Class="pa-4 mb-4" Elevation="1">
+    <MudStack Row="true" Spacing="3" AlignItems="AlignItems.Center">
+        <MudDatePicker @bind-Date="_fromDate" Label="From Date" DateFormat="dd-MMM-yyyy" />
+        <MudDatePicker @bind-Date="_toDate" Label="To Date" DateFormat="dd-MMM-yyyy" />
+        <MudSelect T="long?" @bind-Value="_customerId" Label="Customer" Clearable="true" Style="min-width:200px">
+            @foreach (var customer in _customers)
+            {
+                <MudSelectItem T="long?" Value="@customer.Id">@customer.Name</MudSelectItem>
+            }
+        </MudSelect>
+        <MudSelect T="CreditNoteStatus?" @bind-Value="_status" Label="Status" Clearable="true" Style="min-width:150px">
+            @foreach (var status in Enum.GetValues<CreditNoteStatus>())
+            {
+                <MudSelectItem T="CreditNoteStatus?" Value="@status">@status</MudSelectItem>
+            }
+        </MudSelect>
+        <MudTextField @bind-Value="_searchText" Label="Search" Immediate="true" 
+                      Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Filled.Search" Style="min-width:200px" />
+        <MudButton Variant="Variant.Outlined" Color="Color.Primary" OnClick="LoadCreditNotes">Filter</MudButton>
+    </MudStack>
+</MudPaper>
+
+<MudPaper Elevation="2">
+    <MudTable Items="@_creditNotes" Hover="true" Striped="true" Loading="@_loading" LoadingProgressColor="Color.Primary" Dense="true">
+        <HeaderContent>
+            <MudTh>CN No</MudTh>
+            <MudTh>Date</MudTh>
+            <MudTh>Customer</MudTh>
+            <MudTh>Invoice</MudTh>
+            <MudTh>Reason</MudTh>
+            <MudTh Style="text-align:right">Amount</MudTh>
+            <MudTh Style="text-align:right">Tax</MudTh>
+            <MudTh Style="text-align:right">Net Amount</MudTh>
+            <MudTh>Status</MudTh>
+            <MudTh Style="width:120px">Actions</MudTh>
+        </HeaderContent>
+        <RowTemplate>
+            <MudTd DataLabel="CN No">@context.CreditNoteNo</MudTd>
+            <MudTd DataLabel="Date">@context.CreditNoteDate.ToString("dd-MMM-yyyy")</MudTd>
+            <MudTd DataLabel="Customer">@context.CustomerName</MudTd>
+            <MudTd DataLabel="Invoice">@context.InvoiceNo</MudTd>
+            <MudTd DataLabel="Reason">@context.Reason</MudTd>
+            <MudTd DataLabel="Amount" Style="text-align:right">@context.Amount.ToString("N2")</MudTd>
+            <MudTd DataLabel="Tax" Style="text-align:right">@context.TaxAmount?.ToString("N2")</MudTd>
+            <MudTd DataLabel="Net Amount" Style="text-align:right">@context.NetAmount?.ToString("N2")</MudTd>
+            <MudTd DataLabel="Status">
+                <MudChip T="string" Size="Size.Small" Color="@GetStatusColor(context.Status)">@context.Status</MudChip>
+            </MudTd>
+            <MudTd>
+                <MudIconButton Icon="@Icons.Material.Filled.Edit" Size="Size.Small" Color="Color.Primary" 
+                               OnClick="@(() => OpenEditDialog(context))" Disabled="@(context.Status != CreditNoteStatus.Draft)" Title="Edit" />
+                @if (context.Status == CreditNoteStatus.Draft)
+                {
+                    <MudIconButton Icon="@Icons.Material.Filled.CheckCircle" Size="Size.Small" Color="Color.Success" 
+                                   OnClick="@(() => ApproveNote(context))" Title="Approve" />
+                }
+                <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" Color="Color.Error" 
+                               OnClick="@(() => DeleteNote(context))" Disabled="@(context.Status != CreditNoteStatus.Draft)" Title="Delete" />
+            </MudTd>
+        </RowTemplate>
+        <NoRecordsContent>
+            <MudText>No credit notes found.</MudText>
+        </NoRecordsContent>
+    </MudTable>
+</MudPaper>
+
+@code {
+    private List<CreditNote> _creditNotes = new();
+    private List<Party> _customers = new();
+    private bool _loading = true;
+    private DateTime? _fromDate = DateTime.Today.AddMonths(-1);
+    private DateTime? _toDate = DateTime.Today;
+    private long? _customerId;
+    private CreditNoteStatus? _status;
+    private string _searchText = "";
+
+    protected override async Task OnInitializedAsync()
+    {
+        _customers = await DbContext.Parties
+            .Where(p => p.PartyType == PartyType.Customer && !p.IsDeleted && p.IsActive)
+            .OrderBy(p => p.Name)
+            .ToListAsync();
+        await LoadCreditNotes();
+    }
+
+    private async Task LoadCreditNotes()
+    {
+        _loading = true;
+        var query = DbContext.CreditNotes.Where(c => !c.IsDeleted).AsQueryable();
+
+        if (_fromDate.HasValue)
+            query = query.Where(c => c.CreditNoteDate >= _fromDate.Value);
+        if (_toDate.HasValue)
+            query = query.Where(c => c.CreditNoteDate <= _toDate.Value);
+        if (_customerId.HasValue)
+            query = query.Where(c => c.CustomerId == _customerId);
+        if (_status.HasValue)
+            query = query.Where(c => c.Status == _status);
+        if (!string.IsNullOrWhiteSpace(_searchText))
+            query = query.Where(c => c.CreditNoteNo.Contains(_searchText) || 
+                                    (c.CustomerName != null && c.CustomerName.Contains(_searchText)));
+
+        _creditNotes = await query.OrderByDescending(c => c.CreditNoteDate).ThenByDescending(c => c.Id).ToListAsync();
+        _loading = false;
+    }
+
+    private Color GetStatusColor(CreditNoteStatus status) => status switch
+    {
+        CreditNoteStatus.Draft => Color.Default,
+        CreditNoteStatus.Approved => Color.Info,
+        CreditNoteStatus.Posted => Color.Success,
+        CreditNoteStatus.Cancelled => Color.Error,
+        _ => Color.Default
+    };
+
+    private async Task OpenCreateDialog()
+    {
+        var parameters = new DialogParameters<CreditNoteDialog> { { x => x.CreditNote, new CreditNote() }, { x => x.IsNew, true } };
+        var dialog = await DialogService.ShowAsync<CreditNoteDialog>("New Credit Note", parameters, new DialogOptions { MaxWidth = MaxWidth.Medium, FullWidth = true });
+        var result = await dialog.Result;
+        
+        if (!result!.Canceled)
+        {
+            await LoadCreditNotes();
+            Snackbar.Add("Credit note created successfully", Severity.Success);
+        }
+    }
+
+    private async Task OpenEditDialog(CreditNote note)
+    {
+        var parameters = new DialogParameters<CreditNoteDialog> { { x => x.CreditNote, note }, { x => x.IsNew, false } };
+        var dialog = await DialogService.ShowAsync<CreditNoteDialog>("Edit Credit Note", parameters, new DialogOptions { MaxWidth = MaxWidth.Medium, FullWidth = true });
+        var result = await dialog.Result;
+        
+        if (!result!.Canceled)
+        {
+            await LoadCreditNotes();
+            Snackbar.Add("Credit note updated successfully", Severity.Success);
+        }
+    }
+
+    private async Task ApproveNote(CreditNote note)
+    {
+        var confirm = await DialogService.ShowMessageBox("Confirm Approval", 
+            $"Are you sure you want to approve Credit Note {note.CreditNoteNo}?", yesText: "Approve", cancelText: "Cancel");
+        
+        if (confirm == true)
+        {
+            note.Status = CreditNoteStatus.Approved;
+            note.ApprovedDate = DateTime.UtcNow;
+            note.ModifiedAt = DateTime.UtcNow;
+            await DbContext.SaveChangesAsync();
+            await LoadCreditNotes();
+            Snackbar.Add("Credit note approved", Severity.Success);
+        }
+    }
+
+    private async Task DeleteNote(CreditNote note)
+    {
+        var confirm = await DialogService.ShowMessageBox("Confirm Delete", 
+            $"Are you sure you want to delete Credit Note {note.CreditNoteNo}?", yesText: "Delete", cancelText: "Cancel");
+        
+        if (confirm == true)
+        {
+            note.IsDeleted = true;
+            await DbContext.SaveChangesAsync();
+            await LoadCreditNotes();
+            Snackbar.Add("Credit note deleted", Severity.Success);
+        }
+    }
+
+    private async Task DownloadExcel()
+    {
+        using var workbook = new XLWorkbook();
+        var worksheet = workbook.Worksheets.Add("Credit Notes");
+        
+        var headers = new[] { "CN No", "Date", "Customer", "Invoice", "Reason", "Details", "Amount", "Tax %", "Tax Amount", "Net Amount", "Status" };
+        for (int i = 0; i < headers.Length; i++)
+        {
+            worksheet.Cell(1, i + 1).Value = headers[i];
+            worksheet.Cell(1, i + 1).Style.Font.Bold = true;
+            worksheet.Cell(1, i + 1).Style.Fill.BackgroundColor = XLColor.LightGray;
+        }
+
+        int row = 2;
+        foreach (var cn in _creditNotes)
+        {
+            worksheet.Cell(row, 1).Value = cn.CreditNoteNo;
+            worksheet.Cell(row, 2).Value = cn.CreditNoteDate.ToString("dd-MMM-yyyy");
+            worksheet.Cell(row, 3).Value = cn.CustomerName;
+            worksheet.Cell(row, 4).Value = cn.InvoiceNo;
+            worksheet.Cell(row, 5).Value = cn.Reason.ToString();
+            worksheet.Cell(row, 6).Value = cn.ReasonDetails;
+            worksheet.Cell(row, 7).Value = cn.Amount;
+            worksheet.Cell(row, 8).Value = cn.TaxPercent;
+            worksheet.Cell(row, 9).Value = cn.TaxAmount;
+            worksheet.Cell(row, 10).Value = cn.NetAmount;
+            worksheet.Cell(row, 11).Value = cn.Status.ToString();
+            row++;
+        }
+
+        worksheet.Columns().AdjustToContents();
+
+        using var stream = new MemoryStream();
+        workbook.SaveAs(stream);
+        var content = stream.ToArray();
+        var fileName = $"CreditNotes_{DateTime.Now:yyyyMMdd_HHmmss}.xlsx";
+        
+        await JS.InvokeVoidAsync("downloadFileFromStream", fileName, Convert.ToBase64String(content));
+    }
+}

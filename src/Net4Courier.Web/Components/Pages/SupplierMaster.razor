@@ -1,0 +1,218 @@
+@page "/supplier-master"
+@inject ApplicationDbContext DbContext
+@inject IDialogService DialogService
+@inject ISnackbar Snackbar
+@inject IJSRuntime JS
+@using Microsoft.EntityFrameworkCore
+@using Net4Courier.Infrastructure.Data
+@using Net4Courier.Masters.Entities
+@using ClosedXML.Excel
+
+<PageTitle>Supplier Master - Net4Courier</PageTitle>
+
+<MudPaper Class="pa-4 mb-4" Elevation="2">
+    <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
+        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+            <MudText Typo="Typo.h5">Supplier Master</MudText>
+            <MudChip T="string" Size="Size.Small" Color="Color.Warning">Account Payable</MudChip>
+        </MudStack>
+        <MudStack Row="true" Spacing="2">
+            <MudTextField @bind-Value="_searchString" Placeholder="Search..." Adornment="Adornment.Start" 
+                          AdornmentIcon="@Icons.Material.Filled.Search" IconSize="Size.Medium" Class="mt-0" Immediate="true" Style="width:300px" />
+            <MudButton Variant="Variant.Filled" Color="Color.Success" StartIcon="@Icons.Material.Filled.Download" 
+                       OnClick="DownloadExcel" Disabled="@(!FilteredSuppliers.Any())">Excel</MudButton>
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add" OnClick="OpenCreateDialog">
+                Add Supplier
+            </MudButton>
+        </MudStack>
+    </MudStack>
+    <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mt-2">
+        Manage suppliers and vendors the company pays for services. Suppliers are account payables.
+    </MudText>
+</MudPaper>
+
+<MudPaper Elevation="2">
+    <MudTable Items="@FilteredSuppliers" Hover="true" Striped="true" Loading="@_loading" LoadingProgressColor="Color.Primary" Dense="true">
+        <HeaderContent>
+            <MudTh><MudTableSortLabel SortBy="new Func<Party, object>(x => x.Name)">Supplier Name</MudTableSortLabel></MudTh>
+            <MudTh>Code</MudTh>
+            <MudTh>Type</MudTh>
+            <MudTh>Contact Person</MudTh>
+            <MudTh>Email</MudTh>
+            <MudTh>Phone</MudTh>
+            <MudTh Style="text-align:right">Credit Limit</MudTh>
+            <MudTh>Status</MudTh>
+            <MudTh Style="width: 120px;">Actions</MudTh>
+        </HeaderContent>
+        <RowTemplate>
+            <MudTd DataLabel="Supplier Name">
+                <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="1">
+                    <MudIcon Icon="@Icons.Material.Filled.LocalShipping" Size="Size.Small" Color="Color.Warning" />
+                    <MudText>@context.Name</MudText>
+                </MudStack>
+            </MudTd>
+            <MudTd DataLabel="Code">@context.Code</MudTd>
+            <MudTd DataLabel="Type">
+                <MudChip T="string" Color="@GetTypeColor(context.PartyType)" Size="Size.Small">@GetTypeLabel(context.PartyType)</MudChip>
+            </MudTd>
+            <MudTd DataLabel="Contact">@context.ContactPerson</MudTd>
+            <MudTd DataLabel="Email">@context.Email</MudTd>
+            <MudTd DataLabel="Phone">@(context.Mobile ?? context.Phone)</MudTd>
+            <MudTd DataLabel="Credit Limit" Style="text-align:right">@context.CreditLimit.ToString("N0")</MudTd>
+            <MudTd DataLabel="Status">
+                <MudChip T="string" Color="@(context.IsActive ? Color.Success : Color.Error)" Size="Size.Small">
+                    @(context.IsActive ? "Active" : "Inactive")
+                </MudChip>
+            </MudTd>
+            <MudTd>
+                <MudIconButton Icon="@Icons.Material.Filled.Edit" Size="Size.Small" Color="Color.Primary" OnClick="@(() => OpenEditDialog(context))" Title="Edit" />
+                <MudIconButton Icon="@Icons.Material.Filled.LocationOn" Size="Size.Small" Color="Color.Info" OnClick="@(() => OpenAddressesDialog(context))" Title="Addresses" />
+                <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" Color="Color.Error" OnClick="@(() => DeleteSupplier(context))" Title="Delete" />
+            </MudTd>
+        </RowTemplate>
+        <NoRecordsContent>
+            <MudText>No suppliers found.</MudText>
+        </NoRecordsContent>
+    </MudTable>
+</MudPaper>
+
+@code {
+    private List<Party> _suppliers = new();
+    private bool _loading = true;
+    private string _searchString = "";
+
+    private PartyType[] _supplierTypes = new[] { PartyType.Supplier, PartyType.ForwardingAgent, PartyType.CoLoader, PartyType.DeliveryAgent };
+
+    private IEnumerable<Party> FilteredSuppliers => _suppliers.Where(FilterFunc);
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadSuppliers();
+    }
+
+    private async Task LoadSuppliers()
+    {
+        _loading = true;
+        _suppliers = await DbContext.Parties
+            .Include(p => p.Company)
+            .Where(p => _supplierTypes.Contains(p.PartyType) && !p.IsDeleted)
+            .OrderBy(p => p.Name)
+            .ToListAsync();
+        _loading = false;
+    }
+
+    private bool FilterFunc(Party party)
+    {
+        if (string.IsNullOrWhiteSpace(_searchString))
+            return true;
+        
+        return party.Name.Contains(_searchString, StringComparison.OrdinalIgnoreCase) ||
+               (party.Code?.Contains(_searchString, StringComparison.OrdinalIgnoreCase) ?? false) ||
+               (party.ContactPerson?.Contains(_searchString, StringComparison.OrdinalIgnoreCase) ?? false) ||
+               (party.Email?.Contains(_searchString, StringComparison.OrdinalIgnoreCase) ?? false);
+    }
+
+    private Color GetTypeColor(PartyType type) => type switch
+    {
+        PartyType.Supplier => Color.Warning,
+        PartyType.ForwardingAgent => Color.Info,
+        PartyType.CoLoader => Color.Tertiary,
+        PartyType.DeliveryAgent => Color.Secondary,
+        _ => Color.Default
+    };
+
+    private string GetTypeLabel(PartyType type) => type switch
+    {
+        PartyType.Supplier => "Supplier",
+        PartyType.ForwardingAgent => "Fwd Agent",
+        PartyType.CoLoader => "Co-Loader",
+        PartyType.DeliveryAgent => "Delivery Agent",
+        _ => type.ToString()
+    };
+
+    private async Task OpenCreateDialog()
+    {
+        var newParty = new Party { PartyType = PartyType.Supplier };
+        var parameters = new DialogParameters<PartyDialog> { { x => x.Party, newParty }, { x => x.IsNew, true } };
+        var dialog = await DialogService.ShowAsync<PartyDialog>("Add Supplier", parameters, new DialogOptions { MaxWidth = MaxWidth.Medium, FullWidth = true });
+        var result = await dialog.Result;
+        
+        if (!result!.Canceled)
+        {
+            await LoadSuppliers();
+            Snackbar.Add("Supplier created successfully", Severity.Success);
+        }
+    }
+
+    private async Task OpenEditDialog(Party supplier)
+    {
+        var parameters = new DialogParameters<PartyDialog> { { x => x.Party, supplier }, { x => x.IsNew, false } };
+        var dialog = await DialogService.ShowAsync<PartyDialog>("Edit Supplier", parameters, new DialogOptions { MaxWidth = MaxWidth.Medium, FullWidth = true });
+        var result = await dialog.Result;
+        
+        if (!result!.Canceled)
+        {
+            await LoadSuppliers();
+            Snackbar.Add("Supplier updated successfully", Severity.Success);
+        }
+    }
+
+    private async Task OpenAddressesDialog(Party supplier)
+    {
+        var parameters = new DialogParameters<PartyAddressesDialog> { { x => x.Party, supplier } };
+        var dialog = await DialogService.ShowAsync<PartyAddressesDialog>("Supplier Addresses", parameters, new DialogOptions { MaxWidth = MaxWidth.Large, FullWidth = true });
+        await dialog.Result;
+    }
+
+    private async Task DeleteSupplier(Party supplier)
+    {
+        var confirm = await DialogService.ShowMessageBox("Confirm Delete", $"Are you sure you want to delete {supplier.Name}?", yesText: "Delete", cancelText: "Cancel");
+        
+        if (confirm == true)
+        {
+            supplier.IsDeleted = true;
+            await DbContext.SaveChangesAsync();
+            await LoadSuppliers();
+            Snackbar.Add("Supplier deleted successfully", Severity.Success);
+        }
+    }
+
+    private async Task DownloadExcel()
+    {
+        using var workbook = new XLWorkbook();
+        var worksheet = workbook.Worksheets.Add("Suppliers");
+        
+        var headers = new[] { "Code", "Supplier Name", "Type", "Contact Person", "Email", "Phone", "Mobile", "Tax Number", "Credit Limit", "Status" };
+        for (int i = 0; i < headers.Length; i++)
+        {
+            worksheet.Cell(1, i + 1).Value = headers[i];
+            worksheet.Cell(1, i + 1).Style.Font.Bold = true;
+            worksheet.Cell(1, i + 1).Style.Fill.BackgroundColor = XLColor.LightGray;
+        }
+
+        int row = 2;
+        foreach (var supplier in FilteredSuppliers)
+        {
+            worksheet.Cell(row, 1).Value = supplier.Code;
+            worksheet.Cell(row, 2).Value = supplier.Name;
+            worksheet.Cell(row, 3).Value = GetTypeLabel(supplier.PartyType);
+            worksheet.Cell(row, 4).Value = supplier.ContactPerson;
+            worksheet.Cell(row, 5).Value = supplier.Email;
+            worksheet.Cell(row, 6).Value = supplier.Phone;
+            worksheet.Cell(row, 7).Value = supplier.Mobile;
+            worksheet.Cell(row, 8).Value = supplier.TaxNumber;
+            worksheet.Cell(row, 9).Value = supplier.CreditLimit;
+            worksheet.Cell(row, 10).Value = supplier.IsActive ? "Active" : "Inactive";
+            row++;
+        }
+
+        worksheet.Columns().AdjustToContents();
+
+        using var stream = new MemoryStream();
+        workbook.SaveAs(stream);
+        var content = stream.ToArray();
+        var fileName = $"SupplierMaster_{DateTime.Now:yyyyMMdd_HHmmss}.xlsx";
+        
+        await JS.InvokeVoidAsync("downloadFileFromStream", fileName, Convert.ToBase64String(content));
+    }
+}

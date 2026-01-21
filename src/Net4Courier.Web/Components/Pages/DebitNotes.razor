@@ -1,0 +1,245 @@
+@page "/debit-notes"
+@inject ApplicationDbContext DbContext
+@inject IDialogService DialogService
+@inject ISnackbar Snackbar
+@inject IJSRuntime JS
+@using Microsoft.EntityFrameworkCore
+@using Net4Courier.Infrastructure.Data
+@using Net4Courier.Finance.Entities
+@using Net4Courier.Masters.Entities
+@using ClosedXML.Excel
+
+<PageTitle>Debit Notes - Net4Courier</PageTitle>
+
+<MudPaper Class="pa-4 mb-4" Elevation="2">
+    <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
+        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+            <MudText Typo="Typo.h5">Debit Notes</MudText>
+            <MudChip T="string" Size="Size.Small" Color="Color.Warning">Account Payable</MudChip>
+        </MudStack>
+        <MudStack Row="true" Spacing="2">
+            <MudButton Variant="Variant.Filled" Color="Color.Success" StartIcon="@Icons.Material.Filled.Download" 
+                       OnClick="DownloadExcel" Disabled="@(_debitNotes.Count == 0)">Excel</MudButton>
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add" OnClick="OpenCreateDialog">
+                New Debit Note
+            </MudButton>
+        </MudStack>
+    </MudStack>
+    <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mt-2">
+        Debit notes record additional charges from vendors or adjustments to supplier accounts.
+    </MudText>
+</MudPaper>
+
+<MudPaper Class="pa-4 mb-4" Elevation="1">
+    <MudStack Row="true" Spacing="3" AlignItems="AlignItems.Center">
+        <MudDatePicker @bind-Date="_fromDate" Label="From Date" DateFormat="dd-MMM-yyyy" />
+        <MudDatePicker @bind-Date="_toDate" Label="To Date" DateFormat="dd-MMM-yyyy" />
+        <MudSelect T="long?" @bind-Value="_supplierId" Label="Supplier" Clearable="true" Style="min-width:200px">
+            @foreach (var supplier in _suppliers)
+            {
+                <MudSelectItem T="long?" Value="@supplier.Id">@supplier.Name</MudSelectItem>
+            }
+        </MudSelect>
+        <MudSelect T="DebitNoteStatus?" @bind-Value="_status" Label="Status" Clearable="true" Style="min-width:150px">
+            @foreach (var status in Enum.GetValues<DebitNoteStatus>())
+            {
+                <MudSelectItem T="DebitNoteStatus?" Value="@status">@status</MudSelectItem>
+            }
+        </MudSelect>
+        <MudTextField @bind-Value="_searchText" Label="Search" Immediate="true" 
+                      Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Filled.Search" Style="min-width:200px" />
+        <MudButton Variant="Variant.Outlined" Color="Color.Primary" OnClick="LoadDebitNotes">Filter</MudButton>
+    </MudStack>
+</MudPaper>
+
+<MudPaper Elevation="2">
+    <MudTable Items="@_debitNotes" Hover="true" Striped="true" Loading="@_loading" LoadingProgressColor="Color.Primary" Dense="true">
+        <HeaderContent>
+            <MudTh>DN No</MudTh>
+            <MudTh>Date</MudTh>
+            <MudTh>Supplier</MudTh>
+            <MudTh>Bill No</MudTh>
+            <MudTh>Reason</MudTh>
+            <MudTh Style="text-align:right">Amount</MudTh>
+            <MudTh Style="text-align:right">Tax</MudTh>
+            <MudTh Style="text-align:right">Net Amount</MudTh>
+            <MudTh>Status</MudTh>
+            <MudTh Style="width:120px">Actions</MudTh>
+        </HeaderContent>
+        <RowTemplate>
+            <MudTd DataLabel="DN No">@context.DebitNoteNo</MudTd>
+            <MudTd DataLabel="Date">@context.DebitNoteDate.ToString("dd-MMM-yyyy")</MudTd>
+            <MudTd DataLabel="Supplier">@context.SupplierName</MudTd>
+            <MudTd DataLabel="Bill No">@context.BillNo</MudTd>
+            <MudTd DataLabel="Reason">@context.Reason</MudTd>
+            <MudTd DataLabel="Amount" Style="text-align:right">@context.Amount.ToString("N2")</MudTd>
+            <MudTd DataLabel="Tax" Style="text-align:right">@context.TaxAmount?.ToString("N2")</MudTd>
+            <MudTd DataLabel="Net Amount" Style="text-align:right">@context.NetAmount?.ToString("N2")</MudTd>
+            <MudTd DataLabel="Status">
+                <MudChip T="string" Size="Size.Small" Color="@GetStatusColor(context.Status)">@context.Status</MudChip>
+            </MudTd>
+            <MudTd>
+                <MudIconButton Icon="@Icons.Material.Filled.Edit" Size="Size.Small" Color="Color.Primary" 
+                               OnClick="@(() => OpenEditDialog(context))" Disabled="@(context.Status != DebitNoteStatus.Draft)" Title="Edit" />
+                @if (context.Status == DebitNoteStatus.Draft)
+                {
+                    <MudIconButton Icon="@Icons.Material.Filled.CheckCircle" Size="Size.Small" Color="Color.Success" 
+                                   OnClick="@(() => ApproveNote(context))" Title="Approve" />
+                }
+                <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" Color="Color.Error" 
+                               OnClick="@(() => DeleteNote(context))" Disabled="@(context.Status != DebitNoteStatus.Draft)" Title="Delete" />
+            </MudTd>
+        </RowTemplate>
+        <NoRecordsContent>
+            <MudText>No debit notes found.</MudText>
+        </NoRecordsContent>
+    </MudTable>
+</MudPaper>
+
+@code {
+    private List<DebitNote> _debitNotes = new();
+    private List<Party> _suppliers = new();
+    private bool _loading = true;
+    private DateTime? _fromDate = DateTime.Today.AddMonths(-1);
+    private DateTime? _toDate = DateTime.Today;
+    private long? _supplierId;
+    private DebitNoteStatus? _status;
+    private string _searchText = "";
+
+    private PartyType[] _supplierTypes = new[] { PartyType.Supplier, PartyType.ForwardingAgent, PartyType.CoLoader, PartyType.DeliveryAgent };
+
+    protected override async Task OnInitializedAsync()
+    {
+        _suppliers = await DbContext.Parties
+            .Where(p => _supplierTypes.Contains(p.PartyType) && !p.IsDeleted && p.IsActive)
+            .OrderBy(p => p.Name)
+            .ToListAsync();
+        await LoadDebitNotes();
+    }
+
+    private async Task LoadDebitNotes()
+    {
+        _loading = true;
+        var query = DbContext.DebitNotes.Where(d => !d.IsDeleted).AsQueryable();
+
+        if (_fromDate.HasValue)
+            query = query.Where(d => d.DebitNoteDate >= _fromDate.Value);
+        if (_toDate.HasValue)
+            query = query.Where(d => d.DebitNoteDate <= _toDate.Value);
+        if (_supplierId.HasValue)
+            query = query.Where(d => d.SupplierId == _supplierId);
+        if (_status.HasValue)
+            query = query.Where(d => d.Status == _status);
+        if (!string.IsNullOrWhiteSpace(_searchText))
+            query = query.Where(d => d.DebitNoteNo.Contains(_searchText) || 
+                                    (d.SupplierName != null && d.SupplierName.Contains(_searchText)));
+
+        _debitNotes = await query.OrderByDescending(d => d.DebitNoteDate).ThenByDescending(d => d.Id).ToListAsync();
+        _loading = false;
+    }
+
+    private Color GetStatusColor(DebitNoteStatus status) => status switch
+    {
+        DebitNoteStatus.Draft => Color.Default,
+        DebitNoteStatus.Approved => Color.Info,
+        DebitNoteStatus.Posted => Color.Success,
+        DebitNoteStatus.Cancelled => Color.Error,
+        _ => Color.Default
+    };
+
+    private async Task OpenCreateDialog()
+    {
+        var parameters = new DialogParameters<DebitNoteDialog> { { x => x.DebitNote, new DebitNote() }, { x => x.IsNew, true } };
+        var dialog = await DialogService.ShowAsync<DebitNoteDialog>("New Debit Note", parameters, new DialogOptions { MaxWidth = MaxWidth.Medium, FullWidth = true });
+        var result = await dialog.Result;
+        
+        if (!result!.Canceled)
+        {
+            await LoadDebitNotes();
+            Snackbar.Add("Debit note created successfully", Severity.Success);
+        }
+    }
+
+    private async Task OpenEditDialog(DebitNote note)
+    {
+        var parameters = new DialogParameters<DebitNoteDialog> { { x => x.DebitNote, note }, { x => x.IsNew, false } };
+        var dialog = await DialogService.ShowAsync<DebitNoteDialog>("Edit Debit Note", parameters, new DialogOptions { MaxWidth = MaxWidth.Medium, FullWidth = true });
+        var result = await dialog.Result;
+        
+        if (!result!.Canceled)
+        {
+            await LoadDebitNotes();
+            Snackbar.Add("Debit note updated successfully", Severity.Success);
+        }
+    }
+
+    private async Task ApproveNote(DebitNote note)
+    {
+        var confirm = await DialogService.ShowMessageBox("Confirm Approval", 
+            $"Are you sure you want to approve Debit Note {note.DebitNoteNo}?", yesText: "Approve", cancelText: "Cancel");
+        
+        if (confirm == true)
+        {
+            note.Status = DebitNoteStatus.Approved;
+            note.ApprovedDate = DateTime.UtcNow;
+            note.ModifiedAt = DateTime.UtcNow;
+            await DbContext.SaveChangesAsync();
+            await LoadDebitNotes();
+            Snackbar.Add("Debit note approved", Severity.Success);
+        }
+    }
+
+    private async Task DeleteNote(DebitNote note)
+    {
+        var confirm = await DialogService.ShowMessageBox("Confirm Delete", 
+            $"Are you sure you want to delete Debit Note {note.DebitNoteNo}?", yesText: "Delete", cancelText: "Cancel");
+        
+        if (confirm == true)
+        {
+            note.IsDeleted = true;
+            await DbContext.SaveChangesAsync();
+            await LoadDebitNotes();
+            Snackbar.Add("Debit note deleted", Severity.Success);
+        }
+    }
+
+    private async Task DownloadExcel()
+    {
+        using var workbook = new XLWorkbook();
+        var worksheet = workbook.Worksheets.Add("Debit Notes");
+        
+        var headers = new[] { "DN No", "Date", "Supplier", "Bill No", "Reason", "Details", "Amount", "Tax %", "Tax Amount", "Net Amount", "Status" };
+        for (int i = 0; i < headers.Length; i++)
+        {
+            worksheet.Cell(1, i + 1).Value = headers[i];
+            worksheet.Cell(1, i + 1).Style.Font.Bold = true;
+            worksheet.Cell(1, i + 1).Style.Fill.BackgroundColor = XLColor.LightGray;
+        }
+
+        int row = 2;
+        foreach (var dn in _debitNotes)
+        {
+            worksheet.Cell(row, 1).Value = dn.DebitNoteNo;
+            worksheet.Cell(row, 2).Value = dn.DebitNoteDate.ToString("dd-MMM-yyyy");
+            worksheet.Cell(row, 3).Value = dn.SupplierName;
+            worksheet.Cell(row, 4).Value = dn.BillNo;
+            worksheet.Cell(row, 5).Value = dn.Reason.ToString();
+            worksheet.Cell(row, 6).Value = dn.ReasonDetails;
+            worksheet.Cell(row, 7).Value = dn.Amount;
+            worksheet.Cell(row, 8).Value = dn.TaxPercent;
+            worksheet.Cell(row, 9).Value = dn.TaxAmount;
+            worksheet.Cell(row, 10).Value = dn.NetAmount;
+            worksheet.Cell(row, 11).Value = dn.Status.ToString();
+            row++;
+        }
+
+        worksheet.Columns().AdjustToContents();
+
+        using var stream = new MemoryStream();
+        workbook.SaveAs(stream);
+        var content = stream.ToArray();
+        var fileName = $"DebitNotes_{DateTime.Now:yyyyMMdd_HHmmss}.xlsx";
+        
+        await JS.InvokeVoidAsync("downloadFileFromStream", fileName, Convert.ToBase64String(content));
+    }
+}
