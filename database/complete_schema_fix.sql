@@ -465,5 +465,39 @@ ALTER TABLE "PartyAddresses" ADD COLUMN IF NOT EXISTS "IsActive" BOOLEAN NOT NUL
 -- Add CustomerAccountNo column to Parties if missing
 ALTER TABLE "Parties" ADD COLUMN IF NOT EXISTS "CustomerAccountNo" VARCHAR(50);
 
+-- Add StatusId and StatusGroupId columns to PickupRequests for unified status system
+ALTER TABLE "PickupRequests" 
+ADD COLUMN IF NOT EXISTS "StatusId" BIGINT REFERENCES "ShipmentStatuses"("Id"),
+ADD COLUMN IF NOT EXISTS "StatusGroupId" BIGINT REFERENCES "ShipmentStatusGroups"("Id");
+
+-- PickupStatusHistories table for audit trail
+CREATE TABLE IF NOT EXISTS "PickupStatusHistories" (
+    "Id" BIGSERIAL PRIMARY KEY,
+    "PickupRequestId" BIGINT NOT NULL REFERENCES "PickupRequests"("Id") ON DELETE CASCADE,
+    "StatusId" BIGINT NOT NULL REFERENCES "ShipmentStatuses"("Id") ON DELETE CASCADE,
+    "StatusGroupId" BIGINT NOT NULL REFERENCES "ShipmentStatusGroups"("Id") ON DELETE CASCADE,
+    "EventType" VARCHAR(100) NOT NULL,
+    "EventRefId" BIGINT,
+    "EventRefType" VARCHAR(100),
+    "BranchId" BIGINT,
+    "LocationName" VARCHAR(200),
+    "UserId" BIGINT,
+    "UserName" VARCHAR(200),
+    "Remarks" TEXT,
+    "ChangedAt" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "IsAutomatic" BOOLEAN NOT NULL DEFAULT FALSE,
+    "DeviceInfo" VARCHAR(500),
+    "Latitude" DECIMAL(10,7),
+    "Longitude" DECIMAL(10,7),
+    "IsActive" BOOLEAN NOT NULL DEFAULT TRUE,
+    "IsDeleted" BOOLEAN NOT NULL DEFAULT FALSE,
+    "CreatedAt" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "ModifiedAt" TIMESTAMP WITH TIME ZONE,
+    "CreatedBy" INT,
+    "ModifiedBy" INT
+);
+CREATE INDEX IF NOT EXISTS "IX_PickupStatusHistories_PickupRequestId" ON "PickupStatusHistories" ("PickupRequestId");
+CREATE INDEX IF NOT EXISTS "IX_PickupStatusHistories_Timeline" ON "PickupStatusHistories" ("PickupRequestId", "ChangedAt" DESC);
+
 -- Verify completion
 SELECT 'Schema fix completed successfully!' as status;

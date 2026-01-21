@@ -79,10 +79,14 @@ The application is built on .NET 8 Blazor Server, utilizing a modular architectu
         - Downloadable results report showing success/failure for each AWB
     - **PODUpdateService**: Centralized service for single and batch POD updates with validation.
     - **PODExcelService**: Handles Excel template generation, parsing, and results report generation.
-- **Shipment Status Timeline**:
+- **Unified Status Change System**:
+    - **UpdateStatusDialog**: Single component for status changes on both shipments and pickup requests.
+    - **ShipmentStatusHistory**: Audit trail for shipment status changes with location, user, remarks, timestamps.
+    - **PickupStatusHistory**: Audit trail for pickup request status changes with same audit fields.
+    - **Status Groups**: Pickup-specific statuses (PICKUP_REQUESTED, PICKUP_SCHEDULED, ASSIGNED_FOR_COLLECTION, SHIPMENT_COLLECTED, PICKUP_MANIFESTED).
     - **Database-Driven Status Management**: Flexible status groups and statuses configurable via admin UI.
-    - **Timeline History**: Chronological record of status changes.
-    - **Automatic Status Updates**: Integrated into AWB entry, outscan, POD capture, RTS, and invoicing.
+    - **Timeline History**: Chronological record of status changes for both entities.
+    - **Automatic Status Updates**: Integrated into AWB entry, outscan, POD capture, RTS, invoicing, and pickup workflow.
     - **Public Tracking Page**: Customer-facing `/tracking` page for AWB search and timeline history.
 - **MAWB Processing (Master Airwaybill)**:
     - **MasterAirwaybill Entity**: Stores MAWB header info.

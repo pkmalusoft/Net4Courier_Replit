@@ -42,11 +42,17 @@ public class PickupRequest : AuditableEntity
     public string? Remarks { get; set; }
     
     public PickupStatus Status { get; set; } = PickupStatus.PickupRequest;
+    public long? StatusId { get; set; }
+    public long? StatusGroupId { get; set; }
     public DateTime? AssignedAt { get; set; }
     public DateTime? CollectedAt { get; set; }
     public DateTime? InscannedAt { get; set; }
     public string? CollectionRemarks { get; set; }
     public string? InscannedBy { get; set; }
+    
+    public virtual ShipmentStatus? CurrentStatus { get; set; }
+    public virtual ShipmentStatusGroup? CurrentStatusGroup { get; set; }
+    public virtual ICollection<PickupStatusHistory> StatusHistories { get; set; } = new List<PickupStatusHistory>();
     
     public string? CourierName { get; set; }
     public string? CourierPhone { get; set; }

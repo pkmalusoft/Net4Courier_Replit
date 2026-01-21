@@ -3,6 +3,7 @@
 @using Microsoft.AspNetCore.Components.Authorization
 @using Net4Courier.Infrastructure.Data
 @using Net4Courier.Operations.Entities
+@using Net4Courier.Operations.Enums
 @using Net4Courier.Web.Services
 @using System.Security.Claims
 @inject ApplicationDbContext DbContext
@@ -14,7 +15,7 @@
     <TitleContent>
         <MudText Typo="Typo.h6">
             <MudIcon Icon="@Icons.Material.Filled.Update" Class="mr-2" />
-            Update Status - @Shipment.AWBNo
+            Update Status - @DisplayReference
         </MudText>
     </TitleContent>
     <DialogContent>
@@ -22,7 +23,7 @@
             <MudGrid>
                 <MudItem xs="6">
                     <MudText Typo="Typo.caption" Color="Color.Secondary">Current Status</MudText>
-                    <MudChip T="string" Color="Color.Primary" Size="Size.Small">@Shipment.CourierStatusId</MudChip>
+                    <MudChip T="string" Color="Color.Primary" Size="Size.Small">@CurrentStatusDisplay</MudChip>
                 </MudItem>
                 <MudItem xs="6">
                     <MudText Typo="Typo.caption" Color="Color.Secondary">Changed By</MudText>
@@ -109,7 +110,10 @@
 
 @code {
     [CascadingParameter] MudDialogInstance MudDialog { get; set; } = null!;
-    [Parameter] public InscanMaster Shipment { get; set; } = new();
+    
+    [Parameter] public InscanMaster? Shipment { get; set; }
+    [Parameter] public PickupRequest? PickupRequest { get; set; }
+    [Parameter] public EntityType EntityType { get; set; } = EntityType.Shipment;
 
     private List<ShipmentStatusGroup> _statusGroups = new();
     private List<ShipmentStatus> _allStatuses = new();
@@ -120,22 +124,38 @@
     private bool _isSaving = false;
     private long? _currentUserId;
     private string _currentUserName = "Unknown User";
+    private long? _currentBranchId;
 
     private bool CanSubmit => _selectedStatusId.HasValue && !string.IsNullOrWhiteSpace(_remarks);
+    
+    private string DisplayReference => EntityType == EntityType.Shipment 
+        ? Shipment?.AWBNo ?? "Unknown"
+        : PickupRequest?.PickupNo ?? "Unknown";
+        
+    private string CurrentStatusDisplay
+    {
+        get
+        {
+            if (EntityType == EntityType.Shipment)
+            {
+                return Shipment?.CourierStatusId.ToString() ?? "Unknown";
+            }
+            else
+            {
+                if (PickupRequest?.StatusId.HasValue == true)
+                {
+                    var status = _allStatuses.FirstOrDefault(s => s.Id == PickupRequest.StatusId.Value);
+                    return status?.Name ?? PickupRequest.Status.ToString();
+                }
+                return PickupRequest?.Status.ToString() ?? "Unknown";
+            }
+        }
+    }
 
     protected override async Task OnInitializedAsync()
     {
         await LoadUserInfo();
-        
-        _statusGroups = await DbContext.ShipmentStatusGroups
-            .Where(g => g.IsActive)
-            .OrderBy(g => g.SequenceNo)
-            .ToListAsync();
-            
-        _allStatuses = await DbContext.ShipmentStatuses
-            .Where(s => s.IsActive)
-            .OrderBy(s => s.SequenceNo)
-            .ToListAsync();
+        await LoadStatusGroups();
     }
 
     private async Task LoadUserInfo()
@@ -153,6 +173,12 @@
                     _currentUserId = userId;
                 }
 
+                var branchIdClaim = user.FindFirst("BranchId")?.Value;
+                if (long.TryParse(branchIdClaim, out var branchId))
+                {
+                    _currentBranchId = branchId;
+                }
+
                 _currentUserName = user.FindFirst("FullName")?.Value 
                     ?? user.FindFirst(ClaimTypes.Name)?.Value 
                     ?? user.Identity.Name 
@@ -162,6 +188,35 @@
         catch
         {
             _currentUserName = "System User";
+        }
+    }
+
+    private async Task LoadStatusGroups()
+    {
+        if (EntityType == EntityType.Pickup)
+        {
+            _statusGroups = await DbContext.ShipmentStatusGroups
+                .Where(g => g.IsActive && (g.Code == "PRE_PICKUP" || g.Code == "COLLECTION"))
+                .OrderBy(g => g.SequenceNo)
+                .ToListAsync();
+                
+            var groupIds = _statusGroups.Select(g => g.Id).ToList();
+            _allStatuses = await DbContext.ShipmentStatuses
+                .Where(s => s.IsActive && groupIds.Contains(s.StatusGroupId))
+                .OrderBy(s => s.SequenceNo)
+                .ToListAsync();
+        }
+        else
+        {
+            _statusGroups = await DbContext.ShipmentStatusGroups
+                .Where(g => g.IsActive)
+                .OrderBy(g => g.SequenceNo)
+                .ToListAsync();
+                
+            _allStatuses = await DbContext.ShipmentStatuses
+                .Where(s => s.IsActive)
+                .OrderBy(s => s.SequenceNo)
+                .ToListAsync();
         }
     }
 
@@ -187,26 +242,33 @@
                 return;
             }
 
-            var result = await StatusService.SetStatus(
-                inscanMasterId: Shipment.Id,
-                statusCode: status.Code,
-                eventType: "MANUAL_UPDATE",
-                branchId: Shipment.BranchId,
-                locationName: string.IsNullOrWhiteSpace(_location) ? null : _location.Trim(),
-                userId: _currentUserId,
-                userName: _currentUserName,
-                remarks: _remarks.Trim(),
-                isAutomatic: false
-            );
+            if (EntityType == EntityType.Shipment && Shipment != null)
+            {
+                var result = await StatusService.SetStatus(
+                    inscanMasterId: Shipment.Id,
+                    statusCode: status.Code,
+                    eventType: "MANUAL_UPDATE",
+                    branchId: Shipment.BranchId,
+                    locationName: string.IsNullOrWhiteSpace(_location) ? null : _location.Trim(),
+                    userId: _currentUserId,
+                    userName: _currentUserName,
+                    remarks: _remarks.Trim(),
+                    isAutomatic: false
+                );
 
-            if (result != null)
-            {
-                Snackbar.Add($"Status updated to: {status.Name}", Severity.Success);
-                MudDialog.Close(DialogResult.Ok(true));
+                if (result != null)
+                {
+                    Snackbar.Add($"Status updated to: {status.Name}", Severity.Success);
+                    MudDialog.Close(DialogResult.Ok(true));
+                }
+                else
+                {
+                    Snackbar.Add("Failed to update status", Severity.Error);
+                }
             }
-            else
+            else if (EntityType == EntityType.Pickup && PickupRequest != null)
             {
-                Snackbar.Add("Failed to update status", Severity.Error);
+                await UpdatePickupRequestStatus(status);
             }
         }
         catch (Exception ex)
@@ -218,6 +280,73 @@
             _isSaving = false;
             StateHasChanged();
         }
+    }
+
+    private async Task UpdatePickupRequestStatus(ShipmentStatus status)
+    {
+        if (PickupRequest == null) return;
+
+        var pickup = await DbContext.PickupRequests.FindAsync(PickupRequest.Id);
+        if (pickup == null)
+        {
+            Snackbar.Add("Pickup request not found", Severity.Error);
+            return;
+        }
+
+        pickup.StatusId = status.Id;
+        pickup.StatusGroupId = status.StatusGroupId;
+        pickup.ModifiedAt = DateTime.UtcNow;
+        pickup.ModifiedBy = (int?)_currentUserId;
+
+        var oldEnumStatus = pickup.Status;
+        pickup.Status = MapStatusCodeToEnum(status.Code);
+
+        if (status.Code == "ASSIGNED_FOR_COLLECTION")
+        {
+            pickup.AssignedAt = DateTime.UtcNow;
+        }
+        else if (status.Code == "SHIPMENT_COLLECTED")
+        {
+            pickup.CollectedAt = DateTime.UtcNow;
+        }
+
+        var history = new PickupStatusHistory
+        {
+            PickupRequestId = pickup.Id,
+            StatusId = status.Id,
+            StatusGroupId = status.StatusGroupId,
+            EventType = "MANUAL_UPDATE",
+            BranchId = _currentBranchId ?? pickup.BranchId,
+            LocationName = string.IsNullOrWhiteSpace(_location) ? null : _location.Trim(),
+            UserId = _currentUserId,
+            UserName = _currentUserName,
+            Remarks = _remarks.Trim(),
+            ChangedAt = DateTime.UtcNow,
+            IsAutomatic = false,
+            IsActive = true,
+            CreatedAt = DateTime.UtcNow,
+            CreatedBy = (int?)_currentUserId
+        };
+
+        DbContext.PickupStatusHistories.Add(history);
+        await DbContext.SaveChangesAsync();
+
+        Snackbar.Add($"Pickup status updated to: {status.Name}", Severity.Success);
+        MudDialog.Close(DialogResult.Ok(true));
+    }
+
+    private PickupStatus MapStatusCodeToEnum(string statusCode)
+    {
+        return statusCode switch
+        {
+            "PICKUP_REQUESTED" => PickupStatus.PickupRequest,
+            "PICKUP_SCHEDULED" => PickupStatus.PickupRequest,
+            "PICKUP_ATTEMPTED" => PickupStatus.AssignedForCollection,
+            "ASSIGNED_FOR_COLLECTION" => PickupStatus.AssignedForCollection,
+            "SHIPMENT_COLLECTED" => PickupStatus.ShipmentCollected,
+            "PICKUP_MANIFESTED" => PickupStatus.Inscanned,
+            _ => PickupStatus.PickupRequest
+        };
     }
 
     private void Cancel() => MudDialog.Cancel();

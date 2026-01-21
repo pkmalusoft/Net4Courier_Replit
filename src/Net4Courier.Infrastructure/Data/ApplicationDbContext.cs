@@ -76,6 +76,7 @@ public class ApplicationDbContext : DbContext
     public DbSet<ShipmentStatusGroup> ShipmentStatusGroups => Set<ShipmentStatusGroup>();
     public DbSet<ShipmentStatus> ShipmentStatuses => Set<ShipmentStatus>();
     public DbSet<ShipmentStatusHistory> ShipmentStatusHistories => Set<ShipmentStatusHistory>();
+    public DbSet<PickupStatusHistory> PickupStatusHistories => Set<PickupStatusHistory>();
     
     public DbSet<ServiceType> ServiceTypes => Set<ServiceType>();
     
@@ -589,6 +590,34 @@ public class ApplicationDbContext : DbContext
             entity.HasIndex(e => new { e.CustomerId, e.Status });
             entity.HasIndex(e => new { e.CourierId, e.Status });
             entity.HasIndex(e => e.Status);
+            entity.HasOne(e => e.CurrentStatus)
+                  .WithMany()
+                  .HasForeignKey(e => e.StatusId)
+                  .OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(e => e.CurrentStatusGroup)
+                  .WithMany()
+                  .HasForeignKey(e => e.StatusGroupId)
+                  .OnDelete(DeleteBehavior.Restrict);
+            entity.HasMany(e => e.StatusHistories)
+                  .WithOne(h => h.PickupRequest)
+                  .HasForeignKey(h => h.PickupRequestId)
+                  .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<PickupStatusHistory>(entity =>
+        {
+            entity.ToTable("PickupStatusHistories");
+            entity.HasKey(e => e.Id);
+            entity.HasIndex(e => e.PickupRequestId);
+            entity.HasIndex(e => new { e.PickupRequestId, e.ChangedAt });
+            entity.HasOne(e => e.Status)
+                  .WithMany()
+                  .HasForeignKey(e => e.StatusId)
+                  .OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne(e => e.StatusGroup)
+                  .WithMany()
+                  .HasForeignKey(e => e.StatusGroupId)
+                  .OnDelete(DeleteBehavior.Cascade);
         });
 
         modelBuilder.Entity<PickupRequestShipment>(entity =>
