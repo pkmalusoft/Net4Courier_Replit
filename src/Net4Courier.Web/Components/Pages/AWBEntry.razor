@@ -122,12 +122,14 @@
                                       Variant="Variant.Outlined" Margin="Margin.Dense" />
                     </MudItem>
                     <MudItem xs="6">
-                        <MudTextField @bind-Value="_inscan.ConsignorCity" Label="City" 
-                                      Variant="Variant.Outlined" Margin="Margin.Dense" />
+                        <MudAutocomplete T="City" Label="City" Value="_selectedConsignorCity"
+                                         SearchFunc="@SearchCities" ToStringFunc="@(c => c?.Name ?? "")"
+                                         Variant="Variant.Outlined" Margin="Margin.Dense" Dense="true"
+                                         ValueChanged="@OnConsignorCityChanged" />
                     </MudItem>
                     <MudItem xs="6">
                         <MudTextField @bind-Value="_inscan.ConsignorState" Label="State" 
-                                      Variant="Variant.Outlined" Margin="Margin.Dense" />
+                                      Variant="Variant.Outlined" Margin="Margin.Dense" ReadOnly="true" />
                     </MudItem>
                     <MudItem xs="6">
                         <MudTextField @bind-Value="_inscan.ConsignorPostalCode" Label="Pincode" 
@@ -135,7 +137,7 @@
                     </MudItem>
                     <MudItem xs="6">
                         <MudTextField @bind-Value="_inscan.ConsignorCountry" Label="Country" 
-                                      Variant="Variant.Outlined" Margin="Margin.Dense" />
+                                      Variant="Variant.Outlined" Margin="Margin.Dense" ReadOnly="true" />
                     </MudItem>
                 </MudGrid>
             </MudPaper>
@@ -164,12 +166,14 @@
                                       Variant="Variant.Outlined" Margin="Margin.Dense" />
                     </MudItem>
                     <MudItem xs="6">
-                        <MudTextField @bind-Value="_inscan.ConsigneeCity" Label="Destination City" 
-                                      Variant="Variant.Outlined" Margin="Margin.Dense" />
+                        <MudAutocomplete T="City" Label="Destination City" Value="_selectedConsigneeCity"
+                                         SearchFunc="@SearchCities" ToStringFunc="@(c => c?.Name ?? "")"
+                                         Variant="Variant.Outlined" Margin="Margin.Dense" Dense="true"
+                                         ValueChanged="@OnConsigneeCityChanged" />
                     </MudItem>
                     <MudItem xs="6">
                         <MudTextField @bind-Value="_inscan.ConsigneeState" Label="State" 
-                                      Variant="Variant.Outlined" Margin="Margin.Dense" />
+                                      Variant="Variant.Outlined" Margin="Margin.Dense" ReadOnly="true" />
                     </MudItem>
                     <MudItem xs="6">
                         <MudTextField @bind-Value="_inscan.ConsigneePostalCode" Label="Pincode" 
@@ -177,7 +181,7 @@
                     </MudItem>
                     <MudItem xs="6">
                         <MudTextField @bind-Value="_inscan.ConsigneeCountry" Label="Destination Country" 
-                                      Variant="Variant.Outlined" Margin="Margin.Dense" />
+                                      Variant="Variant.Outlined" Margin="Margin.Dense" ReadOnly="true" />
                     </MudItem>
                 </MudGrid>
             </MudPaper>
@@ -440,6 +444,9 @@
     private DateTime? _transactionDate = DateTime.Today;
     private TimeSpan? _bookingTime = DateTime.Now.TimeOfDay;
     private List<Party> _customers = new();
+    private List<City> _cities = new();
+    private City? _selectedConsignorCity;
+    private City? _selectedConsigneeCity;
     private string? _forwardingAgentName;
     private string _createdBy = "";
     private string _modifiedBy = "";
@@ -467,6 +474,7 @@
     protected override async Task OnInitializedAsync()
     {
         _customers = await DbContext.Parties.Where(p => p.PartyType == PartyType.Customer && p.IsActive && !p.IsDeleted).OrderBy(p => p.Name).ToListAsync();
+        _cities = await DbContext.Cities.Include(c => c.Country).Include(c => c.State).Where(c => c.IsActive).OrderBy(c => c.Name).ToListAsync();
         
         _currentBranch = await DbContext.Branches.FirstOrDefaultAsync(b => !b.IsDeleted && b.IsActive);
         if (_currentBranch != null)
@@ -485,6 +493,7 @@
                 _createdBy = $"{_inscan.CreatedBy} | {_inscan.CreatedAt:dd-MMM}";
                 _modifiedBy = _inscan.ModifiedAt.HasValue ? $"{_inscan.ModifiedBy} | {_inscan.ModifiedAt:dd-MMM}" : "";
                 await LoadExistingOtherCharges();
+                SyncSelectedCitiesFromInscan();
             }
         }
         else
@@ -518,6 +527,61 @@
         var today = DateTime.Today.ToString("yyyyMMdd");
         var count = await DbContext.InscanMasters.CountAsync(i => i.AWBNo.StartsWith(today)) + 1;
         return $"{today}{count:D4}";
+    }
+    
+    private Task<IEnumerable<City>> SearchCities(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return Task.FromResult(_cities.Take(20).AsEnumerable());
+        
+        var matches = _cities.Where(c => c.Name.Contains(value, StringComparison.OrdinalIgnoreCase)).Take(20);
+        return Task.FromResult(matches.AsEnumerable());
+    }
+    
+    private void OnConsignorCityChanged(City? city)
+    {
+        _selectedConsignorCity = city;
+        if (city != null)
+        {
+            _inscan.ConsignorCity = city.Name;
+            _inscan.ConsignorState = city.State?.Name ?? "";
+            _inscan.ConsignorCountry = city.Country?.Name ?? "";
+        }
+        else
+        {
+            _inscan.ConsignorCity = "";
+            _inscan.ConsignorState = "";
+            _inscan.ConsignorCountry = "";
+        }
+    }
+    
+    private void OnConsigneeCityChanged(City? city)
+    {
+        _selectedConsigneeCity = city;
+        if (city != null)
+        {
+            _inscan.ConsigneeCity = city.Name;
+            _inscan.ConsigneeState = city.State?.Name ?? "";
+            _inscan.ConsigneeCountry = city.Country?.Name ?? "";
+        }
+        else
+        {
+            _inscan.ConsigneeCity = "";
+            _inscan.ConsigneeState = "";
+            _inscan.ConsigneeCountry = "";
+        }
+    }
+    
+    private void SyncSelectedCitiesFromInscan()
+    {
+        if (!string.IsNullOrWhiteSpace(_inscan.ConsignorCity))
+        {
+            _selectedConsignorCity = _cities.FirstOrDefault(c => c.Name.Equals(_inscan.ConsignorCity, StringComparison.OrdinalIgnoreCase));
+        }
+        if (!string.IsNullOrWhiteSpace(_inscan.ConsigneeCity))
+        {
+            _selectedConsigneeCity = _cities.FirstOrDefault(c => c.Name.Equals(_inscan.ConsigneeCity, StringComparison.OrdinalIgnoreCase));
+        }
     }
     
     private async Task OpenPickupRequestSelector()
@@ -584,6 +648,7 @@
             _inscan.AWBNo = _nextAWBPreview;
         }
         
+        SyncSelectedCitiesFromInscan();
         Snackbar.Add($"Loaded data from Pickup Request {_sourcePickupRequest.PickupNo}", Severity.Info);
         StateHasChanged();
         return Task.CompletedTask;
