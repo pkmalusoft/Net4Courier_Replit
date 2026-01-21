@@ -8,6 +8,7 @@
 @using Net4Courier.Infrastructure.Data
 @using Net4Courier.Operations.Entities
 @using Net4Courier.Kernel.Enums
+@using ClosedXML.Excel
 
 <PageTitle>Shipments - Net4Courier</PageTitle>
 
@@ -39,6 +40,7 @@
         </MudSelect>
         <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="Search" StartIcon="@Icons.Material.Filled.Search">Search</MudButton>
         <MudButton Variant="Variant.Outlined" Color="Color.Default" OnClick="ClearFilters">Clear</MudButton>
+        <MudButton Variant="Variant.Filled" Color="Color.Success" OnClick="DownloadExcel" StartIcon="@Icons.Material.Filled.Download" Disabled="@(_shipments.Count == 0)">Download Excel</MudButton>
     </MudStack>
 </MudPaper>
 
@@ -179,5 +181,70 @@
     private async Task PrintAWB(long id)
     {
         await JS.InvokeVoidAsync("open", $"/api/report/awb/{id}", "_blank");
+    }
+
+    private async Task DownloadExcel()
+    {
+        if (_shipments.Count == 0)
+        {
+            Snackbar.Add("No shipments to export", Severity.Warning);
+            return;
+        }
+
+        try
+        {
+            using var workbook = new XLWorkbook();
+            var worksheet = workbook.Worksheets.Add("Shipments");
+
+            var headers = new[] { "AWB No", "Date", "Consignor", "Consignor Address", "Consignor City", "Consignor Country",
+                "Consignee", "Consignee Address", "Consignee City", "Consignee Country", "Pieces", "Weight", 
+                "Chargeable Weight", "Cargo Description", "Status", "Payment Mode", "Courier Charge", "Discount", "Net Total" };
+
+            for (int i = 0; i < headers.Length; i++)
+            {
+                worksheet.Cell(1, i + 1).Value = headers[i];
+                worksheet.Cell(1, i + 1).Style.Font.Bold = true;
+                worksheet.Cell(1, i + 1).Style.Fill.BackgroundColor = XLColor.LightBlue;
+            }
+
+            int row = 2;
+            foreach (var s in _shipments)
+            {
+                worksheet.Cell(row, 1).Value = s.AWBNo;
+                worksheet.Cell(row, 2).Value = s.TransactionDate.ToString("dd/MM/yyyy");
+                worksheet.Cell(row, 3).Value = s.Consignor ?? "";
+                worksheet.Cell(row, 4).Value = s.ConsignorAddress1 ?? "";
+                worksheet.Cell(row, 5).Value = s.ConsignorCity ?? "";
+                worksheet.Cell(row, 6).Value = s.ConsignorCountry ?? "";
+                worksheet.Cell(row, 7).Value = s.Consignee ?? "";
+                worksheet.Cell(row, 8).Value = s.ConsigneeAddress1 ?? "";
+                worksheet.Cell(row, 9).Value = s.ConsigneeCity ?? "";
+                worksheet.Cell(row, 10).Value = s.ConsigneeCountry ?? "";
+                worksheet.Cell(row, 11).Value = s.Pieces ?? 0;
+                worksheet.Cell(row, 12).Value = s.Weight ?? 0;
+                worksheet.Cell(row, 13).Value = s.ChargeableWeight ?? 0;
+                worksheet.Cell(row, 14).Value = s.CargoDescription ?? "";
+                worksheet.Cell(row, 15).Value = s.CourierStatusId.ToString();
+                worksheet.Cell(row, 16).Value = s.PaymentModeId.ToString();
+                worksheet.Cell(row, 17).Value = s.CourierCharge ?? 0;
+                worksheet.Cell(row, 18).Value = s.Discount ?? 0;
+                worksheet.Cell(row, 19).Value = s.NetTotal ?? 0;
+                row++;
+            }
+
+            worksheet.Columns().AdjustToContents();
+
+            using var stream = new MemoryStream();
+            workbook.SaveAs(stream);
+            var content = stream.ToArray();
+            var fileName = $"Shipments_{DateTime.Now:yyyyMMdd_HHmmss}.xlsx";
+
+            await JS.InvokeVoidAsync("downloadFileFromStream", fileName, Convert.ToBase64String(content));
+            Snackbar.Add($"Downloaded {_shipments.Count} shipments", Severity.Success);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error exporting: {ex.Message}", Severity.Error);
+        }
     }
 }
