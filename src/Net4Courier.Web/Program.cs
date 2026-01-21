@@ -569,6 +569,10 @@ public class DatabaseInitializationService : BackgroundService
                 ALTER TABLE ""Branches"" ADD COLUMN IF NOT EXISTS ""AWBLastUsedNumber"" BIGINT NOT NULL DEFAULT 0;
             ", stoppingToken);
 
+            await dbContext.Database.ExecuteSqlRawAsync(@"
+                ALTER TABLE ""AWBOtherCharges"" ADD COLUMN IF NOT EXISTS ""Notes"" VARCHAR(500);
+            ", stoppingToken);
+
             var authService = scope.ServiceProvider.GetRequiredService<AuthService>();
             await authService.SeedAdminUserAsync();
 
