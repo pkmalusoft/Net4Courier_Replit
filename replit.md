@@ -29,7 +29,10 @@ The application is built on .NET 8 Blazor Server, utilizing a modular architectu
 - **Entity Management**: Comprehensive CRUD for Company, Branch, User, Role, Financial Year, Parties, AWB, Invoices, Receipts.
 - **Party Classification**: Parties categorized by `PartyType` with corresponding `AccountNature` for financial tracking.
 - **Operations Workflow**:
-    - **AWB Entry & Generation**: Full shipment details with auto-generated, branch-based AWB numbers. Includes conversion from pickup requests.
+    - **AWB Entry & Generation**: Full shipment details with auto-generated, branch-based AWB numbers. Includes conversion from pickup requests. Features:
+        - Auto-Generate AWB toggle disables AWB field for new entries with "Auto-generated" helper text
+        - Payment Mode-based customer requirement: Account mode requires customer selection; other modes allow Walk-in
+        - Validation blocks form progression until AWB, Payment Mode, and Customer (when required) are filled
     - **Pickup to AWB Conversion**: Two-step process: INSCAN (warehouse receiving) then AWB Conversion.
     - **Pickup Management**: End-to-end workflow from customer request to collection and inscan.
     - **Pickup Schedules**: Configurable time slots for customer scheduling at `/pickup-schedules`. Features include:
