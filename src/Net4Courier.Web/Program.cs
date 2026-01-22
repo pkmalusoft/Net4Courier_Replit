@@ -23,18 +23,30 @@ catch (Exception ex)
     Console.WriteLine($"[{DateTime.UtcNow:O}] Warning: QuestPDF license setup failed: {ex.Message}");
 }
 
-var builder = WebApplication.CreateBuilder(args);
+var isProduction = Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT") == "Production" 
+    || Environment.GetEnvironmentVariable("REPLIT_DEPLOYMENT") == "1";
 
-// Enable static web assets - wrapped in try-catch for production deployments
-// where manifest files may not be present
-try
+Console.WriteLine($"[{DateTime.UtcNow:O}] IsProduction: {isProduction}");
+
+var options = new WebApplicationOptions
 {
-    builder.WebHost.UseStaticWebAssets();
-}
-catch (InvalidOperationException)
+    Args = args,
+    EnvironmentName = isProduction ? "Production" : null
+};
+
+var builder = WebApplication.CreateBuilder(options);
+
+// Only enable static web assets in development - they're not available in production
+if (!isProduction)
 {
-    // Static web assets manifest not found - this is expected in some deployment scenarios
-    // Static files will be served from wwwroot instead
+    try
+    {
+        builder.WebHost.UseStaticWebAssets();
+    }
+    catch (Exception ex)
+    {
+        Console.WriteLine($"[{DateTime.UtcNow:O}] Static web assets not available: {ex.Message}");
+    }
 }
 
 builder.Services.Configure<ForwardedHeadersOptions>(options =>
