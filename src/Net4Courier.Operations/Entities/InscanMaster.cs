@@ -24,6 +24,8 @@ public class InscanMaster : AuditableEntity
     public string? ConsignorCountry { get; set; }
     public string? ConsignorPostalCode { get; set; }
     public string? ConsignorLocation { get; set; }
+    public long? OriginPortId { get; set; }
+    public string? OriginPortCode { get; set; }
     
     public string? Consignee { get; set; }
     public string? ConsigneeContact { get; set; }
@@ -36,6 +38,8 @@ public class InscanMaster : AuditableEntity
     public string? ConsigneeCountry { get; set; }
     public string? ConsigneePostalCode { get; set; }
     public string? ConsigneeLocation { get; set; }
+    public long? DestinationPortId { get; set; }
+    public string? DestinationPortCode { get; set; }
     
     public int? Pieces { get; set; }
     public decimal? Weight { get; set; }
