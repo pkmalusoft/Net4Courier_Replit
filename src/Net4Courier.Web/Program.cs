@@ -132,6 +132,7 @@ builder.Services.AddScoped<MAWBService>();
 builder.Services.AddScoped<AWBNumberService>();
 builder.Services.AddScoped<IPermissionService, PermissionService>();
 builder.Services.AddScoped<ImportExcelService>();
+builder.Services.AddScoped<ShipmentExcelService>();
 builder.Services.AddScoped<PODUpdateService>();
 builder.Services.AddScoped<PODExcelService>();
 builder.Services.AddScoped<ISecureStorageService, SecureStorageService>();

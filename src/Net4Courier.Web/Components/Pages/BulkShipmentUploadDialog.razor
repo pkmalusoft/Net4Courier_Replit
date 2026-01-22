@@ -1,0 +1,304 @@
+@inject ShipmentExcelService ExcelService
+@inject ApplicationDbContext DbContext
+@inject ISnackbar Snackbar
+@inject IJSRuntime JSRuntime
+@using Microsoft.EntityFrameworkCore
+@using Net4Courier.Infrastructure.Data
+@using Net4Courier.Operations.Entities
+@using Net4Courier.Web.Services
+
+<MudDialog>
+    <TitleContent>
+        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+            <MudIcon Icon="@Icons.Material.Filled.CloudUpload" Color="Color.Primary" />
+            <MudText Typo="Typo.h6">Bulk Shipment Upload</MudText>
+        </MudStack>
+    </TitleContent>
+    <DialogContent>
+        <MudStack Spacing="3" Style="min-width: 600px; max-width: 900px;">
+            @if (_step == UploadStep.Download)
+            {
+                <MudAlert Severity="Severity.Info" Dense="true">
+                    Download the template, fill in your shipment data, then upload the completed file.
+                </MudAlert>
+                
+                <MudPaper Class="pa-4" Elevation="0" Style="background-color: #f5f5f5;">
+                    <MudStack Spacing="2">
+                        <MudText Typo="Typo.subtitle1" Class="fw-bold">Step 1: Download Template</MudText>
+                        <MudText Typo="Typo.body2">
+                            Download the Excel template containing all required columns for bulk shipment upload.
+                        </MudText>
+                        <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Download"
+                                   OnClick="DownloadTemplate" Disabled="_isDownloading">
+                            @if (_isDownloading)
+                            {
+                                <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" />
+                            }
+                            Download Template
+                        </MudButton>
+                    </MudStack>
+                </MudPaper>
+                
+                <MudPaper Class="pa-4" Elevation="0" Style="background-color: #f5f5f5;">
+                    <MudStack Spacing="2">
+                        <MudText Typo="Typo.subtitle1" Class="fw-bold">Step 2: Upload Completed File</MudText>
+                        <MudText Typo="Typo.body2">
+                            After filling in the template with your shipment data, upload it here.
+                        </MudText>
+                        <MudFileUpload T="IBrowserFile" Accept=".xlsx,.xls" FilesChanged="OnFileSelected" MaximumFileCount="1">
+                            <ActivatorContent>
+                                <MudButton Variant="Variant.Filled" Color="Color.Secondary" StartIcon="@Icons.Material.Filled.Upload"
+                                           Disabled="_isProcessing">
+                                    @if (_isProcessing)
+                                    {
+                                        <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" />
+                                    }
+                                    Select Excel File
+                                </MudButton>
+                            </ActivatorContent>
+                        </MudFileUpload>
+                        @if (!string.IsNullOrEmpty(_selectedFileName))
+                        {
+                            <MudChip T="string" Color="Color.Info" Size="Size.Small">@_selectedFileName</MudChip>
+                        }
+                    </MudStack>
+                </MudPaper>
+            }
+            else if (_step == UploadStep.Preview)
+            {
+                <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
+                    <MudText Typo="Typo.subtitle1">Preview: @_parsedShipments.Count shipment(s) found</MudText>
+                    <MudButton Variant="Variant.Text" Color="Color.Primary" StartIcon="@Icons.Material.Filled.ArrowBack"
+                               OnClick="GoBack">Back to Upload</MudButton>
+                </MudStack>
+                
+                @if (_parseResult?.HasErrors == true)
+                {
+                    <MudAlert Severity="Severity.Warning" Dense="true">
+                        <MudText Typo="Typo.body2" Class="fw-bold">Validation Errors Found (@_parseResult.Errors.Count)</MudText>
+                        <MudList T="string" Dense="true">
+                            @foreach (var error in _parseResult.Errors.Take(10))
+                            {
+                                <MudListItem T="string" Icon="@Icons.Material.Filled.Error" IconColor="Color.Error">
+                                    Row @error.RowNumber - @error.Field: @error.Message
+                                </MudListItem>
+                            }
+                            @if (_parseResult.Errors.Count > 10)
+                            {
+                                <MudListItem T="string">...and @(_parseResult.Errors.Count - 10) more errors</MudListItem>
+                            }
+                        </MudList>
+                    </MudAlert>
+                }
+                else
+                {
+                    <MudAlert Severity="Severity.Success" Dense="true">
+                        All @_parsedShipments.Count shipment(s) validated successfully. Ready to upload.
+                    </MudAlert>
+                }
+                
+                @if (_duplicateAWBs.Count > 0)
+                {
+                    <MudAlert Severity="Severity.Error" Dense="true">
+                        <MudText Typo="Typo.body2" Class="fw-bold">Duplicate AWB Numbers Found</MudText>
+                        <MudText Typo="Typo.body2">
+                            The following AWB numbers already exist in the system: @string.Join(", ", _duplicateAWBs.Take(10))
+                            @if (_duplicateAWBs.Count > 10)
+                            {
+                                <text>... and @(_duplicateAWBs.Count - 10) more</text>
+                            }
+                        </MudText>
+                    </MudAlert>
+                }
+                
+                <MudTable Items="_parsedShipments.Take(50)" Dense="true" Striped="true" Hover="true" 
+                          FixedHeader="true" Height="300px" Elevation="1">
+                    <HeaderContent>
+                        <MudTh>Row</MudTh>
+                        <MudTh>AWB No</MudTh>
+                        <MudTh>Date</MudTh>
+                        <MudTh>Payment</MudTh>
+                        <MudTh>Pcs</MudTh>
+                        <MudTh>Weight</MudTh>
+                        <MudTh>Shipper</MudTh>
+                        <MudTh>Consignee</MudTh>
+                        <MudTh>City</MudTh>
+                        <MudTh>Country</MudTh>
+                    </HeaderContent>
+                    <RowTemplate>
+                        <MudTd>@context.RowNumber</MudTd>
+                        <MudTd>@context.AWBNo</MudTd>
+                        <MudTd>@context.TransactionDateStr</MudTd>
+                        <MudTd>@context.PaymentModeStr</MudTd>
+                        <MudTd>@context.Pieces</MudTd>
+                        <MudTd>@context.Weight?.ToString("N2")</MudTd>
+                        <MudTd>@TruncateText(context.ShipperName, 15)</MudTd>
+                        <MudTd>@TruncateText(context.ConsigneeName, 15)</MudTd>
+                        <MudTd>@context.ConsigneeCity</MudTd>
+                        <MudTd>@context.ConsigneeCountry</MudTd>
+                    </RowTemplate>
+                </MudTable>
+                @if (_parsedShipments.Count > 50)
+                {
+                    <MudText Typo="Typo.caption" Color="Color.Secondary">
+                        Showing first 50 of @_parsedShipments.Count shipments
+                    </MudText>
+                }
+            }
+            else if (_step == UploadStep.Result)
+            {
+                <MudAlert Severity="Severity.Success" Dense="true">
+                    <MudText Typo="Typo.h6">Upload Complete!</MudText>
+                    <MudText Typo="Typo.body1">@_createdCount shipment(s) created successfully.</MudText>
+                </MudAlert>
+            }
+        </MudStack>
+    </DialogContent>
+    <DialogActions>
+        @if (_step == UploadStep.Download)
+        {
+            <MudButton OnClick="Cancel">Cancel</MudButton>
+        }
+        else if (_step == UploadStep.Preview)
+        {
+            <MudButton OnClick="Cancel">Cancel</MudButton>
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="CreateShipments"
+                       Disabled="@(_isCreating || _parseResult?.HasErrors == true || _duplicateAWBs.Count > 0)">
+                @if (_isCreating)
+                {
+                    <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" />
+                }
+                Create @_parsedShipments.Count Shipment(s)
+            </MudButton>
+        }
+        else if (_step == UploadStep.Result)
+        {
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="Close">Close</MudButton>
+        }
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] MudDialogInstance MudDialog { get; set; } = default!;
+    
+    [Parameter] public long? BranchId { get; set; }
+    [Parameter] public long? CompanyId { get; set; }
+    [Parameter] public long? FinancialYearId { get; set; }
+    [Parameter] public string? DefaultOriginCountry { get; set; } = "UAE";
+    
+    private UploadStep _step = UploadStep.Download;
+    private bool _isDownloading;
+    private bool _isProcessing;
+    private bool _isCreating;
+    private string? _selectedFileName;
+    private ShipmentExcelParseResult? _parseResult;
+    private List<ShipmentUploadDto> _parsedShipments = new();
+    private List<string> _duplicateAWBs = new();
+    private int _createdCount;
+
+    private enum UploadStep { Download, Preview, Result }
+
+    private async Task DownloadTemplate()
+    {
+        _isDownloading = true;
+        try
+        {
+            var templateBytes = ExcelService.GenerateTemplate();
+            var fileName = $"ShipmentUploadTemplate_{DateTime.Now:yyyyMMdd}.xlsx";
+            
+            await JSRuntime.InvokeVoidAsync("downloadFileFromBytes", fileName, Convert.ToBase64String(templateBytes));
+            Snackbar.Add("Template downloaded successfully", Severity.Success);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error downloading template: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _isDownloading = false;
+        }
+    }
+
+    private async Task OnFileSelected(IBrowserFile file)
+    {
+        if (file == null) return;
+        
+        _isProcessing = true;
+        _selectedFileName = file.Name;
+        StateHasChanged();
+
+        try
+        {
+            using var stream = new MemoryStream();
+            await file.OpenReadStream(maxAllowedSize: 10 * 1024 * 1024).CopyToAsync(stream);
+            stream.Position = 0;
+
+            _parseResult = ExcelService.ParseExcel(stream);
+            _parsedShipments = _parseResult.Shipments;
+
+            if (_parsedShipments.Any())
+            {
+                var awbNumbers = _parsedShipments.Select(s => s.AWBNo).ToList();
+                var existingAWBs = await DbContext.Set<InscanMaster>()
+                    .Where(i => awbNumbers.Contains(i.AWBNo) && !i.IsDeleted)
+                    .Select(i => i.AWBNo)
+                    .ToListAsync();
+                _duplicateAWBs = existingAWBs;
+            }
+
+            _step = UploadStep.Preview;
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error processing file: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _isProcessing = false;
+        }
+    }
+
+    private void GoBack()
+    {
+        _step = UploadStep.Download;
+        _parseResult = null;
+        _parsedShipments.Clear();
+        _duplicateAWBs.Clear();
+        _selectedFileName = null;
+    }
+
+    private async Task CreateShipments()
+    {
+        _isCreating = true;
+        StateHasChanged();
+
+        try
+        {
+            var shipments = ExcelService.CreateShipments(_parsedShipments, BranchId, CompanyId, FinancialYearId, DefaultOriginCountry);
+            
+            await DbContext.Set<InscanMaster>().AddRangeAsync(shipments);
+            await DbContext.SaveChangesAsync();
+
+            _createdCount = shipments.Count;
+            _step = UploadStep.Result;
+            Snackbar.Add($"{_createdCount} shipments created successfully", Severity.Success);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error creating shipments: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _isCreating = false;
+        }
+    }
+
+    private string TruncateText(string? text, int maxLength)
+    {
+        if (string.IsNullOrEmpty(text)) return "";
+        return text.Length > maxLength ? text.Substring(0, maxLength) + "..." : text;
+    }
+
+    private void Cancel() => MudDialog.Cancel();
+    private void Close() => MudDialog.Close(DialogResult.Ok(_createdCount));
+}
