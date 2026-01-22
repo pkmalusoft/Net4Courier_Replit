@@ -12,7 +12,18 @@ using QuestPDF.Infrastructure;
 QuestPDF.Settings.License = LicenseType.Community;
 
 var builder = WebApplication.CreateBuilder(args);
-builder.WebHost.UseStaticWebAssets();
+
+// Enable static web assets - wrapped in try-catch for production deployments
+// where manifest files may not be present
+try
+{
+    builder.WebHost.UseStaticWebAssets();
+}
+catch (InvalidOperationException)
+{
+    // Static web assets manifest not found - this is expected in some deployment scenarios
+    // Static files will be served from wwwroot instead
+}
 
 builder.Services.Configure<ForwardedHeadersOptions>(options =>
 {
