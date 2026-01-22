@@ -32,6 +32,7 @@
                 <MudSelectItem T="PickupStatus?" Value="@((PickupStatus?)null)">All Status</MudSelectItem>
                 <MudSelectItem T="PickupStatus?" Value="@PickupStatus.PickupRequest">Pickup Request</MudSelectItem>
                 <MudSelectItem T="PickupStatus?" Value="@PickupStatus.AssignedForCollection">Assigned for Collection</MudSelectItem>
+                <MudSelectItem T="PickupStatus?" Value="@PickupStatus.Attempted">Attempted</MudSelectItem>
                 <MudSelectItem T="PickupStatus?" Value="@PickupStatus.ShipmentCollected">Shipment Collected</MudSelectItem>
                 <MudSelectItem T="PickupStatus?" Value="@PickupStatus.Inscanned">Inscanned</MudSelectItem>
                 <MudSelectItem T="PickupStatus?" Value="@PickupStatus.Cancelled">Cancelled</MudSelectItem>
@@ -53,25 +54,31 @@
 </MudPaper>
 
 <MudGrid Class="mb-4">
-    <MudItem xs="6" sm="3">
+    <MudItem xs="6" sm="2">
         <MudPaper Class="pa-3 d-flex flex-column align-center" Style="background-color: #fff3e0;">
             <MudText Typo="Typo.h5" Color="Color.Warning">@_statusCounts.GetValueOrDefault(PickupStatus.PickupRequest)</MudText>
-            <MudText Typo="Typo.caption">Pending Requests</MudText>
+            <MudText Typo="Typo.caption">Pending</MudText>
         </MudPaper>
     </MudItem>
-    <MudItem xs="6" sm="3">
+    <MudItem xs="6" sm="2">
         <MudPaper Class="pa-3 d-flex flex-column align-center" Style="background-color: #e3f2fd;">
             <MudText Typo="Typo.h5" Color="Color.Info">@_statusCounts.GetValueOrDefault(PickupStatus.AssignedForCollection)</MudText>
             <MudText Typo="Typo.caption">Assigned</MudText>
         </MudPaper>
     </MudItem>
-    <MudItem xs="6" sm="3">
+    <MudItem xs="6" sm="2">
+        <MudPaper Class="pa-3 d-flex flex-column align-center" Style="background-color: #ffebee;">
+            <MudText Typo="Typo.h5" Color="Color.Error">@_statusCounts.GetValueOrDefault(PickupStatus.Attempted)</MudText>
+            <MudText Typo="Typo.caption">Attempted</MudText>
+        </MudPaper>
+    </MudItem>
+    <MudItem xs="6" sm="2">
         <MudPaper Class="pa-3 d-flex flex-column align-center" Style="background-color: #e8f5e9;">
             <MudText Typo="Typo.h5" Color="Color.Success">@_statusCounts.GetValueOrDefault(PickupStatus.ShipmentCollected)</MudText>
             <MudText Typo="Typo.caption">Collected</MudText>
         </MudPaper>
     </MudItem>
-    <MudItem xs="6" sm="3">
+    <MudItem xs="6" sm="2">
         <MudPaper Class="pa-3 d-flex flex-column align-center" Style="background-color: #f3e5f5;">
             <MudText Typo="Typo.h5" Color="Color.Secondary">@_statusCounts.GetValueOrDefault(PickupStatus.Inscanned)</MudText>
             <MudText Typo="Typo.caption">Inscanned</MudText>
@@ -104,7 +111,7 @@
             </MudTd>
             <MudTd DataLabel="Courier">@(context.CourierName ?? "-")</MudTd>
             <MudTd>
-                @if (context.Status == PickupStatus.PickupRequest)
+                @if (context.Status == PickupStatus.PickupRequest || context.Status == PickupStatus.Attempted)
                 {
                     <MudIconButton Icon="@Icons.Material.Filled.AssignmentInd" Size="Size.Small" Color="Color.Primary" 
                                    OnClick="@(() => OpenAssignDialog(context))" Title="Assign Courier" />
@@ -113,6 +120,8 @@
                 {
                     <MudIconButton Icon="@Icons.Material.Filled.CheckCircle" Size="Size.Small" Color="Color.Success" 
                                    OnClick="@(() => MarkCollected(context))" Title="Mark Collected" />
+                    <MudIconButton Icon="@Icons.Material.Filled.ErrorOutline" Size="Size.Small" Color="Color.Error" 
+                                   OnClick="@(() => MarkAttempted(context))" Title="Mark Attempted" />
                 }
                 @if (context.Status == PickupStatus.ShipmentCollected)
                 {
@@ -207,9 +216,10 @@
     {
         PickupStatus.PickupRequest => Color.Warning,
         PickupStatus.AssignedForCollection => Color.Info,
+        PickupStatus.Attempted => Color.Error,
         PickupStatus.ShipmentCollected => Color.Success,
         PickupStatus.Inscanned => Color.Secondary,
-        PickupStatus.Cancelled => Color.Error,
+        PickupStatus.Cancelled => Color.Dark,
         _ => Color.Default
     };
 
@@ -217,6 +227,7 @@
     {
         PickupStatus.PickupRequest => "Pickup Request",
         PickupStatus.AssignedForCollection => "Assigned",
+        PickupStatus.Attempted => "Attempted",
         PickupStatus.ShipmentCollected => "Collected",
         PickupStatus.Inscanned => "Inscanned",
         PickupStatus.Cancelled => "Cancelled",
@@ -262,6 +273,20 @@
             pickup.CollectedAt = DateTime.UtcNow;
             await DbContext.SaveChangesAsync();
             Snackbar.Add("Pickup marked as collected", Severity.Success);
+            await Search();
+            await LoadStatusCounts();
+        }
+    }
+
+    private async Task MarkAttempted(PickupRequest pickup)
+    {
+        var confirm = await DialogService.ShowMessageBox("Mark as Attempted", 
+            $"Mark pickup {pickup.PickupNo} as attempted (courier unable to collect)?", "Yes", "No");
+        if (confirm == true)
+        {
+            pickup.Status = PickupStatus.Attempted;
+            await DbContext.SaveChangesAsync();
+            Snackbar.Add("Pickup marked as attempted - can be reassigned", Severity.Warning);
             await Search();
             await LoadStatusCounts();
         }

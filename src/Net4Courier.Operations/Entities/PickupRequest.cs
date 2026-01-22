@@ -71,7 +71,8 @@ public enum PickupStatus
 {
     PickupRequest = 1,
     AssignedForCollection = 2,
-    ShipmentCollected = 3,
-    Inscanned = 4,
-    Cancelled = 5
+    Attempted = 3,
+    ShipmentCollected = 4,
+    Inscanned = 5,
+    Cancelled = 6
 }
