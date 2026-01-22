@@ -110,6 +110,52 @@ var app = builder.Build();
 
 app.UseForwardedHeaders();
 
+// Global error handling middleware for detailed error tracking
+app.Use(async (context, next) =>
+{
+    try
+    {
+        await next();
+    }
+    catch (Exception ex)
+    {
+        var logger = context.RequestServices.GetRequiredService<ILogger<Program>>();
+        logger.LogError(ex, "Unhandled exception for request {Method} {Path}", 
+            context.Request.Method, context.Request.Path);
+        
+        context.Response.StatusCode = 500;
+        context.Response.ContentType = "text/plain";
+        
+        if (app.Environment.IsDevelopment())
+        {
+            await context.Response.WriteAsync($"Error: {ex.Message}\n\nStack Trace:\n{ex.StackTrace}");
+        }
+        else
+        {
+            await context.Response.WriteAsync($"Error: {ex.Message}");
+        }
+    }
+});
+
+// Log startup diagnostics
+var startupLogger = app.Services.GetRequiredService<ILogger<Program>>();
+startupLogger.LogInformation("Application starting...");
+startupLogger.LogInformation("Environment: {Env}", app.Environment.EnvironmentName);
+startupLogger.LogInformation("ContentRootPath: {Path}", app.Environment.ContentRootPath);
+startupLogger.LogInformation("WebRootPath: {Path}", app.Environment.WebRootPath);
+
+// Check if wwwroot exists and has files
+var webRootPath = app.Environment.WebRootPath;
+if (Directory.Exists(webRootPath))
+{
+    var files = Directory.GetFiles(webRootPath, "*", SearchOption.AllDirectories);
+    startupLogger.LogInformation("WebRoot contains {Count} files", files.Length);
+}
+else
+{
+    startupLogger.LogWarning("WebRoot directory does not exist: {Path}", webRootPath);
+}
+
 if (!app.Environment.IsDevelopment())
 {
     app.UseExceptionHandler("/Error", createScopeForErrors: true);
@@ -121,6 +167,24 @@ app.UseStaticFiles();
 app.UseAntiforgery();
 
 app.MapGet("/health", () => Results.Ok("Healthy"));
+
+app.MapGet("/api/diagnostics", (IWebHostEnvironment env) => 
+{
+    var webRootExists = Directory.Exists(env.WebRootPath);
+    var webRootFiles = webRootExists ? Directory.GetFiles(env.WebRootPath, "*", SearchOption.AllDirectories).Length : 0;
+    
+    return Results.Ok(new
+    {
+        Environment = env.EnvironmentName,
+        ContentRootPath = env.ContentRootPath,
+        WebRootPath = env.WebRootPath,
+        WebRootExists = webRootExists,
+        WebRootFileCount = webRootFiles,
+        DatabaseUrl = !string.IsNullOrEmpty(Environment.GetEnvironmentVariable("DATABASE_URL")) ? "Set" : "Not Set",
+        CurrentDirectory = Environment.CurrentDirectory,
+        ProcessPath = Environment.ProcessPath
+    });
+});
 
 app.MapGet("/api/report/awb/{id:long}", async (long id, ApplicationDbContext db, ReportingService reportService) =>
 {
