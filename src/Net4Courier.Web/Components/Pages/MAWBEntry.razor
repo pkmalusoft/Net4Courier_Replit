@@ -37,8 +37,15 @@
                              ResetValueOnEmptyText="true" CoerceValue="true" />
         </MudItem>
         <MudItem xs="12" md="3">
-            <MudTextField @bind-Value="_mawb.OriginAirportCode" Label="Origin Airport Code" 
-                          Variant="Variant.Outlined" Placeholder="e.g., DXB" />
+            <MudSelect T="Port" Label="Origin Airport" @bind-Value="_originAirport"
+                       Variant="Variant.Outlined" Dense="true"
+                       ToStringFunc="@(p => p != null ? $"{p.Name} ({p.IATACode})" : "")">
+                <MudSelectItem T="Port" Value="@((Port?)null)">-- Select --</MudSelectItem>
+                @foreach (var airport in _airports)
+                {
+                    <MudSelectItem T="Port" Value="@airport">@airport.Name (@airport.IATACode)</MudSelectItem>
+                }
+            </MudSelect>
         </MudItem>
         
         <MudItem xs="12" md="3">
@@ -58,8 +65,15 @@
                              ResetValueOnEmptyText="true" CoerceValue="true" />
         </MudItem>
         <MudItem xs="12" md="3">
-            <MudTextField @bind-Value="_mawb.DestinationAirportCode" Label="Destination Airport Code" 
-                          Variant="Variant.Outlined" Placeholder="e.g., JFK" />
+            <MudSelect T="Port" Label="Destination Airport" @bind-Value="_destinationAirport"
+                       Variant="Variant.Outlined" Dense="true"
+                       ToStringFunc="@(p => p != null ? $"{p.Name} ({p.IATACode})" : "")">
+                <MudSelectItem T="Port" Value="@((Port?)null)">-- Select --</MudSelectItem>
+                @foreach (var airport in _airports)
+                {
+                    <MudSelectItem T="Port" Value="@airport">@airport.Name (@airport.IATACode)</MudSelectItem>
+                }
+            </MudSelect>
         </MudItem>
 
         <MudItem xs="12">
@@ -161,11 +175,14 @@
     private bool _saving = false;
     
     private List<Country> _countries = new();
+    private List<Port> _airports = new();
     private Country? _originCountry;
     private Country? _destinationCountry;
     private City? _originCity;
     private City? _destinationCity;
     private Party? _coLoader;
+    private Port? _originAirport;
+    private Port? _destinationAirport;
     private DateTime? _departureDate;
     private DateTime? _arrivalDate;
     private TimeSpan? _departureTime;
@@ -176,6 +193,11 @@
         _countries = await DbContext.Countries
             .Where(c => c.IsActive && !c.IsDeleted)
             .OrderBy(c => c.Name)
+            .ToListAsync();
+
+        _airports = await DbContext.Ports
+            .Where(p => p.PortType == PortType.Airport && p.IsActive && !p.IsDeleted)
+            .OrderBy(p => p.Name)
             .ToListAsync();
 
         if (_isEdit)
@@ -199,6 +221,12 @@
                     _destinationCity = await DbContext.Cities.Include(c => c.Country).FirstOrDefaultAsync(c => c.Id == mawb.DestinationCityId);
                 if (mawb.CoLoaderId.HasValue)
                     _coLoader = await DbContext.Parties.FindAsync(mawb.CoLoaderId);
+                    
+                // Load selected airports by code
+                if (!string.IsNullOrEmpty(mawb.OriginAirportCode))
+                    _originAirport = _airports.FirstOrDefault(a => a.IATACode == mawb.OriginAirportCode);
+                if (!string.IsNullOrEmpty(mawb.DestinationAirportCode))
+                    _destinationAirport = _airports.FirstOrDefault(a => a.IATACode == mawb.DestinationAirportCode);
             }
         }
     }
@@ -282,6 +310,10 @@
 
             _mawb.CoLoaderId = _coLoader?.Id;
             _mawb.CoLoaderName = _coLoader?.Name;
+
+            // Set airport codes from selected ports
+            _mawb.OriginAirportCode = _originAirport?.IATACode;
+            _mawb.DestinationAirportCode = _destinationAirport?.IATACode;
 
             _mawb.DepartureDate = _departureDate;
             _mawb.ArrivalDate = _arrivalDate;
