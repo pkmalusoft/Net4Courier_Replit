@@ -30,7 +30,7 @@ This comprehensive knowledge base covers all aspects of Net4Courier - from picku
    - [Create Pickup Request (Customer)](#how-to-create-a-pickup-request-customer-self-service)
    - [Add Shipment Lines to Pickup](#how-to-add-shipment-lines-to-a-pickup-request)
    - [Convert Pickup Request to AWB](#how-to-convert-pickup-request-to-awb)
-   - [Use City Selection (Geography)](#how-to-use-city-selection-geography-dropdown)
+   - [Use City Selection (Geography Dropdown)](#how-to-use-city-selection-geography-dropdown)
    - [Process Inscan](#how-to-process-inscan-warehouse-receiving)
    - [Create MAWB and Bag Shipments](#how-to-create-mawb-and-bag-shipments)
    - [Create DRS (Delivery Run Sheet)](#how-to-create-drs-delivery-run-sheet)
@@ -886,7 +886,7 @@ Requested → Assigned → In Transit → Collected → At Hub
 | Requirement | Description |
 |-------------|-------------|
 | Status | Must be Collected or Inscanned |
-| Shipment Lines | At least 1 line recommended |
+| Shipment Lines | At least 1 line required (conversion blocked without lines) |
 | Customer | Must have valid customer assigned |
 
 ---
@@ -916,7 +916,7 @@ Requested → Assigned → In Transit → Collected → At Hub
    - These fields become read-only after auto-population
    - Ensures consistent geography hierarchy
 
-4. **Available UAE Cities:**
+4. **Example UAE Cities (Pre-configured):**
    | City | State/Emirate |
    |------|---------------|
    | Dubai | Dubai |
@@ -927,6 +927,8 @@ Requested → Assigned → In Transit → Collected → At Hub
    | Fujairah | Fujairah |
    | Umm Al Quwain | Umm Al Quwain |
    | Al Ain | Abu Dhabi |
+   
+   *Note: Full list available in Geography Masters. Additional cities can be added by administrators.*
 
 5. **If City Not Found**
    - Contact administrator to add new cities

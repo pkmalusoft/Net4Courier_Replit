@@ -130,9 +130,12 @@ The application is built on .NET 8 Blazor Server, utilizing a modular architectu
     - **Integration Types**: Booking Website, Carrier Tracking, Address Validation, SMS Notification.
     - **Connection Testing**: Test connectivity and view sync status/errors.
 - **Knowledge Base**: Comprehensive documentation at `/knowledge-base` covering:
-    - **How To Guides** (17 step-by-step tutorials):
+    - **How To Guides** (20 step-by-step tutorials):
         - Create Company, Branch, Warehouse, Shipment
         - Create Pickup Requests (Staff and Customer)
+        - Add Shipment Lines to Pickup Request (NEW)
+        - Convert Pickup Request to AWB (NEW)
+        - Use City Selection with Geography Dropdown (NEW)
         - User Management (Create Users, Give/Restrict Menu Access)
         - Party Access (Agents, Customers, Vendors)
         - Import Operations (Customs Clearance, Excel Upload)
