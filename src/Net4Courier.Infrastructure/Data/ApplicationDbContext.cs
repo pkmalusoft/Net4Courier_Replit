@@ -63,6 +63,14 @@ public class ApplicationDbContext : DbContext
     public DbSet<CreditNote> CreditNotes => Set<CreditNote>();
     public DbSet<DebitNote> DebitNotes => Set<DebitNote>();
     
+    public DbSet<EmpostLicense> EmpostLicenses => Set<EmpostLicense>();
+    public DbSet<EmpostAdvancePayment> EmpostAdvancePayments => Set<EmpostAdvancePayment>();
+    public DbSet<EmpostQuarter> EmpostQuarters => Set<EmpostQuarter>();
+    public DbSet<EmpostShipmentFee> EmpostShipmentFees => Set<EmpostShipmentFee>();
+    public DbSet<EmpostQuarterlySettlement> EmpostQuarterlySettlements => Set<EmpostQuarterlySettlement>();
+    public DbSet<EmpostReturnAdjustment> EmpostReturnAdjustments => Set<EmpostReturnAdjustment>();
+    public DbSet<EmpostAuditLog> EmpostAuditLogs => Set<EmpostAuditLog>();
+    
     public DbSet<RateCard> RateCards => Set<RateCard>();
     public DbSet<ZoneCategory> ZoneCategories => Set<ZoneCategory>();
     public DbSet<ZoneMatrix> ZoneMatrices => Set<ZoneMatrix>();
@@ -1036,6 +1044,145 @@ public class ApplicationDbContext : DbContext
             entity.HasIndex(e => new { e.SupplierId, e.DebitNoteDate });
             entity.HasIndex(e => new { e.BranchId, e.DebitNoteDate });
             entity.HasIndex(e => e.Status);
+        });
+
+        modelBuilder.Entity<EmpostLicense>(entity =>
+        {
+            entity.ToTable("EmpostLicenses");
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.LicenseNumber).HasMaxLength(50).IsRequired();
+            entity.Property(e => e.LicenseeName).HasMaxLength(200);
+            entity.Property(e => e.MinimumAdvanceAmount).HasPrecision(18, 2);
+            entity.Property(e => e.RoyaltyPercentage).HasPrecision(5, 2);
+            entity.Property(e => e.WeightThresholdKg).HasPrecision(10, 2);
+            entity.Property(e => e.Notes).HasMaxLength(1000);
+            entity.HasIndex(e => e.LicenseNumber).IsUnique();
+            entity.HasIndex(e => new { e.CompanyId, e.IsActive });
+        });
+
+        modelBuilder.Entity<EmpostAdvancePayment>(entity =>
+        {
+            entity.ToTable("EmpostAdvancePayments");
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.PaymentReference).HasMaxLength(50).IsRequired();
+            entity.Property(e => e.AmountDue).HasPrecision(18, 2);
+            entity.Property(e => e.AmountPaid).HasPrecision(18, 2);
+            entity.Property(e => e.PaymentMethod).HasMaxLength(100);
+            entity.Property(e => e.BankReference).HasMaxLength(100);
+            entity.Property(e => e.Notes).HasMaxLength(500);
+            entity.HasIndex(e => new { e.EmpostLicenseId, e.ForLicenseYear });
+            entity.HasOne(e => e.EmpostLicense).WithMany(l => l.AdvancePayments)
+                  .HasForeignKey(e => e.EmpostLicenseId).OnDelete(DeleteBehavior.Restrict);
+        });
+
+        modelBuilder.Entity<EmpostQuarter>(entity =>
+        {
+            entity.ToTable("EmpostQuarters");
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.QuarterName).HasMaxLength(10);
+            entity.Property(e => e.TotalGrossRevenue).HasPrecision(18, 2);
+            entity.Property(e => e.TotalTaxableRevenue).HasPrecision(18, 2);
+            entity.Property(e => e.TotalExemptRevenue).HasPrecision(18, 2);
+            entity.Property(e => e.TotalEmpostFee).HasPrecision(18, 2);
+            entity.Property(e => e.TotalReturnAdjustments).HasPrecision(18, 2);
+            entity.Property(e => e.NetEmpostFee).HasPrecision(18, 2);
+            entity.Property(e => e.LockedByName).HasMaxLength(200);
+            entity.Property(e => e.SubmittedByName).HasMaxLength(200);
+            entity.Property(e => e.Notes).HasMaxLength(1000);
+            entity.HasIndex(e => new { e.EmpostLicenseId, e.Year, e.Quarter }).IsUnique();
+            entity.HasIndex(e => e.Status);
+            entity.HasOne(e => e.EmpostLicense).WithMany(l => l.Quarters)
+                  .HasForeignKey(e => e.EmpostLicenseId).OnDelete(DeleteBehavior.Restrict);
+        });
+
+        modelBuilder.Entity<EmpostShipmentFee>(entity =>
+        {
+            entity.ToTable("EmpostShipmentFees");
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.AWBNumber).HasMaxLength(50);
+            entity.Property(e => e.ActualWeight).HasPrecision(10, 3);
+            entity.Property(e => e.ChargeableWeight).HasPrecision(10, 3);
+            entity.Property(e => e.FreightCharge).HasPrecision(18, 2);
+            entity.Property(e => e.FuelSurcharge).HasPrecision(18, 2);
+            entity.Property(e => e.InsuranceCharge).HasPrecision(18, 2);
+            entity.Property(e => e.CODCharge).HasPrecision(18, 2);
+            entity.Property(e => e.OtherCharges).HasPrecision(18, 2);
+            entity.Property(e => e.DiscountAmount).HasPrecision(18, 2);
+            entity.Property(e => e.GrossAmount).HasPrecision(18, 2);
+            entity.Property(e => e.RoyaltyPercentage).HasPrecision(5, 2);
+            entity.Property(e => e.EmpostFeeAmount).HasPrecision(18, 2);
+            entity.Property(e => e.AdjustmentReason).HasMaxLength(500);
+            entity.Property(e => e.Notes).HasMaxLength(1000);
+            entity.HasIndex(e => new { e.EmpostQuarterId, e.InscanMasterId });
+            entity.HasIndex(e => e.AWBNumber);
+            entity.HasIndex(e => e.ShipmentDate);
+            entity.HasOne(e => e.EmpostQuarter).WithMany(q => q.ShipmentFees)
+                  .HasForeignKey(e => e.EmpostQuarterId).OnDelete(DeleteBehavior.Restrict);
+        });
+
+        modelBuilder.Entity<EmpostQuarterlySettlement>(entity =>
+        {
+            entity.ToTable("EmpostQuarterlySettlements");
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.SettlementReference).HasMaxLength(50).IsRequired();
+            entity.Property(e => e.CumulativeFeeToDate).HasPrecision(18, 2);
+            entity.Property(e => e.AdvancePaymentAmount).HasPrecision(18, 2);
+            entity.Property(e => e.PreviousSettlements).HasPrecision(18, 2);
+            entity.Property(e => e.QuarterFeeAmount).HasPrecision(18, 2);
+            entity.Property(e => e.ReturnAdjustments).HasPrecision(18, 2);
+            entity.Property(e => e.NetQuarterFee).HasPrecision(18, 2);
+            entity.Property(e => e.ExcessOverAdvance).HasPrecision(18, 2);
+            entity.Property(e => e.AmountPayable).HasPrecision(18, 2);
+            entity.Property(e => e.VATOnFee).HasPrecision(18, 2);
+            entity.Property(e => e.TotalPayable).HasPrecision(18, 2);
+            entity.Property(e => e.AmountPaid).HasPrecision(18, 2);
+            entity.Property(e => e.BalanceDue).HasPrecision(18, 2);
+            entity.Property(e => e.PaymentMethod).HasMaxLength(100);
+            entity.Property(e => e.PaymentReference).HasMaxLength(100);
+            entity.Property(e => e.Notes).HasMaxLength(1000);
+            entity.HasIndex(e => new { e.EmpostLicenseId, e.Year, e.Quarter });
+            entity.HasIndex(e => e.Status);
+            entity.HasOne(e => e.EmpostQuarter).WithMany(q => q.Settlements)
+                  .HasForeignKey(e => e.EmpostQuarterId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(e => e.EmpostLicense).WithMany()
+                  .HasForeignKey(e => e.EmpostLicenseId).OnDelete(DeleteBehavior.Restrict);
+        });
+
+        modelBuilder.Entity<EmpostReturnAdjustment>(entity =>
+        {
+            entity.ToTable("EmpostReturnAdjustments");
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.AWBNumber).HasMaxLength(50);
+            entity.Property(e => e.OriginalGrossAmount).HasPrecision(18, 2);
+            entity.Property(e => e.OriginalFeeAmount).HasPrecision(18, 2);
+            entity.Property(e => e.AdjustmentAmount).HasPrecision(18, 2);
+            entity.Property(e => e.Reason).HasMaxLength(500).IsRequired();
+            entity.Property(e => e.AppliedByName).HasMaxLength(200);
+            entity.Property(e => e.Notes).HasMaxLength(1000);
+            entity.HasIndex(e => new { e.EmpostQuarterId, e.Status });
+            entity.HasIndex(e => e.AWBNumber);
+            entity.HasOne(e => e.EmpostShipmentFee).WithMany()
+                  .HasForeignKey(e => e.EmpostShipmentFeeId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(e => e.EmpostQuarter).WithMany(q => q.ReturnAdjustments)
+                  .HasForeignKey(e => e.EmpostQuarterId).OnDelete(DeleteBehavior.Restrict);
+        });
+
+        modelBuilder.Entity<EmpostAuditLog>(entity =>
+        {
+            entity.ToTable("EmpostAuditLogs");
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.ActionDescription).HasMaxLength(200).IsRequired();
+            entity.Property(e => e.EntityType).HasMaxLength(100);
+            entity.Property(e => e.AWBNumber).HasMaxLength(50);
+            entity.Property(e => e.OldValue).HasPrecision(18, 2);
+            entity.Property(e => e.NewValue).HasPrecision(18, 2);
+            entity.Property(e => e.OldData).HasMaxLength(500);
+            entity.Property(e => e.NewData).HasMaxLength(500);
+            entity.Property(e => e.PerformedByName).HasMaxLength(200);
+            entity.Property(e => e.IpAddress).HasMaxLength(100);
+            entity.Property(e => e.Notes).HasMaxLength(1000);
+            entity.HasIndex(e => new { e.EmpostLicenseId, e.PerformedAt });
+            entity.HasIndex(e => new { e.EmpostQuarterId, e.Action });
         });
     }
 }
