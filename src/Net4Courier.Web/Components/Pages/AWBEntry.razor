@@ -539,8 +539,19 @@
     
     private async Task OnPaymentModeChanged()
     {
+        var previousCustomerId = _inscan.CustomerId;
         _inscan.CustomerId = null;
+        _copyCustomerToShipper = false;
+        
         await LoadPaymentModeAccount(_inscan.PaymentModeId);
+        
+        // If switching to Account mode and there was a customer selected, re-select and auto-populate
+        if (_inscan.PaymentModeId == PaymentMode.Account && previousCustomerId.HasValue)
+        {
+            _inscan.CustomerId = previousCustomerId;
+            _copyCustomerToShipper = true;
+            ApplyCustomerToShipper();
+        }
     }
     
     private async Task LoadPaymentModeAccount(PaymentMode paymentMode)
@@ -598,46 +609,63 @@
     
     private void OnCustomerChanged()
     {
-        _copyCustomerToShipper = false;
+        // Auto-populate shipper details when customer is selected for Account payment
+        if (_inscan.PaymentModeId == PaymentMode.Account && _inscan.CustomerId.HasValue)
+        {
+            _copyCustomerToShipper = true;
+            ApplyCustomerToShipper();
+        }
+        else
+        {
+            _copyCustomerToShipper = false;
+        }
+    }
+    
+    private void ApplyCustomerToShipper()
+    {
+        if (!_inscan.CustomerId.HasValue) return;
+        
+        var customer = _customers.FirstOrDefault(c => c.Id == _inscan.CustomerId.Value);
+        if (customer != null)
+        {
+            _inscan.Consignor = customer.Name;
+            _inscan.ConsignorPhone = customer.Phone;
+            _inscan.ConsignorMobile = customer.Mobile;
+            
+            var primaryAddress = customer.Addresses.FirstOrDefault(a => a.AddressType == "Primary" && !a.IsDeleted) 
+                                 ?? customer.Addresses.FirstOrDefault(a => !a.IsDeleted);
+            if (primaryAddress != null)
+            {
+                var addressParts = new[] { primaryAddress.BuildingName, primaryAddress.Street, primaryAddress.Area }
+                    .Where(s => !string.IsNullOrWhiteSpace(s));
+                _inscan.ConsignorAddress1 = string.Join(", ", addressParts);
+                _inscan.ConsignorCity = primaryAddress.City;
+                _inscan.ConsignorState = primaryAddress.State;
+                _inscan.ConsignorCountry = primaryAddress.Country;
+                _inscan.ConsignorPostalCode = primaryAddress.PostalCode;
+                
+                var city = _cities.FirstOrDefault(c => 
+                    c.Name == primaryAddress.City && 
+                    (c.Country?.Name == primaryAddress.Country || c.State?.Name == primaryAddress.State));
+                if (city == null)
+                    city = _cities.FirstOrDefault(c => c.Name == primaryAddress.City);
+                if (city != null)
+                {
+                    _selectedConsignorCity = city;
+                }
+            }
+        }
     }
     
     private void OnCopyToShipperChanged()
     {
         if (_copyCustomerToShipper && _inscan.CustomerId.HasValue)
         {
-            var customer = _customers.FirstOrDefault(c => c.Id == _inscan.CustomerId.Value);
-            if (customer != null)
-            {
-                _inscan.Consignor = customer.Name;
-                _inscan.ConsignorPhone = customer.Phone;
-                _inscan.ConsignorMobile = customer.Mobile;
-                
-                var primaryAddress = customer.Addresses.FirstOrDefault(a => a.AddressType == "Primary" && !a.IsDeleted) 
-                                     ?? customer.Addresses.FirstOrDefault(a => !a.IsDeleted);
-                if (primaryAddress != null)
-                {
-                    var addressParts = new[] { primaryAddress.BuildingName, primaryAddress.Street, primaryAddress.Area }
-                        .Where(s => !string.IsNullOrWhiteSpace(s));
-                    _inscan.ConsignorAddress1 = string.Join(", ", addressParts);
-                    _inscan.ConsignorCity = primaryAddress.City;
-                    _inscan.ConsignorState = primaryAddress.State;
-                    _inscan.ConsignorCountry = primaryAddress.Country;
-                    _inscan.ConsignorPostalCode = primaryAddress.PostalCode;
-                    
-                    var city = _cities.FirstOrDefault(c => 
-                        c.Name == primaryAddress.City && 
-                        (c.Country?.Name == primaryAddress.Country || c.State?.Name == primaryAddress.State));
-                    if (city == null)
-                        city = _cities.FirstOrDefault(c => c.Name == primaryAddress.City);
-                    if (city != null)
-                    {
-                        _selectedConsignorCity = city;
-                    }
-                }
-            }
+            ApplyCustomerToShipper();
         }
         else if (!_copyCustomerToShipper)
         {
+            // Clear shipper details when unchecked
             _inscan.Consignor = null;
             _inscan.ConsignorPhone = null;
             _inscan.ConsignorMobile = null;
