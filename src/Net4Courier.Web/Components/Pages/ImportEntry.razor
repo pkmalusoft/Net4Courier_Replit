@@ -31,7 +31,8 @@ else
                     
                     <MudGrid>
                         <MudItem xs="12" sm="6" md="4">
-                            <MudSelect T="ImportMode" Label="Import Mode *" @bind-Value="_import.ImportMode" 
+                            <MudSelect T="ImportMode" Label="Import Mode *" Value="_import.ImportMode" 
+                                       ValueChanged="OnImportModeChanged"
                                        Variant="Variant.Outlined" Required="true">
                                 <MudSelectItem Value="ImportMode.Air">
                                     <MudIcon Icon="@Icons.Material.Filled.Flight" Class="mr-2" /> Air
@@ -101,9 +102,16 @@ else
                                              ValueChanged="OnOriginCountryChanged" />
                         </MudItem>
                         <MudItem xs="12" sm="6">
-                            <MudTextField @bind-Value="_import.OriginPortCode" 
-                                          Label="@(_import.ImportMode == ImportMode.Sea ? "Port Code" : "Airport Code")" 
-                                          Variant="Variant.Outlined" />
+                            <MudSelect T="Port" Label="@(_import.ImportMode == ImportMode.Sea ? "Origin Port" : "Origin Airport")" 
+                                       @bind-Value="_originPort"
+                                       Variant="Variant.Outlined" Dense="true"
+                                       ToStringFunc="@(p => p != null ? $"{p.Name} ({p.IATACode ?? p.Code})" : "")">
+                                <MudSelectItem T="Port" Value="@((Port?)null)">-- Select --</MudSelectItem>
+                                @foreach (var port in GetFilteredPorts())
+                                {
+                                    <MudSelectItem T="Port" Value="@port">@port.Name (@(port.IATACode ?? port.Code))</MudSelectItem>
+                                }
+                            </MudSelect>
                         </MudItem>
                         <MudItem xs="12" sm="6">
                             <MudAutocomplete T="Country" Label="Destination Country *" Value="_destCountry"
@@ -112,9 +120,16 @@ else
                                              ValueChanged="OnDestCountryChanged" />
                         </MudItem>
                         <MudItem xs="12" sm="6">
-                            <MudTextField @bind-Value="_import.DestinationPortCode" 
-                                          Label="@(_import.ImportMode == ImportMode.Sea ? "Port Code" : "Airport Code")" 
-                                          Variant="Variant.Outlined" />
+                            <MudSelect T="Port" Label="@(_import.ImportMode == ImportMode.Sea ? "Destination Port" : "Destination Airport")" 
+                                       @bind-Value="_destinationPort"
+                                       Variant="Variant.Outlined" Dense="true"
+                                       ToStringFunc="@(p => p != null ? $"{p.Name} ({p.IATACode ?? p.Code})" : "")">
+                                <MudSelectItem T="Port" Value="@((Port?)null)">-- Select --</MudSelectItem>
+                                @foreach (var port in GetFilteredPorts())
+                                {
+                                    <MudSelectItem T="Port" Value="@port">@port.Name (@(port.IATACode ?? port.Code))</MudSelectItem>
+                                }
+                            </MudSelect>
                         </MudItem>
                     </MudGrid>
 
@@ -336,6 +351,9 @@ else
     private DateTime? _actualArrival;
     private DateTime? _flightDate;
     private List<Country> _countries = new();
+    private List<Port> _ports = new();
+    private Port? _originPort;
+    private Port? _destinationPort;
     private List<ImportDocument> _documents = new();
     private string _referenceLabel = "Reference Number *";
     
@@ -356,6 +374,12 @@ else
         await using var dbContext = await DbFactory.CreateDbContextAsync();
         _countries = await dbContext.Countries.Where(c => !c.IsDeleted && c.IsActive).OrderBy(c => c.Name).ToListAsync();
         
+        // Load all ports (airports for Air mode)
+        _ports = await dbContext.Ports
+            .Where(p => p.IsActive && !p.IsDeleted)
+            .OrderBy(p => p.Name)
+            .ToListAsync();
+        
         if (!IsNew && Id.HasValue)
         {
             _import = await dbContext.ImportMasters.FirstOrDefaultAsync(i => i.Id == Id.Value && !i.IsDeleted) 
@@ -370,6 +394,12 @@ else
             _etd = _import.ETD;
             _actualArrival = _import.ActualArrivalDate;
             _flightDate = _import.FlightDate;
+            
+            // Load selected ports by code
+            if (!string.IsNullOrEmpty(_import.OriginPortCode))
+                _originPort = _ports.FirstOrDefault(p => p.IATACode == _import.OriginPortCode || p.Code == _import.OriginPortCode);
+            if (!string.IsNullOrEmpty(_import.DestinationPortCode))
+                _destinationPort = _ports.FirstOrDefault(p => p.IATACode == _import.DestinationPortCode || p.Code == _import.DestinationPortCode);
             
             _documents = await dbContext.ImportDocuments
                 .Where(d => d.ImportMasterId == Id.Value && !d.IsDeleted)
@@ -393,6 +423,15 @@ else
             ImportMode.Land => "Truck Waybill Number *",
             _ => "Reference Number *"
         };
+    }
+
+    private void OnImportModeChanged(ImportMode mode)
+    {
+        _import.ImportMode = mode;
+        // Clear selected ports when mode changes since they may no longer be valid for new mode
+        _originPort = null;
+        _destinationPort = null;
+        UpdateReferenceLabel();
     }
 
     private Task<IEnumerable<Country>> SearchCountries(string value)
@@ -433,6 +472,18 @@ else
         _ => ""
     };
 
+    private IEnumerable<Port> GetFilteredPorts()
+    {
+        var portType = _import.ImportMode switch
+        {
+            ImportMode.Air => PortType.Airport,
+            ImportMode.Sea => PortType.Seaport,
+            ImportMode.Land => PortType.LandBorder,
+            _ => PortType.Airport
+        };
+        return _ports.Where(p => p.PortType == portType);
+    }
+
     private async Task SaveDraft()
     {
         if (_form == null) return;
@@ -448,6 +499,10 @@ else
             _import.ETD = _etd;
             _import.ActualArrivalDate = _actualArrival;
             _import.FlightDate = _flightDate;
+            
+            // Set port codes from selected ports
+            _import.OriginPortCode = _originPort?.IATACode ?? _originPort?.Code;
+            _import.DestinationPortCode = _destinationPort?.IATACode ?? _destinationPort?.Code;
             
             if (IsNew)
             {
