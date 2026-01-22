@@ -1,0 +1,342 @@
+@page "/empost/quarters"
+@using Net4Courier.Web.Services
+@using Net4Courier.Finance.Entities
+@using System.Security.Claims
+@using Microsoft.AspNetCore.Components.Authorization
+@inject IEmpostService EmpostService
+@inject IDialogService DialogService
+@inject ISnackbar Snackbar
+@inject AuthenticationStateProvider AuthStateProvider
+
+<PageTitle>Empost Quarters - Net4Courier</PageTitle>
+
+<MudContainer MaxWidth="MaxWidth.ExtraLarge" Class="py-4">
+    <MudText Typo="Typo.h4" Class="mb-4">Empost Quarterly Periods</MudText>
+    
+    @if (_loading)
+    {
+        <MudProgressLinear Indeterminate="true" />
+    }
+    else if (_license == null)
+    {
+        <MudAlert Severity="Severity.Warning">
+            No active Empost license found. Please set up your license first.
+        </MudAlert>
+    }
+    else
+    {
+        <MudStack Row="true" Class="mb-4" Spacing="3">
+            <MudSelect @bind-Value="_selectedYear" Label="Year" Style="width: 150px;">
+                @foreach (var year in _availableYears)
+                {
+                    <MudSelectItem Value="@year">@year</MudSelectItem>
+                }
+            </MudSelect>
+            <MudButton Variant="Variant.Outlined" OnClick="LoadQuartersAsync">Filter</MudButton>
+        </MudStack>
+        
+        <MudTable Items="_quarters" Dense="true" Hover="true" Bordered="true">
+            <HeaderContent>
+                <MudTh>Quarter</MudTh>
+                <MudTh>Period</MudTh>
+                <MudTh>Deadline</MudTh>
+                <MudTh>Status</MudTh>
+                <MudTh Style="text-align:right">Shipments</MudTh>
+                <MudTh Style="text-align:right">Gross Revenue</MudTh>
+                <MudTh Style="text-align:right">Empost Fee</MudTh>
+                <MudTh>Actions</MudTh>
+            </HeaderContent>
+            <RowTemplate>
+                <MudTd>@context.QuarterName @context.Year</MudTd>
+                <MudTd>@context.PeriodStart.ToString("dd MMM") - @context.PeriodEnd.ToString("dd MMM yyyy")</MudTd>
+                <MudTd>
+                    <MudStack Row="true" Spacing="1" AlignItems="AlignItems.Center">
+                        <MudText>@context.SubmissionDeadline.ToString("dd MMM yyyy")</MudText>
+                        @if (context.SubmissionDeadline < DateTime.Today && context.Status != QuarterStatus.Submitted)
+                        {
+                            <MudIcon Icon="@Icons.Material.Filled.Warning" Color="Color.Error" Size="Size.Small" />
+                        }
+                    </MudStack>
+                </MudTd>
+                <MudTd>
+                    <MudChip Size="Size.Small" Color="@GetStatusColor(context.Status)">
+                        @context.Status.ToString()
+                    </MudChip>
+                    @if (context.IsLocked)
+                    {
+                        <MudIcon Icon="@Icons.Material.Filled.Lock" Size="Size.Small" Class="ml-1" />
+                    }
+                </MudTd>
+                <MudTd Style="text-align:right">@context.TotalShipments (@context.TaxableShipments taxable)</MudTd>
+                <MudTd Style="text-align:right">AED @context.TotalGrossRevenue.ToString("N2")</MudTd>
+                <MudTd Style="text-align:right">AED @context.NetEmpostFee.ToString("N2")</MudTd>
+                <MudTd>
+                    <MudStack Row="true" Spacing="1">
+                        @if (!context.IsLocked)
+                        {
+                            <MudIconButton Icon="@Icons.Material.Filled.Calculate" Size="Size.Small"
+                                          Title="Calculate Fees" OnClick="@(() => CalculateFeesAsync(context))" />
+                            <MudIconButton Icon="@Icons.Material.Filled.Lock" Size="Size.Small"
+                                          Title="Lock Quarter" OnClick="@(() => LockQuarterAsync(context))" />
+                        }
+                        else if (context.Status == QuarterStatus.PendingSubmission)
+                        {
+                            <MudIconButton Icon="@Icons.Material.Filled.LockOpen" Size="Size.Small"
+                                          Title="Unlock Quarter" OnClick="@(() => UnlockQuarterAsync(context))" />
+                            <MudIconButton Icon="@Icons.Material.Filled.Send" Size="Size.Small" Color="Color.Primary"
+                                          Title="Submit to Empost" OnClick="@(() => SubmitQuarterAsync(context))" />
+                        }
+                        <MudIconButton Icon="@Icons.Material.Filled.Visibility" Size="Size.Small"
+                                      Title="View Details" OnClick="@(() => ViewQuarterDetails(context))" />
+                    </MudStack>
+                </MudTd>
+            </RowTemplate>
+        </MudTable>
+    }
+</MudContainer>
+
+<MudDialog @bind-Visible="_showDetailsDialog">
+    <TitleContent>
+        <MudText Typo="Typo.h6">@_selectedQuarter?.QuarterName @_selectedQuarter?.Year Details</MudText>
+    </TitleContent>
+    <DialogContent>
+        @if (_selectedQuarter != null)
+        {
+            <MudGrid>
+                <MudItem xs="6">
+                    <MudText Typo="Typo.caption">Period</MudText>
+                    <MudText>@_selectedQuarter.PeriodStart.ToString("dd MMM yyyy") - @_selectedQuarter.PeriodEnd.ToString("dd MMM yyyy")</MudText>
+                </MudItem>
+                <MudItem xs="6">
+                    <MudText Typo="Typo.caption">Submission Deadline</MudText>
+                    <MudText>@_selectedQuarter.SubmissionDeadline.ToString("dd MMM yyyy")</MudText>
+                </MudItem>
+                <MudItem xs="6">
+                    <MudText Typo="Typo.caption">Status</MudText>
+                    <MudChip Size="Size.Small" Color="@GetStatusColor(_selectedQuarter.Status)">
+                        @_selectedQuarter.Status.ToString()
+                    </MudChip>
+                </MudItem>
+                <MudItem xs="6">
+                    <MudText Typo="Typo.caption">Locked</MudText>
+                    <MudText>@(_selectedQuarter.IsLocked ? $"Yes - {_selectedQuarter.LockedByName} on {_selectedQuarter.LockedDate:dd MMM yyyy}" : "No")</MudText>
+                </MudItem>
+                
+                <MudItem xs="12"><MudDivider Class="my-2" /></MudItem>
+                
+                <MudItem xs="4">
+                    <MudText Typo="Typo.caption">Total Shipments</MudText>
+                    <MudText Typo="Typo.h6">@_selectedQuarter.TotalShipments</MudText>
+                </MudItem>
+                <MudItem xs="4">
+                    <MudText Typo="Typo.caption">Taxable</MudText>
+                    <MudText Typo="Typo.h6">@_selectedQuarter.TaxableShipments</MudText>
+                </MudItem>
+                <MudItem xs="4">
+                    <MudText Typo="Typo.caption">Exempt</MudText>
+                    <MudText Typo="Typo.h6">@_selectedQuarter.ExemptShipments</MudText>
+                </MudItem>
+                
+                <MudItem xs="12"><MudDivider Class="my-2" /></MudItem>
+                
+                <MudItem xs="6">
+                    <MudText Typo="Typo.caption">Gross Revenue</MudText>
+                    <MudText Typo="Typo.h6">AED @_selectedQuarter.TotalGrossRevenue.ToString("N2")</MudText>
+                </MudItem>
+                <MudItem xs="6">
+                    <MudText Typo="Typo.caption">Taxable Revenue</MudText>
+                    <MudText Typo="Typo.h6">AED @_selectedQuarter.TotalTaxableRevenue.ToString("N2")</MudText>
+                </MudItem>
+                <MudItem xs="6">
+                    <MudText Typo="Typo.caption">Total Fee (10%)</MudText>
+                    <MudText Typo="Typo.h6">AED @_selectedQuarter.TotalEmpostFee.ToString("N2")</MudText>
+                </MudItem>
+                <MudItem xs="6">
+                    <MudText Typo="Typo.caption">Return Adjustments</MudText>
+                    <MudText Typo="Typo.h6">AED @_selectedQuarter.TotalReturnAdjustments.ToString("N2")</MudText>
+                </MudItem>
+                <MudItem xs="12">
+                    <MudText Typo="Typo.caption">Net Empost Fee</MudText>
+                    <MudText Typo="Typo.h4" Color="Color.Primary">AED @_selectedQuarter.NetEmpostFee.ToString("N2")</MudText>
+                </MudItem>
+                
+                @if (_selectedQuarter.Status == QuarterStatus.Submitted)
+                {
+                    <MudItem xs="12"><MudDivider Class="my-2" /></MudItem>
+                    <MudItem xs="12">
+                        <MudText Typo="Typo.caption">Submitted</MudText>
+                        <MudText>By @_selectedQuarter.SubmittedByName on @_selectedQuarter.SubmittedDate?.ToString("dd MMM yyyy HH:mm")</MudText>
+                    </MudItem>
+                }
+            </MudGrid>
+        }
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="@(() => _showDetailsDialog = false)">Close</MudButton>
+    </DialogActions>
+</MudDialog>
+
+<MudDialog @bind-Visible="_showUnlockDialog">
+    <TitleContent>
+        <MudText Typo="Typo.h6">Unlock Quarter</MudText>
+    </TitleContent>
+    <DialogContent>
+        <MudText Class="mb-4">Please provide a reason for unlocking @_selectedQuarter?.QuarterName @_selectedQuarter?.Year:</MudText>
+        <MudTextField @bind-Value="_unlockReason" Label="Reason" Required="true" Lines="3" />
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="@(() => _showUnlockDialog = false)">Cancel</MudButton>
+        <MudButton Variant="Variant.Filled" Color="Color.Warning" OnClick="ConfirmUnlock">Unlock</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    private EmpostLicense? _license;
+    private List<EmpostQuarter> _quarters = new();
+    private List<int> _availableYears = new();
+    private int _selectedYear;
+    private bool _loading = true;
+    private bool _showDetailsDialog = false;
+    private bool _showUnlockDialog = false;
+    private EmpostQuarter? _selectedQuarter;
+    private string _unlockReason = string.Empty;
+    
+    private int _currentUserId;
+    private string _currentUserName = string.Empty;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+        var userIdClaim = authState.User.FindFirst("UserId")?.Value;
+        if (int.TryParse(userIdClaim, out var userId))
+            _currentUserId = userId;
+        _currentUserName = authState.User.FindFirst("FullName")?.Value ?? "Unknown";
+        
+        _selectedYear = DateTime.Today.Year;
+        _availableYears = Enumerable.Range(DateTime.Today.Year - 5, 10).ToList();
+        
+        _license = await EmpostService.GetActiveLicenseAsync();
+        await LoadQuartersAsync();
+    }
+
+    private async Task LoadQuartersAsync()
+    {
+        try
+        {
+            _loading = true;
+            if (_license != null)
+            {
+                _quarters = await EmpostService.GetQuartersAsync(_license.Id, _selectedYear);
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error loading quarters: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private async Task CalculateFeesAsync(EmpostQuarter quarter)
+    {
+        try
+        {
+            var result = await EmpostService.CalculateQuarterFeesAsync(quarter.Id);
+            Snackbar.Add($"Calculated fees for {result.TotalShipments} shipments. Net Fee: AED {result.NetEmpostFee:N2}", Severity.Success);
+            await LoadQuartersAsync();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error calculating fees: {ex.Message}", Severity.Error);
+        }
+    }
+
+    private async Task LockQuarterAsync(EmpostQuarter quarter)
+    {
+        var confirmed = await DialogService.ShowMessageBox(
+            "Lock Quarter",
+            $"Lock {quarter.QuarterName} {quarter.Year}? This will prevent further changes to shipment data.",
+            yesText: "Lock", cancelText: "Cancel");
+        
+        if (confirmed == true)
+        {
+            try
+            {
+                await EmpostService.LockQuarterAsync(quarter.Id, _currentUserId, _currentUserName);
+                Snackbar.Add("Quarter locked successfully", Severity.Success);
+                await LoadQuartersAsync();
+            }
+            catch (Exception ex)
+            {
+                Snackbar.Add($"Error locking quarter: {ex.Message}", Severity.Error);
+            }
+        }
+    }
+
+    private void UnlockQuarterAsync(EmpostQuarter quarter)
+    {
+        _selectedQuarter = quarter;
+        _unlockReason = string.Empty;
+        _showUnlockDialog = true;
+    }
+
+    private async Task ConfirmUnlock()
+    {
+        if (string.IsNullOrWhiteSpace(_unlockReason))
+        {
+            Snackbar.Add("Please provide a reason for unlocking", Severity.Warning);
+            return;
+        }
+        
+        try
+        {
+            await EmpostService.UnlockQuarterAsync(_selectedQuarter!.Id, _currentUserId, _currentUserName, _unlockReason);
+            Snackbar.Add("Quarter unlocked successfully", Severity.Success);
+            _showUnlockDialog = false;
+            await LoadQuartersAsync();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error unlocking quarter: {ex.Message}", Severity.Error);
+        }
+    }
+
+    private async Task SubmitQuarterAsync(EmpostQuarter quarter)
+    {
+        var confirmed = await DialogService.ShowMessageBox(
+            "Submit to Empost",
+            $"Submit {quarter.QuarterName} {quarter.Year} to Empost? Net Fee: AED {quarter.NetEmpostFee:N2}",
+            yesText: "Submit", cancelText: "Cancel");
+        
+        if (confirmed == true)
+        {
+            try
+            {
+                await EmpostService.SubmitQuarterAsync(quarter.Id, _currentUserId, _currentUserName);
+                Snackbar.Add("Quarter submitted successfully", Severity.Success);
+                await LoadQuartersAsync();
+            }
+            catch (Exception ex)
+            {
+                Snackbar.Add($"Error submitting quarter: {ex.Message}", Severity.Error);
+            }
+        }
+    }
+
+    private void ViewQuarterDetails(EmpostQuarter quarter)
+    {
+        _selectedQuarter = quarter;
+        _showDetailsDialog = true;
+    }
+
+    private Color GetStatusColor(QuarterStatus status) => status switch
+    {
+        QuarterStatus.Open => Color.Info,
+        QuarterStatus.PendingSubmission => Color.Warning,
+        QuarterStatus.Submitted => Color.Success,
+        QuarterStatus.Locked => Color.Dark,
+        _ => Color.Default
+    };
+}

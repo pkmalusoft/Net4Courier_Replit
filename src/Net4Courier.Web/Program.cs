@@ -87,6 +87,7 @@ builder.Services.AddScoped<PODExcelService>();
 builder.Services.AddScoped<ISecureStorageService, SecureStorageService>();
 builder.Services.AddScoped<BookingWebhookService>();
 builder.Services.AddScoped<EmpostFeeReportService>();
+builder.Services.AddScoped<IEmpostService, EmpostService>();
 builder.Services.AddAuthorizationCore();
 builder.Services.AddCascadingAuthenticationState();
 

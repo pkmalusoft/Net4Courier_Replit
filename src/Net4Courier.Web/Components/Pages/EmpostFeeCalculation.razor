@@ -1,0 +1,241 @@
+@page "/empost/fee-calculation"
+@using Net4Courier.Web.Services
+@using Net4Courier.Finance.Entities
+@inject IEmpostService EmpostService
+@inject NavigationManager NavigationManager
+@inject ISnackbar Snackbar
+
+<PageTitle>Empost Fee Calculation - Net4Courier</PageTitle>
+
+<MudContainer MaxWidth="MaxWidth.ExtraLarge" Class="py-4">
+    <MudText Typo="Typo.h4" Class="mb-4">Empost Fee Calculation</MudText>
+    
+    @if (_loading)
+    {
+        <MudProgressLinear Indeterminate="true" />
+    }
+    else if (_license == null)
+    {
+        <MudAlert Severity="Severity.Warning">
+            No active Empost license found. Please set up your license first.
+        </MudAlert>
+    }
+    else
+    {
+        <MudGrid Class="mb-4">
+            <MudItem xs="12" md="4">
+                <MudSelect @bind-Value="_selectedQuarterId" Label="Select Quarter" Variant="Variant.Outlined">
+                    @foreach (var q in _quarters)
+                    {
+                        <MudSelectItem Value="@q.Id">@q.QuarterName @q.Year (@q.Status)</MudSelectItem>
+                    }
+                </MudSelect>
+            </MudItem>
+            <MudItem xs="12" md="4">
+                <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="LoadShipmentFees" Class="mt-1"
+                           Disabled="@(_selectedQuarterId == 0)">
+                    Load Shipment Fees
+                </MudButton>
+            </MudItem>
+        </MudGrid>
+        
+        @if (_calculationResult != null)
+        {
+            <MudPaper Class="pa-4 mb-4" Elevation="2">
+                <MudText Typo="Typo.h6" Class="mb-3">Quarter Summary</MudText>
+                <MudGrid>
+                    <MudItem xs="6" md="3">
+                        <MudText Typo="Typo.caption">Total Shipments</MudText>
+                        <MudText Typo="Typo.h5">@_calculationResult.TotalShipments</MudText>
+                    </MudItem>
+                    <MudItem xs="6" md="3">
+                        <MudText Typo="Typo.caption">Taxable Shipments</MudText>
+                        <MudText Typo="Typo.h5" Color="Color.Primary">@_calculationResult.TaxableShipments</MudText>
+                    </MudItem>
+                    <MudItem xs="6" md="3">
+                        <MudText Typo="Typo.caption">Exempt Shipments</MudText>
+                        <MudText Typo="Typo.h5">@_calculationResult.ExemptShipments</MudText>
+                    </MudItem>
+                    <MudItem xs="6" md="3">
+                        <MudText Typo="Typo.caption">Royalty Rate</MudText>
+                        <MudText Typo="Typo.h5">@_license.RoyaltyPercentage%</MudText>
+                    </MudItem>
+                    <MudItem xs="6" md="3">
+                        <MudText Typo="Typo.caption">Total Gross Revenue</MudText>
+                        <MudText Typo="Typo.h5">AED @_calculationResult.TotalGrossRevenue.ToString("N2")</MudText>
+                    </MudItem>
+                    <MudItem xs="6" md="3">
+                        <MudText Typo="Typo.caption">Taxable Revenue</MudText>
+                        <MudText Typo="Typo.h5">AED @_calculationResult.TotalTaxableRevenue.ToString("N2")</MudText>
+                    </MudItem>
+                    <MudItem xs="6" md="3">
+                        <MudText Typo="Typo.caption">Exempt Revenue</MudText>
+                        <MudText Typo="Typo.h5">AED @_calculationResult.TotalExemptRevenue.ToString("N2")</MudText>
+                    </MudItem>
+                    <MudItem xs="6" md="3">
+                        <MudText Typo="Typo.caption">Return Adjustments</MudText>
+                        <MudText Typo="Typo.h5" Color="Color.Warning">AED @_calculationResult.ReturnAdjustments.ToString("N2")</MudText>
+                    </MudItem>
+                    <MudItem xs="12">
+                        <MudDivider Class="my-3" />
+                        <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
+                            <div>
+                                <MudText Typo="Typo.caption">Net Empost Fee (10% of Taxable Revenue)</MudText>
+                                <MudText Typo="Typo.h4" Color="Color.Primary">AED @_calculationResult.NetEmpostFee.ToString("N2")</MudText>
+                            </div>
+                        </MudStack>
+                    </MudItem>
+                </MudGrid>
+            </MudPaper>
+        }
+        
+        @if (_shipmentFees.Any())
+        {
+            <MudText Typo="Typo.h6" Class="mb-3">Shipment Fee Details</MudText>
+            
+            <MudTextField @bind-Value="_searchText" Placeholder="Search by AWB..." Adornment="Adornment.Start"
+                         AdornmentIcon="@Icons.Material.Filled.Search" Class="mb-3" Style="max-width: 300px;" />
+            
+            <MudTable Items="@FilteredShipments" Dense="true" Hover="true" Bordered="true" Virtualize="true"
+                      FixedHeader="true" Height="500px">
+                <HeaderContent>
+                    <MudTh>AWB</MudTh>
+                    <MudTh>Date</MudTh>
+                    <MudTh>Weight</MudTh>
+                    <MudTh>Classification</MudTh>
+                    <MudTh>Taxability</MudTh>
+                    <MudTh Style="text-align:right">Gross Amount</MudTh>
+                    <MudTh Style="text-align:right">Fee (10%)</MudTh>
+                    <MudTh>Status</MudTh>
+                </HeaderContent>
+                <RowTemplate>
+                    <MudTd>@context.AWBNumber</MudTd>
+                    <MudTd>@context.ShipmentDate.ToString("dd MMM yyyy")</MudTd>
+                    <MudTd>@context.ChargeableWeight.ToString("N2") kg</MudTd>
+                    <MudTd>
+                        <MudChip Size="Size.Small" Color="@GetClassificationColor(context.Classification)">
+                            @context.Classification
+                        </MudChip>
+                    </MudTd>
+                    <MudTd>
+                        <MudChip Size="Size.Small" Color="@(context.TaxabilityStatus == EmpostTaxabilityStatus.Taxable ? Color.Success : Color.Default)">
+                            @context.TaxabilityStatus
+                        </MudChip>
+                    </MudTd>
+                    <MudTd Style="text-align:right">@context.GrossAmount.ToString("N2")</MudTd>
+                    <MudTd Style="text-align:right">@context.EmpostFeeAmount.ToString("N2")</MudTd>
+                    <MudTd>
+                        @if (context.IsReturnAdjusted)
+                        {
+                            <MudChip Size="Size.Small" Color="Color.Warning">Adjusted</MudChip>
+                        }
+                        else
+                        {
+                            <MudChip Size="Size.Small" Color="@GetFeeStatusColor(context.FeeStatus)">
+                                @context.FeeStatus
+                            </MudChip>
+                        }
+                    </MudTd>
+                </RowTemplate>
+            </MudTable>
+            
+            <MudStack Row="true" Justify="Justify.FlexEnd" Class="mt-3">
+                <MudText Typo="Typo.subtitle1">
+                    Showing @FilteredShipments.Count() of @_shipmentFees.Count shipments
+                </MudText>
+            </MudStack>
+        }
+    }
+</MudContainer>
+
+@code {
+    private EmpostLicense? _license;
+    private List<EmpostQuarter> _quarters = new();
+    private List<EmpostShipmentFee> _shipmentFees = new();
+    private QuarterCalculationResult? _calculationResult;
+    private long _selectedQuarterId;
+    private bool _loading = true;
+    private string _searchText = string.Empty;
+
+    private IEnumerable<EmpostShipmentFee> FilteredShipments => 
+        string.IsNullOrWhiteSpace(_searchText) 
+            ? _shipmentFees 
+            : _shipmentFees.Where(s => s.AWBNumber.Contains(_searchText, StringComparison.OrdinalIgnoreCase));
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            _license = await EmpostService.GetActiveLicenseAsync();
+            if (_license != null)
+            {
+                _quarters = await EmpostService.GetQuartersAsync(_license.Id);
+                var currentQuarter = _quarters.FirstOrDefault(q => q.PeriodStart <= DateTime.Today && q.PeriodEnd >= DateTime.Today);
+                _selectedQuarterId = currentQuarter?.Id ?? _quarters.FirstOrDefault()?.Id ?? 0;
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error loading data: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private async Task LoadShipmentFees()
+    {
+        if (_selectedQuarterId == 0) return;
+        
+        try
+        {
+            _loading = true;
+            _shipmentFees = await EmpostService.GetQuarterShipmentFeesAsync(_selectedQuarterId);
+            
+            var quarter = _quarters.FirstOrDefault(q => q.Id == _selectedQuarterId);
+            if (quarter != null)
+            {
+                _calculationResult = new QuarterCalculationResult
+                {
+                    QuarterId = quarter.Id,
+                    TotalShipments = quarter.TotalShipments,
+                    TaxableShipments = quarter.TaxableShipments,
+                    ExemptShipments = quarter.ExemptShipments,
+                    TotalGrossRevenue = quarter.TotalGrossRevenue,
+                    TotalTaxableRevenue = quarter.TotalTaxableRevenue,
+                    TotalExemptRevenue = quarter.TotalExemptRevenue,
+                    TotalEmpostFee = quarter.TotalEmpostFee,
+                    ReturnAdjustments = quarter.TotalReturnAdjustments,
+                    NetEmpostFee = quarter.NetEmpostFee
+                };
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error loading shipment fees: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private Color GetClassificationColor(EmpostClassification classification) => classification switch
+    {
+        EmpostClassification.Taxable => Color.Success,
+        EmpostClassification.Exempt => Color.Info,
+        EmpostClassification.FreightOver30Kg => Color.Warning,
+        EmpostClassification.LumpSumContract => Color.Secondary,
+        _ => Color.Default
+    };
+
+    private Color GetFeeStatusColor(EmpostFeeStatus status) => status switch
+    {
+        EmpostFeeStatus.Pending => Color.Info,
+        EmpostFeeStatus.Settled => Color.Success,
+        EmpostFeeStatus.Credited => Color.Primary,
+        EmpostFeeStatus.Adjusted => Color.Warning,
+        _ => Color.Default
+    };
+}

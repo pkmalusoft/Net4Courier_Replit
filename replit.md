@@ -45,6 +45,16 @@ The application is built on .NET 8 Blazor Server, utilizing a modular architectu
 - **Import Module (Air/Sea/Land)**: `ImportMaster`, `ImportBag`, `ImportShipment` entities, import dashboard, import entry, customs processing, and Excel import functionality with mode-specific templates and validation.
 - **API Integration (Third-Party Booking Websites)**: `ApiSetting` entity for configuration, API settings page, webhook endpoint for receiving booking data, `BookingWebhookService` for validation and `PickupRequest` creation, secure storage of credentials, webhook authentication, and connection testing.
 - **Knowledge Base**: Comprehensive documentation including "How To Guides", operational flow, reconciliation, accounts & finance, customer management, pricing & billing, system settings, compliance & audit, and status codes reference, rendered using Markdig.
+- **Empost Regulatory Compliance Module**: Complete UAE courier licensing management including:
+  - License Management: Track Empost license details, validity periods, and renewal dates
+  - Advance Payments: Record and track mandatory AED 100,000 minimum advance payments
+  - Quarterly Periods: Manage quarterly submission periods with lock/unlock/submit workflow
+  - Fee Calculation: Automatic 10% royalty calculation on taxable shipments with exemption rules (>30kg, import, transhipment)
+  - Settlements: Track quarterly settlements with advance utilization and balance due calculations
+  - Return Adjustments: Handle fee adjustments for returned/cancelled shipments
+  - Audit Reports: Comprehensive audit trail for all Empost-related actions
+  - Entities: EmpostLicense, EmpostAdvancePayment, EmpostQuarter, EmpostShipmentFee, EmpostQuarterlySettlement, EmpostReturnAdjustment, EmpostAuditLog
+  - SQL Schema: `sql/empost_schema.sql` for manual database deployment
 
 ## External Dependencies
 - **Database**: PostgreSQL

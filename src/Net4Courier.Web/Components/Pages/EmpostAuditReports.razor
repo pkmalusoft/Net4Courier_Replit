@@ -1,0 +1,301 @@
+@page "/empost/audit-reports"
+@using Net4Courier.Web.Services
+@using Net4Courier.Finance.Entities
+@inject IEmpostService EmpostService
+@inject ISnackbar Snackbar
+
+<PageTitle>Empost Audit Reports - Net4Courier</PageTitle>
+
+<MudContainer MaxWidth="MaxWidth.ExtraLarge" Class="py-4">
+    <MudText Typo="Typo.h4" Class="mb-4">Empost Audit Reports</MudText>
+    
+    <MudTabs Elevation="2" Rounded="true" ApplyEffectsToContainer="true" PanelClass="pa-4">
+        <MudTabPanel Text="Audit Log">
+            @if (_loading)
+            {
+                <MudProgressLinear Indeterminate="true" />
+            }
+            else
+            {
+                <MudStack Row="true" Class="mb-4" Spacing="3">
+                    <MudSelect @bind-Value="_filterAction" Label="Action" Style="width: 200px;">
+                        <MudSelectItem Value='"All"'>All Actions</MudSelectItem>
+                        @foreach (var action in Enum.GetValues<EmpostAuditAction>())
+                        {
+                            <MudSelectItem Value="@action.ToString()">@action</MudSelectItem>
+                        }
+                    </MudSelect>
+                    <MudTextField @bind-Value="_searchText" Placeholder="Search..." Adornment="Adornment.Start"
+                                 AdornmentIcon="@Icons.Material.Filled.Search" Style="width: 200px;" />
+                    <MudButton Variant="Variant.Outlined" OnClick="LoadAuditLogs">Refresh</MudButton>
+                </MudStack>
+                
+                <MudTable Items="@FilteredLogs" Dense="true" Hover="true" Bordered="true" FixedHeader="true" Height="500px">
+                    <HeaderContent>
+                        <MudTh>Timestamp</MudTh>
+                        <MudTh>Action</MudTh>
+                        <MudTh>Description</MudTh>
+                        <MudTh>AWB</MudTh>
+                        <MudTh>Quarter</MudTh>
+                        <MudTh Style="text-align:right">Old Value</MudTh>
+                        <MudTh Style="text-align:right">New Value</MudTh>
+                        <MudTh>User</MudTh>
+                    </HeaderContent>
+                    <RowTemplate>
+                        <MudTd>@context.PerformedAt.ToString("dd MMM yyyy HH:mm")</MudTd>
+                        <MudTd>
+                            <MudChip Size="Size.Small" Color="@GetActionColor(context.Action)">
+                                @context.Action
+                            </MudChip>
+                        </MudTd>
+                        <MudTd>
+                            <MudTooltip Text="@context.ActionDescription">
+                                <MudText Style="max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">
+                                    @context.ActionDescription
+                                </MudText>
+                            </MudTooltip>
+                        </MudTd>
+                        <MudTd>@(context.AWBNumber ?? "-")</MudTd>
+                        <MudTd>@(context.Quarter.HasValue ? $"{context.Quarter} {context.Year}" : "-")</MudTd>
+                        <MudTd Style="text-align:right">@(context.OldValue?.ToString("N2") ?? "-")</MudTd>
+                        <MudTd Style="text-align:right">@(context.NewValue?.ToString("N2") ?? "-")</MudTd>
+                        <MudTd>@(context.PerformedByName ?? "-")</MudTd>
+                    </RowTemplate>
+                </MudTable>
+                
+                <MudText Typo="Typo.caption" Class="mt-3">
+                    Showing @FilteredLogs.Count() of @_auditLogs.Count entries
+                </MudText>
+            }
+        </MudTabPanel>
+        
+        <MudTabPanel Text="Summary Report">
+            @if (_license != null && _dashboardData.HasActiveLicense)
+            {
+                <MudPaper Class="pa-4 mb-4" Elevation="0">
+                    <MudText Typo="Typo.h6" Class="mb-3">License Summary</MudText>
+                    <MudSimpleTable Dense="true" Hover="true">
+                        <tbody>
+                            <tr>
+                                <td width="200"><strong>License Number</strong></td>
+                                <td>@_license.LicenseNumber</td>
+                            </tr>
+                            <tr>
+                                <td><strong>Licensee</strong></td>
+                                <td>@_license.LicenseeName</td>
+                            </tr>
+                            <tr>
+                                <td><strong>License Period</strong></td>
+                                <td>@_license.LicensePeriodStart.ToString("dd MMM yyyy") - @_license.LicensePeriodEnd.ToString("dd MMM yyyy")</td>
+                            </tr>
+                            <tr>
+                                <td><strong>Royalty Rate</strong></td>
+                                <td>@_license.RoyaltyPercentage%</td>
+                            </tr>
+                            <tr>
+                                <td><strong>Weight Threshold</strong></td>
+                                <td>@_license.WeightThresholdKg kg</td>
+                            </tr>
+                            <tr>
+                                <td><strong>Minimum Advance</strong></td>
+                                <td>AED @_license.MinimumAdvanceAmount.ToString("N0")</td>
+                            </tr>
+                        </tbody>
+                    </MudSimpleTable>
+                </MudPaper>
+                
+                <MudPaper Class="pa-4 mb-4" Elevation="0">
+                    <MudText Typo="Typo.h6" Class="mb-3">Fee Utilization Summary</MudText>
+                    <MudSimpleTable Dense="true" Hover="true">
+                        <tbody>
+                            <tr>
+                                <td width="200"><strong>Cumulative Fee to Date</strong></td>
+                                <td>AED @_dashboardData.CumulativeFeeToDate.ToString("N2")</td>
+                            </tr>
+                            <tr>
+                                <td><strong>Advance Utilized</strong></td>
+                                <td>AED @_dashboardData.AdvanceUtilized.ToString("N2")</td>
+                            </tr>
+                            <tr>
+                                <td><strong>Excess Over Advance</strong></td>
+                                <td>AED @_dashboardData.ExcessOverAdvance.ToString("N2")</td>
+                            </tr>
+                            <tr>
+                                <td><strong>Balance Due</strong></td>
+                                <td class="@(_dashboardData.BalanceDue > 0 ? "mud-error-text" : "")">
+                                    AED @_dashboardData.BalanceDue.ToString("N2")
+                                </td>
+                            </tr>
+                        </tbody>
+                    </MudSimpleTable>
+                </MudPaper>
+                
+                <MudPaper Class="pa-4" Elevation="0">
+                    <MudText Typo="Typo.h6" Class="mb-3">Current Quarter (@_dashboardData.CurrentQuarterName @_dashboardData.CurrentYear)</MudText>
+                    <MudGrid>
+                        <MudItem xs="6" md="3">
+                            <MudText Typo="Typo.caption">Total Shipments</MudText>
+                            <MudText Typo="Typo.h6">@_dashboardData.CurrentQuarterShipments</MudText>
+                        </MudItem>
+                        <MudItem xs="6" md="3">
+                            <MudText Typo="Typo.caption">Taxable Shipments</MudText>
+                            <MudText Typo="Typo.h6">@_dashboardData.CurrentQuarterTaxableShipments</MudText>
+                        </MudItem>
+                        <MudItem xs="6" md="3">
+                            <MudText Typo="Typo.caption">Gross Revenue</MudText>
+                            <MudText Typo="Typo.h6">AED @_dashboardData.CurrentQuarterGrossRevenue.ToString("N2")</MudText>
+                        </MudItem>
+                        <MudItem xs="6" md="3">
+                            <MudText Typo="Typo.caption">Quarter Fee</MudText>
+                            <MudText Typo="Typo.h6">AED @_dashboardData.CurrentQuarterFee.ToString("N2")</MudText>
+                        </MudItem>
+                    </MudGrid>
+                </MudPaper>
+            }
+            else
+            {
+                <MudAlert Severity="Severity.Warning">
+                    No active license found. Please set up your Empost license first.
+                </MudAlert>
+            }
+        </MudTabPanel>
+        
+        <MudTabPanel Text="Action Statistics">
+            <MudText Typo="Typo.h6" Class="mb-3">Actions by Type</MudText>
+            <MudSimpleTable Dense="true" Hover="true">
+                <thead>
+                    <tr>
+                        <th>Action Type</th>
+                        <th Style="text-align:right">Count</th>
+                        <th>Last Performed</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var stat in _actionStats)
+                    {
+                        <tr>
+                            <td>
+                                <MudChip Size="Size.Small" Color="@GetActionColor(stat.Action)">
+                                    @stat.Action
+                                </MudChip>
+                            </td>
+                            <td Style="text-align:right">@stat.Count</td>
+                            <td>@stat.LastPerformed.ToString("dd MMM yyyy HH:mm")</td>
+                        </tr>
+                    }
+                </tbody>
+            </MudSimpleTable>
+        </MudTabPanel>
+    </MudTabs>
+</MudContainer>
+
+@code {
+    private EmpostLicense? _license;
+    private EmpostDashboardData _dashboardData = new();
+    private List<EmpostAuditLog> _auditLogs = new();
+    private List<ActionStat> _actionStats = new();
+    private bool _loading = true;
+    private string _filterAction = "All";
+    private string _searchText = string.Empty;
+
+    private IEnumerable<EmpostAuditLog> FilteredLogs
+    {
+        get
+        {
+            var result = _auditLogs.AsEnumerable();
+            
+            if (_filterAction != "All" && Enum.TryParse<EmpostAuditAction>(_filterAction, out var action))
+            {
+                result = result.Where(l => l.Action == action);
+            }
+            
+            if (!string.IsNullOrWhiteSpace(_searchText))
+            {
+                result = result.Where(l => 
+                    l.ActionDescription.Contains(_searchText, StringComparison.OrdinalIgnoreCase) ||
+                    (l.AWBNumber?.Contains(_searchText, StringComparison.OrdinalIgnoreCase) ?? false) ||
+                    (l.PerformedByName?.Contains(_searchText, StringComparison.OrdinalIgnoreCase) ?? false));
+            }
+            
+            return result;
+        }
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadDataAsync();
+    }
+
+    private async Task LoadDataAsync()
+    {
+        try
+        {
+            _loading = true;
+            _license = await EmpostService.GetActiveLicenseAsync();
+            
+            if (_license != null)
+            {
+                _dashboardData = await EmpostService.GetDashboardDataAsync(_license.Id);
+                await LoadAuditLogs();
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error loading data: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private async Task LoadAuditLogs()
+    {
+        try
+        {
+            _auditLogs = await EmpostService.GetAuditLogsAsync(limit: 500);
+            
+            _actionStats = _auditLogs
+                .GroupBy(l => l.Action)
+                .Select(g => new ActionStat
+                {
+                    Action = g.Key,
+                    Count = g.Count(),
+                    LastPerformed = g.Max(l => l.PerformedAt)
+                })
+                .OrderByDescending(s => s.Count)
+                .ToList();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error loading audit logs: {ex.Message}", Severity.Error);
+        }
+    }
+
+    private Color GetActionColor(EmpostAuditAction action) => action switch
+    {
+        EmpostAuditAction.LicenseCreated => Color.Success,
+        EmpostAuditAction.LicenseUpdated => Color.Info,
+        EmpostAuditAction.LicenseRenewed => Color.Primary,
+        EmpostAuditAction.AdvancePaymentRecorded => Color.Success,
+        EmpostAuditAction.QuarterLocked => Color.Warning,
+        EmpostAuditAction.QuarterUnlocked => Color.Warning,
+        EmpostAuditAction.QuarterSubmitted => Color.Primary,
+        EmpostAuditAction.SettlementCreated => Color.Info,
+        EmpostAuditAction.SettlementPaid => Color.Success,
+        EmpostAuditAction.ShipmentFeeCalculated => Color.Default,
+        EmpostAuditAction.ReturnAdjustmentCreated => Color.Warning,
+        EmpostAuditAction.ReturnAdjustmentApplied => Color.Success,
+        EmpostAuditAction.ReportGenerated => Color.Info,
+        EmpostAuditAction.ReconciliationPerformed => Color.Primary,
+        EmpostAuditAction.ClassificationOverride => Color.Error,
+        _ => Color.Default
+    };
+
+    private class ActionStat
+    {
+        public EmpostAuditAction Action { get; set; }
+        public int Count { get; set; }
+        public DateTime LastPerformed { get; set; }
+    }
+}

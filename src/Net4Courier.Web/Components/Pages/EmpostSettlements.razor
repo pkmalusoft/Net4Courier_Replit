@@ -1,0 +1,308 @@
+@page "/empost/settlements"
+@using Net4Courier.Web.Services
+@using Net4Courier.Finance.Entities
+@using System.Security.Claims
+@using Microsoft.AspNetCore.Components.Authorization
+@inject IEmpostService EmpostService
+@inject IDialogService DialogService
+@inject ISnackbar Snackbar
+@inject AuthenticationStateProvider AuthStateProvider
+
+<PageTitle>Empost Settlements - Net4Courier</PageTitle>
+
+<MudContainer MaxWidth="MaxWidth.ExtraLarge" Class="py-4">
+    <MudText Typo="Typo.h4" Class="mb-4">Empost Quarterly Settlements</MudText>
+    
+    @if (_loading)
+    {
+        <MudProgressLinear Indeterminate="true" />
+    }
+    else if (_license == null)
+    {
+        <MudAlert Severity="Severity.Warning">
+            No active Empost license found. Please set up your license first.
+        </MudAlert>
+    }
+    else
+    {
+        <MudPaper Class="pa-4 mb-4" Elevation="2">
+            <MudText Typo="Typo.h6" Class="mb-3">Fee Utilization Summary</MudText>
+            <MudGrid>
+                <MudItem xs="6" md="2">
+                    <MudText Typo="Typo.caption">Total Advance</MudText>
+                    <MudText Typo="Typo.h6">AED @_feeStatus.TotalAdvancePayments.ToString("N0")</MudText>
+                </MudItem>
+                <MudItem xs="6" md="2">
+                    <MudText Typo="Typo.caption">Cumulative Fee</MudText>
+                    <MudText Typo="Typo.h6">AED @_feeStatus.CumulativeFeeToDate.ToString("N2")</MudText>
+                </MudItem>
+                <MudItem xs="6" md="2">
+                    <MudText Typo="Typo.caption">Advance Utilized</MudText>
+                    <MudText Typo="Typo.h6">AED @_feeStatus.AdvanceUtilized.ToString("N2")</MudText>
+                </MudItem>
+                <MudItem xs="6" md="2">
+                    <MudText Typo="Typo.caption">Excess Over Advance</MudText>
+                    <MudText Typo="Typo.h6" Color="@(_feeStatus.ExcessOverAdvance > 0 ? Color.Warning : Color.Default)">
+                        AED @_feeStatus.ExcessOverAdvance.ToString("N2")
+                    </MudText>
+                </MudItem>
+                <MudItem xs="6" md="2">
+                    <MudText Typo="Typo.caption">Settlements Paid</MudText>
+                    <MudText Typo="Typo.h6">AED @_feeStatus.TotalSettlementsPaid.ToString("N2")</MudText>
+                </MudItem>
+                <MudItem xs="6" md="2">
+                    <MudText Typo="Typo.caption">Balance Due</MudText>
+                    <MudText Typo="Typo.h6" Color="@(_feeStatus.BalanceDue > 0 ? Color.Error : Color.Success)">
+                        AED @_feeStatus.BalanceDue.ToString("N2")
+                    </MudText>
+                </MudItem>
+            </MudGrid>
+        </MudPaper>
+        
+        <MudStack Row="true" Justify="Justify.SpaceBetween" Class="mb-3">
+            <MudText Typo="Typo.h6">Settlement History</MudText>
+            <MudButton Variant="Variant.Outlined" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add"
+                       OnClick="OpenCreateSettlementDialog">
+                Create Settlement
+            </MudButton>
+        </MudStack>
+        
+        <MudTable Items="_settlements" Dense="true" Hover="true" Bordered="true">
+            <HeaderContent>
+                <MudTh>Reference</MudTh>
+                <MudTh>Quarter</MudTh>
+                <MudTh Style="text-align:right">Quarter Fee</MudTh>
+                <MudTh Style="text-align:right">Adjustments</MudTh>
+                <MudTh Style="text-align:right">Net Fee</MudTh>
+                <MudTh Style="text-align:right">Amount Payable</MudTh>
+                <MudTh Style="text-align:right">Amount Paid</MudTh>
+                <MudTh Style="text-align:right">Balance</MudTh>
+                <MudTh>Status</MudTh>
+                <MudTh>Due Date</MudTh>
+                <MudTh>Actions</MudTh>
+            </HeaderContent>
+            <RowTemplate>
+                <MudTd>@context.SettlementReference</MudTd>
+                <MudTd>@context.Quarter @context.Year</MudTd>
+                <MudTd Style="text-align:right">@context.QuarterFeeAmount.ToString("N2")</MudTd>
+                <MudTd Style="text-align:right">@context.ReturnAdjustments.ToString("N2")</MudTd>
+                <MudTd Style="text-align:right">@context.NetQuarterFee.ToString("N2")</MudTd>
+                <MudTd Style="text-align:right">@context.AmountPayable.ToString("N2")</MudTd>
+                <MudTd Style="text-align:right">@context.AmountPaid.ToString("N2")</MudTd>
+                <MudTd Style="text-align:right" Class="@(context.BalanceDue > 0 ? "mud-error-text" : "")">
+                    @context.BalanceDue.ToString("N2")
+                </MudTd>
+                <MudTd>
+                    <MudChip Size="Size.Small" Color="@GetStatusColor(context.Status)">
+                        @context.Status
+                    </MudChip>
+                </MudTd>
+                <MudTd>
+                    <MudStack Row="true" Spacing="1" AlignItems="AlignItems.Center">
+                        <MudText>@context.SettlementDueDate.ToString("dd MMM yyyy")</MudText>
+                        @if (context.SettlementDueDate < DateTime.Today && context.Status != EmpostSettlementStatus.Paid)
+                        {
+                            <MudIcon Icon="@Icons.Material.Filled.Warning" Color="Color.Error" Size="Size.Small" />
+                        }
+                    </MudStack>
+                </MudTd>
+                <MudTd>
+                    @if (context.Status != EmpostSettlementStatus.Paid && context.AmountPayable > 0)
+                    {
+                        <MudButton Variant="Variant.Text" Size="Size.Small" Color="Color.Primary"
+                                   OnClick="@(() => OpenPaymentDialog(context))">
+                            Record Payment
+                        </MudButton>
+                    }
+                </MudTd>
+            </RowTemplate>
+        </MudTable>
+        
+        @if (!_settlements.Any())
+        {
+            <MudAlert Severity="Severity.Info" Class="mt-4">
+                No settlements found. Submit a quarter to Empost first, then create a settlement.
+            </MudAlert>
+        }
+    }
+</MudContainer>
+
+<MudDialog @bind-Visible="_showCreateDialog">
+    <TitleContent>
+        <MudText Typo="Typo.h6">Create Settlement</MudText>
+    </TitleContent>
+    <DialogContent>
+        <MudText Class="mb-4">Select a submitted quarter to create a settlement:</MudText>
+        <MudSelect @bind-Value="_selectedQuarterId" Label="Quarter" Variant="Variant.Outlined">
+            @foreach (var q in _submittedQuarters)
+            {
+                <MudSelectItem Value="@q.Id">@q.QuarterName @q.Year - AED @q.NetEmpostFee.ToString("N2")</MudSelectItem>
+            }
+        </MudSelect>
+        @if (!_submittedQuarters.Any())
+        {
+            <MudAlert Severity="Severity.Warning" Class="mt-3">
+                No submitted quarters available. Please submit a quarter first.
+            </MudAlert>
+        }
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="@(() => _showCreateDialog = false)">Cancel</MudButton>
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="CreateSettlement"
+                   Disabled="@(_selectedQuarterId == 0)">Create</MudButton>
+    </DialogActions>
+</MudDialog>
+
+<MudDialog @bind-Visible="_showPaymentDialog">
+    <TitleContent>
+        <MudText Typo="Typo.h6">Record Payment</MudText>
+    </TitleContent>
+    <DialogContent>
+        @if (_selectedSettlement != null)
+        {
+            <MudText Class="mb-3">Settlement: @_selectedSettlement.SettlementReference</MudText>
+            <MudText Class="mb-4">Balance Due: AED @_selectedSettlement.BalanceDue.ToString("N2")</MudText>
+            
+            <MudGrid>
+                <MudItem xs="12">
+                    <MudNumericField T="decimal" @bind-Value="_paymentAmount" Label="Amount Paid (AED)" Format="N2" />
+                </MudItem>
+                <MudItem xs="12" md="6">
+                    <MudSelect @bind-Value="_paymentMethod" Label="Payment Method">
+                        <MudSelectItem Value='"Bank Transfer"'>Bank Transfer</MudSelectItem>
+                        <MudSelectItem Value='"Cheque"'>Cheque</MudSelectItem>
+                        <MudSelectItem Value='"Cash"'>Cash</MudSelectItem>
+                        <MudSelectItem Value='"Online"'>Online Payment</MudSelectItem>
+                    </MudSelect>
+                </MudItem>
+                <MudItem xs="12" md="6">
+                    <MudTextField @bind-Value="_paymentReference" Label="Payment Reference" />
+                </MudItem>
+            </MudGrid>
+        }
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="@(() => _showPaymentDialog = false)">Cancel</MudButton>
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="RecordPayment">Record</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    private EmpostLicense? _license;
+    private LicenseFeeStatus _feeStatus = new();
+    private List<EmpostQuarterlySettlement> _settlements = new();
+    private List<EmpostQuarter> _submittedQuarters = new();
+    private bool _loading = true;
+    private bool _showCreateDialog = false;
+    private bool _showPaymentDialog = false;
+    private long _selectedQuarterId;
+    private EmpostQuarterlySettlement? _selectedSettlement;
+    private decimal _paymentAmount;
+    private string _paymentMethod = "Bank Transfer";
+    private string _paymentReference = string.Empty;
+    
+    private int _currentUserId;
+    private string _currentUserName = string.Empty;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+        var userIdClaim = authState.User.FindFirst("UserId")?.Value;
+        if (int.TryParse(userIdClaim, out var userId))
+            _currentUserId = userId;
+        _currentUserName = authState.User.FindFirst("FullName")?.Value ?? "Unknown";
+        
+        await LoadDataAsync();
+    }
+
+    private async Task LoadDataAsync()
+    {
+        try
+        {
+            _loading = true;
+            _license = await EmpostService.GetActiveLicenseAsync();
+            if (_license != null)
+            {
+                _feeStatus = await EmpostService.GetLicenseFeeStatusAsync(_license.Id);
+                _settlements = await EmpostService.GetSettlementsAsync(_license.Id);
+                
+                var allQuarters = await EmpostService.GetQuartersAsync(_license.Id);
+                var existingSettlementQuarterIds = _settlements.Select(s => s.EmpostQuarterId).ToHashSet();
+                _submittedQuarters = allQuarters
+                    .Where(q => q.Status == QuarterStatus.Submitted && !existingSettlementQuarterIds.Contains(q.Id))
+                    .ToList();
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error loading data: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private void OpenCreateSettlementDialog()
+    {
+        _selectedQuarterId = _submittedQuarters.FirstOrDefault()?.Id ?? 0;
+        _showCreateDialog = true;
+    }
+
+    private async Task CreateSettlement()
+    {
+        try
+        {
+            await EmpostService.CreateSettlementAsync(_selectedQuarterId, _currentUserId, _currentUserName);
+            Snackbar.Add("Settlement created successfully", Severity.Success);
+            _showCreateDialog = false;
+            await LoadDataAsync();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error creating settlement: {ex.Message}", Severity.Error);
+        }
+    }
+
+    private void OpenPaymentDialog(EmpostQuarterlySettlement settlement)
+    {
+        _selectedSettlement = settlement;
+        _paymentAmount = settlement.BalanceDue;
+        _paymentMethod = "Bank Transfer";
+        _paymentReference = string.Empty;
+        _showPaymentDialog = true;
+    }
+
+    private async Task RecordPayment()
+    {
+        if (_selectedSettlement == null) return;
+        
+        try
+        {
+            await EmpostService.RecordSettlementPaymentAsync(
+                _selectedSettlement.Id, 
+                _paymentAmount, 
+                _paymentMethod, 
+                _paymentReference,
+                _currentUserId,
+                _currentUserName);
+            
+            Snackbar.Add("Payment recorded successfully", Severity.Success);
+            _showPaymentDialog = false;
+            await LoadDataAsync();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error recording payment: {ex.Message}", Severity.Error);
+        }
+    }
+
+    private Color GetStatusColor(EmpostSettlementStatus status) => status switch
+    {
+        EmpostSettlementStatus.Pending => Color.Info,
+        EmpostSettlementStatus.PartiallyPaid => Color.Warning,
+        EmpostSettlementStatus.Paid => Color.Success,
+        EmpostSettlementStatus.Waived => Color.Secondary,
+        _ => Color.Default
+    };
+}

@@ -1,0 +1,390 @@
+@page "/empost/license"
+@using Net4Courier.Web.Services
+@using Net4Courier.Finance.Entities
+@using System.Security.Claims
+@using Microsoft.AspNetCore.Components.Authorization
+@inject IEmpostService EmpostService
+@inject IDialogService DialogService
+@inject ISnackbar Snackbar
+@inject AuthenticationStateProvider AuthStateProvider
+
+<PageTitle>Empost License Management - Net4Courier</PageTitle>
+
+<MudContainer MaxWidth="MaxWidth.ExtraLarge" Class="py-4">
+    <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center" Class="mb-4">
+        <MudText Typo="Typo.h4">Empost License Management</MudText>
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add"
+                   OnClick="OpenCreateLicenseDialog">
+            New License
+        </MudButton>
+    </MudStack>
+    
+    @if (_loading)
+    {
+        <MudProgressLinear Indeterminate="true" />
+    }
+    else
+    {
+        <MudGrid>
+            @foreach (var license in _licenses)
+            {
+                <MudItem xs="12" md="6">
+                    <MudCard Elevation="2">
+                        <MudCardHeader>
+                            <CardHeaderContent>
+                                <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
+                                    <MudText Typo="Typo.h6">@license.LicenseNumber</MudText>
+                                    <MudChip Size="Size.Small" Color="@GetStatusColor(license.Status)">
+                                        @license.Status.ToString()
+                                    </MudChip>
+                                </MudStack>
+                            </CardHeaderContent>
+                        </MudCardHeader>
+                        <MudCardContent>
+                            <MudSimpleTable Dense="true" Hover="true">
+                                <tbody>
+                                    <tr>
+                                        <td><strong>Licensee</strong></td>
+                                        <td>@(license.LicenseeName ?? "-")</td>
+                                    </tr>
+                                    <tr>
+                                        <td><strong>License Date</strong></td>
+                                        <td>@license.LicenseDate.ToString("dd MMM yyyy")</td>
+                                    </tr>
+                                    <tr>
+                                        <td><strong>Period</strong></td>
+                                        <td>@license.LicensePeriodStart.ToString("dd MMM yyyy") - @license.LicensePeriodEnd.ToString("dd MMM yyyy")</td>
+                                    </tr>
+                                    <tr>
+                                        <td><strong>Minimum Advance</strong></td>
+                                        <td>AED @license.MinimumAdvanceAmount.ToString("N0")</td>
+                                    </tr>
+                                    <tr>
+                                        <td><strong>Royalty %</strong></td>
+                                        <td>@license.RoyaltyPercentage%</td>
+                                    </tr>
+                                    <tr>
+                                        <td><strong>Weight Threshold</strong></td>
+                                        <td>@license.WeightThresholdKg kg</td>
+                                    </tr>
+                                </tbody>
+                            </MudSimpleTable>
+                        </MudCardContent>
+                        <MudCardActions>
+                            <MudButton Variant="Variant.Text" Color="Color.Primary" OnClick="@(() => OpenEditLicenseDialog(license))">
+                                Edit
+                            </MudButton>
+                            <MudButton Variant="Variant.Text" Color="Color.Secondary" OnClick="@(() => OpenAdvancePaymentsDialog(license))">
+                                Advance Payments
+                            </MudButton>
+                            @if (license.IsActive)
+                            {
+                                <MudButton Variant="Variant.Text" Color="Color.Error" OnClick="@(() => DeactivateLicense(license))">
+                                    Deactivate
+                                </MudButton>
+                            }
+                        </MudCardActions>
+                    </MudCard>
+                </MudItem>
+            }
+        </MudGrid>
+        
+        @if (!_licenses.Any())
+        {
+            <MudAlert Severity="Severity.Info">
+                No licenses found. Create your first Empost license to get started.
+            </MudAlert>
+        }
+    }
+</MudContainer>
+
+<MudDialog @bind-Visible="_showLicenseDialog">
+    <TitleContent>
+        <MudText Typo="Typo.h6">@(_editingLicense.Id == 0 ? "New" : "Edit") Empost License</MudText>
+    </TitleContent>
+    <DialogContent>
+        <MudGrid>
+            <MudItem xs="12" md="6">
+                <MudTextField @bind-Value="_editingLicense.LicenseNumber" Label="License Number" Required="true" />
+            </MudItem>
+            <MudItem xs="12" md="6">
+                <MudTextField @bind-Value="_editingLicense.LicenseeName" Label="Licensee Name" />
+            </MudItem>
+            <MudItem xs="12" md="4">
+                <MudDatePicker @bind-Date="_licenseDate" Label="License Date" Required="true" />
+            </MudItem>
+            <MudItem xs="12" md="4">
+                <MudDatePicker @bind-Date="_licensePeriodStart" Label="Period Start" Required="true" />
+            </MudItem>
+            <MudItem xs="12" md="4">
+                <MudDatePicker @bind-Date="_licensePeriodEnd" Label="Period End" Required="true" />
+            </MudItem>
+            <MudItem xs="12" md="4">
+                <MudNumericField @bind-Value="_editingLicense.MinimumAdvanceAmount" Label="Minimum Advance (AED)" 
+                                 Format="N0" Min="0" />
+            </MudItem>
+            <MudItem xs="12" md="4">
+                <MudNumericField @bind-Value="_editingLicense.RoyaltyPercentage" Label="Royalty %" 
+                                 Format="N2" Min="0" Max="100" />
+            </MudItem>
+            <MudItem xs="12" md="4">
+                <MudNumericField @bind-Value="_editingLicense.WeightThresholdKg" Label="Weight Threshold (kg)" 
+                                 Format="N2" Min="0" />
+            </MudItem>
+            <MudItem xs="12">
+                <MudTextField @bind-Value="_editingLicense.Notes" Label="Notes" Lines="3" />
+            </MudItem>
+        </MudGrid>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="@(() => _showLicenseDialog = false)">Cancel</MudButton>
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="SaveLicense">Save</MudButton>
+    </DialogActions>
+</MudDialog>
+
+<MudDialog @bind-Visible="_showAdvancePaymentDialog">
+    <TitleContent>
+        <MudText Typo="Typo.h6">Advance Payments - @_selectedLicense?.LicenseNumber</MudText>
+    </TitleContent>
+    <DialogContent>
+        <MudStack>
+            <MudText Typo="Typo.subtitle1" Class="mb-2">Payment History</MudText>
+            <MudTable Items="_advancePayments" Dense="true" Hover="true">
+                <HeaderContent>
+                    <MudTh>Reference</MudTh>
+                    <MudTh>Due Date</MudTh>
+                    <MudTh>Amount Due</MudTh>
+                    <MudTh>Amount Paid</MudTh>
+                    <MudTh>Status</MudTh>
+                </HeaderContent>
+                <RowTemplate>
+                    <MudTd>@context.PaymentReference</MudTd>
+                    <MudTd>@context.DueDate.ToString("dd MMM yyyy")</MudTd>
+                    <MudTd>AED @context.AmountDue.ToString("N2")</MudTd>
+                    <MudTd>AED @context.AmountPaid.ToString("N2")</MudTd>
+                    <MudTd>
+                        <MudChip Size="Size.Small" Color="@GetPaymentStatusColor(context.Status)">
+                            @context.Status.ToString()
+                        </MudChip>
+                    </MudTd>
+                </RowTemplate>
+            </MudTable>
+            
+            <MudDivider Class="my-4" />
+            
+            <MudText Typo="Typo.subtitle1" Class="mb-2">Record New Payment</MudText>
+            <MudGrid>
+                <MudItem xs="12" md="6">
+                    <MudTextField @bind-Value="_newPayment.PaymentReference" Label="Payment Reference" Required="true" />
+                </MudItem>
+                <MudItem xs="12" md="6">
+                    <MudDatePicker @bind-Date="_paymentDate" Label="Payment Date" />
+                </MudItem>
+                <MudItem xs="12" md="6">
+                    <MudNumericField @bind-Value="_newPayment.AmountDue" Label="Amount Due (AED)" Format="N2" />
+                </MudItem>
+                <MudItem xs="12" md="6">
+                    <MudNumericField @bind-Value="_newPayment.AmountPaid" Label="Amount Paid (AED)" Format="N2" />
+                </MudItem>
+                <MudItem xs="12" md="6">
+                    <MudTextField @bind-Value="_newPayment.PaymentMethod" Label="Payment Method" />
+                </MudItem>
+                <MudItem xs="12" md="6">
+                    <MudTextField @bind-Value="_newPayment.BankReference" Label="Bank Reference" />
+                </MudItem>
+            </MudGrid>
+        </MudStack>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="@(() => _showAdvancePaymentDialog = false)">Close</MudButton>
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="SaveAdvancePayment">Record Payment</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    private List<EmpostLicense> _licenses = new();
+    private List<EmpostAdvancePayment> _advancePayments = new();
+    private bool _loading = true;
+    private bool _showLicenseDialog = false;
+    private bool _showAdvancePaymentDialog = false;
+    private EmpostLicense _editingLicense = new();
+    private EmpostLicense? _selectedLicense;
+    private EmpostAdvancePayment _newPayment = new();
+    
+    private DateTime? _licenseDate;
+    private DateTime? _licensePeriodStart;
+    private DateTime? _licensePeriodEnd;
+    private DateTime? _paymentDate;
+    
+    private int _currentUserId;
+    private string _currentUserName = string.Empty;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+        var userIdClaim = authState.User.FindFirst("UserId")?.Value;
+        if (int.TryParse(userIdClaim, out var userId))
+            _currentUserId = userId;
+        _currentUserName = authState.User.FindFirst("FullName")?.Value ?? "Unknown";
+        
+        await LoadLicensesAsync();
+    }
+
+    private async Task LoadLicensesAsync()
+    {
+        try
+        {
+            _loading = true;
+            _licenses = await EmpostService.GetAllLicensesAsync();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error loading licenses: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private void OpenCreateLicenseDialog()
+    {
+        _editingLicense = new EmpostLicense
+        {
+            MinimumAdvanceAmount = 100000,
+            RoyaltyPercentage = 10,
+            WeightThresholdKg = 30,
+            Status = EmpostLicenseStatus.Active,
+            IsActive = true
+        };
+        _licenseDate = DateTime.Today;
+        _licensePeriodStart = new DateTime(DateTime.Today.Year, 1, 1);
+        _licensePeriodEnd = new DateTime(DateTime.Today.Year, 12, 31);
+        _showLicenseDialog = true;
+    }
+
+    private void OpenEditLicenseDialog(EmpostLicense license)
+    {
+        _editingLicense = license;
+        _licenseDate = license.LicenseDate;
+        _licensePeriodStart = license.LicensePeriodStart;
+        _licensePeriodEnd = license.LicensePeriodEnd;
+        _showLicenseDialog = true;
+    }
+
+    private async Task SaveLicense()
+    {
+        try
+        {
+            if (string.IsNullOrWhiteSpace(_editingLicense.LicenseNumber))
+            {
+                Snackbar.Add("License number is required", Severity.Warning);
+                return;
+            }
+            
+            _editingLicense.LicenseDate = _licenseDate ?? DateTime.Today;
+            _editingLicense.LicensePeriodStart = _licensePeriodStart ?? DateTime.Today;
+            _editingLicense.LicensePeriodEnd = _licensePeriodEnd ?? DateTime.Today.AddYears(1);
+            _editingLicense.AdvancePaymentDueDate = _editingLicense.LicensePeriodStart.AddDays(-30);
+            
+            if (_editingLicense.Id == 0)
+            {
+                await EmpostService.CreateLicenseAsync(_editingLicense, _currentUserId, _currentUserName);
+                Snackbar.Add("License created successfully", Severity.Success);
+            }
+            else
+            {
+                await EmpostService.UpdateLicenseAsync(_editingLicense, _currentUserId, _currentUserName);
+                Snackbar.Add("License updated successfully", Severity.Success);
+            }
+            
+            _showLicenseDialog = false;
+            await LoadLicensesAsync();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error saving license: {ex.Message}", Severity.Error);
+        }
+    }
+
+    private async Task OpenAdvancePaymentsDialog(EmpostLicense license)
+    {
+        _selectedLicense = license;
+        _newPayment = new EmpostAdvancePayment
+        {
+            EmpostLicenseId = license.Id,
+            AmountDue = license.MinimumAdvanceAmount,
+            ForLicenseYear = DateTime.Today.Year,
+            DueDate = license.AdvancePaymentDueDate,
+            LicensePeriodStart = license.LicensePeriodStart,
+            LicensePeriodEnd = license.LicensePeriodEnd
+        };
+        _paymentDate = DateTime.Today;
+        _advancePayments = await EmpostService.GetAdvancePaymentsAsync(license.Id);
+        _showAdvancePaymentDialog = true;
+    }
+
+    private async Task SaveAdvancePayment()
+    {
+        try
+        {
+            if (string.IsNullOrWhiteSpace(_newPayment.PaymentReference))
+            {
+                Snackbar.Add("Payment reference is required", Severity.Warning);
+                return;
+            }
+            
+            _newPayment.PaymentDate = _paymentDate;
+            await EmpostService.RecordAdvancePaymentAsync(_newPayment, _currentUserId, _currentUserName);
+            
+            Snackbar.Add("Payment recorded successfully", Severity.Success);
+            _advancePayments = await EmpostService.GetAdvancePaymentsAsync(_selectedLicense!.Id);
+            
+            _newPayment = new EmpostAdvancePayment
+            {
+                EmpostLicenseId = _selectedLicense.Id,
+                AmountDue = _selectedLicense.MinimumAdvanceAmount,
+                ForLicenseYear = DateTime.Today.Year
+            };
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error recording payment: {ex.Message}", Severity.Error);
+        }
+    }
+
+    private async Task DeactivateLicense(EmpostLicense license)
+    {
+        var confirmed = await DialogService.ShowMessageBox(
+            "Deactivate License",
+            $"Are you sure you want to deactivate license {license.LicenseNumber}?",
+            yesText: "Deactivate", cancelText: "Cancel");
+        
+        if (confirmed == true)
+        {
+            license.IsActive = false;
+            license.Status = EmpostLicenseStatus.Expired;
+            await EmpostService.UpdateLicenseAsync(license, _currentUserId, _currentUserName);
+            Snackbar.Add("License deactivated", Severity.Success);
+            await LoadLicensesAsync();
+        }
+    }
+
+    private Color GetStatusColor(EmpostLicenseStatus status) => status switch
+    {
+        EmpostLicenseStatus.Active => Color.Success,
+        EmpostLicenseStatus.PendingRenewal => Color.Warning,
+        EmpostLicenseStatus.Expired => Color.Error,
+        EmpostLicenseStatus.Suspended => Color.Error,
+        _ => Color.Default
+    };
+
+    private Color GetPaymentStatusColor(AdvancePaymentStatus status) => status switch
+    {
+        AdvancePaymentStatus.Paid => Color.Success,
+        AdvancePaymentStatus.PartiallyPaid => Color.Warning,
+        AdvancePaymentStatus.Pending => Color.Info,
+        AdvancePaymentStatus.Overdue => Color.Error,
+        _ => Color.Default
+    };
+}

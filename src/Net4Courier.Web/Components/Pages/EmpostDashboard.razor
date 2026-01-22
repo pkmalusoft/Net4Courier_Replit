@@ -1,0 +1,214 @@
+@page "/empost"
+@page "/empost/dashboard"
+@using Net4Courier.Web.Services
+@using Net4Courier.Finance.Entities
+@inject IEmpostService EmpostService
+@inject NavigationManager NavigationManager
+@inject ISnackbar Snackbar
+
+<PageTitle>Empost Dashboard - Net4Courier</PageTitle>
+
+<MudContainer MaxWidth="MaxWidth.ExtraLarge" Class="py-4">
+    <MudText Typo="Typo.h4" Class="mb-4">Empost Regulatory Dashboard</MudText>
+    
+    @if (_loading)
+    {
+        <MudProgressLinear Indeterminate="true" />
+    }
+    else if (!_dashboardData.HasActiveLicense)
+    {
+        <MudAlert Severity="Severity.Warning" Class="mb-4">
+            No active Empost license found. Please set up your license first.
+        </MudAlert>
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="@(() => NavigationManager.NavigateTo("/empost/license"))">
+            Set Up License
+        </MudButton>
+    }
+    else
+    {
+        <MudGrid>
+            <MudItem xs="12" md="6" lg="3">
+                <MudPaper Class="pa-4" Elevation="2">
+                    <MudText Typo="Typo.subtitle2" Color="Color.Secondary">License Number</MudText>
+                    <MudText Typo="Typo.h5">@_dashboardData.LicenseNumber</MudText>
+                    <MudText Typo="Typo.caption">
+                        Valid: @_dashboardData.LicensePeriodStart.ToString("dd MMM yyyy") - @_dashboardData.LicensePeriodEnd.ToString("dd MMM yyyy")
+                    </MudText>
+                </MudPaper>
+            </MudItem>
+            
+            <MudItem xs="12" md="6" lg="3">
+                <MudPaper Class="pa-4" Elevation="2">
+                    <MudText Typo="Typo.subtitle2" Color="Color.Secondary">Current Quarter</MudText>
+                    <MudText Typo="Typo.h5">@_dashboardData.CurrentQuarterName @_dashboardData.CurrentYear</MudText>
+                    <MudChip Size="Size.Small" Color="@(_dashboardData.IsCurrentQuarterLocked ? Color.Warning : Color.Success)">
+                        @(_dashboardData.IsCurrentQuarterLocked ? "Locked" : "Open")
+                    </MudChip>
+                </MudPaper>
+            </MudItem>
+            
+            <MudItem xs="12" md="6" lg="3">
+                <MudPaper Class="pa-4" Elevation="2">
+                    <MudText Typo="Typo.subtitle2" Color="Color.Secondary">Submission Deadline</MudText>
+                    <MudText Typo="Typo.h5">@_dashboardData.SubmissionDeadline.ToString("dd MMM yyyy")</MudText>
+                    <MudText Typo="Typo.caption" Color="@(_dashboardData.DaysUntilSubmission < 7 ? Color.Error : Color.Default)">
+                        @_dashboardData.DaysUntilSubmission days remaining
+                    </MudText>
+                </MudPaper>
+            </MudItem>
+            
+            <MudItem xs="12" md="6" lg="3">
+                <MudPaper Class="pa-4" Elevation="2">
+                    <MudText Typo="Typo.subtitle2" Color="Color.Secondary">Pending Submissions</MudText>
+                    <MudText Typo="Typo.h5" Color="@(_dashboardData.QuartersPendingSubmission > 0 ? Color.Warning : Color.Success)">
+                        @_dashboardData.QuartersPendingSubmission
+                    </MudText>
+                    <MudText Typo="Typo.caption">quarters awaiting submission</MudText>
+                </MudPaper>
+            </MudItem>
+        </MudGrid>
+        
+        <MudText Typo="Typo.h6" Class="mt-6 mb-3">Fee Utilization Status</MudText>
+        <MudGrid>
+            <MudItem xs="12" md="6" lg="3">
+                <MudPaper Class="pa-4" Elevation="2">
+                    <MudText Typo="Typo.subtitle2" Color="Color.Secondary">Minimum Advance</MudText>
+                    <MudText Typo="Typo.h5">AED @_dashboardData.MinimumAdvanceAmount.ToString("N0")</MudText>
+                    <MudText Typo="Typo.caption">@_dashboardData.RoyaltyPercentage% royalty rate</MudText>
+                </MudPaper>
+            </MudItem>
+            
+            <MudItem xs="12" md="6" lg="3">
+                <MudPaper Class="pa-4" Elevation="2">
+                    <MudText Typo="Typo.subtitle2" Color="Color.Secondary">Cumulative Fee</MudText>
+                    <MudText Typo="Typo.h5">AED @_dashboardData.CumulativeFeeToDate.ToString("N2")</MudText>
+                    <MudText Typo="Typo.caption">total fees accrued</MudText>
+                </MudPaper>
+            </MudItem>
+            
+            <MudItem xs="12" md="6" lg="3">
+                <MudPaper Class="pa-4" Elevation="2">
+                    <MudText Typo="Typo.subtitle2" Color="Color.Secondary">Advance Utilized</MudText>
+                    <MudText Typo="Typo.h5">AED @_dashboardData.AdvanceUtilized.ToString("N2")</MudText>
+                    <MudProgressLinear Value="@GetAdvanceUtilizationPercent()" Color="Color.Primary" Class="mt-2" />
+                </MudPaper>
+            </MudItem>
+            
+            <MudItem xs="12" md="6" lg="3">
+                <MudPaper Class="pa-4" Elevation="2">
+                    <MudText Typo="Typo.subtitle2" Color="Color.Secondary">Balance Due</MudText>
+                    <MudText Typo="Typo.h5" Color="@(_dashboardData.BalanceDue > 0 ? Color.Error : Color.Success)">
+                        AED @_dashboardData.BalanceDue.ToString("N2")
+                    </MudText>
+                    <MudText Typo="Typo.caption">excess over advance</MudText>
+                </MudPaper>
+            </MudItem>
+        </MudGrid>
+        
+        <MudText Typo="Typo.h6" Class="mt-6 mb-3">Current Quarter Summary</MudText>
+        <MudGrid>
+            <MudItem xs="12" md="3">
+                <MudPaper Class="pa-4" Elevation="2">
+                    <MudText Typo="Typo.subtitle2" Color="Color.Secondary">Total Shipments</MudText>
+                    <MudText Typo="Typo.h5">@_dashboardData.CurrentQuarterShipments</MudText>
+                </MudPaper>
+            </MudItem>
+            
+            <MudItem xs="12" md="3">
+                <MudPaper Class="pa-4" Elevation="2">
+                    <MudText Typo="Typo.subtitle2" Color="Color.Secondary">Taxable Shipments</MudText>
+                    <MudText Typo="Typo.h5">@_dashboardData.CurrentQuarterTaxableShipments</MudText>
+                </MudPaper>
+            </MudItem>
+            
+            <MudItem xs="12" md="3">
+                <MudPaper Class="pa-4" Elevation="2">
+                    <MudText Typo="Typo.subtitle2" Color="Color.Secondary">Gross Revenue</MudText>
+                    <MudText Typo="Typo.h5">AED @_dashboardData.CurrentQuarterGrossRevenue.ToString("N2")</MudText>
+                </MudPaper>
+            </MudItem>
+            
+            <MudItem xs="12" md="3">
+                <MudPaper Class="pa-4" Elevation="2">
+                    <MudText Typo="Typo.subtitle2" Color="Color.Secondary">Quarter Fee</MudText>
+                    <MudText Typo="Typo.h5">AED @_dashboardData.CurrentQuarterFee.ToString("N2")</MudText>
+                </MudPaper>
+            </MudItem>
+        </MudGrid>
+        
+        <MudDivider Class="my-6" />
+        
+        <MudText Typo="Typo.h6" Class="mb-3">Quick Actions</MudText>
+        <MudGrid>
+            <MudItem xs="12" sm="6" md="3">
+                <MudButton Variant="Variant.Outlined" Color="Color.Primary" FullWidth="true"
+                           StartIcon="@Icons.Material.Filled.Calculate"
+                           OnClick="@(() => NavigationManager.NavigateTo("/empost/fee-calculation"))">
+                    Calculate Fees
+                </MudButton>
+            </MudItem>
+            <MudItem xs="12" sm="6" md="3">
+                <MudButton Variant="Variant.Outlined" Color="Color.Primary" FullWidth="true"
+                           StartIcon="@Icons.Material.Filled.CalendarMonth"
+                           OnClick="@(() => NavigationManager.NavigateTo("/empost/quarters"))">
+                    Manage Quarters
+                </MudButton>
+            </MudItem>
+            <MudItem xs="12" sm="6" md="3">
+                <MudButton Variant="Variant.Outlined" Color="Color.Primary" FullWidth="true"
+                           StartIcon="@Icons.Material.Filled.Receipt"
+                           OnClick="@(() => NavigationManager.NavigateTo("/empost/settlements"))">
+                    View Settlements
+                </MudButton>
+            </MudItem>
+            <MudItem xs="12" sm="6" md="3">
+                <MudButton Variant="Variant.Outlined" Color="Color.Primary" FullWidth="true"
+                           StartIcon="@Icons.Material.Filled.History"
+                           OnClick="@(() => NavigationManager.NavigateTo("/empost/audit-reports"))">
+                    Audit Reports
+                </MudButton>
+            </MudItem>
+        </MudGrid>
+    }
+</MudContainer>
+
+@code {
+    private EmpostDashboardData _dashboardData = new();
+    private bool _loading = true;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadDashboardDataAsync();
+    }
+
+    private async Task LoadDashboardDataAsync()
+    {
+        try
+        {
+            _loading = true;
+            var license = await EmpostService.GetActiveLicenseAsync();
+            if (license != null)
+            {
+                _dashboardData = await EmpostService.GetDashboardDataAsync(license.Id);
+            }
+            else
+            {
+                _dashboardData = new EmpostDashboardData { HasActiveLicense = false };
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error loading dashboard: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private double GetAdvanceUtilizationPercent()
+    {
+        if (_dashboardData.MinimumAdvanceAmount == 0) return 0;
+        return Math.Min(100, (double)(_dashboardData.AdvanceUtilized / _dashboardData.MinimumAdvanceAmount) * 100);
+    }
+}

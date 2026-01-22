@@ -1,0 +1,226 @@
+@page "/empost/return-adjustments"
+@using Net4Courier.Web.Services
+@using Net4Courier.Finance.Entities
+@using System.Security.Claims
+@using Microsoft.AspNetCore.Components.Authorization
+@inject IEmpostService EmpostService
+@inject IDialogService DialogService
+@inject ISnackbar Snackbar
+@inject AuthenticationStateProvider AuthStateProvider
+
+<PageTitle>Empost Return Adjustments - Net4Courier</PageTitle>
+
+<MudContainer MaxWidth="MaxWidth.ExtraLarge" Class="py-4">
+    <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center" Class="mb-4">
+        <MudText Typo="Typo.h4">Return Adjustments</MudText>
+        <MudStack Row="true" Spacing="2">
+            <MudButton Variant="Variant.Outlined" Color="Color.Warning" StartIcon="@Icons.Material.Filled.PlayArrow"
+                       OnClick="ProcessPendingAdjustments" Disabled="@(!_adjustments.Any(a => a.Status == AdjustmentStatus.Pending))">
+                Process Pending (@_adjustments.Count(a => a.Status == AdjustmentStatus.Pending))
+            </MudButton>
+        </MudStack>
+    </MudStack>
+    
+    @if (_loading)
+    {
+        <MudProgressLinear Indeterminate="true" />
+    }
+    else
+    {
+        <MudPaper Class="pa-4 mb-4" Elevation="2">
+            <MudGrid>
+                <MudItem xs="6" md="3">
+                    <MudText Typo="Typo.caption">Total Adjustments</MudText>
+                    <MudText Typo="Typo.h5">@_adjustments.Count</MudText>
+                </MudItem>
+                <MudItem xs="6" md="3">
+                    <MudText Typo="Typo.caption">Pending</MudText>
+                    <MudText Typo="Typo.h5" Color="Color.Warning">
+                        @_adjustments.Count(a => a.Status == AdjustmentStatus.Pending)
+                    </MudText>
+                </MudItem>
+                <MudItem xs="6" md="3">
+                    <MudText Typo="Typo.caption">Applied</MudText>
+                    <MudText Typo="Typo.h5" Color="Color.Success">
+                        @_adjustments.Count(a => a.Status == AdjustmentStatus.Applied)
+                    </MudText>
+                </MudItem>
+                <MudItem xs="6" md="3">
+                    <MudText Typo="Typo.caption">Total Adjustment Amount</MudText>
+                    <MudText Typo="Typo.h5">AED @_adjustments.Sum(a => a.AdjustmentAmount).ToString("N2")</MudText>
+                </MudItem>
+            </MudGrid>
+        </MudPaper>
+        
+        <MudStack Row="true" Class="mb-3" Spacing="3">
+            <MudSelect @bind-Value="_filterStatus" Label="Status" Style="width: 150px;">
+                <MudSelectItem Value='"All"'>All</MudSelectItem>
+                <MudSelectItem Value='"Pending"'>Pending</MudSelectItem>
+                <MudSelectItem Value='"Applied"'>Applied</MudSelectItem>
+                <MudSelectItem Value='"Rejected"'>Rejected</MudSelectItem>
+            </MudSelect>
+            <MudTextField @bind-Value="_searchText" Placeholder="Search AWB..." Adornment="Adornment.Start"
+                         AdornmentIcon="@Icons.Material.Filled.Search" Style="width: 200px;" />
+        </MudStack>
+        
+        <MudTable Items="@FilteredAdjustments" Dense="true" Hover="true" Bordered="true">
+            <HeaderContent>
+                <MudTh>AWB Number</MudTh>
+                <MudTh>Original Date</MudTh>
+                <MudTh>Return Date</MudTh>
+                <MudTh>Quarter</MudTh>
+                <MudTh>Type</MudTh>
+                <MudTh Style="text-align:right">Original Fee</MudTh>
+                <MudTh Style="text-align:right">Adjustment</MudTh>
+                <MudTh>Reason</MudTh>
+                <MudTh>Status</MudTh>
+                <MudTh>Applied</MudTh>
+            </HeaderContent>
+            <RowTemplate>
+                <MudTd>@context.AWBNumber</MudTd>
+                <MudTd>@context.OriginalShipmentDate.ToString("dd MMM yyyy")</MudTd>
+                <MudTd>@context.ReturnDate.ToString("dd MMM yyyy")</MudTd>
+                <MudTd>@context.EmpostQuarter?.QuarterName @context.EmpostQuarter?.Year</MudTd>
+                <MudTd>
+                    <MudChip Size="Size.Small" Color="@GetAdjustmentTypeColor(context.AdjustmentType)">
+                        @context.AdjustmentType
+                    </MudChip>
+                </MudTd>
+                <MudTd Style="text-align:right">@context.OriginalFeeAmount.ToString("N2")</MudTd>
+                <MudTd Style="text-align:right" Class="mud-error-text">(@context.AdjustmentAmount.ToString("N2"))</MudTd>
+                <MudTd>
+                    <MudTooltip Text="@context.Reason">
+                        <MudText Style="max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">
+                            @context.Reason
+                        </MudText>
+                    </MudTooltip>
+                </MudTd>
+                <MudTd>
+                    <MudChip Size="Size.Small" Color="@GetStatusColor(context.Status)">
+                        @context.Status
+                    </MudChip>
+                </MudTd>
+                <MudTd>
+                    @if (context.AppliedDate.HasValue)
+                    {
+                        <MudTooltip Text="@($"By {context.AppliedByName}")">
+                            <MudText Typo="Typo.caption">@context.AppliedDate.Value.ToString("dd MMM yyyy")</MudText>
+                        </MudTooltip>
+                    }
+                    else
+                    {
+                        <MudText>-</MudText>
+                    }
+                </MudTd>
+            </RowTemplate>
+        </MudTable>
+        
+        @if (!_adjustments.Any())
+        {
+            <MudAlert Severity="Severity.Info" Class="mt-4">
+                No return adjustments found. Adjustments are created automatically when shipments are marked as returned.
+            </MudAlert>
+        }
+    }
+</MudContainer>
+
+@code {
+    private List<EmpostReturnAdjustment> _adjustments = new();
+    private bool _loading = true;
+    private string _filterStatus = "All";
+    private string _searchText = string.Empty;
+    
+    private int _currentUserId;
+    private string _currentUserName = string.Empty;
+
+    private IEnumerable<EmpostReturnAdjustment> FilteredAdjustments
+    {
+        get
+        {
+            var result = _adjustments.AsEnumerable();
+            
+            if (_filterStatus != "All")
+            {
+                if (Enum.TryParse<AdjustmentStatus>(_filterStatus, out var status))
+                {
+                    result = result.Where(a => a.Status == status);
+                }
+            }
+            
+            if (!string.IsNullOrWhiteSpace(_searchText))
+            {
+                result = result.Where(a => a.AWBNumber.Contains(_searchText, StringComparison.OrdinalIgnoreCase));
+            }
+            
+            return result;
+        }
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+        var userIdClaim = authState.User.FindFirst("UserId")?.Value;
+        if (int.TryParse(userIdClaim, out var userId))
+            _currentUserId = userId;
+        _currentUserName = authState.User.FindFirst("FullName")?.Value ?? "Unknown";
+        
+        await LoadDataAsync();
+    }
+
+    private async Task LoadDataAsync()
+    {
+        try
+        {
+            _loading = true;
+            _adjustments = await EmpostService.GetReturnAdjustmentsAsync();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error loading adjustments: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private async Task ProcessPendingAdjustments()
+    {
+        var pendingCount = _adjustments.Count(a => a.Status == AdjustmentStatus.Pending);
+        
+        var confirmed = await DialogService.ShowMessageBox(
+            "Process Pending Adjustments",
+            $"This will apply {pendingCount} pending return adjustments to their respective quarters. Continue?",
+            yesText: "Process", cancelText: "Cancel");
+        
+        if (confirmed == true)
+        {
+            try
+            {
+                var processed = await EmpostService.ProcessPendingAdjustmentsAsync(_currentUserId, _currentUserName);
+                Snackbar.Add($"Successfully processed {processed} adjustments", Severity.Success);
+                await LoadDataAsync();
+            }
+            catch (Exception ex)
+            {
+                Snackbar.Add($"Error processing adjustments: {ex.Message}", Severity.Error);
+            }
+        }
+    }
+
+    private Color GetStatusColor(AdjustmentStatus status) => status switch
+    {
+        AdjustmentStatus.Pending => Color.Warning,
+        AdjustmentStatus.Applied => Color.Success,
+        AdjustmentStatus.Rejected => Color.Error,
+        _ => Color.Default
+    };
+
+    private Color GetAdjustmentTypeColor(EmpostAdjustmentType type) => type switch
+    {
+        EmpostAdjustmentType.FullRefund => Color.Error,
+        EmpostAdjustmentType.PartialRefund => Color.Warning,
+        EmpostAdjustmentType.Reversal => Color.Info,
+        _ => Color.Default
+    };
+}
