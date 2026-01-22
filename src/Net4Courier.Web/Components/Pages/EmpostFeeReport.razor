@@ -1,0 +1,357 @@
+@page "/compliance/empost-fee-report"
+@inject ApplicationDbContext DbContext
+@inject EmpostFeeReportService ReportService
+@inject ISnackbar Snackbar
+@inject IJSRuntime JSRuntime
+@using Microsoft.EntityFrameworkCore
+@using Net4Courier.Infrastructure.Data
+@using Net4Courier.Masters.Entities
+@using Net4Courier.Finance.Entities
+@using Net4Courier.Web.Services
+@using QuestPDF.Fluent
+@using QuestPDF.Helpers
+@using ClosedXML.Excel
+
+<PageTitle>Empost Fee Report - Net4Courier</PageTitle>
+
+<MudContainer MaxWidth="MaxWidth.ExtraLarge" Class="py-4">
+    <MudText Typo="Typo.h5" Class="mb-4">Empost Fee Analysis Report</MudText>
+    
+    <MudPaper Class="pa-4 mb-4" Elevation="2">
+        <MudGrid Spacing="2" AlignItems="AlignItems.Center">
+            <MudItem xs="12" sm="3">
+                <MudDatePicker @bind-Date="_fromDate" Label="From Date" Variant="Variant.Outlined" 
+                               DateFormat="dd/MM/yyyy" Margin="Margin.Dense" />
+            </MudItem>
+            <MudItem xs="12" sm="3">
+                <MudDatePicker @bind-Date="_toDate" Label="To Date" Variant="Variant.Outlined" 
+                               DateFormat="dd/MM/yyyy" Margin="Margin.Dense" />
+            </MudItem>
+            <MudItem xs="12" sm="3">
+                <MudSelect T="long?" @bind-Value="_selectedBranchId" Label="Branch" Variant="Variant.Outlined" 
+                           Margin="Margin.Dense" AnchorOrigin="Origin.BottomCenter">
+                    <MudSelectItem T="long?" Value="@((long?)null)">All Branches</MudSelectItem>
+                    @foreach (var branch in _branches)
+                    {
+                        <MudSelectItem T="long?" Value="@branch.Id">@branch.Name</MudSelectItem>
+                    }
+                </MudSelect>
+            </MudItem>
+            <MudItem xs="12" sm="3">
+                <MudStack Row="true" Spacing="2">
+                    <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="GenerateReport"
+                               StartIcon="@Icons.Material.Filled.Search" Disabled="_isLoading">
+                        Generate
+                    </MudButton>
+                    @if (_reportData.Any())
+                    {
+                        <MudButton Variant="Variant.Outlined" Color="Color.Secondary" OnClick="ExportToPdf"
+                                   StartIcon="@Icons.Material.Filled.PictureAsPdf">
+                            PDF
+                        </MudButton>
+                        <MudButton Variant="Variant.Outlined" Color="Color.Success" OnClick="ExportToExcel"
+                                   StartIcon="@Icons.Material.Filled.TableChart">
+                            Excel
+                        </MudButton>
+                    }
+                </MudStack>
+            </MudItem>
+        </MudGrid>
+    </MudPaper>
+    
+    @if (_isLoading)
+    {
+        <MudProgressLinear Color="Color.Primary" Indeterminate="true" Class="mb-4" />
+    }
+    
+    @if (_reportData.Any())
+    {
+        <MudPaper Class="pa-4" Elevation="2">
+            <MudText Typo="Typo.subtitle1" Class="mb-3">
+                Report Period: @_fromDate?.ToString("dd/MM/yyyy") to @_toDate?.ToString("dd/MM/yyyy")
+                @if (_selectedBranchId.HasValue)
+                {
+                    <text> | Branch: @(_branches.FirstOrDefault(b => b.Id == _selectedBranchId)?.Name)</text>
+                }
+            </MudText>
+            
+            <MudTable Items="_reportData" Dense="true" Striped="true" Hover="true" Bordered="true">
+                <HeaderContent>
+                    <MudTh>Parcel Type</MudTh>
+                    <MudTh>Movement Type</MudTh>
+                    <MudTh Style="text-align:right">Qty</MudTh>
+                    <MudTh Style="text-align:right">Courier Charge</MudTh>
+                    <MudTh Style="text-align:right">Other Charge</MudTh>
+                    <MudTh Style="text-align:right">Net Total</MudTh>
+                    <MudTh Style="text-align:right">VAT %</MudTh>
+                    <MudTh Style="text-align:right">VAT Amount</MudTh>
+                </HeaderContent>
+                <RowTemplate>
+                    <MudTd>@context.ParcelType</MudTd>
+                    <MudTd>@context.MovementType</MudTd>
+                    <MudTd Style="text-align:right">@context.Quantity</MudTd>
+                    <MudTd Style="text-align:right">@context.CourierCharge.ToString("N2")</MudTd>
+                    <MudTd Style="text-align:right">@context.OtherCharge.ToString("N2")</MudTd>
+                    <MudTd Style="text-align:right">@context.NetTotal.ToString("N2")</MudTd>
+                    <MudTd Style="text-align:right">@context.VatPercent.ToString("N2")%</MudTd>
+                    <MudTd Style="text-align:right">@context.VatAmount.ToString("N2")</MudTd>
+                </RowTemplate>
+                <FooterContent>
+                    <MudTh colspan="2" Style="font-weight:bold">TOTAL</MudTh>
+                    <MudTh Style="text-align:right;font-weight:bold">@_reportData.Sum(r => r.Quantity)</MudTh>
+                    <MudTh Style="text-align:right;font-weight:bold">@_reportData.Sum(r => r.CourierCharge).ToString("N2")</MudTh>
+                    <MudTh Style="text-align:right;font-weight:bold">@_reportData.Sum(r => r.OtherCharge).ToString("N2")</MudTh>
+                    <MudTh Style="text-align:right;font-weight:bold">@_reportData.Sum(r => r.NetTotal).ToString("N2")</MudTh>
+                    <MudTh></MudTh>
+                    <MudTh Style="text-align:right;font-weight:bold">@_reportData.Sum(r => r.VatAmount).ToString("N2")</MudTh>
+                </FooterContent>
+            </MudTable>
+            
+            <MudDivider Class="my-4" />
+            
+            <MudGrid Spacing="3">
+                <MudItem xs="12" md="4">
+                    <MudCard Outlined="true">
+                        <MudCardContent>
+                            <MudText Typo="Typo.caption" Color="Color.Secondary">Total Shipments</MudText>
+                            <MudText Typo="Typo.h4">@_reportData.Sum(r => r.Quantity)</MudText>
+                        </MudCardContent>
+                    </MudCard>
+                </MudItem>
+                <MudItem xs="12" md="4">
+                    <MudCard Outlined="true">
+                        <MudCardContent>
+                            <MudText Typo="Typo.caption" Color="Color.Secondary">Net Total</MudText>
+                            <MudText Typo="Typo.h4">@_reportData.Sum(r => r.NetTotal).ToString("N2")</MudText>
+                        </MudCardContent>
+                    </MudCard>
+                </MudItem>
+                <MudItem xs="12" md="4">
+                    <MudCard Outlined="true">
+                        <MudCardContent>
+                            <MudText Typo="Typo.caption" Color="Color.Secondary">Total VAT</MudText>
+                            <MudText Typo="Typo.h4">@_reportData.Sum(r => r.VatAmount).ToString("N2")</MudText>
+                        </MudCardContent>
+                    </MudCard>
+                </MudItem>
+            </MudGrid>
+        </MudPaper>
+    }
+    else if (!_isLoading && _hasSearched)
+    {
+        <MudAlert Severity="Severity.Info">No data found for the selected criteria.</MudAlert>
+    }
+</MudContainer>
+
+@code {
+    private DateTime? _fromDate = DateTime.Today.AddMonths(-1);
+    private DateTime? _toDate = DateTime.Today;
+    private long? _selectedBranchId;
+    private List<Branch> _branches = new();
+    private List<EmpostFeeReportItem> _reportData = new();
+    private bool _isLoading;
+    private bool _hasSearched;
+    
+    protected override async Task OnInitializedAsync()
+    {
+        _branches = await DbContext.Branches
+            .Where(b => !b.IsDeleted && b.IsActive)
+            .OrderBy(b => b.Name)
+            .ToListAsync();
+    }
+    
+    private async Task GenerateReport()
+    {
+        if (!_fromDate.HasValue || !_toDate.HasValue)
+        {
+            Snackbar.Add("Please select date range", Severity.Warning);
+            return;
+        }
+        
+        _isLoading = true;
+        _hasSearched = true;
+        
+        try
+        {
+            _reportData = await ReportService.GetEmpostFeeReportAsync(
+                _fromDate.Value, _toDate.Value, _selectedBranchId);
+                
+            if (_reportData.Any())
+            {
+                Snackbar.Add($"Report generated with {_reportData.Sum(r => r.Quantity)} shipments", Severity.Success);
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error generating report: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _isLoading = false;
+        }
+    }
+    
+    private async Task ExportToPdf()
+    {
+        try
+        {
+            var branchName = _selectedBranchId.HasValue 
+                ? _branches.FirstOrDefault(b => b.Id == _selectedBranchId)?.Name ?? "All Branches"
+                : "All Branches";
+                
+            var document = Document.Create(container =>
+            {
+                container.Page(page =>
+                {
+                    page.Size(PageSizes.A4.Landscape());
+                    page.Margin(30);
+                    page.DefaultTextStyle(x => x.FontSize(10));
+                    
+                    page.Header().Column(col =>
+                    {
+                        col.Item().Text("Empost Fee Analysis Report").Bold().FontSize(16).AlignCenter();
+                        col.Item().Text($"Period: {_fromDate:dd/MM/yyyy} to {_toDate:dd/MM/yyyy} | Branch: {branchName}")
+                            .FontSize(10).AlignCenter();
+                        col.Item().PaddingBottom(10);
+                    });
+                    
+                    page.Content().Table(table =>
+                    {
+                        table.ColumnsDefinition(cols =>
+                        {
+                            cols.RelativeColumn(2);
+                            cols.RelativeColumn(2);
+                            cols.RelativeColumn(1);
+                            cols.RelativeColumn(2);
+                            cols.RelativeColumn(2);
+                            cols.RelativeColumn(2);
+                            cols.RelativeColumn(1);
+                            cols.RelativeColumn(2);
+                        });
+                        
+                        table.Header(header =>
+                        {
+                            header.Cell().Background(QuestPDF.Helpers.Colors.Grey.Lighten2).Padding(5).Text("Parcel Type").Bold();
+                            header.Cell().Background(QuestPDF.Helpers.Colors.Grey.Lighten2).Padding(5).Text("Movement Type").Bold();
+                            header.Cell().Background(QuestPDF.Helpers.Colors.Grey.Lighten2).Padding(5).AlignRight().Text("Qty").Bold();
+                            header.Cell().Background(QuestPDF.Helpers.Colors.Grey.Lighten2).Padding(5).AlignRight().Text("Courier Charge").Bold();
+                            header.Cell().Background(QuestPDF.Helpers.Colors.Grey.Lighten2).Padding(5).AlignRight().Text("Other Charge").Bold();
+                            header.Cell().Background(QuestPDF.Helpers.Colors.Grey.Lighten2).Padding(5).AlignRight().Text("Net Total").Bold();
+                            header.Cell().Background(QuestPDF.Helpers.Colors.Grey.Lighten2).Padding(5).AlignRight().Text("VAT %").Bold();
+                            header.Cell().Background(QuestPDF.Helpers.Colors.Grey.Lighten2).Padding(5).AlignRight().Text("VAT Amount").Bold();
+                        });
+                        
+                        foreach (var item in _reportData)
+                        {
+                            table.Cell().BorderBottom(1).BorderColor(QuestPDF.Helpers.Colors.Grey.Lighten1).Padding(5).Text(item.ParcelType);
+                            table.Cell().BorderBottom(1).BorderColor(QuestPDF.Helpers.Colors.Grey.Lighten1).Padding(5).Text(item.MovementType);
+                            table.Cell().BorderBottom(1).BorderColor(QuestPDF.Helpers.Colors.Grey.Lighten1).Padding(5).AlignRight().Text(item.Quantity.ToString());
+                            table.Cell().BorderBottom(1).BorderColor(QuestPDF.Helpers.Colors.Grey.Lighten1).Padding(5).AlignRight().Text(item.CourierCharge.ToString("N2"));
+                            table.Cell().BorderBottom(1).BorderColor(QuestPDF.Helpers.Colors.Grey.Lighten1).Padding(5).AlignRight().Text(item.OtherCharge.ToString("N2"));
+                            table.Cell().BorderBottom(1).BorderColor(QuestPDF.Helpers.Colors.Grey.Lighten1).Padding(5).AlignRight().Text(item.NetTotal.ToString("N2"));
+                            table.Cell().BorderBottom(1).BorderColor(QuestPDF.Helpers.Colors.Grey.Lighten1).Padding(5).AlignRight().Text($"{item.VatPercent:N2}%");
+                            table.Cell().BorderBottom(1).BorderColor(QuestPDF.Helpers.Colors.Grey.Lighten1).Padding(5).AlignRight().Text(item.VatAmount.ToString("N2"));
+                        }
+                        
+                        table.Cell().Background(QuestPDF.Helpers.Colors.Grey.Lighten3).Padding(5).Text("TOTAL").Bold();
+                        table.Cell().Background(QuestPDF.Helpers.Colors.Grey.Lighten3).Padding(5).Text("");
+                        table.Cell().Background(QuestPDF.Helpers.Colors.Grey.Lighten3).Padding(5).AlignRight().Text(_reportData.Sum(r => r.Quantity).ToString()).Bold();
+                        table.Cell().Background(QuestPDF.Helpers.Colors.Grey.Lighten3).Padding(5).AlignRight().Text(_reportData.Sum(r => r.CourierCharge).ToString("N2")).Bold();
+                        table.Cell().Background(QuestPDF.Helpers.Colors.Grey.Lighten3).Padding(5).AlignRight().Text(_reportData.Sum(r => r.OtherCharge).ToString("N2")).Bold();
+                        table.Cell().Background(QuestPDF.Helpers.Colors.Grey.Lighten3).Padding(5).AlignRight().Text(_reportData.Sum(r => r.NetTotal).ToString("N2")).Bold();
+                        table.Cell().Background(QuestPDF.Helpers.Colors.Grey.Lighten3).Padding(5).Text("");
+                        table.Cell().Background(QuestPDF.Helpers.Colors.Grey.Lighten3).Padding(5).AlignRight().Text(_reportData.Sum(r => r.VatAmount).ToString("N2")).Bold();
+                    });
+                    
+                    page.Footer().AlignCenter().Text(x =>
+                    {
+                        x.Span($"Generated on {DateTime.Now:dd/MM/yyyy HH:mm} | Page ");
+                        x.CurrentPageNumber();
+                        x.Span(" of ");
+                        x.TotalPages();
+                    });
+                });
+            });
+            
+            var pdfBytes = document.GeneratePdf();
+            var base64 = Convert.ToBase64String(pdfBytes);
+            var fileName = $"EmpostFeeReport_{DateTime.Now:yyyyMMdd_HHmmss}.pdf";
+            
+            await JSRuntime.InvokeVoidAsync("eval", 
+                $"{{ const a=document.createElement('a'); a.href='data:application/pdf;base64,{base64}'; a.download='{fileName}'; a.click(); }}");
+            
+            Snackbar.Add("PDF downloaded successfully", Severity.Success);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error generating PDF: {ex.Message}", Severity.Error);
+        }
+    }
+    
+    private async Task ExportToExcel()
+    {
+        try
+        {
+            using var workbook = new XLWorkbook();
+            var worksheet = workbook.Worksheets.Add("Empost Fee Report");
+            
+            worksheet.Cell(1, 1).Value = "Empost Fee Analysis Report";
+            worksheet.Range("A1:H1").Merge().Style.Font.Bold = true;
+            worksheet.Range("A1:H1").Style.Font.FontSize = 14;
+            
+            var branchName = _selectedBranchId.HasValue 
+                ? _branches.FirstOrDefault(b => b.Id == _selectedBranchId)?.Name ?? "All Branches"
+                : "All Branches";
+            worksheet.Cell(2, 1).Value = $"Period: {_fromDate:dd/MM/yyyy} to {_toDate:dd/MM/yyyy} | Branch: {branchName}";
+            worksheet.Range("A2:H2").Merge();
+            
+            var headers = new[] { "Parcel Type", "Movement Type", "Qty", "Courier Charge", "Other Charge", "Net Total", "VAT %", "VAT Amount" };
+            for (int i = 0; i < headers.Length; i++)
+            {
+                worksheet.Cell(4, i + 1).Value = headers[i];
+                worksheet.Cell(4, i + 1).Style.Font.Bold = true;
+                worksheet.Cell(4, i + 1).Style.Fill.BackgroundColor = XLColor.LightGray;
+            }
+            
+            int row = 5;
+            foreach (var item in _reportData)
+            {
+                worksheet.Cell(row, 1).Value = item.ParcelType;
+                worksheet.Cell(row, 2).Value = item.MovementType;
+                worksheet.Cell(row, 3).Value = item.Quantity;
+                worksheet.Cell(row, 4).Value = item.CourierCharge;
+                worksheet.Cell(row, 5).Value = item.OtherCharge;
+                worksheet.Cell(row, 6).Value = item.NetTotal;
+                worksheet.Cell(row, 7).Value = item.VatPercent;
+                worksheet.Cell(row, 8).Value = item.VatAmount;
+                row++;
+            }
+            
+            worksheet.Cell(row, 1).Value = "TOTAL";
+            worksheet.Cell(row, 1).Style.Font.Bold = true;
+            worksheet.Cell(row, 3).Value = _reportData.Sum(r => r.Quantity);
+            worksheet.Cell(row, 4).Value = _reportData.Sum(r => r.CourierCharge);
+            worksheet.Cell(row, 5).Value = _reportData.Sum(r => r.OtherCharge);
+            worksheet.Cell(row, 6).Value = _reportData.Sum(r => r.NetTotal);
+            worksheet.Cell(row, 8).Value = _reportData.Sum(r => r.VatAmount);
+            worksheet.Range(row, 1, row, 8).Style.Font.Bold = true;
+            worksheet.Range(row, 1, row, 8).Style.Fill.BackgroundColor = XLColor.LightGray;
+            
+            worksheet.Columns().AdjustToContents();
+            
+            using var stream = new MemoryStream();
+            workbook.SaveAs(stream);
+            var base64 = Convert.ToBase64String(stream.ToArray());
+            var fileName = $"EmpostFeeReport_{DateTime.Now:yyyyMMdd_HHmmss}.xlsx";
+            
+            await JSRuntime.InvokeVoidAsync("eval", 
+                $"{{ const a=document.createElement('a'); a.href='data:application/vnd.openxmlformats-officedocument.spreadsheetml.sheet;base64,{base64}'; a.download='{fileName}'; a.click(); }}");
+            
+            Snackbar.Add("Excel downloaded successfully", Severity.Success);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error generating Excel: {ex.Message}", Severity.Error);
+        }
+    }
+}
