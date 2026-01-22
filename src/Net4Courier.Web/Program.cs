@@ -54,6 +54,7 @@ builder.Services.Configure<CookiePolicyOptions>(options =>
 
 var databaseUrl = Environment.GetEnvironmentVariable("DATABASE_URL");
 string connectionString;
+bool databaseConfigured = true;
 
 if (!string.IsNullOrEmpty(databaseUrl) && databaseUrl.StartsWith("postgresql://"))
 {
@@ -67,9 +68,17 @@ if (!string.IsNullOrEmpty(databaseUrl) && databaseUrl.StartsWith("postgresql://"
     
     connectionString = $"Host={host};Port={port};Database={database};Username={username};Password={password}";
 }
+else if (!string.IsNullOrEmpty(databaseUrl))
+{
+    connectionString = databaseUrl;
+}
 else
 {
-    connectionString = databaseUrl ?? "";
+    // No database configured - use a placeholder to allow app to start
+    // This enables diagnostics endpoints to work
+    connectionString = "Host=localhost;Database=placeholder";
+    databaseConfigured = false;
+    Console.WriteLine("WARNING: DATABASE_URL not set. Application will start in limited mode.");
 }
 
 builder.Services.AddDbContext<ApplicationDbContext>(options =>
@@ -172,6 +181,7 @@ app.MapGet("/api/diagnostics", (IWebHostEnvironment env) =>
 {
     var webRootExists = Directory.Exists(env.WebRootPath);
     var webRootFiles = webRootExists ? Directory.GetFiles(env.WebRootPath, "*", SearchOption.AllDirectories).Length : 0;
+    var dbUrl = Environment.GetEnvironmentVariable("DATABASE_URL");
     
     return Results.Ok(new
     {
@@ -180,9 +190,13 @@ app.MapGet("/api/diagnostics", (IWebHostEnvironment env) =>
         WebRootPath = env.WebRootPath,
         WebRootExists = webRootExists,
         WebRootFileCount = webRootFiles,
-        DatabaseUrl = !string.IsNullOrEmpty(Environment.GetEnvironmentVariable("DATABASE_URL")) ? "Set" : "Not Set",
+        DatabaseUrl = !string.IsNullOrEmpty(dbUrl) ? "Set" : "NOT SET - This is the problem!",
+        DatabaseUrlLength = dbUrl?.Length ?? 0,
         CurrentDirectory = Environment.CurrentDirectory,
-        ProcessPath = Environment.ProcessPath
+        ProcessPath = Environment.ProcessPath,
+        Message = string.IsNullOrEmpty(dbUrl) 
+            ? "DATABASE_URL is not set. You need to connect a production database in Replit's Database panel."
+            : "Database URL is configured."
     });
 });
 
@@ -306,6 +320,14 @@ public class DatabaseInitializationService : BackgroundService
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         await Task.Delay(1000, stoppingToken);
+        
+        // Check if database is configured before attempting initialization
+        var databaseUrl = Environment.GetEnvironmentVariable("DATABASE_URL");
+        if (string.IsNullOrEmpty(databaseUrl))
+        {
+            _logger.LogWarning("DATABASE_URL not set. Skipping database initialization. Application running in limited mode.");
+            return;
+        }
         
         using var scope = _serviceProvider.CreateScope();
         var dbContext = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
