@@ -2158,45 +2158,123 @@ Invoice → Payment → Closed
 
 **Purpose:** Manage customer pickup requests from creation to collection.
 
+### Complete Pickup Workflow
+
+```
+┌──────────────────┐     ┌───────────────────────┐     ┌─────────────────┐
+│  Pickup Request  │────▶│ Assigned for Collection│────▶│    Collected    │
+│   (Status = 1)   │     │      (Status = 2)      │     │  (Status = 4)   │
+└──────────────────┘     └───────────────────────┘     └─────────────────┘
+                                    │                          │
+                                    │ Failed                   │
+                                    ▼                          ▼
+                         ┌──────────────────┐          ┌─────────────────┐
+                         │    Attempted     │          │    Inscanned    │
+                         │   (Status = 3)   │          │   (Status = 5)   │
+                         └──────────────────┘          └─────────────────┘
+                                    │                          │
+                                    │ Re-assign                │
+                                    └──────────────────────────┘
+                                              │
+                                              ▼
+                                      ┌─────────────────┐
+                                      │   AWB Created   │
+                                      └─────────────────┘
+```
+
+### Pickup Status Codes
+
+| Status | Value | Description | Next Actions |
+|--------|-------|-------------|--------------|
+| **Pickup Request** | 1 | Initial request created | Assign to courier, Cancel |
+| **Assigned for Collection** | 2 | Courier assigned to collect | Mark Collected, Mark Attempted |
+| **Attempted** | 3 | Collection failed (customer unavailable, etc.) | Re-assign to another courier |
+| **Shipment Collected** | 4 | Courier has collected the shipment | Proceed to Inscan |
+| **Inscanned** | 5 | Shipment received at warehouse | Convert to AWB |
+| **Cancelled** | 6 | Request cancelled | No further action |
+
 ### Workflow Steps
 
 1. **Create Pickup Request**
    - Customer calls or submits online request
    - Enter customer details, pickup address, expected pieces
-   - System assigns Pickup Request Number
-   - Status: `PICKUP_REQUESTED`
+   - **Add shipment lines** with consignee details (required for AWB conversion)
+   - System assigns Pickup Request Number (e.g., PKP-2026-0001)
+   - Status: `Pickup Request (1)`
 
 2. **Assign Collection Agent**
-   - Dispatcher assigns courier/agent to pickup
-   - Agent receives notification with pickup details
-   - Status: `ASSIGNED_FOR_COLLECTION`
+   - Click the **Assign** button (motorcycle icon) on the pickup
+   - Select courier from dropdown and assign
+   - Agent receives pickup details with address and special instructions
+   - Timestamps: `AssignedAt` recorded
+   - Status: `Assigned for Collection (2)`
 
-3. **Collect Shipment**
+3. **Collection Outcome** (One of two results)
+
+   **Option A - Successful Collection:**
    - Agent arrives at customer location
    - Verifies package count and condition
    - Collects COD amount if applicable
-   - Status: `SHIPMENT_COLLECTED`
+   - Click **Mark Collected** button
+   - Timestamps: `CollectedAt` recorded
+   - Status: `Shipment Collected (4)`
 
-4. **Return to Hub**
+   **Option B - Failed Collection (Attempted):**
+   - Agent unable to collect (customer not available, address wrong, etc.)
+   - Click **Mark Attempted** button
+   - Enter reason for failed collection
+   - Timestamps: `AttemptedAt`, `AttemptedByUserName` recorded
+   - Status: `Attempted (3)`
+   - **Can be re-assigned** to another courier for retry
+
+4. **Inscan at Warehouse**
    - Agent brings collected packages to warehouse
-   - Ready for inscan process
-   - Status changes upon inscan
+   - Scan packages at inscan station
+   - Verify weight and piece count
+   - Status: `Inscanned (5)`
+
+5. **Convert to AWB**
+   - From Pickup Request, click **Convert to AWB**
+   - System creates AWB from shipment lines
+   - Each shipment line becomes a separate AWB
+   - Original pickup marked as converted
+
+### Dashboard Summary Cards
+
+The Pickup Management dashboard displays real-time counts for each status:
+
+| Card | Color | Description |
+|------|-------|-------------|
+| Pending | Orange | New pickup requests awaiting assignment |
+| Assigned | Blue | Pickups assigned to couriers |
+| Attempted | Red | Failed collection attempts needing re-assignment |
+| Collected | Green | Successfully collected, pending inscan |
+| Inscanned | Purple | Received at warehouse, ready for processing |
 
 ### Key Fields
 
 | Field | Description |
 |-------|-------------|
-| Pickup Request No | Auto-generated unique identifier |
+| Pickup Request No | Auto-generated unique identifier (PKP-YYYY-NNNN) |
 | Customer | Party who requested pickup |
-| Pickup Address | Collection location |
+| Pickup Address | Collection location with landmark |
+| Pickup Schedule | Time slot (Morning, Afternoon, Evening) |
 | Expected Pieces | Anticipated number of packages |
-| Pickup Date/Time | Scheduled collection time |
+| Pickup Date/Time | Scheduled collection date and time |
 | Assigned Agent | Courier assigned for collection |
-| COD Amount | Cash to collect (if applicable) |
-| Remarks | Special instructions |
+| Attempt Remarks | Reason for failed collection (if Attempted) |
+| Shipment Lines | Individual consignee details for AWB creation |
+
+### Business Rules
+
+1. **Shipment Lines Required**: Pickup requests must have at least one shipment line with consignee details before converting to AWB
+2. **City Selection**: UAE cities must be selected from dropdown (auto-populates State/Country)
+3. **Re-assignment**: Attempted pickups can be re-assigned to the same or different courier
+4. **Timestamps**: All status changes are recorded with date/time and user info
+5. **Audit Trail**: Complete history of status changes maintained in PickupStatusHistory
 
 ### Keywords
-pickup request, collection, customer pickup, assign agent, schedule pickup, pickup scheduling, courier assignment, collect shipment, pickup confirmation
+pickup request, collection, customer pickup, assign agent, schedule pickup, pickup scheduling, courier assignment, collect shipment, pickup confirmation, attempted pickup, failed collection, re-assign courier, shipment lines, pickup inscan, convert to awb
 
 ---
 

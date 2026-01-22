@@ -1,7 +1,7 @@
 # Net4Courier - Blazor Server Migration
 
 ## Overview
-Net4Courier is a comprehensive courier/logistics management system designed to manage all facets of courier operations, including shipments (AWB), customer relationship management, branch operations, financial transactions, and extensive reporting capabilities. The project's vision is to provide a robust, scalable, and modern platform for logistics companies, enhancing operational efficiency and providing real-time insights, replacing outdated legacy systems with a modular, maintainable, and high-performance solution.
+Net4Courier is a comprehensive courier/logistics management system designed to manage all facets of courier operations, including shipments (AWB), customer relationship management, branch operations, financial transactions, and extensive reporting capabilities. Its purpose is to provide a robust, scalable, and modern platform for logistics companies, enhancing operational efficiency and providing real-time insights, replacing outdated legacy systems with a modular, maintainable, and high-performance solution.
 
 ## User Preferences
 - MudBlazor for all UI components
@@ -21,138 +21,30 @@ The application is built on .NET 8 Blazor Server, utilizing a modular architectu
 
 ### UI/UX Decisions
 - **MudBlazor Components**: Consistent and responsive design using MudBlazor.
-- **Layout**: Standard dashboard with `MainLayout`, `NavMenu`, and organized navigation into 16 major groups.
+- **Layout**: Standard dashboard with `MainLayout`, `NavMenu`, and organized navigation.
 - **Responsive Design**: Key modules are optimized for mobile devices.
 - **Modern Login Page**: Split-screen design with courier illustration and compact login card.
 
 ### Technical Implementations
-- **Entity Management**: Comprehensive CRUD for Company, Branch, User, Role, Financial Year, Parties, AWB, Invoices, Receipts.
+- **Entity Management**: Comprehensive CRUD for core entities like Company, Branch, User, Role, Financial Year, Parties, AWB, Invoices, Receipts.
 - **Party Classification**: Parties categorized by `PartyType` with corresponding `AccountNature` for financial tracking.
-- **Customer Account Number**: Auto-generate toggle for 6-digit padded account numbers (e.g., "000001") or manual entry with required validation. Displayed in Customer Master table, search, and Excel export.
-- **Operations Workflow**:
-    - **AWB Entry & Generation**: Full shipment details with auto-generated, branch-based AWB numbers. Includes conversion from pickup requests. Features:
-        - Auto-Generate AWB toggle disables AWB field for new entries with "Auto-generated" helper text
-        - Payment Mode-based customer requirement: Account mode requires customer selection; other modes allow Walk-in
-        - Validation blocks form progression until AWB, Payment Mode, and Customer (when required) are filled
-    - **Pickup to AWB Conversion**: Two-step process: INSCAN (warehouse receiving) then AWB Conversion.
-    - **Pickup Management**: End-to-end workflow from customer request to collection and inscan.
-    - **Pickup Schedules**: Configurable time slots for customer scheduling at `/pickup-schedules`. Features include:
-        - Time slot management (Morning, Afternoon, Evening, etc.)
-        - Sort order for display priority
-        - Active/Inactive status toggle
-        - Excel export functionality
-        - Integration with PickupRequest for schedule assignment
-    - **Outscan/DRS Management**: Dispatching shipments to couriers via Delivery Run Sheets with barcode scanning.
-    - **AWB Tracking**: Detailed history of shipment status updates.
-- **Financial Features**:
-    - **Invoice/Receipt Management**: Billing and payment collection.
-    - **Journaling**: Accounting entries.
-    - **Account Head**: Self-referential chart of accounts.
-    - **Financial Period Management**: Auto-generated monthly periods with admin control for opening/closing.
-    - **Dynamic Other Charges**: Configurable charge types applied during AWB entry.
-    - **Account Receivables (AR)**:
-        - **Customer Master**: Dedicated page for managing customers (filtered Party view by PartyType=Customer).
-        - **Credit Notes**: Issue credits/refunds to customers with status workflow (Draft/Approved/Posted/Cancelled).
-        - **Aging Reports**: Customer aging analysis with 0-30, 31-60, 61-90, 90+ day buckets.
-        - **AR Reports**: Customer statements with running balance, collection summary by payment mode, outstanding invoices.
-    - **Account Payables (AP)**:
-        - **Supplier Master**: Dedicated page for managing suppliers (Vendor, ForwardingAgent, CoLoader, DeliveryAgent).
-        - **Debit Notes**: Record additional charges to vendors with status workflow.
-- **Reporting**: QuestPDF integration for AWB labels, Invoice, and Receipt PDFs. All reports have Excel export option using ClosedXML.
-- **Automatic Movement Type Calculation**: Determines shipment type (Domestic, International) based on origin/destination.
-- **Rate Card Management**:
-    - **Zone Matrix**: Define zones for geographic rate categorization.
-    - **Rate Cards**: Configurable pricing with movement type, payment mode, validity dates.
-    - **Slab-Based Pricing**: Rule-based weight slabs.
-    - **Slab Rule Templates**: Reusable template library.
-    - **Customer Rate Assignments**: Priority-based assignment with effective dating.
-    - **Rating Engine Service**: Automated rate calculation with formula trace display.
-    - **Rate Simulator**: Test rate calculations with full tracing.
-- **Proof of Delivery (POD)**:
-    - **Mobile POD Capture**: Touch-friendly interface for delivery agents with photo evidence, digital signature, GPS location, and delivery status options.
-    - **Offline Support**: IndexedDB storage for offline capture with sync.
-    - **Bulk POD Update**: Multi-select grid to update POD for multiple AWBs at once at `/pod-bulk`.
-    - **Excel Batch Upload**: Download template, fill POD data, upload Excel file for batch processing at `/pod-excel-upload`.
-        - Template includes: AWB No, Delivery Status, Delivery Date, Received By, Relation, Non-Delivery Reason, Remarks
-        - "Template with AWBs" button pre-populates eligible shipments
-        - Validation with per-row error reporting
-        - Downloadable results report showing success/failure for each AWB
-    - **PODUpdateService**: Centralized service for single and batch POD updates with validation.
-    - **PODExcelService**: Handles Excel template generation, parsing, and results report generation.
-- **Unified Status Change System**:
-    - **UpdateStatusDialog**: Single component for status changes on both shipments and pickup requests.
-    - **ShipmentStatusHistory**: Audit trail for shipment status changes with location, user, remarks, timestamps.
-    - **PickupStatusHistory**: Audit trail for pickup request status changes with same audit fields.
-    - **Status Groups**: Pickup-specific statuses (PICKUP_REQUESTED, PICKUP_SCHEDULED, ASSIGNED_FOR_COLLECTION, SHIPMENT_COLLECTED, PICKUP_MANIFESTED).
-    - **Database-Driven Status Management**: Flexible status groups and statuses configurable via admin UI.
-    - **Timeline History**: Chronological record of status changes for both entities.
-    - **Automatic Status Updates**: Integrated into AWB entry, outscan, POD capture, RTS, invoicing, and pickup workflow.
-    - **Public Tracking Page**: Customer-facing `/tracking` page for AWB search and timeline history.
-- **MAWB Processing (Master Airwaybill)**:
-    - **MasterAirwaybill Entity**: Stores MAWB header info.
-    - **MAWBBag Entity**: Individual bags within a MAWB.
-    - **Shipment-to-Bag Linking**: Tracks shipments within bags.
-    - **MAWBService**: Validation logic for route matching, hold checks, and duplicate prevention.
-    - **MAWBList/Entry/Bagging Pages**: UI for managing MAWBs and bagging shipments via barcode scanning.
-    - **Finalization Workflow**: Validated finalization of MAWBs.
-    - **MAWB Manifest PDF**: QuestPDF report with header, bag summary, and shipment details.
-- **Printing & Reports**: AWB Print, Manifest Labels, Export/Domestic Manifests with integration from AWB Entry and MAWB Bagging pages.
+- **Customer Account Number**: Auto-generation or manual entry with validation.
+- **Operations Workflow**: Includes AWB entry and generation, pickup management (request to inscan), pickup schedules, outscan/DRS management, and AWB tracking.
+- **Financial Features**: Invoice/receipt management, journaling, self-referential account heads, financial period management, dynamic other charges, and comprehensive Account Receivables (Customer Master, Credit Notes, Aging Reports, AR Reports) and Account Payables (Supplier Master, Debit Notes).
+- **Reporting**: QuestPDF integration for AWB labels, Invoice, Receipt PDFs, and Excel export via ClosedXML.
+- **Automatic Movement Type Calculation**: Determines shipment type based on origin/destination.
+- **Rate Card Management**: Zone matrix, configurable rate cards with slab-based pricing, slab rule templates, customer rate assignments, rating engine service with formula trace, and a rate simulator.
+- **Proof of Delivery (POD)**: Mobile POD capture with photo, signature, GPS, offline support, bulk POD update, and Excel batch upload.
+- **Unified Status Change System**: `UpdateStatusDialog` for shipments and pickup requests, `ShipmentStatusHistory` and `PickupStatusHistory` for audit trails, database-driven status management, timeline history, automatic status updates, and a public tracking page.
+- **MAWB Processing (Master Airwaybill)**: Entities for `MasterAirwaybill`, `MAWBBag`, shipment-to-bag linking, `MAWBService` for validation, UI for MAWB management, finalization workflow, and MAWB Manifest PDF generation.
+- **Printing & Reports**: AWB Print, Manifest Labels, Export/Domestic Manifests.
 - **Service Type Management**: Configurable service types via CRUD UI.
-- **Return to Shipper (RTS)**: Workflow for return shipments with address swapping, charge modes, and status tracking.
-- **Modern Login Page**: Split-screen design with courier illustration on left and compact vertical login card on right. Features Net4Courier logo, username/password fields, Forgot Password link, and responsive mobile layout.
-- **Forgot Password Page**: Matching split-screen design at `/forgot-password` for password reset requests.
-- **Multi-Branch Management**:
-    - **Branch Concept**: Every company has one or more branches, each with its own currency (CurrencyCode, CurrencySymbol).
-    - **Warehouse Management**: Branches have multiple warehouses with capacity, address, and contact info at `/warehouses`.
-    - **User-Branch Assignments**: Many-to-many relationship via UserBranch junction table with IsDefault flag.
-    - **Branch-Restricted Login**: Users can only login to branches they are assigned to. Login page shows branch selection dropdown for users with multiple branches.
-    - **Dashboard Header**: Shows Company Name | Branch Name | User Name from authentication claims.
-    - **Scoped Access**: Warehouse management page is scoped to user's assigned branches.
-- **Import Module (Air/Sea/Land)**:
-    - **ImportMaster Entity**: Stores import header info with mode-specific fields (MAWB, BL, Truck).
-    - **ImportBag/ImportShipment Entities**: Bag and shipment tracking within imports.
-    - **Import Dashboard**: Summary cards, filters, and import list at `/import-dashboard`.
-    - **Import Entry**: Create/edit imports with mode-specific fields at `/import-entry`.
-    - **Customs Processing**: Bulk customs clearance operations at `/import-customs`.
-    - **Excel Import**: Download templates, upload filled Excel files, preview with validation, and bulk import.
-        - Two-sheet template: Header (metadata) + Shipments (AWB details)
-        - Mode-specific templates for Air, Sea, and Land
-        - Validation: required fields, positive values, duplicate AWB detection
-        - Transaction-safe import with rollback on errors
-        - Uses ClosedXML library for Excel handling
-- **API Integration (Third-Party Booking Websites)**:
-    - **ApiSetting Entity**: Stores API configuration (URL, credentials, webhook secret, auth type).
-    - **API Settings Page**: Configure external booking website connections at `/api-settings`.
-    - **Webhook Endpoint**: Receive booking data from external websites at `/api/bookings/webhook/{integrationId}`.
-    - **BookingWebhookService**: Validates incoming bookings and creates PickupRequests automatically.
-    - **Secure Storage**: Sensitive credentials encrypted using ASP.NET Core Data Protection.
-    - **Webhook Authentication**: X-Webhook-Secret header validation for secure integration.
-    - **Integration Types**: Booking Website, Carrier Tracking, Address Validation, SMS Notification.
-    - **Connection Testing**: Test connectivity and view sync status/errors.
-- **Knowledge Base**: Comprehensive documentation at `/knowledge-base` covering:
-    - **How To Guides** (20 step-by-step tutorials):
-        - Create Company, Branch, Warehouse, Shipment
-        - Create Pickup Requests (Staff and Customer)
-        - Add Shipment Lines to Pickup Request (NEW)
-        - Convert Pickup Request to AWB (NEW)
-        - Use City Selection with Geography Dropdown (NEW)
-        - User Management (Create Users, Give/Restrict Menu Access)
-        - Party Access (Agents, Customers, Vendors)
-        - Import Operations (Customs Clearance, Excel Upload)
-        - Bulk POD Update
-        - Dashboard Usage (Customer, Pickup)
-        - Courier De-briefing and Receipt Reconciliation
-    - Question Submission Form: Users can suggest new How-To topics at bottom of page
-    - Complete operational flow (Pickup Request → Collection → Inscan → AWB → MAWB → DRS → POD → Delivery)
-    - Reconciliation (DRS Reconciliation, Courier Day-End, Cash Receipt, Expense Approval, Courier Ledger)
-    - Accounts & Finance (General Ledger, Chart of Accounts, Financial Periods, AR Invoicing/Receipts, AP Bills/Payments, Financial Statements)
-    - Customer Management CRM (Customer Profiles, Contracts & Pricing, SLAs, Complaints)
-    - Pricing & Billing (Zone Management, Rate Cards, Rate Simulator, Special/Fuel/Other Charges, Discounts)
-    - System Settings (Companies, Branches, Service Types, Status Management, Users, Geography Masters)
-    - Compliance & Audit (Audit Logs, Regulatory Reports, Data Export, Documents)
-    - Complete 31 Status Codes reference table
-    - Searchable keywords throughout for easy text search (Ctrl+F)
-    - Uses Markdig for Markdown rendering with XSS protection (DisableHtml)
+- **Return to Shipper (RTS)**: Workflow for return shipments with address swapping and status tracking.
+- **Forgot Password Page**: Dedicated page for password reset requests.
+- **Multi-Branch Management**: Companies can have multiple branches, each with its own currency and warehouses. Supports user-branch assignments, branch-restricted login, and displays branch info in the dashboard header.
+- **Import Module (Air/Sea/Land)**: `ImportMaster`, `ImportBag`, `ImportShipment` entities, import dashboard, import entry, customs processing, and Excel import functionality with mode-specific templates and validation.
+- **API Integration (Third-Party Booking Websites)**: `ApiSetting` entity for configuration, API settings page, webhook endpoint for receiving booking data, `BookingWebhookService` for validation and `PickupRequest` creation, secure storage of credentials, webhook authentication, and connection testing.
+- **Knowledge Base**: Comprehensive documentation including "How To Guides", operational flow, reconciliation, accounts & finance, customer management, pricing & billing, system settings, compliance & audit, and status codes reference, rendered using Markdig.
 
 ## External Dependencies
 - **Database**: PostgreSQL

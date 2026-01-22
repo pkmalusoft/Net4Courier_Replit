@@ -45,6 +45,10 @@ public class PickupRequest : AuditableEntity
     public long? StatusId { get; set; }
     public long? StatusGroupId { get; set; }
     public DateTime? AssignedAt { get; set; }
+    public DateTime? AttemptedAt { get; set; }
+    public long? AttemptedByUserId { get; set; }
+    public string? AttemptedByUserName { get; set; }
+    public string? AttemptRemarks { get; set; }
     public DateTime? CollectedAt { get; set; }
     public DateTime? InscannedAt { get; set; }
     public string? CollectionRemarks { get; set; }

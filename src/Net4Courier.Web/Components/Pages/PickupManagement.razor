@@ -4,7 +4,9 @@
 @inject IDialogService DialogService
 @inject ISnackbar Snackbar
 @inject IJSRuntime JSRuntime
+@inject AuthenticationStateProvider AuthStateProvider
 @using Microsoft.EntityFrameworkCore
+@using Microsoft.AspNetCore.Components.Authorization
 @using Net4Courier.Infrastructure.Data
 @using Net4Courier.Operations.Entities
 @using Net4Courier.Operations.Enums
@@ -280,11 +282,25 @@
 
     private async Task MarkAttempted(PickupRequest pickup)
     {
-        var confirm = await DialogService.ShowMessageBox("Mark as Attempted", 
-            $"Mark pickup {pickup.PickupNo} as attempted (courier unable to collect)?", "Yes", "No");
-        if (confirm == true)
+        var parameters = new DialogParameters<AttemptedReasonDialog>();
+        parameters.Add(x => x.PickupNo, pickup.PickupNo);
+        
+        var dialog = await DialogService.ShowAsync<AttemptedReasonDialog>("Mark as Attempted", parameters, 
+            new DialogOptions { MaxWidth = MaxWidth.Small, FullWidth = true });
+        var result = await dialog.Result;
+        
+        if (result != null && !result.Canceled && result.Data is string remarks)
         {
+            var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+            var userIdClaim = authState.User.FindFirst("UserId")?.Value;
+            var userName = authState.User.FindFirst("FullName")?.Value ?? authState.User.Identity?.Name ?? "System";
+            
             pickup.Status = PickupStatus.Attempted;
+            pickup.AttemptedAt = DateTime.UtcNow;
+            pickup.AttemptedByUserId = long.TryParse(userIdClaim, out var uid) ? uid : null;
+            pickup.AttemptedByUserName = userName;
+            pickup.AttemptRemarks = remarks;
+            
             await DbContext.SaveChangesAsync();
             Snackbar.Add("Pickup marked as attempted - can be reassigned", Severity.Warning);
             await Search();
