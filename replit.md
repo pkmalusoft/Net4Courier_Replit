@@ -39,6 +39,8 @@ The application is built on .NET 8 Blazor Server, utilizing a modular architectu
 - **MAWB Processing (Master Airwaybill)**: Entities for `MasterAirwaybill`, `MAWBBag`, shipment-to-bag linking, `MAWBService` for validation, UI for MAWB management, finalization workflow, and MAWB Manifest PDF generation.
 - **Printing & Reports**: AWB Print, Manifest Labels, Export/Domestic Manifests.
 - **Service Type Management**: Configurable service types via CRUD UI.
+- **Shipment Mode Management**: Configurable shipment modes (Air, Sea, Road/Surface, Rail, Multimodal) with CRUD UI. Mode of Shipment dropdown integrated in AWB entry/new pages after Movement field.
+- **Port Master Management**: Comprehensive port database with support for Airports, Seaports, and Land Borders. Includes IATA/ICAO codes for airports, UN/LOCODE for seaports, with filtering by port type. Pre-seeded with UAE ports and major international hubs.
 - **Return to Shipper (RTS)**: Workflow for return shipments with address swapping and status tracking.
 - **Forgot Password Page**: Dedicated page for password reset requests.
 - **Multi-Branch Management**: Companies can have multiple branches, each with its own currency and warehouses. Supports user-branch assignments, branch-restricted login, and displays branch info in the dashboard header.

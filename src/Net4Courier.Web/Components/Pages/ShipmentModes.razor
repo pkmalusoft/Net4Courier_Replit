@@ -1,0 +1,203 @@
+@page "/shipment-modes"
+@inject ApplicationDbContext DbContext
+@inject ISnackbar Snackbar
+@inject IDialogService DialogService
+@using Microsoft.EntityFrameworkCore
+@using Net4Courier.Infrastructure.Data
+@using Net4Courier.Masters.Entities
+@using ShipmentModeEntity = Net4Courier.Masters.Entities.ShipmentMode
+
+<PageTitle>Shipment Modes - Net4Courier</PageTitle>
+
+<MudPaper Class="pa-4" Elevation="0">
+    <MudToolBar Dense="true" Class="pl-0">
+        <MudText Typo="Typo.h6">Shipment Modes</MudText>
+        <MudSpacer />
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add" OnClick="OpenAddDialog">
+            Add Mode
+        </MudButton>
+    </MudToolBar>
+
+    <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-3">
+        Configure different modes of shipment (Air, Sea, Road, Rail, etc.)
+    </MudText>
+
+    <MudTable Items="_shipmentModes" Hover="true" Dense="true" Loading="_loading">
+        <HeaderContent>
+            <MudTh>Code</MudTh>
+            <MudTh>Name</MudTh>
+            <MudTh>Description</MudTh>
+            <MudTh>Sort Order</MudTh>
+            <MudTh>Status</MudTh>
+            <MudTh Style="width: 120px;">Actions</MudTh>
+        </HeaderContent>
+        <RowTemplate>
+            <MudTd>@context.Code</MudTd>
+            <MudTd>@context.Name</MudTd>
+            <MudTd>@(context.Description ?? "-")</MudTd>
+            <MudTd>@context.SortOrder</MudTd>
+            <MudTd>
+                <MudChip T="string" Size="Size.Small" Color="@(context.IsActive ? Color.Success : Color.Default)">
+                    @(context.IsActive ? "Active" : "Inactive")
+                </MudChip>
+            </MudTd>
+            <MudTd>
+                <MudIconButton Icon="@Icons.Material.Filled.Edit" Size="Size.Small" OnClick="@(() => OpenEditDialog(context))" />
+                <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" Color="Color.Error" OnClick="@(() => DeleteMode(context))" />
+            </MudTd>
+        </RowTemplate>
+        <NoRecordsContent>
+            <MudText>No shipment modes found. Click "Add Mode" to create one.</MudText>
+        </NoRecordsContent>
+    </MudTable>
+</MudPaper>
+
+<MudDialog @bind-Visible="_dialogVisible" Options="new DialogOptions { MaxWidth = MaxWidth.Small, FullWidth = true }">
+    <TitleContent>
+        <MudText Typo="Typo.h6">@(_editingMode.Id == 0 ? "Add Shipment Mode" : "Edit Shipment Mode")</MudText>
+    </TitleContent>
+    <DialogContent>
+        <MudGrid Spacing="2">
+            <MudItem xs="4">
+                <MudTextField @bind-Value="_editingMode.Code" Label="Code*" Variant="Variant.Outlined" Required="true" />
+            </MudItem>
+            <MudItem xs="8">
+                <MudTextField @bind-Value="_editingMode.Name" Label="Name*" Variant="Variant.Outlined" Required="true" />
+            </MudItem>
+            <MudItem xs="12">
+                <MudTextField @bind-Value="_editingMode.Description" Label="Description" Variant="Variant.Outlined" Lines="2" />
+            </MudItem>
+            <MudItem xs="6">
+                <MudNumericField @bind-Value="_editingMode.SortOrder" Label="Sort Order" Variant="Variant.Outlined" Min="0" />
+            </MudItem>
+            <MudItem xs="6">
+                <MudCheckBox @bind-Value="_editingMode.IsActive" Label="Active" Color="Color.Success" />
+            </MudItem>
+        </MudGrid>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="CloseDialog">Cancel</MudButton>
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="SaveMode">Save</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    private List<ShipmentModeEntity> _shipmentModes = new();
+    private bool _loading = true;
+    private bool _dialogVisible;
+    private ShipmentModeEntity _editingMode = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadData();
+    }
+
+    private async Task LoadData()
+    {
+        _loading = true;
+        _shipmentModes = await DbContext.ShipmentModes
+            .Where(s => !s.IsDeleted)
+            .OrderBy(s => s.SortOrder)
+            .ThenBy(s => s.Name)
+            .ToListAsync();
+        _loading = false;
+    }
+
+    private void OpenAddDialog()
+    {
+        _editingMode = new ShipmentModeEntity { IsActive = true, SortOrder = _shipmentModes.Count + 1 };
+        _dialogVisible = true;
+    }
+
+    private void OpenEditDialog(ShipmentModeEntity mode)
+    {
+        _editingMode = new ShipmentModeEntity
+        {
+            Id = mode.Id,
+            Code = mode.Code,
+            Name = mode.Name,
+            Description = mode.Description,
+            SortOrder = mode.SortOrder,
+            IsActive = mode.IsActive
+        };
+        _dialogVisible = true;
+    }
+
+    private void CloseDialog()
+    {
+        _dialogVisible = false;
+    }
+
+    private async Task SaveMode()
+    {
+        if (string.IsNullOrWhiteSpace(_editingMode.Code) || string.IsNullOrWhiteSpace(_editingMode.Name))
+        {
+            Snackbar.Add("Code and Name are required", Severity.Warning);
+            return;
+        }
+
+        try
+        {
+            if (_editingMode.Id == 0)
+            {
+                var exists = await DbContext.ShipmentModes.AnyAsync(s => s.Code == _editingMode.Code && !s.IsDeleted);
+                if (exists)
+                {
+                    Snackbar.Add("A shipment mode with this code already exists", Severity.Warning);
+                    return;
+                }
+
+                _editingMode.CreatedAt = DateTime.UtcNow;
+                DbContext.ShipmentModes.Add(_editingMode);
+                await DbContext.SaveChangesAsync();
+                Snackbar.Add("Shipment mode added successfully", Severity.Success);
+            }
+            else
+            {
+                var existing = await DbContext.ShipmentModes.FindAsync(_editingMode.Id);
+                if (existing != null)
+                {
+                    existing.Code = _editingMode.Code;
+                    existing.Name = _editingMode.Name;
+                    existing.Description = _editingMode.Description;
+                    existing.SortOrder = _editingMode.SortOrder;
+                    existing.IsActive = _editingMode.IsActive;
+                    existing.ModifiedAt = DateTime.UtcNow;
+                    await DbContext.SaveChangesAsync();
+                    Snackbar.Add("Shipment mode updated successfully", Severity.Success);
+                }
+            }
+
+            _dialogVisible = false;
+            await LoadData();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error saving shipment mode: {ex.Message}", Severity.Error);
+        }
+    }
+
+    private async Task DeleteMode(ShipmentModeEntity mode)
+    {
+        var confirm = await DialogService.ShowMessageBox(
+            "Confirm Delete",
+            $"Are you sure you want to delete the shipment mode '{mode.Name}'?",
+            yesText: "Delete", cancelText: "Cancel");
+
+        if (confirm == true)
+        {
+            try
+            {
+                mode.IsDeleted = true;
+                mode.ModifiedAt = DateTime.UtcNow;
+                await DbContext.SaveChangesAsync();
+                Snackbar.Add("Shipment mode deleted", Severity.Success);
+                await LoadData();
+            }
+            catch (Exception ex)
+            {
+                Snackbar.Add($"Error deleting shipment mode: {ex.Message}", Severity.Error);
+            }
+        }
+    }
+}

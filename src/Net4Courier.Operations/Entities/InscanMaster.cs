@@ -59,7 +59,7 @@ public class InscanMaster : AuditableEntity
     public PaymentMode PaymentModeId { get; set; } = PaymentMode.Prepaid;
     public MovementType MovementTypeId { get; set; } = MovementType.Domestic;
     public DocumentType DocumentTypeId { get; set; } = DocumentType.Document;
-    public ShipmentMode? ShipmentModeId { get; set; }
+    public long? ShipmentModeId { get; set; }
     public int? ProductTypeId { get; set; }
     public int? ParcelTypeId { get; set; }
     public int? TypeOfGoodId { get; set; }
