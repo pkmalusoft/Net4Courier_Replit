@@ -1,0 +1,24 @@
+using System.ComponentModel.DataAnnotations;
+
+namespace Server.Modules.Courier.Models;
+
+public class CourierZoneState : BaseEntity
+{
+    public Guid CourierZoneId { get; set; }
+    public CourierZone CourierZone { get; set; } = null!;
+
+    public Guid StateId { get; set; }
+
+    [MaxLength(100)]
+    public string StateName { get; set; } = string.Empty;
+
+    [MaxLength(10)]
+    public string StateCode { get; set; } = string.Empty;
+
+    public Guid CountryId { get; set; }
+
+    [MaxLength(100)]
+    public string CountryName { get; set; } = string.Empty;
+
+    public int SortOrder { get; set; } = 0;
+}
