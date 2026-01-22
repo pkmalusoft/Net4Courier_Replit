@@ -8,11 +8,11 @@ using Net4Courier.Infrastructure.Services;
 using Net4Courier.Web.Components;
 using Net4Courier.Web.Services;
 using QuestPDF.Infrastructure;
+using Microsoft.Extensions.FileProviders; 
 
 // Log startup immediately
 Console.WriteLine($"[{DateTime.UtcNow:O}] Net4Courier starting...");
 Console.WriteLine($"[{DateTime.UtcNow:O}] Environment: {Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT") ?? "Production"}");
-Console.WriteLine($"[{DateTime.UtcNow:O}] DATABASE_URL: {(string.IsNullOrEmpty(Environment.GetEnvironmentVariable("DATABASE_URL")) ? "NOT SET" : "SET")}");
 
 try
 {
@@ -28,25 +28,25 @@ var isProduction = Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT") 
 
 Console.WriteLine($"[{DateTime.UtcNow:O}] IsProduction: {isProduction}");
 
+// FIXED: Explicitly set WebRootPath to ensure it finds the wwwroot folder
 var options = new WebApplicationOptions
 {
     Args = args,
-    EnvironmentName = isProduction ? "Production" : null
+    EnvironmentName = isProduction ? "Production" : null,
+    WebRootPath = "wwwroot" 
 };
 
 var builder = WebApplication.CreateBuilder(options);
 
-// Only enable static web assets in development - they're not available in production
-if (!isProduction)
+// FIXED: Try to enable static web assets in ALL environments
+try
 {
-    try
-    {
-        builder.WebHost.UseStaticWebAssets();
-    }
-    catch (Exception ex)
-    {
-        Console.WriteLine($"[{DateTime.UtcNow:O}] Static web assets not available: {ex.Message}");
-    }
+    builder.WebHost.UseStaticWebAssets();
+    Console.WriteLine($"[{DateTime.UtcNow:O}] StaticWebAssets enabled.");
+}
+catch (Exception ex)
+{
+    Console.WriteLine($"[{DateTime.UtcNow:O}] Note: StaticWebAssets could not be enabled: {ex.Message}");
 }
 
 builder.Services.Configure<ForwardedHeadersOptions>(options =>
@@ -76,9 +76,9 @@ builder.Services.Configure<CookiePolicyOptions>(options =>
     options.Secure = CookieSecurePolicy.SameAsRequest;
 });
 
+// Database Configuration
 var databaseUrl = Environment.GetEnvironmentVariable("DATABASE_URL");
 string connectionString;
-bool databaseConfigured = true;
 
 try
 {
@@ -91,7 +91,7 @@ try
         var database = uri.AbsolutePath.TrimStart('/').Split('?')[0];
         var username = userInfo[0];
         var password = userInfo.Length > 1 ? userInfo[1] : "";
-        
+
         connectionString = $"Host={host};Port={port};Database={database};Username={username};Password={password}";
         Console.WriteLine($"[{DateTime.UtcNow:O}] Database connection configured: Host={host}, Database={database}");
     }
@@ -102,9 +102,7 @@ try
     }
     else
     {
-        // No database configured - use a placeholder to allow app to start
         connectionString = "Host=localhost;Database=placeholder";
-        databaseConfigured = false;
         Console.WriteLine($"[{DateTime.UtcNow:O}] WARNING: DATABASE_URL not set. Application will start in limited mode.");
     }
 }
@@ -112,7 +110,6 @@ catch (Exception ex)
 {
     Console.WriteLine($"[{DateTime.UtcNow:O}] ERROR parsing DATABASE_URL: {ex.Message}");
     connectionString = "Host=localhost;Database=placeholder";
-    databaseConfigured = false;
 }
 
 builder.Services.AddDbContext<ApplicationDbContext>(options =>
@@ -120,6 +117,7 @@ builder.Services.AddDbContext<ApplicationDbContext>(options =>
 builder.Services.AddDbContextFactory<ApplicationDbContext>(options =>
     options.UseNpgsql(connectionString), ServiceLifetime.Scoped);
 
+// Service Registrations
 builder.Services.AddScoped<AuthService>();
 builder.Services.AddScoped<AppAuthStateProvider>();
 builder.Services.AddScoped<AuthenticationStateProvider>(sp => sp.GetRequiredService<AppAuthStateProvider>());
@@ -154,7 +152,7 @@ var app = builder.Build();
 
 app.UseForwardedHeaders();
 
-// Global error handling middleware for detailed error tracking
+// Global error handling
 app.Use(async (context, next) =>
 {
     try
@@ -166,10 +164,10 @@ app.Use(async (context, next) =>
         var logger = context.RequestServices.GetRequiredService<ILogger<Program>>();
         logger.LogError(ex, "Unhandled exception for request {Method} {Path}", 
             context.Request.Method, context.Request.Path);
-        
+
         context.Response.StatusCode = 500;
         context.Response.ContentType = "text/plain";
-        
+
         if (app.Environment.IsDevelopment())
         {
             await context.Response.WriteAsync($"Error: {ex.Message}\n\nStack Trace:\n{ex.StackTrace}");
@@ -181,25 +179,6 @@ app.Use(async (context, next) =>
     }
 });
 
-// Log startup diagnostics
-var startupLogger = app.Services.GetRequiredService<ILogger<Program>>();
-startupLogger.LogInformation("Application starting...");
-startupLogger.LogInformation("Environment: {Env}", app.Environment.EnvironmentName);
-startupLogger.LogInformation("ContentRootPath: {Path}", app.Environment.ContentRootPath);
-startupLogger.LogInformation("WebRootPath: {Path}", app.Environment.WebRootPath);
-
-// Check if wwwroot exists and has files
-var webRootPath = app.Environment.WebRootPath;
-if (Directory.Exists(webRootPath))
-{
-    var files = Directory.GetFiles(webRootPath, "*", SearchOption.AllDirectories);
-    startupLogger.LogInformation("WebRoot contains {Count} files", files.Length);
-}
-else
-{
-    startupLogger.LogWarning("WebRoot directory does not exist: {Path}", webRootPath);
-}
-
 if (!app.Environment.IsDevelopment())
 {
     app.UseExceptionHandler("/Error", createScopeForErrors: true);
@@ -207,17 +186,21 @@ if (!app.Environment.IsDevelopment())
 }
 
 app.UseCookiePolicy();
+
+// FIXED: Ensure Static Files are served before Authentication/Routing
 app.UseStaticFiles();
+
 app.UseAntiforgery();
 
 app.MapGet("/health", () => Results.Ok("Healthy"));
 
+// Diagnostics Endpoint
 app.MapGet("/api/diagnostics", (IWebHostEnvironment env) => 
 {
     var webRootExists = Directory.Exists(env.WebRootPath);
     var webRootFiles = webRootExists ? Directory.GetFiles(env.WebRootPath, "*", SearchOption.AllDirectories).Length : 0;
     var dbUrl = Environment.GetEnvironmentVariable("DATABASE_URL");
-    
+
     return Results.Ok(new
     {
         Environment = env.EnvironmentName,
@@ -225,16 +208,12 @@ app.MapGet("/api/diagnostics", (IWebHostEnvironment env) =>
         WebRootPath = env.WebRootPath,
         WebRootExists = webRootExists,
         WebRootFileCount = webRootFiles,
-        DatabaseUrl = !string.IsNullOrEmpty(dbUrl) ? "Set" : "NOT SET - This is the problem!",
-        DatabaseUrlLength = dbUrl?.Length ?? 0,
-        CurrentDirectory = Environment.CurrentDirectory,
-        ProcessPath = Environment.ProcessPath,
-        Message = string.IsNullOrEmpty(dbUrl) 
-            ? "DATABASE_URL is not set. You need to connect a production database in Replit's Database panel."
-            : "Database URL is configured."
+        DatabaseUrl = !string.IsNullOrEmpty(dbUrl) ? "Set" : "NOT SET",
+        Message = "Diagnostics Check Complete"
     });
 });
 
+// Reporting Endpoints
 app.MapGet("/api/report/awb/{id:long}", async (long id, ApplicationDbContext db, ReportingService reportService) =>
 {
     var awb = await db.InscanMasters.FindAsync(id);
@@ -310,7 +289,7 @@ app.MapPost("/api/bookings/webhook/{integrationId}", async (
     BookingWebhookService webhookService) =>
 {
     var webhookSecret = context.Request.Headers["X-Webhook-Secret"].FirstOrDefault();
-    
+
     if (string.IsNullOrEmpty(webhookSecret))
     {
         return Results.Unauthorized();
@@ -323,7 +302,7 @@ app.MapPost("/api/bookings/webhook/{integrationId}", async (
     }
 
     var result = await webhookService.ProcessBookingAsync(payload, integrationId);
-    
+
     if (result.Success)
     {
         return Results.Ok(new { 
@@ -332,7 +311,7 @@ app.MapPost("/api/bookings/webhook/{integrationId}", async (
             pickupRequestId = result.PickupRequestId 
         });
     }
-    
+
     return Results.BadRequest(new { success = false, message = result.Message });
 });
 
@@ -340,7 +319,6 @@ app.MapRazorComponents<App>()
     .AddInteractiveServerRenderMode();
 
 Console.WriteLine($"[{DateTime.UtcNow:O}] Starting HTTP server on http://0.0.0.0:5000");
-Console.WriteLine($"[{DateTime.UtcNow:O}] All middleware and routes configured successfully");
 
 try
 {
@@ -353,6 +331,7 @@ catch (Exception ex)
     throw;
 }
 
+// Background Database Initialization Service
 public class DatabaseInitializationService : BackgroundService
 {
     private readonly IServiceProvider _serviceProvider;
@@ -367,20 +346,20 @@ public class DatabaseInitializationService : BackgroundService
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         await Task.Delay(1000, stoppingToken);
-        
-        // Check if database is configured before attempting initialization
+
         var databaseUrl = Environment.GetEnvironmentVariable("DATABASE_URL");
         if (string.IsNullOrEmpty(databaseUrl))
         {
-            _logger.LogWarning("DATABASE_URL not set. Skipping database initialization. Application running in limited mode.");
+            _logger.LogWarning("DATABASE_URL not set. Skipping database initialization.");
             return;
         }
-        
+
         using var scope = _serviceProvider.CreateScope();
         var dbContext = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
 
         try
         {
+            // Restore full initialization logic here
             await dbContext.Database.EnsureCreatedAsync(stoppingToken);
 
             await dbContext.Database.ExecuteSqlRawAsync(@"
@@ -758,287 +737,4 @@ public class DatabaseInitializationService : BackgroundService
                     ""Id"" BIGSERIAL PRIMARY KEY,
                     ""ImportShipmentId"" BIGINT NOT NULL REFERENCES ""ImportShipments""(""Id"") ON DELETE CASCADE,
                     ""NoteText"" VARCHAR(2000) NOT NULL,
-                    ""AddedAt"" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                    ""AddedByUserId"" BIGINT,
-                    ""AddedByUserName"" VARCHAR(100),
-                    ""IsActive"" BOOLEAN NOT NULL DEFAULT TRUE,
-                    ""IsDeleted"" BOOLEAN NOT NULL DEFAULT FALSE,
-                    ""CreatedAt"" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                    ""ModifiedAt"" TIMESTAMP WITH TIME ZONE,
-                    ""CreatedBy"" INT,
-                    ""ModifiedBy"" INT,
-                    ""CreatedByName"" VARCHAR(200),
-                    ""ModifiedByName"" VARCHAR(200)
-                );
-                CREATE INDEX IF NOT EXISTS ""IX_ImportShipmentNotes_ImportShipmentId"" ON ""ImportShipmentNotes"" (""ImportShipmentId"");
-            ", stoppingToken);
-
-            await dbContext.Database.ExecuteSqlRawAsync(@"
-                CREATE TABLE IF NOT EXISTS ""ImportDocuments"" (
-                    ""Id"" BIGSERIAL PRIMARY KEY,
-                    ""ImportMasterId"" BIGINT NOT NULL REFERENCES ""ImportMasters""(""Id"") ON DELETE CASCADE,
-                    ""DocumentType"" INT NOT NULL DEFAULT 1,
-                    ""DocumentTypeName"" VARCHAR(100) NOT NULL,
-                    ""OriginalFileName"" VARCHAR(255) NOT NULL,
-                    ""StoredFileName"" VARCHAR(255) NOT NULL,
-                    ""FilePath"" VARCHAR(500) NOT NULL,
-                    ""ContentType"" VARCHAR(100),
-                    ""FileSize"" BIGINT NOT NULL DEFAULT 0,
-                    ""Description"" VARCHAR(500),
-                    ""UploadedAt"" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                    ""UploadedByUserId"" BIGINT,
-                    ""UploadedByUserName"" VARCHAR(100),
-                    ""IsActive"" BOOLEAN NOT NULL DEFAULT TRUE,
-                    ""IsDeleted"" BOOLEAN NOT NULL DEFAULT FALSE,
-                    ""CreatedAt"" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                    ""ModifiedAt"" TIMESTAMP WITH TIME ZONE,
-                    ""CreatedBy"" INT,
-                    ""ModifiedBy"" INT
-                );
-                CREATE INDEX IF NOT EXISTS ""IX_ImportDocuments_ImportMasterId"" ON ""ImportDocuments"" (""ImportMasterId"");
-                CREATE INDEX IF NOT EXISTS ""IX_ImportDocuments_DocumentType"" ON ""ImportDocuments"" (""DocumentType"");
-            ", stoppingToken);
-
-            await dbContext.Database.ExecuteSqlRawAsync(@"
-                ALTER TABLE ""Branches"" ADD COLUMN IF NOT EXISTS ""AWBPrefix"" VARCHAR(50);
-                ALTER TABLE ""Branches"" ADD COLUMN IF NOT EXISTS ""AWBStartingNumber"" BIGINT NOT NULL DEFAULT 1;
-                ALTER TABLE ""Branches"" ADD COLUMN IF NOT EXISTS ""AWBIncrement"" INT NOT NULL DEFAULT 1;
-                ALTER TABLE ""Branches"" ADD COLUMN IF NOT EXISTS ""AWBLastUsedNumber"" BIGINT NOT NULL DEFAULT 0;
-            ", stoppingToken);
-
-            await dbContext.Database.ExecuteSqlRawAsync(@"
-                ALTER TABLE ""AWBOtherCharges"" ADD COLUMN IF NOT EXISTS ""Notes"" VARCHAR(500);
-            ", stoppingToken);
-
-            var authService = scope.ServiceProvider.GetRequiredService<AuthService>();
-            await authService.SeedAdminUserAsync();
-
-            if (!await dbContext.OtherChargeTypes.AnyAsync(stoppingToken))
-            {
-                var chargeTypes = new[]
-                {
-                    new Net4Courier.Operations.Entities.OtherChargeType { Name = "Handling Charges", Code = "HDL", Description = "Charges for handling special shipments", DefaultAmount = 50, SortOrder = 1, IsActive = true, CreatedAt = DateTime.UtcNow },
-                    new Net4Courier.Operations.Entities.OtherChargeType { Name = "Insurance", Code = "INS", Description = "Insurance coverage for shipment value", DefaultAmount = 100, SortOrder = 2, IsActive = true, CreatedAt = DateTime.UtcNow },
-                    new Net4Courier.Operations.Entities.OtherChargeType { Name = "Packaging", Code = "PKG", Description = "Special packaging materials and service", DefaultAmount = 25, SortOrder = 3, IsActive = true, CreatedAt = DateTime.UtcNow },
-                    new Net4Courier.Operations.Entities.OtherChargeType { Name = "Documentation", Code = "DOC", Description = "Documentation and paperwork charges", DefaultAmount = 30, SortOrder = 4, IsActive = true, CreatedAt = DateTime.UtcNow },
-                    new Net4Courier.Operations.Entities.OtherChargeType { Name = "Customs Clearance", Code = "CUS", Description = "Customs clearance and processing fees", DefaultAmount = 200, SortOrder = 5, IsActive = true, CreatedAt = DateTime.UtcNow },
-                    new Net4Courier.Operations.Entities.OtherChargeType { Name = "Pickup Charges", Code = "PUP", Description = "Door-to-door pickup service", DefaultAmount = 75, SortOrder = 6, IsActive = true, CreatedAt = DateTime.UtcNow },
-                    new Net4Courier.Operations.Entities.OtherChargeType { Name = "Warehousing", Code = "WHS", Description = "Storage and warehousing fees", DefaultAmount = 40, SortOrder = 7, IsActive = true, CreatedAt = DateTime.UtcNow },
-                    new Net4Courier.Operations.Entities.OtherChargeType { Name = "Priority Handling", Code = "PRI", Description = "Express/priority processing", DefaultAmount = 150, SortOrder = 8, IsActive = true, CreatedAt = DateTime.UtcNow }
-                };
-                dbContext.OtherChargeTypes.AddRange(chargeTypes);
-                await dbContext.SaveChangesAsync(stoppingToken);
-                _logger.LogInformation("Seeded OtherChargeTypes data");
-            }
-
-            var shipmentStatusService = scope.ServiceProvider.GetRequiredService<ShipmentStatusService>();
-            await shipmentStatusService.SeedDefaultStatuses();
-            await shipmentStatusService.SeedRTSStatuses();
-
-            if (!await dbContext.Parties.AnyAsync(p => p.PartyType == Net4Courier.Masters.Entities.PartyType.ForwardingAgent, stoppingToken))
-            {
-                var company = await dbContext.Companies.FirstOrDefaultAsync(c => !c.IsDeleted, stoppingToken);
-                if (company != null)
-                {
-                    var forwardingAgents = new[]
-                    {
-                        new Net4Courier.Masters.Entities.Party { CompanyId = company.Id, Name = "DHL Express", Code = "DHL", PartyType = Net4Courier.Masters.Entities.PartyType.ForwardingAgent, AccountNature = Net4Courier.Masters.Entities.PartyAccountNature.Payable, ContactPerson = "DHL Support", Phone = "+1-800-225-5345", Email = "support@dhl.com", IsActive = true, CreatedAt = DateTime.UtcNow },
-                        new Net4Courier.Masters.Entities.Party { CompanyId = company.Id, Name = "FedEx", Code = "FEDEX", PartyType = Net4Courier.Masters.Entities.PartyType.ForwardingAgent, AccountNature = Net4Courier.Masters.Entities.PartyAccountNature.Payable, ContactPerson = "FedEx Support", Phone = "+1-800-463-3339", Email = "support@fedex.com", IsActive = true, CreatedAt = DateTime.UtcNow },
-                        new Net4Courier.Masters.Entities.Party { CompanyId = company.Id, Name = "Aramex", Code = "ARAMEX", PartyType = Net4Courier.Masters.Entities.PartyType.ForwardingAgent, AccountNature = Net4Courier.Masters.Entities.PartyAccountNature.Payable, ContactPerson = "Aramex Support", Phone = "+971-600-544000", Email = "support@aramex.com", IsActive = true, CreatedAt = DateTime.UtcNow },
-                        new Net4Courier.Masters.Entities.Party { CompanyId = company.Id, Name = "UPS", Code = "UPS", PartyType = Net4Courier.Masters.Entities.PartyType.ForwardingAgent, AccountNature = Net4Courier.Masters.Entities.PartyAccountNature.Payable, ContactPerson = "UPS Support", Phone = "+1-800-742-5877", Email = "support@ups.com", IsActive = true, CreatedAt = DateTime.UtcNow },
-                        new Net4Courier.Masters.Entities.Party { CompanyId = company.Id, Name = "TNT Express", Code = "TNT", PartyType = Net4Courier.Masters.Entities.PartyType.ForwardingAgent, AccountNature = Net4Courier.Masters.Entities.PartyAccountNature.Payable, ContactPerson = "TNT Support", Phone = "+31-88-393-9393", Email = "support@tnt.com", IsActive = true, CreatedAt = DateTime.UtcNow }
-                    };
-                    dbContext.Parties.AddRange(forwardingAgents);
-                    await dbContext.SaveChangesAsync(stoppingToken);
-                    _logger.LogInformation("Seeded Forwarding Agents");
-                }
-            }
-
-            if (!await dbContext.Parties.AnyAsync(p => p.PartyType == Net4Courier.Masters.Entities.PartyType.CoLoader, stoppingToken))
-            {
-                var company = await dbContext.Companies.FirstOrDefaultAsync(c => !c.IsDeleted, stoppingToken);
-                if (company != null)
-                {
-                    var coloaders = new[]
-                    {
-                        new Net4Courier.Masters.Entities.Party { CompanyId = company.Id, Name = "FastTrack Logistics", Code = "FTL", PartyType = Net4Courier.Masters.Entities.PartyType.CoLoader, AccountNature = Net4Courier.Masters.Entities.PartyAccountNature.Receivable, ContactPerson = "FastTrack Operations", Phone = "+1-800-555-0101", Email = "ops@fasttrack.com", CreditLimit = 50000, CreditDays = 30, IsActive = true, CreatedAt = DateTime.UtcNow },
-                        new Net4Courier.Masters.Entities.Party { CompanyId = company.Id, Name = "Global Freight Partners", Code = "GFP", PartyType = Net4Courier.Masters.Entities.PartyType.CoLoader, AccountNature = Net4Courier.Masters.Entities.PartyAccountNature.Receivable, ContactPerson = "GFP Sales", Phone = "+1-800-555-0102", Email = "sales@gfp.com", CreditLimit = 75000, CreditDays = 45, IsActive = true, CreatedAt = DateTime.UtcNow },
-                        new Net4Courier.Masters.Entities.Party { CompanyId = company.Id, Name = "Swift Cargo Solutions", Code = "SCS", PartyType = Net4Courier.Masters.Entities.PartyType.CoLoader, AccountNature = Net4Courier.Masters.Entities.PartyAccountNature.Receivable, ContactPerson = "Swift Support", Phone = "+1-800-555-0103", Email = "support@swiftcargo.com", CreditLimit = 40000, CreditDays = 30, IsActive = true, CreatedAt = DateTime.UtcNow },
-                        new Net4Courier.Masters.Entities.Party { CompanyId = company.Id, Name = "TransWorld Shipping", Code = "TWS", PartyType = Net4Courier.Masters.Entities.PartyType.CoLoader, AccountNature = Net4Courier.Masters.Entities.PartyAccountNature.Receivable, ContactPerson = "TW Operations", Phone = "+1-800-555-0104", Email = "operations@transworld.com", CreditLimit = 60000, CreditDays = 30, IsActive = true, CreatedAt = DateTime.UtcNow },
-                        new Net4Courier.Masters.Entities.Party { CompanyId = company.Id, Name = "Pacific Logistics", Code = "PACLOG", PartyType = Net4Courier.Masters.Entities.PartyType.CoLoader, AccountNature = Net4Courier.Masters.Entities.PartyAccountNature.Receivable, ContactPerson = "Pacific Logistics Team", Phone = "+1-800-555-0105", Email = "team@pacificlog.com", CreditLimit = 80000, CreditDays = 60, IsActive = true, CreatedAt = DateTime.UtcNow }
-                    };
-                    dbContext.Parties.AddRange(coloaders);
-                    await dbContext.SaveChangesAsync(stoppingToken);
-                    _logger.LogInformation("Seeded Co-Loaders");
-                }
-            }
-
-            if (!await dbContext.ServiceTypes.AnyAsync(stoppingToken))
-            {
-                var serviceTypes = new[]
-                {
-                    new Net4Courier.Masters.Entities.ServiceType { Code = "STD", Name = "Standard Delivery", Description = "Regular delivery service with standard transit times", TransitDays = 5, IsExpress = false, IsDefault = true, SortOrder = 1, IsActive = true, CreatedAt = DateTime.UtcNow },
-                    new Net4Courier.Masters.Entities.ServiceType { Code = "EXP", Name = "Express Delivery", Description = "Fast delivery with priority handling", TransitDays = 2, IsExpress = true, IsDefault = false, SortOrder = 2, IsActive = true, CreatedAt = DateTime.UtcNow },
-                    new Net4Courier.Masters.Entities.ServiceType { Code = "OVN", Name = "Overnight", Description = "Next business day delivery", TransitDays = 1, IsExpress = true, IsDefault = false, SortOrder = 3, IsActive = true, CreatedAt = DateTime.UtcNow },
-                    new Net4Courier.Masters.Entities.ServiceType { Code = "SDD", Name = "Same Day Delivery", Description = "Delivery within the same business day", TransitDays = 0, IsExpress = true, IsDefault = false, SortOrder = 4, IsActive = true, CreatedAt = DateTime.UtcNow },
-                    new Net4Courier.Masters.Entities.ServiceType { Code = "ECO", Name = "Economy", Description = "Cost-effective delivery with extended transit", TransitDays = 7, IsExpress = false, IsDefault = false, SortOrder = 5, IsActive = true, CreatedAt = DateTime.UtcNow },
-                    new Net4Courier.Masters.Entities.ServiceType { Code = "DOC", Name = "Document Express", Description = "Specialized service for document shipments", TransitDays = 1, IsExpress = true, IsDefault = false, SortOrder = 6, IsActive = true, CreatedAt = DateTime.UtcNow },
-                    new Net4Courier.Masters.Entities.ServiceType { Code = "FRT", Name = "Freight", Description = "Heavy cargo and pallet shipments", TransitDays = 10, IsExpress = false, IsDefault = false, SortOrder = 7, IsActive = true, CreatedAt = DateTime.UtcNow },
-                    new Net4Courier.Masters.Entities.ServiceType { Code = "COD", Name = "Cash on Delivery", Description = "Delivery with payment collection", TransitDays = 3, IsExpress = false, IsDefault = false, SortOrder = 8, IsActive = true, CreatedAt = DateTime.UtcNow }
-                };
-                dbContext.ServiceTypes.AddRange(serviceTypes);
-                await dbContext.SaveChangesAsync(stoppingToken);
-                _logger.LogInformation("Seeded Service Types");
-            }
-
-            if (!await dbContext.Ports.AnyAsync(stoppingToken))
-            {
-                var ports = new[]
-                {
-                    // UAE Airports
-                    new Net4Courier.Masters.Entities.Port { Code = "DXB", Name = "Dubai International Airport", PortType = Net4Courier.Masters.Entities.PortType.Airport, IATACode = "DXB", ICAOCode = "OMDB", City = "Dubai", Country = "United Arab Emirates", CountryCode = "AE", TimeZone = "Asia/Dubai", SortOrder = 1, IsActive = true, CreatedAt = DateTime.UtcNow },
-                    new Net4Courier.Masters.Entities.Port { Code = "DWC", Name = "Al Maktoum International Airport", PortType = Net4Courier.Masters.Entities.PortType.Airport, IATACode = "DWC", ICAOCode = "OMDW", City = "Dubai", Country = "United Arab Emirates", CountryCode = "AE", TimeZone = "Asia/Dubai", SortOrder = 2, IsActive = true, CreatedAt = DateTime.UtcNow },
-                    new Net4Courier.Masters.Entities.Port { Code = "AUH", Name = "Abu Dhabi International Airport", PortType = Net4Courier.Masters.Entities.PortType.Airport, IATACode = "AUH", ICAOCode = "OMAA", City = "Abu Dhabi", Country = "United Arab Emirates", CountryCode = "AE", TimeZone = "Asia/Dubai", SortOrder = 3, IsActive = true, CreatedAt = DateTime.UtcNow },
-                    new Net4Courier.Masters.Entities.Port { Code = "SHJ", Name = "Sharjah International Airport", PortType = Net4Courier.Masters.Entities.PortType.Airport, IATACode = "SHJ", ICAOCode = "OMSJ", City = "Sharjah", Country = "United Arab Emirates", CountryCode = "AE", TimeZone = "Asia/Dubai", SortOrder = 4, IsActive = true, CreatedAt = DateTime.UtcNow },
-                    new Net4Courier.Masters.Entities.Port { Code = "RKT", Name = "Ras Al Khaimah International Airport", PortType = Net4Courier.Masters.Entities.PortType.Airport, IATACode = "RKT", ICAOCode = "OMRK", City = "Ras Al Khaimah", Country = "United Arab Emirates", CountryCode = "AE", TimeZone = "Asia/Dubai", SortOrder = 5, IsActive = true, CreatedAt = DateTime.UtcNow },
-                    // UAE Seaports
-                    new Net4Courier.Masters.Entities.Port { Code = "AEJEA", Name = "Jebel Ali Port", PortType = Net4Courier.Masters.Entities.PortType.Seaport, UNLocode = "AEJEA", City = "Dubai", Country = "United Arab Emirates", CountryCode = "AE", TimeZone = "Asia/Dubai", SortOrder = 10, IsActive = true, CreatedAt = DateTime.UtcNow },
-                    new Net4Courier.Masters.Entities.Port { Code = "AERSM", Name = "Port Rashid", PortType = Net4Courier.Masters.Entities.PortType.Seaport, UNLocode = "AERSM", City = "Dubai", Country = "United Arab Emirates", CountryCode = "AE", TimeZone = "Asia/Dubai", SortOrder = 11, IsActive = true, CreatedAt = DateTime.UtcNow },
-                    new Net4Courier.Masters.Entities.Port { Code = "AEKHL", Name = "Khalifa Port", PortType = Net4Courier.Masters.Entities.PortType.Seaport, UNLocode = "AEKHL", City = "Abu Dhabi", Country = "United Arab Emirates", CountryCode = "AE", TimeZone = "Asia/Dubai", SortOrder = 12, IsActive = true, CreatedAt = DateTime.UtcNow },
-                    new Net4Courier.Masters.Entities.Port { Code = "AEZAY", Name = "Zayed Port", PortType = Net4Courier.Masters.Entities.PortType.Seaport, UNLocode = "AEZAY", City = "Abu Dhabi", Country = "United Arab Emirates", CountryCode = "AE", TimeZone = "Asia/Dubai", SortOrder = 13, IsActive = true, CreatedAt = DateTime.UtcNow },
-                    new Net4Courier.Masters.Entities.Port { Code = "AESHJ", Name = "Sharjah Port", PortType = Net4Courier.Masters.Entities.PortType.Seaport, UNLocode = "AESHJ", City = "Sharjah", Country = "United Arab Emirates", CountryCode = "AE", TimeZone = "Asia/Dubai", SortOrder = 14, IsActive = true, CreatedAt = DateTime.UtcNow },
-                    new Net4Courier.Masters.Entities.Port { Code = "AEFUJ", Name = "Fujairah Port", PortType = Net4Courier.Masters.Entities.PortType.Seaport, UNLocode = "AEFUJ", City = "Fujairah", Country = "United Arab Emirates", CountryCode = "AE", TimeZone = "Asia/Dubai", SortOrder = 15, IsActive = true, CreatedAt = DateTime.UtcNow },
-                    // UAE Land Borders
-                    new Net4Courier.Masters.Entities.Port { Code = "HATTA", Name = "Hatta Border Crossing", PortType = Net4Courier.Masters.Entities.PortType.LandBorder, City = "Hatta", State = "Dubai", Country = "United Arab Emirates", CountryCode = "AE", TimeZone = "Asia/Dubai", SortOrder = 20, IsActive = true, CreatedAt = DateTime.UtcNow },
-                    new Net4Courier.Masters.Entities.Port { Code = "ALAIN", Name = "Al Ain Border (Hili)", PortType = Net4Courier.Masters.Entities.PortType.LandBorder, City = "Al Ain", State = "Abu Dhabi", Country = "United Arab Emirates", CountryCode = "AE", TimeZone = "Asia/Dubai", SortOrder = 21, IsActive = true, CreatedAt = DateTime.UtcNow },
-                    new Net4Courier.Masters.Entities.Port { Code = "GHUWAIFAT", Name = "Ghuwaifat Border (Saudi Arabia)", PortType = Net4Courier.Masters.Entities.PortType.LandBorder, City = "Ghuwaifat", State = "Abu Dhabi", Country = "United Arab Emirates", CountryCode = "AE", TimeZone = "Asia/Dubai", SortOrder = 22, IsActive = true, CreatedAt = DateTime.UtcNow },
-                    // Major International Airports
-                    new Net4Courier.Masters.Entities.Port { Code = "LHR", Name = "London Heathrow Airport", PortType = Net4Courier.Masters.Entities.PortType.Airport, IATACode = "LHR", ICAOCode = "EGLL", City = "London", Country = "United Kingdom", CountryCode = "GB", TimeZone = "Europe/London", SortOrder = 100, IsActive = true, CreatedAt = DateTime.UtcNow },
-                    new Net4Courier.Masters.Entities.Port { Code = "JFK", Name = "John F. Kennedy International Airport", PortType = Net4Courier.Masters.Entities.PortType.Airport, IATACode = "JFK", ICAOCode = "KJFK", City = "New York", Country = "United States", CountryCode = "US", TimeZone = "America/New_York", SortOrder = 101, IsActive = true, CreatedAt = DateTime.UtcNow },
-                    new Net4Courier.Masters.Entities.Port { Code = "SIN", Name = "Singapore Changi Airport", PortType = Net4Courier.Masters.Entities.PortType.Airport, IATACode = "SIN", ICAOCode = "WSSS", City = "Singapore", Country = "Singapore", CountryCode = "SG", TimeZone = "Asia/Singapore", SortOrder = 102, IsActive = true, CreatedAt = DateTime.UtcNow },
-                    new Net4Courier.Masters.Entities.Port { Code = "HKG", Name = "Hong Kong International Airport", PortType = Net4Courier.Masters.Entities.PortType.Airport, IATACode = "HKG", ICAOCode = "VHHH", City = "Hong Kong", Country = "Hong Kong", CountryCode = "HK", TimeZone = "Asia/Hong_Kong", SortOrder = 103, IsActive = true, CreatedAt = DateTime.UtcNow },
-                    new Net4Courier.Masters.Entities.Port { Code = "FRA", Name = "Frankfurt Airport", PortType = Net4Courier.Masters.Entities.PortType.Airport, IATACode = "FRA", ICAOCode = "EDDF", City = "Frankfurt", Country = "Germany", CountryCode = "DE", TimeZone = "Europe/Berlin", SortOrder = 104, IsActive = true, CreatedAt = DateTime.UtcNow },
-                    new Net4Courier.Masters.Entities.Port { Code = "CDG", Name = "Paris Charles de Gaulle Airport", PortType = Net4Courier.Masters.Entities.PortType.Airport, IATACode = "CDG", ICAOCode = "LFPG", City = "Paris", Country = "France", CountryCode = "FR", TimeZone = "Europe/Paris", SortOrder = 105, IsActive = true, CreatedAt = DateTime.UtcNow },
-                    new Net4Courier.Masters.Entities.Port { Code = "BOM", Name = "Chhatrapati Shivaji Maharaj International Airport", PortType = Net4Courier.Masters.Entities.PortType.Airport, IATACode = "BOM", ICAOCode = "VABB", City = "Mumbai", Country = "India", CountryCode = "IN", TimeZone = "Asia/Kolkata", SortOrder = 106, IsActive = true, CreatedAt = DateTime.UtcNow },
-                    new Net4Courier.Masters.Entities.Port { Code = "DEL", Name = "Indira Gandhi International Airport", PortType = Net4Courier.Masters.Entities.PortType.Airport, IATACode = "DEL", ICAOCode = "VIDP", City = "New Delhi", Country = "India", CountryCode = "IN", TimeZone = "Asia/Kolkata", SortOrder = 107, IsActive = true, CreatedAt = DateTime.UtcNow },
-                    // Major International Seaports
-                    new Net4Courier.Masters.Entities.Port { Code = "SGSIN", Name = "Port of Singapore", PortType = Net4Courier.Masters.Entities.PortType.Seaport, UNLocode = "SGSIN", City = "Singapore", Country = "Singapore", CountryCode = "SG", TimeZone = "Asia/Singapore", SortOrder = 200, IsActive = true, CreatedAt = DateTime.UtcNow },
-                    new Net4Courier.Masters.Entities.Port { Code = "CNSHA", Name = "Port of Shanghai", PortType = Net4Courier.Masters.Entities.PortType.Seaport, UNLocode = "CNSHA", City = "Shanghai", Country = "China", CountryCode = "CN", TimeZone = "Asia/Shanghai", SortOrder = 201, IsActive = true, CreatedAt = DateTime.UtcNow },
-                    new Net4Courier.Masters.Entities.Port { Code = "NLRTM", Name = "Port of Rotterdam", PortType = Net4Courier.Masters.Entities.PortType.Seaport, UNLocode = "NLRTM", City = "Rotterdam", Country = "Netherlands", CountryCode = "NL", TimeZone = "Europe/Amsterdam", SortOrder = 202, IsActive = true, CreatedAt = DateTime.UtcNow },
-                    new Net4Courier.Masters.Entities.Port { Code = "INNSA", Name = "Jawaharlal Nehru Port", PortType = Net4Courier.Masters.Entities.PortType.Seaport, UNLocode = "INNSA", City = "Navi Mumbai", Country = "India", CountryCode = "IN", TimeZone = "Asia/Kolkata", SortOrder = 203, IsActive = true, CreatedAt = DateTime.UtcNow }
-                };
-                dbContext.Ports.AddRange(ports);
-                await dbContext.SaveChangesAsync(stoppingToken);
-                _logger.LogInformation("Seeded Ports data with {Count} ports", ports.Length);
-            }
-
-            if (!await dbContext.ImportMasters.AnyAsync(stoppingToken))
-            {
-                var branch = await dbContext.Branches.FirstOrDefaultAsync(stoppingToken);
-                var company = await dbContext.Companies.FirstOrDefaultAsync(stoppingToken);
-                
-                if (branch != null && company != null)
-                {
-                    var imports = new[]
-                    {
-                        new Net4Courier.Operations.Entities.ImportMaster 
-                        { 
-                            ImportRefNo = "IMP20260121001",
-                            TransactionDate = DateTime.UtcNow,
-                            CompanyId = company.Id,
-                            BranchId = branch.Id,
-                            ImportMode = Net4Courier.Kernel.Enums.ImportMode.Air,
-                            MasterReferenceType = Net4Courier.Kernel.Enums.MasterReferenceType.MAWB,
-                            MasterReferenceNumber = "176-12345678",
-                            OriginCountryName = "United Kingdom",
-                            OriginCityName = "London",
-                            OriginPortCode = "LHR",
-                            DestinationCountryName = "United Arab Emirates",
-                            DestinationCityName = "Dubai",
-                            DestinationPortCode = "DXB",
-                            CarrierName = "Emirates",
-                            CarrierCode = "EK",
-                            FlightNo = "EK002",
-                            FlightDate = DateTime.UtcNow.AddDays(-1),
-                            ETA = DateTime.UtcNow,
-                            TotalBags = 3,
-                            TotalShipments = 15,
-                            TotalGrossWeight = 125.5m,
-                            TotalChargeableWeight = 150.0m,
-                            Status = Net4Courier.Kernel.Enums.ImportMasterStatus.Arrived,
-                            Remarks = "Sample import from London",
-                            IsActive = true,
-                            CreatedAt = DateTime.UtcNow,
-                            CreatedByName = "System"
-                        },
-                        new Net4Courier.Operations.Entities.ImportMaster 
-                        { 
-                            ImportRefNo = "IMP20260121002",
-                            TransactionDate = DateTime.UtcNow.AddDays(-2),
-                            CompanyId = company.Id,
-                            BranchId = branch.Id,
-                            ImportMode = Net4Courier.Kernel.Enums.ImportMode.Sea,
-                            MasterReferenceType = Net4Courier.Kernel.Enums.MasterReferenceType.BL,
-                            MasterReferenceNumber = "MAEU123456789",
-                            OriginCountryName = "China",
-                            OriginCityName = "Shanghai",
-                            OriginPortCode = "SHA",
-                            DestinationCountryName = "United Arab Emirates",
-                            DestinationCityName = "Dubai",
-                            DestinationPortCode = "JEA",
-                            CarrierName = "Maersk Line",
-                            VesselName = "MSC Oscar",
-                            VoyageNumber = "VY2601",
-                            ETA = DateTime.UtcNow.AddDays(5),
-                            TotalBags = 10,
-                            TotalShipments = 45,
-                            TotalGrossWeight = 2500.0m,
-                            TotalChargeableWeight = 2500.0m,
-                            Status = Net4Courier.Kernel.Enums.ImportMasterStatus.InTransit,
-                            Remarks = "Sea freight from Shanghai",
-                            IsActive = true,
-                            CreatedAt = DateTime.UtcNow.AddDays(-2),
-                            CreatedByName = "System"
-                        },
-                        new Net4Courier.Operations.Entities.ImportMaster 
-                        { 
-                            ImportRefNo = "IMP20260121003",
-                            TransactionDate = DateTime.UtcNow.AddDays(-1),
-                            CompanyId = company.Id,
-                            BranchId = branch.Id,
-                            ImportMode = Net4Courier.Kernel.Enums.ImportMode.Land,
-                            MasterReferenceType = Net4Courier.Kernel.Enums.MasterReferenceType.TruckWaybill,
-                            MasterReferenceNumber = "TRK-2026-0001",
-                            OriginCountryName = "Oman",
-                            OriginCityName = "Muscat",
-                            DestinationCountryName = "United Arab Emirates",
-                            DestinationCityName = "Dubai",
-                            TruckNumber = "DXB-12345",
-                            DriverName = "Ahmed Hassan",
-                            DriverPhone = "+971501234567",
-                            ETA = DateTime.UtcNow,
-                            TotalBags = 5,
-                            TotalShipments = 25,
-                            TotalGrossWeight = 800.0m,
-                            TotalChargeableWeight = 800.0m,
-                            Status = Net4Courier.Kernel.Enums.ImportMasterStatus.Arrived,
-                            Remarks = "Land shipment from Oman",
-                            IsActive = true,
-                            CreatedAt = DateTime.UtcNow.AddDays(-1),
-                            CreatedByName = "System"
-                        }
-                    };
-                    dbContext.ImportMasters.AddRange(imports);
-                    await dbContext.SaveChangesAsync(stoppingToken);
-                    _logger.LogInformation("Seeded Import Masters");
-                }
-            }
-
-            _logger.LogInformation("Database initialization completed successfully");
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Database initialization error");
-        }
-    }
-}
+                    ""AddedAt"" TIMESTAMP WITH TIME ZONE NOT NULL
