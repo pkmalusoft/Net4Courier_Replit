@@ -64,6 +64,8 @@ public class PickupRequest : AuditableEntity
     public string? ReferenceNo { get; set; }
     public string? PONumber { get; set; }
     
+    public BookingVehicleType? BookingVehicle { get; set; }
+    
     public bool IsConverted { get; set; }
     public DateTime? ConvertedAt { get; set; }
     public string? ConvertedBy { get; set; }
@@ -79,4 +81,13 @@ public enum PickupStatus
     ShipmentCollected = 4,
     Inscanned = 5,
     Cancelled = 6
+}
+
+public enum BookingVehicleType
+{
+    TwoWheeler = 1,
+    ThreeWheeler = 2,
+    FourWheeler = 3,
+    MiniTruck = 4,
+    HeavyTruck = 5
 }

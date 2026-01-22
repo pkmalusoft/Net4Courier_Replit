@@ -11,14 +11,14 @@ public class ShipmentExcelService
         using var workbook = new XLWorkbook();
         
         var sheet = workbook.Worksheets.Add("Shipments");
-        CreateShipmentsSheet(sheet);
+        CreateShipmentsSheet(sheet, workbook);
         
         using var stream = new MemoryStream();
         workbook.SaveAs(stream);
         return stream.ToArray();
     }
 
-    private void CreateShipmentsSheet(IXLWorksheet sheet)
+    private void CreateShipmentsSheet(IXLWorksheet sheet, XLWorkbook workbook)
     {
         sheet.Cell(1, 1).Value = "Bulk Shipment Upload Template";
         sheet.Cell(1, 1).Style.Font.Bold = true;
@@ -382,7 +382,7 @@ public class ShipmentExcelService
         if (isOriginUAE && isDestUAE)
             return MovementType.Domestic;
         
-        return MovementType.International;
+        return MovementType.InternationalExport;
     }
 }
 

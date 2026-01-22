@@ -462,7 +462,8 @@ public class DatabaseInitializationService : BackgroundService
             await dbContext.Database.ExecuteSqlRawAsync(@"
                 ALTER TABLE ""PickupRequests"" 
                 ADD COLUMN IF NOT EXISTS ""StatusId"" BIGINT REFERENCES ""ShipmentStatuses""(""Id""),
-                ADD COLUMN IF NOT EXISTS ""StatusGroupId"" BIGINT REFERENCES ""ShipmentStatusGroups""(""Id"");
+                ADD COLUMN IF NOT EXISTS ""StatusGroupId"" BIGINT REFERENCES ""ShipmentStatusGroups""(""Id""),
+                ADD COLUMN IF NOT EXISTS ""BookingVehicle"" INT;
             ", stoppingToken);
 
             await dbContext.Database.ExecuteSqlRawAsync(@"
