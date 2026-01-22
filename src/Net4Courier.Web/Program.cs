@@ -9,7 +9,19 @@ using Net4Courier.Web.Components;
 using Net4Courier.Web.Services;
 using QuestPDF.Infrastructure;
 
-QuestPDF.Settings.License = LicenseType.Community;
+// Log startup immediately
+Console.WriteLine($"[{DateTime.UtcNow:O}] Net4Courier starting...");
+Console.WriteLine($"[{DateTime.UtcNow:O}] Environment: {Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT") ?? "Production"}");
+Console.WriteLine($"[{DateTime.UtcNow:O}] DATABASE_URL: {(string.IsNullOrEmpty(Environment.GetEnvironmentVariable("DATABASE_URL")) ? "NOT SET" : "SET")}");
+
+try
+{
+    QuestPDF.Settings.License = LicenseType.Community;
+}
+catch (Exception ex)
+{
+    Console.WriteLine($"[{DateTime.UtcNow:O}] Warning: QuestPDF license setup failed: {ex.Message}");
+}
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -56,29 +68,39 @@ var databaseUrl = Environment.GetEnvironmentVariable("DATABASE_URL");
 string connectionString;
 bool databaseConfigured = true;
 
-if (!string.IsNullOrEmpty(databaseUrl) && databaseUrl.StartsWith("postgresql://"))
+try
 {
-    var uri = new Uri(databaseUrl);
-    var userInfo = uri.UserInfo.Split(':');
-    var host = uri.Host;
-    var port = uri.Port > 0 ? uri.Port : 5432;
-    var database = uri.AbsolutePath.TrimStart('/').Split('?')[0];
-    var username = userInfo[0];
-    var password = userInfo.Length > 1 ? userInfo[1] : "";
-    
-    connectionString = $"Host={host};Port={port};Database={database};Username={username};Password={password}";
+    if (!string.IsNullOrEmpty(databaseUrl) && databaseUrl.StartsWith("postgresql://"))
+    {
+        var uri = new Uri(databaseUrl);
+        var userInfo = uri.UserInfo.Split(':');
+        var host = uri.Host;
+        var port = uri.Port > 0 ? uri.Port : 5432;
+        var database = uri.AbsolutePath.TrimStart('/').Split('?')[0];
+        var username = userInfo[0];
+        var password = userInfo.Length > 1 ? userInfo[1] : "";
+        
+        connectionString = $"Host={host};Port={port};Database={database};Username={username};Password={password}";
+        Console.WriteLine($"[{DateTime.UtcNow:O}] Database connection configured: Host={host}, Database={database}");
+    }
+    else if (!string.IsNullOrEmpty(databaseUrl))
+    {
+        connectionString = databaseUrl;
+        Console.WriteLine($"[{DateTime.UtcNow:O}] Using raw DATABASE_URL connection string");
+    }
+    else
+    {
+        // No database configured - use a placeholder to allow app to start
+        connectionString = "Host=localhost;Database=placeholder";
+        databaseConfigured = false;
+        Console.WriteLine($"[{DateTime.UtcNow:O}] WARNING: DATABASE_URL not set. Application will start in limited mode.");
+    }
 }
-else if (!string.IsNullOrEmpty(databaseUrl))
+catch (Exception ex)
 {
-    connectionString = databaseUrl;
-}
-else
-{
-    // No database configured - use a placeholder to allow app to start
-    // This enables diagnostics endpoints to work
+    Console.WriteLine($"[{DateTime.UtcNow:O}] ERROR parsing DATABASE_URL: {ex.Message}");
     connectionString = "Host=localhost;Database=placeholder";
     databaseConfigured = false;
-    Console.WriteLine("WARNING: DATABASE_URL not set. Application will start in limited mode.");
 }
 
 builder.Services.AddDbContext<ApplicationDbContext>(options =>
@@ -304,7 +326,19 @@ app.MapPost("/api/bookings/webhook/{integrationId}", async (
 app.MapRazorComponents<App>()
     .AddInteractiveServerRenderMode();
 
-app.Run("http://0.0.0.0:5000");
+Console.WriteLine($"[{DateTime.UtcNow:O}] Starting HTTP server on http://0.0.0.0:5000");
+Console.WriteLine($"[{DateTime.UtcNow:O}] All middleware and routes configured successfully");
+
+try
+{
+    app.Run("http://0.0.0.0:5000");
+}
+catch (Exception ex)
+{
+    Console.WriteLine($"[{DateTime.UtcNow:O}] FATAL ERROR starting server: {ex.Message}");
+    Console.WriteLine($"[{DateTime.UtcNow:O}] Stack trace: {ex.StackTrace}");
+    throw;
+}
 
 public class DatabaseInitializationService : BackgroundService
 {
