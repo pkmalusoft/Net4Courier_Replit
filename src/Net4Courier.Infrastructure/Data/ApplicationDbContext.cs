@@ -87,6 +87,7 @@ public class ApplicationDbContext : DbContext
     public DbSet<PickupStatusHistory> PickupStatusHistories => Set<PickupStatusHistory>();
     
     public DbSet<ServiceType> ServiceTypes => Set<ServiceType>();
+    public DbSet<Port> Ports => Set<Port>();
     
     public DbSet<ImportMaster> ImportMasters => Set<ImportMaster>();
     public DbSet<ImportBag> ImportBags => Set<ImportBag>();

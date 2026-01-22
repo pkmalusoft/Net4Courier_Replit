@@ -517,6 +517,35 @@ public class DatabaseInitializationService : BackgroundService
             ", stoppingToken);
 
             await dbContext.Database.ExecuteSqlRawAsync(@"
+                CREATE TABLE IF NOT EXISTS ""Ports"" (
+                    ""Id"" BIGSERIAL PRIMARY KEY,
+                    ""Code"" VARCHAR(50) NOT NULL,
+                    ""Name"" VARCHAR(200) NOT NULL,
+                    ""PortType"" INT NOT NULL DEFAULT 1,
+                    ""IATACode"" VARCHAR(10),
+                    ""ICAOCode"" VARCHAR(10),
+                    ""UNLocode"" VARCHAR(20),
+                    ""City"" VARCHAR(100),
+                    ""State"" VARCHAR(100),
+                    ""Country"" VARCHAR(100),
+                    ""CountryCode"" VARCHAR(10),
+                    ""Latitude"" DECIMAL(10,7),
+                    ""Longitude"" DECIMAL(10,7),
+                    ""TimeZone"" VARCHAR(100),
+                    ""Description"" TEXT,
+                    ""SortOrder"" INT NOT NULL DEFAULT 0,
+                    ""IsActive"" BOOLEAN NOT NULL DEFAULT TRUE,
+                    ""IsDeleted"" BOOLEAN NOT NULL DEFAULT FALSE,
+                    ""CreatedAt"" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    ""ModifiedAt"" TIMESTAMP WITH TIME ZONE,
+                    ""CreatedBy"" INT,
+                    ""ModifiedBy"" INT
+                );
+                CREATE UNIQUE INDEX IF NOT EXISTS ""IX_Ports_Code"" ON ""Ports"" (""Code"");
+                CREATE INDEX IF NOT EXISTS ""IX_Ports_PortType"" ON ""Ports"" (""PortType"");
+            ", stoppingToken);
+
+            await dbContext.Database.ExecuteSqlRawAsync(@"
                 CREATE TABLE IF NOT EXISTS ""ApiSettings"" (
                     ""Id"" BIGSERIAL PRIMARY KEY,
                     ""Name"" VARCHAR(200) NOT NULL,
