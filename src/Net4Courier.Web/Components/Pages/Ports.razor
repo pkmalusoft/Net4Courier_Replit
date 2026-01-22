@@ -1,0 +1,316 @@
+@page "/ports"
+@inject ApplicationDbContext DbContext
+@inject ISnackbar Snackbar
+@inject IDialogService DialogService
+@using Microsoft.EntityFrameworkCore
+@using Net4Courier.Infrastructure.Data
+@using Net4Courier.Masters.Entities
+
+<PageTitle>Port Master - Net4Courier</PageTitle>
+
+<MudPaper Class="pa-4" Elevation="0">
+    <MudToolBar Dense="true" Class="pl-0">
+        <MudText Typo="Typo.h6">Port Master</MudText>
+        <MudSpacer />
+        <MudTextField @bind-Value="_searchText" Placeholder="Search..." Adornment="Adornment.Start" 
+                      AdornmentIcon="@Icons.Material.Filled.Search" Immediate="true" Clearable="true"
+                      Class="mr-3" Style="width: 250px;" Variant="Variant.Outlined" Margin="Margin.Dense" />
+        <MudSelect T="PortType?" Value="_filterPortType" Label="Port Type" Variant="Variant.Outlined" 
+                   Margin="Margin.Dense" Class="mr-3" Style="width: 150px;" ValueChanged="OnPortTypeFilterChanged">
+            <MudSelectItem T="PortType?" Value="@((PortType?)null)">All Types</MudSelectItem>
+            <MudSelectItem T="PortType?" Value="PortType.Airport">Airport</MudSelectItem>
+            <MudSelectItem T="PortType?" Value="PortType.Seaport">Seaport</MudSelectItem>
+            <MudSelectItem T="PortType?" Value="PortType.LandBorder">Land Border</MudSelectItem>
+        </MudSelect>
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add" OnClick="OpenAddDialog">
+            Add Port
+        </MudButton>
+    </MudToolBar>
+
+    <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-3">
+        Manage airports, seaports, and land border crossings used in import/export operations.
+    </MudText>
+
+    <MudTable Items="FilteredPorts" Hover="true" Dense="true" Loading="_loading">
+        <HeaderContent>
+            <MudTh>Code</MudTh>
+            <MudTh>Name</MudTh>
+            <MudTh>Type</MudTh>
+            <MudTh>IATA/UN</MudTh>
+            <MudTh>City</MudTh>
+            <MudTh>Country</MudTh>
+            <MudTh>Status</MudTh>
+            <MudTh Style="width: 120px;">Actions</MudTh>
+        </HeaderContent>
+        <RowTemplate>
+            <MudTd>@context.Code</MudTd>
+            <MudTd>@context.Name</MudTd>
+            <MudTd>
+                <MudChip T="string" Size="Size.Small" Color="@GetPortTypeColor(context.PortType)">
+                    @GetPortTypeIcon(context.PortType) @context.PortType
+                </MudChip>
+            </MudTd>
+            <MudTd>@(context.IATACode ?? context.UNLocode ?? "-")</MudTd>
+            <MudTd>@(context.City ?? "-")</MudTd>
+            <MudTd>@(context.Country ?? "-")</MudTd>
+            <MudTd>
+                <MudChip T="string" Size="Size.Small" Color="@(context.IsActive ? Color.Success : Color.Default)">
+                    @(context.IsActive ? "Active" : "Inactive")
+                </MudChip>
+            </MudTd>
+            <MudTd>
+                <MudIconButton Icon="@Icons.Material.Filled.Edit" Size="Size.Small" OnClick="@(() => OpenEditDialog(context))" />
+                <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" Color="Color.Error" OnClick="@(() => DeletePort(context))" />
+            </MudTd>
+        </RowTemplate>
+        <NoRecordsContent>
+            <MudText>No ports found. Click "Add Port" to create one.</MudText>
+        </NoRecordsContent>
+    </MudTable>
+</MudPaper>
+
+<MudDialog @bind-Visible="_dialogVisible" Options="new DialogOptions { MaxWidth = MaxWidth.Medium, FullWidth = true }">
+    <TitleContent>
+        <MudText Typo="Typo.h6">@(_editingPort.Id == 0 ? "Add Port" : "Edit Port")</MudText>
+    </TitleContent>
+    <DialogContent>
+        <MudGrid Spacing="2">
+            <MudItem xs="12" sm="4">
+                <MudTextField @bind-Value="_editingPort.Code" Label="Code*" Variant="Variant.Outlined" Required="true" />
+            </MudItem>
+            <MudItem xs="12" sm="8">
+                <MudTextField @bind-Value="_editingPort.Name" Label="Name*" Variant="Variant.Outlined" Required="true" />
+            </MudItem>
+            <MudItem xs="12" sm="4">
+                <MudSelect T="PortType" @bind-Value="_editingPort.PortType" Label="Port Type*" Variant="Variant.Outlined" Required="true">
+                    <MudSelectItem T="PortType" Value="PortType.Airport">Airport</MudSelectItem>
+                    <MudSelectItem T="PortType" Value="PortType.Seaport">Seaport</MudSelectItem>
+                    <MudSelectItem T="PortType" Value="PortType.LandBorder">Land Border</MudSelectItem>
+                </MudSelect>
+            </MudItem>
+            <MudItem xs="12" sm="4">
+                <MudTextField @bind-Value="_editingPort.IATACode" Label="IATA Code" Variant="Variant.Outlined" 
+                              HelperText="3-letter airport code (e.g., DXB)" />
+            </MudItem>
+            <MudItem xs="12" sm="4">
+                <MudTextField @bind-Value="_editingPort.ICAOCode" Label="ICAO Code" Variant="Variant.Outlined" 
+                              HelperText="4-letter airport code (e.g., OMDB)" />
+            </MudItem>
+            <MudItem xs="12" sm="4">
+                <MudTextField @bind-Value="_editingPort.UNLocode" Label="UN/LOCODE" Variant="Variant.Outlined" 
+                              HelperText="Port code (e.g., AEJEA)" />
+            </MudItem>
+            <MudItem xs="12" sm="4">
+                <MudTextField @bind-Value="_editingPort.City" Label="City" Variant="Variant.Outlined" />
+            </MudItem>
+            <MudItem xs="12" sm="4">
+                <MudTextField @bind-Value="_editingPort.State" Label="State/Region" Variant="Variant.Outlined" />
+            </MudItem>
+            <MudItem xs="12" sm="4">
+                <MudTextField @bind-Value="_editingPort.Country" Label="Country" Variant="Variant.Outlined" />
+            </MudItem>
+            <MudItem xs="12" sm="4">
+                <MudTextField @bind-Value="_editingPort.CountryCode" Label="Country Code" Variant="Variant.Outlined" 
+                              HelperText="2-letter ISO code (e.g., AE)" />
+            </MudItem>
+            <MudItem xs="12" sm="4">
+                <MudTextField @bind-Value="_editingPort.TimeZone" Label="Time Zone" Variant="Variant.Outlined" 
+                              HelperText="e.g., Asia/Dubai" />
+            </MudItem>
+            <MudItem xs="12" sm="4">
+                <MudNumericField @bind-Value="_editingPort.SortOrder" Label="Sort Order" Variant="Variant.Outlined" Min="0" />
+            </MudItem>
+            <MudItem xs="12">
+                <MudTextField @bind-Value="_editingPort.Description" Label="Description" Variant="Variant.Outlined" Lines="2" />
+            </MudItem>
+            <MudItem xs="12" sm="6">
+                <MudNumericField @bind-Value="_editingPort.Latitude" Label="Latitude" Variant="Variant.Outlined" Step="0.0001M" />
+            </MudItem>
+            <MudItem xs="12" sm="6">
+                <MudNumericField @bind-Value="_editingPort.Longitude" Label="Longitude" Variant="Variant.Outlined" Step="0.0001M" />
+            </MudItem>
+            <MudItem xs="12">
+                <MudCheckBox @bind-Value="_editingPort.IsActive" Label="Active" Color="Color.Success" />
+            </MudItem>
+        </MudGrid>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="CloseDialog">Cancel</MudButton>
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="SavePort">Save</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    private List<Port> _ports = new();
+    private bool _loading = true;
+    private bool _dialogVisible;
+    private Port _editingPort = new();
+    private string _searchText = string.Empty;
+    private PortType? _filterPortType;
+
+    private IEnumerable<Port> FilteredPorts => _ports
+        .Where(p => string.IsNullOrEmpty(_searchText) || 
+                    p.Code.Contains(_searchText, StringComparison.OrdinalIgnoreCase) ||
+                    p.Name.Contains(_searchText, StringComparison.OrdinalIgnoreCase) ||
+                    (p.City?.Contains(_searchText, StringComparison.OrdinalIgnoreCase) ?? false) ||
+                    (p.Country?.Contains(_searchText, StringComparison.OrdinalIgnoreCase) ?? false) ||
+                    (p.IATACode?.Contains(_searchText, StringComparison.OrdinalIgnoreCase) ?? false))
+        .Where(p => !_filterPortType.HasValue || p.PortType == _filterPortType.Value);
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadData();
+    }
+
+    private async Task LoadData()
+    {
+        _loading = true;
+        _ports = await DbContext.Ports
+            .Where(p => !p.IsDeleted)
+            .OrderBy(p => p.SortOrder)
+            .ThenBy(p => p.Name)
+            .ToListAsync();
+        _loading = false;
+    }
+
+    private void OnPortTypeFilterChanged(PortType? value)
+    {
+        _filterPortType = value;
+    }
+
+    private Color GetPortTypeColor(PortType portType) => portType switch
+    {
+        PortType.Airport => Color.Info,
+        PortType.Seaport => Color.Primary,
+        PortType.LandBorder => Color.Warning,
+        _ => Color.Default
+    };
+
+    private string GetPortTypeIcon(PortType portType) => portType switch
+    {
+        PortType.Airport => "✈",
+        PortType.Seaport => "⚓",
+        PortType.LandBorder => "🚛",
+        _ => ""
+    };
+
+    private void OpenAddDialog()
+    {
+        _editingPort = new Port { IsActive = true, PortType = PortType.Airport, SortOrder = _ports.Count + 1 };
+        _dialogVisible = true;
+    }
+
+    private void OpenEditDialog(Port port)
+    {
+        _editingPort = new Port
+        {
+            Id = port.Id,
+            Code = port.Code,
+            Name = port.Name,
+            PortType = port.PortType,
+            IATACode = port.IATACode,
+            ICAOCode = port.ICAOCode,
+            UNLocode = port.UNLocode,
+            City = port.City,
+            State = port.State,
+            Country = port.Country,
+            CountryCode = port.CountryCode,
+            Latitude = port.Latitude,
+            Longitude = port.Longitude,
+            TimeZone = port.TimeZone,
+            Description = port.Description,
+            SortOrder = port.SortOrder,
+            IsActive = port.IsActive
+        };
+        _dialogVisible = true;
+    }
+
+    private void CloseDialog()
+    {
+        _dialogVisible = false;
+    }
+
+    private async Task SavePort()
+    {
+        if (string.IsNullOrWhiteSpace(_editingPort.Code) || string.IsNullOrWhiteSpace(_editingPort.Name))
+        {
+            Snackbar.Add("Code and Name are required", Severity.Warning);
+            return;
+        }
+
+        try
+        {
+            var duplicateCode = await DbContext.Ports
+                .AnyAsync(p => p.Code == _editingPort.Code && p.Id != _editingPort.Id && !p.IsDeleted);
+            
+            if (duplicateCode)
+            {
+                Snackbar.Add("Port code already exists", Severity.Warning);
+                return;
+            }
+
+            if (_editingPort.Id == 0)
+            {
+                _editingPort.CreatedAt = DateTime.UtcNow;
+                DbContext.Ports.Add(_editingPort);
+            }
+            else
+            {
+                var existing = await DbContext.Ports.FindAsync(_editingPort.Id);
+                if (existing != null)
+                {
+                    existing.Code = _editingPort.Code;
+                    existing.Name = _editingPort.Name;
+                    existing.PortType = _editingPort.PortType;
+                    existing.IATACode = _editingPort.IATACode;
+                    existing.ICAOCode = _editingPort.ICAOCode;
+                    existing.UNLocode = _editingPort.UNLocode;
+                    existing.City = _editingPort.City;
+                    existing.State = _editingPort.State;
+                    existing.Country = _editingPort.Country;
+                    existing.CountryCode = _editingPort.CountryCode;
+                    existing.Latitude = _editingPort.Latitude;
+                    existing.Longitude = _editingPort.Longitude;
+                    existing.TimeZone = _editingPort.TimeZone;
+                    existing.Description = _editingPort.Description;
+                    existing.SortOrder = _editingPort.SortOrder;
+                    existing.IsActive = _editingPort.IsActive;
+                    existing.ModifiedAt = DateTime.UtcNow;
+                }
+            }
+
+            await DbContext.SaveChangesAsync();
+            Snackbar.Add("Port saved successfully", Severity.Success);
+            _dialogVisible = false;
+            await LoadData();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error: {ex.Message}", Severity.Error);
+        }
+    }
+
+    private async Task DeletePort(Port port)
+    {
+        var confirmed = await DialogService.ShowMessageBox(
+            "Confirm Delete",
+            $"Are you sure you want to delete '{port.Name}'?",
+            yesText: "Delete", cancelText: "Cancel");
+
+        if (confirmed == true)
+        {
+            try
+            {
+                port.IsDeleted = true;
+                port.ModifiedAt = DateTime.UtcNow;
+                await DbContext.SaveChangesAsync();
+                Snackbar.Add("Port deleted", Severity.Success);
+                await LoadData();
+            }
+            catch (Exception ex)
+            {
+                Snackbar.Add($"Error: {ex.Message}", Severity.Error);
+            }
+        }
+    }
+}
