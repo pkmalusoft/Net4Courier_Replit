@@ -12,11 +12,7 @@ using QuestPDF.Infrastructure;
 QuestPDF.Settings.License = LicenseType.Community;
 
 var builder = WebApplication.CreateBuilder(args);
-if (builder.Environment.IsDevelopment())
-{
-    builder.WebHost.UseStaticWebAssets();
-}
-// --- ADD THIS BLOCK ---
+builder.WebHost.UseStaticWebAssets();
 
 builder.Services.Configure<ForwardedHeadersOptions>(options =>
 {
