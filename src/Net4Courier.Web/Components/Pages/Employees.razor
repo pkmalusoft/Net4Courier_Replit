@@ -1,0 +1,197 @@
+@page "/employees"
+@using Microsoft.EntityFrameworkCore
+@using Net4Courier.Infrastructure.Data
+@using Net4Courier.Masters.Entities
+@inject ApplicationDbContext DbContext
+@inject IDialogService DialogService
+@inject ISnackbar Snackbar
+
+<PageTitle>Employees</PageTitle>
+
+<MudContainer MaxWidth="MaxWidth.ExtraLarge" Class="mt-4">
+    <MudPaper Elevation="2" Class="pa-4">
+        <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center" Class="mb-4">
+            <MudText Typo="Typo.h5">Employees</MudText>
+            <MudStack Row="true" Spacing="2">
+                <MudTextField @bind-Value="_searchText" Label="Search" Variant="Variant.Outlined" Dense="true"
+                              Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Filled.Search"
+                              Immediate="true" DebounceInterval="300" Style="min-width: 250px;"
+                              TextChanged="OnSearchChanged" />
+                <MudSelect T="long?" Value="_selectedBranchId" Label="Filter by Branch" Variant="Variant.Outlined"
+                           Dense="true" Style="min-width: 200px;" Immediate="true" ValueChanged="OnBranchFilterChanged">
+                    <MudSelectItem T="long?" Value="@((long?)null)">All Branches</MudSelectItem>
+                    @foreach (var branch in _branches)
+                    {
+                        <MudSelectItem T="long?" Value="@branch.Id">@branch.Name</MudSelectItem>
+                    }
+                </MudSelect>
+                <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add" OnClick="OpenCreateDialog">
+                    Add Employee
+                </MudButton>
+            </MudStack>
+        </MudStack>
+
+        <MudTable Items="@_filteredEmployees" Hover="true" Striped="true" Loading="@_loading" LoadingProgressColor="Color.Primary" Dense="true">
+            <HeaderContent>
+                <MudTh>Code</MudTh>
+                <MudTh>Name</MudTh>
+                <MudTh>Designation</MudTh>
+                <MudTh>Department</MudTh>
+                <MudTh>Mobile</MudTh>
+                <MudTh>Branch</MudTh>
+                <MudTh>User Account</MudTh>
+                <MudTh>Status</MudTh>
+                <MudTh Style="width: 120px;">Actions</MudTh>
+            </HeaderContent>
+            <RowTemplate>
+                <MudTd DataLabel="Code">@context.Code</MudTd>
+                <MudTd DataLabel="Name">@context.Name</MudTd>
+                <MudTd DataLabel="Designation">@context.Designation</MudTd>
+                <MudTd DataLabel="Department">@context.Department</MudTd>
+                <MudTd DataLabel="Mobile">@context.Mobile</MudTd>
+                <MudTd DataLabel="Branch">@context.Branch?.Name</MudTd>
+                <MudTd DataLabel="User Account">
+                    @if (context.User != null)
+                    {
+                        <MudChip T="string" Color="Color.Info" Size="Size.Small">@context.User.Username</MudChip>
+                    }
+                    else
+                    {
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">Not linked</MudText>
+                    }
+                </MudTd>
+                <MudTd DataLabel="Status">
+                    <MudChip T="string" Color="@(context.IsActive ? Color.Success : Color.Default)" Size="Size.Small">
+                        @(context.IsActive ? "Active" : "Inactive")
+                    </MudChip>
+                </MudTd>
+                <MudTd DataLabel="Actions">
+                    <MudIconButton Icon="@Icons.Material.Filled.Edit" Color="Color.Primary" Size="Size.Small" OnClick="@(() => OpenEditDialog(context))" />
+                    <MudIconButton Icon="@Icons.Material.Filled.Delete" Color="Color.Error" Size="Size.Small" OnClick="@(() => DeleteEmployee(context))" />
+                </MudTd>
+            </RowTemplate>
+            <NoRecordsContent>
+                <MudText>No employees found.</MudText>
+            </NoRecordsContent>
+        </MudTable>
+    </MudPaper>
+</MudContainer>
+
+@code {
+    private List<Employee> _employees = new();
+    private List<Employee> _filteredEmployees = new();
+    private List<Branch> _branches = new();
+    private List<User> _users = new();
+    private long? _selectedBranchId;
+    private string _searchText = string.Empty;
+    private bool _loading = true;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadData();
+    }
+
+    private async Task LoadData()
+    {
+        _loading = true;
+        _branches = await DbContext.Branches.Where(b => !b.IsDeleted && b.IsActive).OrderBy(b => b.Name).ToListAsync();
+        _users = await DbContext.Users.Where(u => u.IsActive && !u.IsDeleted).OrderBy(u => u.Username).ToListAsync();
+        _employees = await DbContext.Employees
+            .Include(e => e.User)
+            .Include(e => e.Branch)
+            .Where(e => !e.IsDeleted)
+            .OrderBy(e => e.Name)
+            .ToListAsync();
+        ApplyFilter();
+        _loading = false;
+    }
+
+    private void OnSearchChanged(string text)
+    {
+        _searchText = text;
+        ApplyFilter();
+    }
+
+    private void OnBranchFilterChanged(long? branchId)
+    {
+        _selectedBranchId = branchId;
+        ApplyFilter();
+    }
+
+    private void ApplyFilter()
+    {
+        var filtered = _employees.AsEnumerable();
+
+        if (_selectedBranchId.HasValue)
+        {
+            filtered = filtered.Where(e => e.BranchId == _selectedBranchId.Value);
+        }
+
+        if (!string.IsNullOrWhiteSpace(_searchText))
+        {
+            filtered = filtered.Where(e =>
+                e.Code.Contains(_searchText, StringComparison.OrdinalIgnoreCase) ||
+                e.Name.Contains(_searchText, StringComparison.OrdinalIgnoreCase) ||
+                (e.Designation?.Contains(_searchText, StringComparison.OrdinalIgnoreCase) ?? false) ||
+                (e.Department?.Contains(_searchText, StringComparison.OrdinalIgnoreCase) ?? false) ||
+                (e.Mobile?.Contains(_searchText, StringComparison.OrdinalIgnoreCase) ?? false));
+        }
+
+        _filteredEmployees = filtered.ToList();
+    }
+
+    private async Task OpenCreateDialog()
+    {
+        var employee = new Employee { IsActive = true };
+        var parameters = new DialogParameters<EmployeeDialog>
+        {
+            { x => x.Employee, employee },
+            { x => x.IsNew, true },
+            { x => x.Branches, _branches },
+            { x => x.Users, _users }
+        };
+        var options = new DialogOptions { MaxWidth = MaxWidth.Medium, FullWidth = true };
+        var dialog = await DialogService.ShowAsync<EmployeeDialog>("New Employee", parameters, options);
+        var result = await dialog.Result;
+        if (!result.Canceled)
+        {
+            await LoadData();
+            Snackbar.Add("Employee created successfully", Severity.Success);
+        }
+    }
+
+    private async Task OpenEditDialog(Employee employee)
+    {
+        var parameters = new DialogParameters<EmployeeDialog>
+        {
+            { x => x.Employee, employee },
+            { x => x.IsNew, false },
+            { x => x.Branches, _branches },
+            { x => x.Users, _users }
+        };
+        var options = new DialogOptions { MaxWidth = MaxWidth.Medium, FullWidth = true };
+        var dialog = await DialogService.ShowAsync<EmployeeDialog>("Edit Employee", parameters, options);
+        var result = await dialog.Result;
+        if (!result.Canceled)
+        {
+            await LoadData();
+            Snackbar.Add("Employee updated successfully", Severity.Success);
+        }
+    }
+
+    private async Task DeleteEmployee(Employee employee)
+    {
+        var confirm = await DialogService.ShowMessageBox(
+            "Delete Employee",
+            $"Are you sure you want to delete employee '{employee.Name}'?",
+            yesText: "Delete", cancelText: "Cancel");
+
+        if (confirm == true)
+        {
+            employee.IsDeleted = true;
+            await DbContext.SaveChangesAsync();
+            await LoadData();
+            Snackbar.Add("Employee deleted successfully", Severity.Success);
+        }
+    }
+}

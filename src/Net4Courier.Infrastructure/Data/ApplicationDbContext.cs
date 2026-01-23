@@ -29,6 +29,7 @@ public class ApplicationDbContext : DbContext
     public DbSet<City> Cities => Set<City>();
     public DbSet<Location> Locations => Set<Location>();
     public DbSet<Currency> Currencies => Set<Currency>();
+    public DbSet<Employee> Employees => Set<Employee>();
     
     public DbSet<InscanMaster> InscanMasters => Set<InscanMaster>();
     public DbSet<InscanMasterItem> InscanMasterItems => Set<InscanMasterItem>();
@@ -191,6 +192,25 @@ public class ApplicationDbContext : DbContext
             entity.HasKey(e => e.Id);
             entity.Property(e => e.Name).HasMaxLength(100).IsRequired();
             entity.HasIndex(e => e.Name).IsUnique();
+        });
+
+        modelBuilder.Entity<Employee>(entity =>
+        {
+            entity.ToTable("Employees");
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Code).HasMaxLength(50).IsRequired();
+            entity.Property(e => e.Name).HasMaxLength(200).IsRequired();
+            entity.Property(e => e.Designation).HasMaxLength(100);
+            entity.Property(e => e.Department).HasMaxLength(100);
+            entity.Property(e => e.Phone).HasMaxLength(50);
+            entity.Property(e => e.Mobile).HasMaxLength(50);
+            entity.Property(e => e.Email).HasMaxLength(200);
+            entity.Property(e => e.Address).HasMaxLength(500);
+            entity.Property(e => e.EmergencyContact).HasMaxLength(200);
+            entity.Property(e => e.EmergencyPhone).HasMaxLength(50);
+            entity.HasIndex(e => e.Code).IsUnique();
+            entity.HasOne(e => e.User).WithMany().HasForeignKey(e => e.UserId).OnDelete(DeleteBehavior.SetNull);
+            entity.HasOne(e => e.Branch).WithMany().HasForeignKey(e => e.BranchId).OnDelete(DeleteBehavior.SetNull);
         });
 
         modelBuilder.Entity<Role>(entity =>
