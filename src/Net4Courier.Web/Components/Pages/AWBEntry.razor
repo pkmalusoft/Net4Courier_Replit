@@ -722,7 +722,7 @@
         _shipmentModes = await DbContext.ShipmentModes.Where(s => s.IsActive && !s.IsDeleted).OrderBy(s => s.SortOrder).ToListAsync();
         _airports = await DbContext.Ports.Where(p => p.PortType == PortType.Airport && p.IsActive && !p.IsDeleted).OrderBy(p => p.Name).ToListAsync();
         
-        _currentBranch = await DbContext.Branches.FirstOrDefaultAsync(b => !b.IsDeleted && b.IsActive);
+        _currentBranch = await DbContext.Branches.Include(b => b.Country).FirstOrDefaultAsync(b => !b.IsDeleted && b.IsActive);
         if (_currentBranch != null)
         {
             _nextAWBPreview = await AWBNumberService.PreviewNextAWBNumber(_currentBranch.Id);
@@ -802,6 +802,7 @@
             _inscan.ConsignorState = "";
             _inscan.ConsignorCountry = "";
         }
+        CalculateMovementType();
     }
     
     private void OnConsigneeCityChanged(City? city)
@@ -818,6 +819,45 @@
             _inscan.ConsigneeCity = "";
             _inscan.ConsigneeState = "";
             _inscan.ConsigneeCountry = "";
+        }
+        CalculateMovementType();
+    }
+    
+    private void CalculateMovementType()
+    {
+        if (_currentBranch?.CountryId == null)
+            return;
+        
+        var branchCountryId = _currentBranch.CountryId;
+        var originCountryId = _selectedConsignorCity?.CountryId;
+        var destCountryId = _selectedConsigneeCity?.CountryId;
+        
+        // Only calculate when both cities are set - leave unchanged otherwise
+        if (originCountryId == null || destCountryId == null)
+            return;
+        
+        bool originIsBranch = originCountryId == branchCountryId;
+        bool destIsBranch = destCountryId == branchCountryId;
+        
+        if (originIsBranch && destIsBranch)
+        {
+            // Domestic: Both origin and destination are branch country
+            _inscan.MovementTypeId = MovementType.Domestic;
+        }
+        else if (originIsBranch && !destIsBranch)
+        {
+            // Export: Origin is branch country, destination is foreign
+            _inscan.MovementTypeId = MovementType.InternationalExport;
+        }
+        else if (!originIsBranch && destIsBranch)
+        {
+            // Import: Origin is foreign, destination is branch country
+            _inscan.MovementTypeId = MovementType.InternationalImport;
+        }
+        else
+        {
+            // Transhipment: Both origin and destination are foreign
+            _inscan.MovementTypeId = MovementType.Transhipment;
         }
     }
     
