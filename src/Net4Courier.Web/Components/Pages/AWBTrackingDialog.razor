@@ -1,5 +1,6 @@
 @inject ApplicationDbContext DbContext
 @inject ISnackbar Snackbar
+@inject Net4Courier.Web.Services.ShipmentStatusService ShipmentStatusService
 @using Microsoft.EntityFrameworkCore
 @using Net4Courier.Infrastructure.Data
 @using Net4Courier.Operations.Entities
@@ -132,6 +133,23 @@
         }
 
         await DbContext.SaveChangesAsync();
+        
+        var statusCode = _newStatus switch
+        {
+            CourierStatus.PickedUp => "SHIPMENT_COLLECTED",
+            CourierStatus.InTransit => "IN_TRANSIT",
+            CourierStatus.OutForDelivery => "OUT_FOR_DELIVERY",
+            CourierStatus.Delivered => "DELIVERED",
+            CourierStatus.Returned => "RETURN_COMPLETED",
+            CourierStatus.OnHold => "DELIVERY_FAILED",
+            _ => "IN_TRANSIT"
+        };
+        
+        await ShipmentStatusService.SetStatus(
+            Shipment.Id, statusCode, "AWBTrackingDialog", null, null,
+            null, string.IsNullOrWhiteSpace(_location) ? null : _location, null, null,
+            string.IsNullOrWhiteSpace(_remarks) ? $"Status changed to {_newStatus}" : _remarks, 
+            isAutomatic: false);
         
         Snackbar.Add("Status updated successfully", Severity.Success);
         _location = "";
