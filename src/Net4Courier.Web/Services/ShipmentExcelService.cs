@@ -1,6 +1,7 @@
 using ClosedXML.Excel;
 using Net4Courier.Kernel.Enums;
 using Net4Courier.Operations.Entities;
+using Net4Courier.Masters.Entities;
 
 namespace Net4Courier.Web.Services;
 
@@ -18,6 +19,157 @@ public class ShipmentExcelService
         return stream.ToArray();
     }
 
+    public byte[] GenerateTemplateWithMasterData(
+        IEnumerable<City> cities,
+        IEnumerable<Country> countries)
+    {
+        using var workbook = new XLWorkbook();
+        
+        var sheet = workbook.Worksheets.Add("Shipments");
+        CreateShipmentsSheet(sheet, workbook);
+        
+        CreatePaymentModesSheet(workbook);
+        CreateDocumentTypesSheet(workbook);
+        CreateCountriesSheet(workbook, countries);
+        CreateCitiesSheet(workbook, cities);
+        
+        using var stream = new MemoryStream();
+        workbook.SaveAs(stream);
+        return stream.ToArray();
+    }
+
+    private void CreatePaymentModesSheet(XLWorkbook workbook)
+    {
+        var sheet = workbook.Worksheets.Add("Payment Modes");
+        
+        sheet.Cell(1, 1).Value = "Payment Mode Reference";
+        sheet.Cell(1, 1).Style.Font.Bold = true;
+        sheet.Cell(1, 1).Style.Font.FontSize = 14;
+        sheet.Range(1, 1, 1, 2).Merge();
+        
+        sheet.Cell(3, 1).Value = "Code";
+        sheet.Cell(3, 2).Value = "Description";
+        sheet.Cell(3, 1).Style.Font.Bold = true;
+        sheet.Cell(3, 2).Style.Font.Bold = true;
+        sheet.Cell(3, 1).Style.Fill.BackgroundColor = XLColor.LightBlue;
+        sheet.Cell(3, 2).Style.Fill.BackgroundColor = XLColor.LightBlue;
+        
+        var paymentModes = new[]
+        {
+            ("Prepaid", "Payment collected before shipping"),
+            ("COD", "Cash on Delivery - collect payment at delivery"),
+            ("Account", "Bill to customer account"),
+            ("PickupCash", "Cash collected at pickup"),
+            ("CAD", "Cash Against Documents")
+        };
+        
+        int row = 4;
+        foreach (var (code, desc) in paymentModes)
+        {
+            sheet.Cell(row, 1).Value = code;
+            sheet.Cell(row, 2).Value = desc;
+            row++;
+        }
+        
+        sheet.Column(1).Width = 15;
+        sheet.Column(2).Width = 40;
+    }
+
+    private void CreateDocumentTypesSheet(XLWorkbook workbook)
+    {
+        var sheet = workbook.Worksheets.Add("Document Types");
+        
+        sheet.Cell(1, 1).Value = "Document Type Reference";
+        sheet.Cell(1, 1).Style.Font.Bold = true;
+        sheet.Cell(1, 1).Style.Font.FontSize = 14;
+        sheet.Range(1, 1, 1, 2).Merge();
+        
+        sheet.Cell(3, 1).Value = "Code";
+        sheet.Cell(3, 2).Value = "Description";
+        sheet.Cell(3, 1).Style.Font.Bold = true;
+        sheet.Cell(3, 2).Style.Font.Bold = true;
+        sheet.Cell(3, 1).Style.Fill.BackgroundColor = XLColor.LightBlue;
+        sheet.Cell(3, 2).Style.Fill.BackgroundColor = XLColor.LightBlue;
+        
+        var documentTypes = new[]
+        {
+            ("Document", "Documents, letters, paperwork"),
+            ("NonDocument", "Parcels, packages, goods")
+        };
+        
+        int row = 4;
+        foreach (var (code, desc) in documentTypes)
+        {
+            sheet.Cell(row, 1).Value = code;
+            sheet.Cell(row, 2).Value = desc;
+            row++;
+        }
+        
+        sheet.Column(1).Width = 15;
+        sheet.Column(2).Width = 40;
+    }
+
+    private void CreateCountriesSheet(XLWorkbook workbook, IEnumerable<Country> countries)
+    {
+        var sheet = workbook.Worksheets.Add("Countries");
+        
+        sheet.Cell(1, 1).Value = "Country Reference";
+        sheet.Cell(1, 1).Style.Font.Bold = true;
+        sheet.Cell(1, 1).Style.Font.FontSize = 14;
+        sheet.Range(1, 1, 1, 2).Merge();
+        
+        sheet.Cell(3, 1).Value = "Code";
+        sheet.Cell(3, 2).Value = "Country Name";
+        sheet.Cell(3, 1).Style.Font.Bold = true;
+        sheet.Cell(3, 2).Style.Font.Bold = true;
+        sheet.Cell(3, 1).Style.Fill.BackgroundColor = XLColor.LightBlue;
+        sheet.Cell(3, 2).Style.Fill.BackgroundColor = XLColor.LightBlue;
+        
+        int row = 4;
+        foreach (var country in countries.OrderBy(c => c.Name))
+        {
+            sheet.Cell(row, 1).Value = country.Code;
+            sheet.Cell(row, 2).Value = country.Name;
+            row++;
+        }
+        
+        sheet.Column(1).Width = 10;
+        sheet.Column(2).Width = 35;
+    }
+
+    private void CreateCitiesSheet(XLWorkbook workbook, IEnumerable<City> cities)
+    {
+        var sheet = workbook.Worksheets.Add("Cities");
+        
+        sheet.Cell(1, 1).Value = "City Reference";
+        sheet.Cell(1, 1).Style.Font.Bold = true;
+        sheet.Cell(1, 1).Style.Font.FontSize = 14;
+        sheet.Range(1, 1, 1, 3).Merge();
+        
+        sheet.Cell(3, 1).Value = "Code";
+        sheet.Cell(3, 2).Value = "City Name";
+        sheet.Cell(3, 3).Value = "Country";
+        sheet.Cell(3, 1).Style.Font.Bold = true;
+        sheet.Cell(3, 2).Style.Font.Bold = true;
+        sheet.Cell(3, 3).Style.Font.Bold = true;
+        sheet.Cell(3, 1).Style.Fill.BackgroundColor = XLColor.LightBlue;
+        sheet.Cell(3, 2).Style.Fill.BackgroundColor = XLColor.LightBlue;
+        sheet.Cell(3, 3).Style.Fill.BackgroundColor = XLColor.LightBlue;
+        
+        int row = 4;
+        foreach (var city in cities.OrderBy(c => c.Country?.Name).ThenBy(c => c.Name))
+        {
+            sheet.Cell(row, 1).Value = city.Code;
+            sheet.Cell(row, 2).Value = city.Name;
+            sheet.Cell(row, 3).Value = city.Country?.Name ?? "";
+            row++;
+        }
+        
+        sheet.Column(1).Width = 10;
+        sheet.Column(2).Width = 25;
+        sheet.Column(3).Width = 25;
+    }
+
     private void CreateShipmentsSheet(IXLWorksheet sheet, XLWorkbook workbook)
     {
         sheet.Cell(1, 1).Value = "Bulk Shipment Upload Template";
@@ -32,7 +184,7 @@ public class ShipmentExcelService
         int col = 1;
         var headers = new[]
         {
-            ("AWB No *", true),
+            ("AWB No (Leave empty for auto-generate)", false),
             ("Transaction Date (DD/MM/YYYY) *", true),
             ("Payment Mode *", true),
             ("Document Type *", true),
@@ -90,15 +242,16 @@ public class ShipmentExcelService
         var instructionList = new[]
         {
             "1. Fill in the shipment data in the 'Shipments' sheet",
-            "2. AWB No must be unique and not already exist in the system",
+            "2. AWB No: Leave empty or enter '0' for auto-generation, or provide your own unique AWB",
             "3. Transaction Date format: DD/MM/YYYY (e.g., 22/01/2026)",
-            "4. Payment Mode values: Prepaid, COD, Account, PickupCash, CAD",
-            "5. Document Type values: Document, NonDocument",
+            "4. Payment Mode values: Prepaid, COD, Account, PickupCash, CAD (see Payment Modes tab)",
+            "5. Document Type values: Document, NonDocument (see Document Types tab)",
             "6. Weight should be in kilograms",
             "7. Dimensions (Length, Width, Height) should be in centimeters",
             "8. If COD Amount is provided, the shipment will be marked as COD",
             "9. Shipper and Consignee details are required for tracking",
-            "10. Movement Type (Domestic/International) is auto-calculated based on countries"
+            "10. Movement Type (Domestic/International) is auto-calculated based on countries",
+            "11. See Countries and Cities tabs for valid country/city codes"
         };
 
         foreach (var instruction in instructionList)
@@ -156,9 +309,13 @@ public class ShipmentExcelService
         int row = 4;
         while (true)
         {
-            var awbNo = sheet.Cell(row, 1).GetString()?.Trim();
-            if (string.IsNullOrWhiteSpace(awbNo))
+            var awbNo = sheet.Cell(row, 1).GetString()?.Trim() ?? "";
+            var shipperName = sheet.Cell(row, 7).GetString()?.Trim();
+            
+            if (string.IsNullOrWhiteSpace(awbNo) && string.IsNullOrWhiteSpace(shipperName))
                 break;
+            
+            if (awbNo == "0") awbNo = "";
             
             var shipment = new ShipmentUploadDto
             {
@@ -208,11 +365,6 @@ public class ShipmentExcelService
 
     private void ValidateShipment(ShipmentUploadDto dto, List<ShipmentValidationError> errors)
     {
-        if (string.IsNullOrWhiteSpace(dto.AWBNo))
-        {
-            errors.Add(new ShipmentValidationError { RowNumber = dto.RowNumber, Field = "AWB No", Message = "AWB No is required" });
-        }
-
         if (string.IsNullOrWhiteSpace(dto.TransactionDateStr))
         {
             errors.Add(new ShipmentValidationError { RowNumber = dto.RowNumber, Field = "Transaction Date", Message = "Transaction Date is required" });
@@ -297,6 +449,43 @@ public class ShipmentExcelService
     public List<InscanMaster> CreateShipments(List<ShipmentUploadDto> dtos, long? branchId, long? companyId, long? financialYearId, string? defaultOriginCountry = "UAE")
     {
         return dtos.Select(dto => CreateShipment(dto, branchId, companyId, financialYearId, defaultOriginCountry)).ToList();
+    }
+
+    public List<InscanMaster> CreateShipmentsWithAutoAWB(
+        List<ShipmentUploadDto> dtos, 
+        Branch branch, 
+        long? companyId, 
+        long? financialYearId, 
+        string? defaultOriginCountry = "UAE")
+    {
+        var shipments = new List<InscanMaster>();
+        var currentLastNumber = branch.AWBLastUsedNumber > 0 ? branch.AWBLastUsedNumber : (branch.AWBStartingNumber > 0 ? branch.AWBStartingNumber - 1 : 0);
+        var increment = branch.AWBIncrement > 0 ? branch.AWBIncrement : 1;
+        var prefix = !string.IsNullOrWhiteSpace(branch.AWBPrefix) ? branch.AWBPrefix : "AWB";
+        
+        foreach (var dto in dtos)
+        {
+            var shipment = CreateShipment(dto, branch.Id, companyId, financialYearId, defaultOriginCountry);
+            
+            if (string.IsNullOrWhiteSpace(dto.AWBNo))
+            {
+                currentLastNumber += increment;
+                shipment.AWBNo = $"{prefix}{currentLastNumber:D7}";
+                shipment.IsAutoGenerated = true;
+                dto.AWBNo = shipment.AWBNo;
+            }
+            
+            shipments.Add(shipment);
+        }
+        
+        branch.AWBLastUsedNumber = currentLastNumber;
+        
+        return shipments;
+    }
+
+    public int CountAutoGenerateAWBs(List<ShipmentUploadDto> dtos)
+    {
+        return dtos.Count(d => string.IsNullOrWhiteSpace(d.AWBNo));
     }
 
     private InscanMaster CreateShipment(ShipmentUploadDto dto, long? branchId, long? companyId, long? financialYearId, string? defaultOriginCountry)

@@ -5,6 +5,7 @@
 @using Microsoft.EntityFrameworkCore
 @using Net4Courier.Infrastructure.Data
 @using Net4Courier.Operations.Entities
+@using Net4Courier.Masters.Entities
 @using Net4Courier.Web.Services
 
 <MudDialog>
@@ -130,6 +131,15 @@
                     </MudAlert>
                 }
                 
+                @if (_autoGenerateCount > 0)
+                {
+                    <MudAlert Severity="Severity.Info" Dense="true">
+                        <MudText Typo="Typo.body2">
+                            <strong>@_autoGenerateCount shipment(s)</strong> have empty AWB numbers and will be auto-generated using the branch numbering sequence.
+                        </MudText>
+                    </MudAlert>
+                }
+                
                 <MudTable Items="_parsedShipments.Take(50)" Dense="true" Striped="true" Hover="true" 
                           FixedHeader="true" Height="300px" Elevation="1">
                     <HeaderContent>
@@ -146,7 +156,7 @@
                     </HeaderContent>
                     <RowTemplate>
                         <MudTd>@context.RowNumber</MudTd>
-                        <MudTd>@context.AWBNo</MudTd>
+                        <MudTd>@(string.IsNullOrWhiteSpace(context.AWBNo) ? "(Auto)" : context.AWBNo)</MudTd>
                         <MudTd>@context.TransactionDateStr</MudTd>
                         <MudTd>@context.PaymentModeStr</MudTd>
                         <MudTd>@context.Pieces</MudTd>
@@ -215,6 +225,7 @@
     private List<ShipmentUploadDto> _parsedShipments = new();
     private List<string> _duplicateAWBs = new();
     private int _createdCount;
+    private int _autoGenerateCount;
 
     private enum UploadStep { Download, Preview, Result }
 
@@ -223,7 +234,18 @@
         _isDownloading = true;
         try
         {
-            var templateBytes = ExcelService.GenerateTemplate();
+            var cities = await DbContext.Cities
+                .Include(c => c.Country)
+                .Where(c => c.IsActive)
+                .OrderBy(c => c.Name)
+                .ToListAsync();
+            
+            var countries = await DbContext.Countries
+                .Where(c => c.IsActive)
+                .OrderBy(c => c.Name)
+                .ToListAsync();
+            
+            var templateBytes = ExcelService.GenerateTemplateWithMasterData(cities, countries);
             var fileName = $"ShipmentUploadTemplate_{DateTime.Now:yyyyMMdd}.xlsx";
             
             await JSRuntime.InvokeVoidAsync("downloadFileFromBytes", fileName, Convert.ToBase64String(templateBytes));
@@ -258,12 +280,21 @@
 
             if (_parsedShipments.Any())
             {
-                var awbNumbers = _parsedShipments.Select(s => s.AWBNo).ToList();
-                var existingAWBs = await DbContext.Set<InscanMaster>()
-                    .Where(i => awbNumbers.Contains(i.AWBNo) && !i.IsDeleted)
-                    .Select(i => i.AWBNo)
-                    .ToListAsync();
-                _duplicateAWBs = existingAWBs;
+                var awbNumbers = _parsedShipments
+                    .Where(s => !string.IsNullOrWhiteSpace(s.AWBNo))
+                    .Select(s => s.AWBNo)
+                    .ToList();
+                
+                if (awbNumbers.Any())
+                {
+                    var existingAWBs = await DbContext.Set<InscanMaster>()
+                        .Where(i => awbNumbers.Contains(i.AWBNo) && !i.IsDeleted)
+                        .Select(i => i.AWBNo)
+                        .ToListAsync();
+                    _duplicateAWBs = existingAWBs;
+                }
+                
+                _autoGenerateCount = ExcelService.CountAutoGenerateAWBs(_parsedShipments);
             }
 
             _step = UploadStep.Preview;
@@ -286,6 +317,7 @@
         _duplicateAWBs.Clear();
         _selectedFileName = null;
         _showAllErrors = false;
+        _autoGenerateCount = 0;
     }
 
     private async Task CreateShipments()
@@ -295,7 +327,49 @@
 
         try
         {
-            var shipments = ExcelService.CreateShipments(_parsedShipments, BranchId, CompanyId, FinancialYearId, DefaultOriginCountry);
+            if (_autoGenerateCount > 0 && !BranchId.HasValue)
+            {
+                Snackbar.Add("Branch is required when shipments need auto-generated AWB numbers", Severity.Error);
+                _isCreating = false;
+                return;
+            }
+            
+            List<InscanMaster> shipments;
+            
+            if (_autoGenerateCount > 0 && BranchId.HasValue)
+            {
+                var branch = await DbContext.Branches.FirstOrDefaultAsync(b => b.Id == BranchId.Value);
+                if (branch == null)
+                {
+                    Snackbar.Add("Branch not found for AWB generation", Severity.Error);
+                    _isCreating = false;
+                    return;
+                }
+                
+                shipments = ExcelService.CreateShipmentsWithAutoAWB(_parsedShipments, branch, CompanyId, FinancialYearId, DefaultOriginCountry);
+                
+                var generatedAWBs = shipments.Where(s => s.IsAutoGenerated == true).Select(s => s.AWBNo).ToList();
+                if (generatedAWBs.Any())
+                {
+                    var existingAutoAWBs = await DbContext.Set<InscanMaster>()
+                        .Where(i => generatedAWBs.Contains(i.AWBNo) && !i.IsDeleted)
+                        .Select(i => i.AWBNo)
+                        .ToListAsync();
+                    
+                    if (existingAutoAWBs.Any())
+                    {
+                        Snackbar.Add($"Auto-generated AWB numbers already exist: {string.Join(", ", existingAutoAWBs.Take(5))}. Please update branch AWB sequence.", Severity.Error);
+                        _isCreating = false;
+                        return;
+                    }
+                }
+                
+                DbContext.Branches.Update(branch);
+            }
+            else
+            {
+                shipments = ExcelService.CreateShipments(_parsedShipments, BranchId, CompanyId, FinancialYearId, DefaultOriginCountry);
+            }
             
             await DbContext.Set<InscanMaster>().AddRangeAsync(shipments);
             await DbContext.SaveChangesAsync();
