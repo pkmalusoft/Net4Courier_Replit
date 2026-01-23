@@ -31,6 +31,13 @@ The application is built on .NET 8 Blazor Server, utilizing a modular architectu
 - **Customer Account Number**: Auto-generation or manual entry with validation.
 - **Operations Workflow**: Includes AWB entry and generation, pickup management (request to inscan), pickup schedules, outscan/DRS management, and AWB tracking.
 - **Financial Features**: Invoice/receipt management, journaling, self-referential account heads, financial period management, dynamic other charges, and comprehensive Account Receivables (Customer Master, Credit Notes, Aging Reports, AR Reports) and Account Payables (Supplier Master, Debit Notes).
+- **AWB Other Charges Management**: Special Charges Management page with tabbed interface for AWB-specific charges and customer-level special charges. Features include:
+  - AWB search with autocomplete for selecting shipments
+  - Add charges using Other Charge Types master (percentage or flat amount)
+  - Automatic percentage calculation based on AWB's Courier Charge
+  - Edit/delete charge functionality with confirmation dialogs
+  - Automatic update of InscanMaster.OtherCharge total when charges change
+  - Seamless integration with Invoice Entry - charges automatically flow to invoices when unbilled AWBs are loaded
 - **Reporting**: QuestPDF integration for AWB labels, Invoice, Receipt PDFs, and Excel export via ClosedXML.
 - **Automatic Movement Type Calculation**: Determines shipment type based on origin/destination.
 - **Rate Card Management**: Zone matrix, configurable rate cards with slab-based pricing, slab rule templates, customer rate assignments, rating engine service with formula trace, and a rate simulator.
