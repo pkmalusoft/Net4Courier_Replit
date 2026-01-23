@@ -48,6 +48,12 @@ The application is built on .NET 8 Blazor Server, utilizing a modular architectu
 - **Service Type Management**: Configurable service types via CRUD UI.
 - **Shipment Mode Management**: Configurable shipment modes (Air, Sea, Road/Surface, Rail, Multimodal) with CRUD UI. Mode of Shipment dropdown integrated in AWB entry/new pages after Movement field.
 - **Port Master Management**: Comprehensive port database with support for Airports, Seaports, and Land Borders. Includes IATA/ICAO codes for airports, UN/LOCODE for seaports, with filtering by port type. Pre-seeded with UAE ports and major international hubs.
+- **Currency Management**: Currency entity with Code, Name, Symbol, and DecimalPlaces. Pre-seeded with 15 currencies (AED, SAR, QAR, KWD, BHD, OMR, JOD, USD, INR, EUR, PKR, BDT, MYR, IDR, PHP).
+- **Geographic Master Data**: Comprehensive seed data including:
+  - 16 Countries: UAE, Saudi Arabia, Qatar, Kuwait, Bahrain, Oman, Jordan, India, Pakistan, Bangladesh, Malaysia, Indonesia, Philippines, Singapore, UK, USA
+  - 73 States/Emirates/Provinces for all countries
+  - 72 Major Cities with hub designations for capitals
+  - 61 Locations with pincodes for major cities
 - **Return to Shipper (RTS)**: Workflow for return shipments with address swapping and status tracking.
 - **Forgot Password Page**: Dedicated page for password reset requests.
 - **Multi-Branch Management**: Companies can have multiple branches, each with its own currency and warehouses. Supports user-branch assignments, branch-restricted login, and displays branch info in the dashboard header.
