@@ -224,21 +224,21 @@ else
             return;
         }
         
-        var currentStatus = await DbContext.ShipmentStatusHistories
+        var currentStatusInfo = await DbContext.ShipmentStatusHistories
             .Where(h => h.InscanMasterId == awb.Id)
             .OrderByDescending(h => h.ChangedAt)
             .ThenByDescending(h => h.Id)
-            .Select(h => h.StatusId)
+            .Select(h => new { h.StatusId, StatusCode = h.Status != null ? h.Status.Code : null })
             .FirstOrDefaultAsync();
         
-        var allowedStatusIds = new long[] { 7, 21 };
-        if (currentStatus > 0 && !allowedStatusIds.Contains(currentStatus))
+        var allowedStatusCodes = new[] { "INSCAN_ORIGIN", "INSCAN_DESTINATION", "RETURN_INSCAN", "DESTINATION_PROCESSED", "QC_COMPLETED" };
+        if (currentStatusInfo != null && currentStatusInfo.StatusCode != null && !allowedStatusCodes.Contains(currentStatusInfo.StatusCode))
         {
             var statusName = await DbContext.ShipmentStatuses
-                .Where(s => s.Id == currentStatus)
+                .Where(s => s.Id == currentStatusInfo.StatusId)
                 .Select(s => s.Name)
                 .FirstOrDefaultAsync() ?? "Unknown";
-            _scanMessage = $"AWB {awbNo} is not available for outscan. Current status: {statusName}. Only Inscan (ID:7) or Return Inscan (ID:21) are allowed.";
+            _scanMessage = $"AWB {awbNo} is not available for outscan. Current status: {statusName}";
             _scanSeverity = Severity.Warning;
             _scanInput = string.Empty;
             return;
