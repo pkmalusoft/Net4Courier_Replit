@@ -148,30 +148,39 @@
 
         <MudDivider Class="my-4" />
         <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center" Class="mb-3">
-            <MudText Typo="Typo.h6">Shipment Lines</MudText>
-            <MudButton Variant="Variant.Outlined" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add" OnClick="AddShipmentLine" Size="Size.Small">
+            <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+                <MudText Typo="Typo.h6">Shipment Lines</MudText>
+                <MudCheckBox T="bool" @bind-Value="_enableShipments" Label="Enable Shipments" Color="Color.Primary" Dense="true" />
+            </MudStack>
+            <MudButton Variant="Variant.Outlined" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add" 
+                       OnClick="AddShipmentLine" Size="Size.Small" Disabled="@(!_enableShipments)">
                 Add Line
             </MudButton>
         </MudStack>
         
-        @if (!_shipmentLines.Any())
+        @if (_enableShipments && !_shipmentLines.Any())
         {
-            <MudAlert Severity="Severity.Warning" Dense="true" Class="mb-3">
-                At least one shipment line is required. Please add consignee details.
+            <MudAlert Severity="Severity.Info" Dense="true" Class="mb-3">
+                Click "Add Line" to add consignee details for this pickup.
+            </MudAlert>
+        }
+        else if (!_enableShipments)
+        {
+            <MudAlert Severity="Severity.Normal" Dense="true" Class="mb-3">
+                Shipment lines are optional. Enable the checkbox above to add consignee details.
             </MudAlert>
         }
         
-        @foreach (var line in _shipmentLines)
+        @if (_enableShipments)
         {
-            <MudPaper Class="pa-3 mb-3" Elevation="1" Outlined="true">
-                <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center" Class="mb-2">
-                    <MudText Typo="Typo.subtitle2" Color="Color.Primary">Line @line.LineNo</MudText>
-                    @if (_shipmentLines.Count > 1)
-                    {
+            @foreach (var line in _shipmentLines)
+            {
+                <MudPaper Class="pa-3 mb-3" Elevation="1" Outlined="true">
+                    <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center" Class="mb-2">
+                        <MudText Typo="Typo.subtitle2" Color="Color.Primary">Line @line.LineNo</MudText>
                         <MudIconButton Icon="@Icons.Material.Filled.Delete" Color="Color.Error" Size="Size.Small" 
                                        OnClick="@(() => RemoveShipmentLine(line))" Title="Remove Line" />
-                    }
-                </MudStack>
+                    </MudStack>
                 <MudGrid Spacing="2">
                     <MudItem xs="12" sm="6" md="4">
                         <MudTextField @bind-Value="line.Consignee" Label="Consignee Name" Variant="Variant.Outlined" 
@@ -211,14 +220,15 @@
                         <MudTextField @bind-Value="line.CargoDescription" Label="Cargo Description" Variant="Variant.Outlined" Margin="Margin.Dense" />
                     </MudItem>
                 </MudGrid>
-            </MudPaper>
+                </MudPaper>
+            }
         }
 
         <MudDivider Class="my-4" />
         
         <MudGrid>
             <MudItem xs="12" Class="d-flex gap-2 flex-wrap">
-                <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="Save" Disabled="@(!_isValid || !_shipmentLines.Any())">
+                <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="Save" Disabled="@(!_isValid || (_enableShipments && !_shipmentLines.Any()))">
                     @(_isEdit ? "Update" : "Create") Pickup Request
                 </MudButton>
                 <MudButton Variant="Variant.Outlined" Href="/pickup-management">Cancel</MudButton>
@@ -242,6 +252,7 @@
     private City? _selectedCity;
     private Location? _selectedLocation;
     private List<PickupRequestShipment> _shipmentLines = new();
+    private bool _enableShipments = false;
 
     protected override async Task OnInitializedAsync()
     {
@@ -281,19 +292,15 @@
                 .OrderBy(s => s.LineNo)
                 .ToListAsync();
             
-            // Add default line if none exist
-            if (!_shipmentLines.Any())
-            {
-                AddShipmentLine();
-            }
+            // Enable shipments checkbox if lines exist
+            _enableShipments = _shipmentLines.Any();
         }
         else
         {
             _entity.PickupNo = await GeneratePickupNo();
             _entity.RequestDate = DateTime.UtcNow;
-            
-            // Add default shipment line for new pickup
-            AddShipmentLine();
+            // For new pickup, shipments are optional by default
+            _enableShipments = false;
         }
     }
     
@@ -457,44 +464,44 @@
 
     private void RemoveShipmentLine(PickupRequestShipment line)
     {
-        if (_shipmentLines.Count > 1)
+        _shipmentLines.Remove(line);
+        // Renumber lines
+        var lineNo = 1;
+        foreach (var l in _shipmentLines.OrderBy(x => x.LineNo))
         {
-            _shipmentLines.Remove(line);
-            // Renumber lines
-            var lineNo = 1;
-            foreach (var l in _shipmentLines.OrderBy(x => x.LineNo))
-            {
-                l.LineNo = lineNo++;
-            }
+            l.LineNo = lineNo++;
         }
     }
 
     private async Task Save()
     {
-        // Server-side validation
-        if (!_shipmentLines.Any())
+        // Server-side validation - only require shipment lines if enabled
+        if (_enableShipments && !_shipmentLines.Any())
         {
-            Snackbar.Add("At least one shipment line is required", Severity.Error);
+            Snackbar.Add("Please add at least one shipment line or disable the shipments checkbox", Severity.Error);
             return;
         }
         
-        // Validate required fields on each line
-        foreach (var line in _shipmentLines)
+        // Validate required fields on each line (only if shipments enabled)
+        if (_enableShipments)
         {
-            if (string.IsNullOrWhiteSpace(line.Consignee))
+            foreach (var line in _shipmentLines)
             {
-                Snackbar.Add($"Line {line.LineNo}: Consignee name is required", Severity.Error);
-                return;
-            }
-            if (string.IsNullOrWhiteSpace(line.ConsigneeCity))
-            {
-                Snackbar.Add($"Line {line.LineNo}: City is required", Severity.Error);
-                return;
-            }
-            if (string.IsNullOrWhiteSpace(line.ConsigneeCountry))
-            {
-                Snackbar.Add($"Line {line.LineNo}: Country is required", Severity.Error);
-                return;
+                if (string.IsNullOrWhiteSpace(line.Consignee))
+                {
+                    Snackbar.Add($"Line {line.LineNo}: Consignee name is required", Severity.Error);
+                    return;
+                }
+                if (string.IsNullOrWhiteSpace(line.ConsigneeCity))
+                {
+                    Snackbar.Add($"Line {line.LineNo}: City is required", Severity.Error);
+                    return;
+                }
+                if (string.IsNullOrWhiteSpace(line.ConsigneeCountry))
+                {
+                    Snackbar.Add($"Line {line.LineNo}: Country is required", Severity.Error);
+                    return;
+                }
             }
         }
         
@@ -506,11 +513,14 @@
             DbContext.PickupRequests.Add(_entity);
             await DbContext.SaveChangesAsync();
             
-            // Add shipment lines for new pickup
-            foreach (var line in _shipmentLines)
+            // Add shipment lines for new pickup (only if shipments enabled)
+            if (_enableShipments)
             {
-                line.PickupRequestId = _entity.Id;
-                DbContext.PickupRequestShipments.Add(line);
+                foreach (var line in _shipmentLines)
+                {
+                    line.PickupRequestId = _entity.Id;
+                    DbContext.PickupRequestShipments.Add(line);
+                }
             }
         }
         else
@@ -520,51 +530,67 @@
                 .Where(s => s.PickupRequestId == _entity.Id)
                 .ToListAsync();
             
-            var currentLineIds = _shipmentLines.Where(l => l.Id > 0).Select(l => l.Id).ToHashSet();
-            
-            // Remove lines that are no longer present (only if Pending and not linked to AWB)
-            foreach (var existing in existingLines)
+            if (_enableShipments)
             {
-                if (!currentLineIds.Contains(existing.Id))
+                var currentLineIds = _shipmentLines.Where(l => l.Id > 0).Select(l => l.Id).ToHashSet();
+                
+                // Remove lines that are no longer present (only if Pending and not linked to AWB)
+                foreach (var existing in existingLines)
+                {
+                    if (!currentLineIds.Contains(existing.Id))
+                    {
+                        if (existing.Status != ShipmentLineStatus.Pending || existing.AWBId.HasValue)
+                        {
+                            Snackbar.Add($"Cannot remove line {existing.LineNo}: already booked or linked to AWB", Severity.Error);
+                            return;
+                        }
+                        DbContext.PickupRequestShipments.Remove(existing);
+                    }
+                }
+                
+                // Update existing and add new lines
+                foreach (var line in _shipmentLines)
+                {
+                    if (line.Id > 0)
+                    {
+                        // Update existing line
+                        var existing = existingLines.FirstOrDefault(e => e.Id == line.Id);
+                        if (existing != null)
+                        {
+                            existing.LineNo = line.LineNo;
+                            existing.Consignee = line.Consignee;
+                            existing.ConsigneeContact = line.ConsigneeContact;
+                            existing.ConsigneePhone = line.ConsigneePhone;
+                            existing.ConsigneeAddress1 = line.ConsigneeAddress1;
+                            existing.ConsigneeAddress2 = line.ConsigneeAddress2;
+                            existing.ConsigneeCity = line.ConsigneeCity;
+                            existing.ConsigneeState = line.ConsigneeState;
+                            existing.ConsigneeCountry = line.ConsigneeCountry;
+                            existing.ConsigneePostalCode = line.ConsigneePostalCode;
+                            existing.Pieces = line.Pieces;
+                            existing.Weight = line.Weight;
+                            existing.CargoDescription = line.CargoDescription;
+                        }
+                    }
+                    else
+                    {
+                        // Add new line
+                        line.PickupRequestId = _entity.Id;
+                        DbContext.PickupRequestShipments.Add(line);
+                    }
+                }
+            }
+            else
+            {
+                // Shipments disabled - remove all pending lines that aren't linked to AWB
+                foreach (var existing in existingLines)
                 {
                     if (existing.Status != ShipmentLineStatus.Pending || existing.AWBId.HasValue)
                     {
-                        Snackbar.Add($"Cannot remove line {existing.LineNo}: already booked or linked to AWB", Severity.Error);
-                        return;
+                        // Can't remove processed lines - just keep them
+                        continue;
                     }
                     DbContext.PickupRequestShipments.Remove(existing);
-                }
-            }
-            
-            // Update existing and add new lines
-            foreach (var line in _shipmentLines)
-            {
-                if (line.Id > 0)
-                {
-                    // Update existing line
-                    var existing = existingLines.FirstOrDefault(e => e.Id == line.Id);
-                    if (existing != null)
-                    {
-                        existing.LineNo = line.LineNo;
-                        existing.Consignee = line.Consignee;
-                        existing.ConsigneeContact = line.ConsigneeContact;
-                        existing.ConsigneePhone = line.ConsigneePhone;
-                        existing.ConsigneeAddress1 = line.ConsigneeAddress1;
-                        existing.ConsigneeAddress2 = line.ConsigneeAddress2;
-                        existing.ConsigneeCity = line.ConsigneeCity;
-                        existing.ConsigneeState = line.ConsigneeState;
-                        existing.ConsigneeCountry = line.ConsigneeCountry;
-                        existing.ConsigneePostalCode = line.ConsigneePostalCode;
-                        existing.Pieces = line.Pieces;
-                        existing.Weight = line.Weight;
-                        existing.CargoDescription = line.CargoDescription;
-                    }
-                }
-                else
-                {
-                    // Add new line
-                    line.PickupRequestId = _entity.Id;
-                    DbContext.PickupRequestShipments.Add(line);
                 }
             }
         }
