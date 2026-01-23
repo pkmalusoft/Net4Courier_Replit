@@ -4,6 +4,7 @@
 @inject ISnackbar Snackbar
 @inject IJSRuntime JS
 @inject Microsoft.AspNetCore.Components.Authorization.AuthenticationStateProvider AuthStateProvider
+@inject Net4Courier.Web.Services.ShipmentStatusService ShipmentStatusService
 @using Microsoft.EntityFrameworkCore
 @using Net4Courier.Infrastructure.Data
 @using Net4Courier.Operations.Entities
@@ -392,6 +393,7 @@
             pickup.InscannedBy = _currentUsername;
             
             var awbCount = 0;
+            var inscannedAwbIds = new List<long>();
             if (pickup.Shipments != null)
             {
                 foreach (var shipment in pickup.Shipments)
@@ -404,6 +406,7 @@
                             awb.CourierStatusId = CourierStatus.InscanAtOrigin;
                             awb.ModifiedAt = DateTime.UtcNow;
                             awb.ModifiedByName = _currentUsername;
+                            inscannedAwbIds.Add(awb.Id);
                             awbCount++;
                         }
                     }
@@ -411,6 +414,14 @@
             }
             
             await DbContext.SaveChangesAsync();
+            
+            foreach (var awbId in inscannedAwbIds)
+            {
+                await ShipmentStatusService.SetStatus(
+                    awbId, "INSCAN_ORIGIN", "PickupInscan", pickup.Id, "PickupRequest",
+                    null, pickup.City, null, null,
+                    $"AWB received into warehouse via Pickup {pickup.PickupNo}", isAutomatic: true);
+            }
             
             var shipmentCount = pickup.Shipments?.Count ?? 0;
             _lastMessage = $"Pickup {_scanInput} received into warehouse! {shipmentCount} shipment(s), {awbCount} AWB(s) updated to InscanAtOrigin.";
@@ -447,6 +458,11 @@
             awb.ModifiedByName = _currentUsername;
             
             await DbContext.SaveChangesAsync();
+            
+            await ShipmentStatusService.SetStatus(
+                awb.Id, "INSCAN_ORIGIN", "PickupInscan", null, null,
+                null, awb.ConsignorCity, null, null,
+                $"AWB received into warehouse via direct scan", isAutomatic: true);
             
             _lastMessage = $"AWB {awbNo} received into warehouse! Status updated to InscanAtOrigin.";
             _lastSeverity = Severity.Success;

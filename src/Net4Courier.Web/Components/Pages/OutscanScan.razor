@@ -232,13 +232,21 @@ else
             .FirstOrDefaultAsync();
         
         var allowedStatusCodes = new[] { "INSCAN_ORIGIN", "INSCAN_DESTINATION", "RETURN_INSCAN", "DESTINATION_PROCESSED", "QC_COMPLETED" };
-        if (currentStatusInfo != null && currentStatusInfo.StatusCode != null && !allowedStatusCodes.Contains(currentStatusInfo.StatusCode))
+        
+        if (currentStatusInfo != null && !string.IsNullOrEmpty(currentStatusInfo.StatusCode) && !allowedStatusCodes.Contains(currentStatusInfo.StatusCode))
         {
             var statusName = await DbContext.ShipmentStatuses
                 .Where(s => s.Id == currentStatusInfo.StatusId)
                 .Select(s => s.Name)
                 .FirstOrDefaultAsync() ?? "Unknown";
             _scanMessage = $"AWB {awbNo} is not available for outscan. Current status: {statusName}";
+            _scanSeverity = Severity.Warning;
+            _scanInput = string.Empty;
+            return;
+        }
+        else if (currentStatusInfo == null && awb.CourierStatusId != CourierStatus.InscanAtOrigin)
+        {
+            _scanMessage = $"AWB {awbNo} is not available for outscan. AWB must be inscanned first. Current status: {awb.CourierStatusId}";
             _scanSeverity = Severity.Warning;
             _scanInput = string.Empty;
             return;
