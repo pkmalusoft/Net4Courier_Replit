@@ -7,7 +7,6 @@
 @inject IDialogService DialogService
 @inject ISnackbar Snackbar
 @inject NavigationManager Navigation
-@rendermode InteractiveServer
 
 <PageTitle>Zone Categories</PageTitle>
 
@@ -80,55 +79,12 @@
     </MudPaper>
 </MudContainer>
 
-<MudDialog @bind-Visible="_dialogVisible" Options="new DialogOptions { MaxWidth = MaxWidth.Small, FullWidth = true }">
-    <TitleContent>
-        <MudText Typo="Typo.h6">@(_isEdit ? "Edit Zone Category" : "New Zone Category")</MudText>
-    </TitleContent>
-    <DialogContent>
-        <MudGrid>
-            <MudItem xs="12" md="6">
-                <MudTextField @bind-Value="_model.Code" Label="Code" Required="true" Variant="Variant.Outlined" />
-            </MudItem>
-            <MudItem xs="12" md="6">
-                <MudTextField @bind-Value="_model.Name" Label="Name" Required="true" Variant="Variant.Outlined" />
-            </MudItem>
-            <MudItem xs="12" md="6">
-                <MudSelect T="MovementType" @bind-Value="_model.MovementType" Label="Movement Type" Required="true" Variant="Variant.Outlined">
-                    <MudSelectItem Value="MovementType.Domestic">Domestic</MudSelectItem>
-                    <MudSelectItem Value="MovementType.InternationalExport">International Export</MudSelectItem>
-                    <MudSelectItem Value="MovementType.InternationalImport">International Import</MudSelectItem>
-                </MudSelect>
-            </MudItem>
-            <MudItem xs="12" md="6">
-                <MudAutocomplete T="Party" Label="Carrier (Forwarding Agent)" @bind-Value="_selectedCarrier"
-                                 SearchFunc="SearchCarriers" ToStringFunc="@(p => p?.Name ?? "")"
-                                 Variant="Variant.Outlined" Clearable="true" />
-            </MudItem>
-            <MudItem xs="12" md="6">
-                <MudNumericField T="int" @bind-Value="_model.SortOrder" Label="Sort Order" Variant="Variant.Outlined" />
-            </MudItem>
-            <MudItem xs="12">
-                <MudTextField @bind-Value="_model.Description" Label="Description" Lines="2" Variant="Variant.Outlined" />
-            </MudItem>
-        </MudGrid>
-    </DialogContent>
-    <DialogActions>
-        <MudButton OnClick="CloseDialog">Cancel</MudButton>
-        <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="Save">Save</MudButton>
-    </DialogActions>
-</MudDialog>
-
 @code {
     private List<ZoneCategory> _categories = new();
     private Dictionary<long, string> _carrierNames = new();
     private bool _loading = true;
     private string _searchText = "";
     private string _filterMovementType = "";
-    
-    private bool _dialogVisible = false;
-    private bool _isEdit = false;
-    private ZoneCategory _model = new();
-    private Party? _selectedCarrier;
 
     protected override async Task OnInitializedAsync()
     {
@@ -188,18 +144,29 @@
 
     private string GetCarrierName(long? id) => id.HasValue && _carrierNames.TryGetValue(id.Value, out var name) ? name : "-";
 
-    private void CreateNew()
+    private async Task CreateNew()
     {
-        _model = new ZoneCategory { SortOrder = (_categories.Count + 1) * 10 };
-        _selectedCarrier = null;
-        _isEdit = false;
-        _dialogVisible = true;
-        StateHasChanged();
+        var model = new ZoneCategory { SortOrder = (_categories.Count + 1) * 10 };
+        var parameters = new DialogParameters<ZoneCategoryDialog>
+        {
+            { x => x.Model, model },
+            { x => x.IsEdit, false },
+            { x => x.SelectedCarrier, null }
+        };
+
+        var options = new DialogOptions { MaxWidth = MaxWidth.Small, FullWidth = true };
+        var dialog = await DialogService.ShowAsync<ZoneCategoryDialog>("New Zone Category", parameters, options);
+        var result = await dialog.Result;
+
+        if (result != null && !result.Canceled && result.Data is ZoneCategory savedModel)
+        {
+            await SaveCategory(savedModel, false);
+        }
     }
 
     private async Task Edit(ZoneCategory category)
     {
-        _model = new ZoneCategory
+        var model = new ZoneCategory
         {
             Id = category.Id,
             Code = category.Code,
@@ -209,24 +176,33 @@
             Description = category.Description,
             SortOrder = category.SortOrder
         };
-        
+
+        Party? selectedCarrier = null;
         if (category.ForwardingAgentId.HasValue)
         {
-            _selectedCarrier = await DbContext.Parties.FirstOrDefaultAsync(p => p.Id == category.ForwardingAgentId);
+            selectedCarrier = await DbContext.Parties.FirstOrDefaultAsync(p => p.Id == category.ForwardingAgentId);
         }
-        else
+
+        var parameters = new DialogParameters<ZoneCategoryDialog>
         {
-            _selectedCarrier = null;
+            { x => x.Model, model },
+            { x => x.IsEdit, true },
+            { x => x.SelectedCarrier, selectedCarrier }
+        };
+
+        var options = new DialogOptions { MaxWidth = MaxWidth.Small, FullWidth = true };
+        var dialog = await DialogService.ShowAsync<ZoneCategoryDialog>("Edit Zone Category", parameters, options);
+        var result = await dialog.Result;
+
+        if (result != null && !result.Canceled && result.Data is ZoneCategory savedModel)
+        {
+            await SaveCategory(savedModel, true);
         }
-        
-        _isEdit = true;
-        _dialogVisible = true;
-        StateHasChanged();
     }
 
-    private async Task Save()
+    private async Task SaveCategory(ZoneCategory model, bool isEdit)
     {
-        if (string.IsNullOrWhiteSpace(_model.Code) || string.IsNullOrWhiteSpace(_model.Name))
+        if (string.IsNullOrWhiteSpace(model.Code) || string.IsNullOrWhiteSpace(model.Name))
         {
             Snackbar.Add("Code and Name are required", Severity.Error);
             return;
@@ -234,31 +210,28 @@
 
         try
         {
-            _model.ForwardingAgentId = _selectedCarrier?.Id;
-            
-            if (_isEdit)
+            if (isEdit)
             {
-                var existing = await DbContext.ZoneCategories.FindAsync(_model.Id);
+                var existing = await DbContext.ZoneCategories.FindAsync(model.Id);
                 if (existing != null)
                 {
-                    existing.Code = _model.Code;
-                    existing.Name = _model.Name;
-                    existing.MovementType = _model.MovementType;
-                    existing.ForwardingAgentId = _model.ForwardingAgentId;
-                    existing.Description = _model.Description;
-                    existing.SortOrder = _model.SortOrder;
+                    existing.Code = model.Code;
+                    existing.Name = model.Name;
+                    existing.MovementType = model.MovementType;
+                    existing.ForwardingAgentId = model.ForwardingAgentId;
+                    existing.Description = model.Description;
+                    existing.SortOrder = model.SortOrder;
                     existing.ModifiedAt = DateTime.UtcNow;
                 }
             }
             else
             {
-                _model.CreatedAt = DateTime.UtcNow;
-                DbContext.ZoneCategories.Add(_model);
+                model.CreatedAt = DateTime.UtcNow;
+                DbContext.ZoneCategories.Add(model);
             }
 
             await DbContext.SaveChangesAsync();
-            Snackbar.Add(_isEdit ? "Category updated" : "Category created", Severity.Success);
-            _dialogVisible = false;
+            Snackbar.Add(isEdit ? "Category updated" : "Category created", Severity.Success);
             await LoadCategories();
         }
         catch (Exception ex)
@@ -291,21 +264,5 @@
     private void ManageZones(ZoneCategory category)
     {
         Navigation.NavigateTo($"/zone-matrix?categoryId={category.Id}");
-    }
-
-    private void CloseDialog() => _dialogVisible = false;
-
-    private async Task<IEnumerable<Party>> SearchCarriers(string value)
-    {
-        var query = DbContext.Parties
-            .Where(p => !p.IsDeleted && p.PartyType == PartyType.ForwardingAgent);
-
-        if (!string.IsNullOrWhiteSpace(value))
-        {
-            query = query.Where(p => p.Name.ToLower().Contains(value.ToLower()) ||
-                                     p.Code.ToLower().Contains(value.ToLower()));
-        }
-
-        return await query.Take(20).ToListAsync();
     }
 }
