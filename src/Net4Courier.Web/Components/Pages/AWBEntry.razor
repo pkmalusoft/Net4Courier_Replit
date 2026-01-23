@@ -6,12 +6,14 @@
 @inject IDialogService DialogService
 @inject Net4Courier.Web.Services.AWBNumberService AWBNumberService
 @inject Net4Courier.Web.Services.ShipmentStatusService ShipmentStatusService
+@inject Microsoft.AspNetCore.Components.Authorization.AuthenticationStateProvider AuthStateProvider
 @using Microsoft.EntityFrameworkCore
 @using Net4Courier.Infrastructure.Data
 @using Net4Courier.Masters.Entities
 @using Net4Courier.Operations.Entities
 @using Net4Courier.Kernel.Enums
 @using Net4Courier.Web.Models
+@using System.Security.Claims
 
 <PageTitle>@(Id > 0 ? "Edit AWB" : "New AWB Entry") - Net4Courier</PageTitle>
 
@@ -442,12 +444,22 @@
                 </MudText>
                 <MudGrid Spacing="2">
                     <MudItem xs="12">
-                        <MudTextField @bind-Value="_inscan.PickedBy" Label="Picked By" 
-                                      Variant="Variant.Outlined" Margin="Margin.Dense" />
+                        <MudSelect T="string" @bind-Value="_inscan.PickedBy" Label="Picked By" 
+                                   Variant="Variant.Outlined" Margin="Margin.Dense" Clearable="true">
+                            @foreach (var emp in _courierEmployees)
+                            {
+                                <MudSelectItem T="string" Value="@emp.Name">@emp.Name</MudSelectItem>
+                            }
+                        </MudSelect>
                     </MudItem>
                     <MudItem xs="12">
-                        <MudTextField @bind-Value="_inscan.ReceivedBy" Label="Received By" 
-                                      Variant="Variant.Outlined" Margin="Margin.Dense" />
+                        <MudSelect T="string" @bind-Value="_inscan.ReceivedBy" Label="Received By" 
+                                   Variant="Variant.Outlined" Margin="Margin.Dense" Clearable="true">
+                            @foreach (var emp in _operationsEmployees)
+                            {
+                                <MudSelectItem T="string" Value="@emp.Name">@emp.Name</MudSelectItem>
+                            }
+                        </MudSelect>
                     </MudItem>
                 </MudGrid>
             </MudPaper>
@@ -521,6 +533,10 @@
     private City? _selectedConsigneeCity;
     private List<Party> _forwardingAgents = new();
     private Party? _selectedForwardingAgent;
+    private List<Employee> _courierEmployees = new();
+    private List<Employee> _operationsEmployees = new();
+    private string _currentUserName = "";
+    private int? _currentUserId;
     private string _createdBy = "";
     private string _modifiedBy = "";
     
@@ -720,11 +736,15 @@
 
     protected override async Task OnInitializedAsync()
     {
+        await LoadCurrentUser();
+        
         _customers = await DbContext.Parties.Include(p => p.Addresses).Where(p => p.PartyType == PartyType.Customer && p.IsActive && !p.IsDeleted).OrderBy(p => p.Name).ToListAsync();
         _forwardingAgents = await DbContext.Parties.Where(p => p.PartyType == PartyType.ForwardingAgent && p.IsActive && !p.IsDeleted).OrderBy(p => p.Name).ToListAsync();
         _cities = await DbContext.Cities.Include(c => c.Country).Include(c => c.State).Where(c => c.IsActive).OrderBy(c => c.Name).ToListAsync();
         _shipmentModes = await DbContext.ShipmentModes.Where(s => s.IsActive && !s.IsDeleted).OrderBy(s => s.SortOrder).ToListAsync();
         _airports = await DbContext.Ports.Where(p => p.PortType == PortType.Airport && p.IsActive && !p.IsDeleted).OrderBy(p => p.Name).ToListAsync();
+        _courierEmployees = await DbContext.Employees.Where(e => e.IsActive && (e.Designation == "Courier" || e.Department == "Couriers")).OrderBy(e => e.Name).ToListAsync();
+        _operationsEmployees = await DbContext.Employees.Where(e => e.IsActive && e.Department == "Operations").OrderBy(e => e.Name).ToListAsync();
         
         _currentBranch = await DbContext.Branches.Include(b => b.Country).FirstOrDefaultAsync(b => !b.IsDeleted && b.IsActive);
         if (_currentBranch != null)
@@ -741,8 +761,8 @@
                 _inscan = existing;
                 _transactionDate = _inscan.TransactionDate.ToLocalTime();
                 _bookingTime = _inscan.TransactionDate.ToLocalTime().TimeOfDay;
-                _createdBy = $"{_inscan.CreatedBy} | {_inscan.CreatedAt:dd-MMM}";
-                _modifiedBy = _inscan.ModifiedAt.HasValue ? $"{_inscan.ModifiedBy} | {_inscan.ModifiedAt:dd-MMM}" : "";
+                _createdBy = $"{_inscan.CreatedByName ?? "Unknown"} | {_inscan.CreatedAt:dd-MMM}";
+                _modifiedBy = _inscan.ModifiedAt.HasValue ? $"{_inscan.ModifiedByName ?? "Unknown"} | {_inscan.ModifiedAt:dd-MMM}" : "";
                 _selectedForwardingAgent = _forwardingAgents.FirstOrDefault(p => p.Id == _inscan.ForwardingAgentId);
                 await LoadExistingOtherCharges();
                 SyncSelectedCitiesFromInscan();
@@ -799,6 +819,32 @@
         
         var matches = _forwardingAgents.Where(p => p.Name.Contains(value, StringComparison.OrdinalIgnoreCase)).Take(20);
         return Task.FromResult(matches.AsEnumerable());
+    }
+
+    private async Task LoadCurrentUser()
+    {
+        try
+        {
+            var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+            var user = authState.User;
+            if (user.Identity?.IsAuthenticated == true)
+            {
+                var userIdClaim = user.FindFirst("UserId")?.Value;
+                if (int.TryParse(userIdClaim, out var userId))
+                {
+                    _currentUserId = userId;
+                }
+                
+                _currentUserName = user.FindFirst("FullName")?.Value 
+                    ?? user.FindFirst(ClaimTypes.Name)?.Value 
+                    ?? user.Identity.Name 
+                    ?? "Unknown User";
+            }
+        }
+        catch
+        {
+            _currentUserName = "System User";
+        }
     }
     
     private void OnConsignorCityChanged(City? city)
@@ -1021,6 +1067,8 @@
             }
             
             _inscan.CreatedAt = DateTime.UtcNow;
+            _inscan.CreatedBy = _currentUserId;
+            _inscan.CreatedByName = _currentUserName;
             _inscan.CourierStatusId = CourierStatus.Pending;
             DbContext.InscanMasters.Add(_inscan);
             await DbContext.SaveChangesAsync();
@@ -1062,6 +1110,8 @@
         else
         {
             _inscan.ModifiedAt = DateTime.UtcNow;
+            _inscan.ModifiedBy = _currentUserId;
+            _inscan.ModifiedByName = _currentUserName;
             DbContext.InscanMasters.Update(_inscan);
             await DbContext.SaveChangesAsync();
         }
