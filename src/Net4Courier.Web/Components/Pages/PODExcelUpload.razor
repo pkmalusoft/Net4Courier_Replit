@@ -179,6 +179,66 @@
         </MudPaper>
     }
 
+    @if (_parsed && _parseResult != null && _parseResult.IsValid && !_processComplete)
+    {
+        <MudPaper Elevation="2" Class="pa-4 mb-4">
+            <MudText Typo="Typo.h6" Class="mb-3">
+                <MudIcon Icon="@Icons.Material.Filled.PhotoLibrary" Class="mr-2" />
+                Batch Image Upload (Optional)
+            </MudText>
+            <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-3">
+                Upload photos for multiple shipments at once. Name each image file with the AWB number 
+                (e.g., AWB123456.jpg, AWB123456_2.jpg for multiple photos of the same AWB).
+            </MudText>
+
+            <MudFileUpload T="IReadOnlyList<IBrowserFile>" Accept=".jpg,.jpeg,.png,.webp" 
+                          FilesChanged="OnImagesSelected" MaximumFileCount="100">
+                <ActivatorContent>
+                    <MudPaper Height="100px" Outlined="true" Class="d-flex flex-column justify-center align-center pa-4">
+                        <MudIcon Icon="@Icons.Material.Filled.AddPhotoAlternate" Size="Size.Large" Color="Color.Primary" />
+                        <MudText Typo="Typo.body2">Drop images here or click to browse (max 100 images)</MudText>
+                    </MudPaper>
+                </ActivatorContent>
+            </MudFileUpload>
+
+            @if (_uploadedImages.Any())
+            {
+                <MudText Typo="Typo.subtitle2" Class="mt-4 mb-2">
+                    @_uploadedImages.Count image(s) uploaded - @_matchedImagesCount matched to AWBs
+                </MudText>
+
+                <MudTable Items="@_imageMatchResults" Dense="true" Hover="true" Elevation="1" Class="mb-4">
+                    <HeaderContent>
+                        <MudTh>Filename</MudTh>
+                        <MudTh>Matched AWB</MudTh>
+                        <MudTh>Status</MudTh>
+                    </HeaderContent>
+                    <RowTemplate>
+                        <MudTd>@context.Filename</MudTd>
+                        <MudTd>@(context.MatchedAwb ?? "-")</MudTd>
+                        <MudTd>
+                            @if (context.IsMatched)
+                            {
+                                <MudChip T="string" Size="Size.Small" Color="Color.Success" Icon="@Icons.Material.Filled.Check">
+                                    Matched
+                                </MudChip>
+                            }
+                            else
+                            {
+                                <MudChip T="string" Size="Size.Small" Color="Color.Warning" Icon="@Icons.Material.Filled.Warning">
+                                    No Match
+                                </MudChip>
+                            }
+                        </MudTd>
+                    </RowTemplate>
+                </MudTable>
+
+                <MudButton Variant="Variant.Text" Color="Color.Error" StartIcon="@Icons.Material.Filled.Clear"
+                           OnClick="ClearImages" Size="Size.Small">Clear Images</MudButton>
+            }
+        </MudPaper>
+    }
+
     @if (_processComplete && _processResults != null)
     {
         <MudPaper Elevation="2" Class="pa-4 mb-4">
@@ -209,6 +269,7 @@
                 <HeaderContent>
                     <MudTh>AWB No</MudTh>
                     <MudTh>Status</MudTh>
+                    <MudTh>Images</MudTh>
                     <MudTh>Message</MudTh>
                 </HeaderContent>
                 <RowTemplate>
@@ -217,6 +278,20 @@
                         <MudChip T="string" Size="Size.Small" Color="@(context.Success ? Color.Success : Color.Error)">
                             @(context.Success ? "Success" : "Failed")
                         </MudChip>
+                    </MudTd>
+                    <MudTd>
+                        @{
+                            var imageCount = GetImageCountForAwb(context.AwbNo);
+                        }
+                        @if (imageCount > 0)
+                        {
+                            <MudIcon Icon="@Icons.Material.Filled.Image" Size="Size.Small" Color="Color.Success" />
+                            <text>@imageCount</text>
+                        }
+                        else
+                        {
+                            <text>-</text>
+                        }
                     </MudTd>
                     <MudTd>@(context.ErrorMessage ?? "POD updated successfully")</MudTd>
                 </RowTemplate>
@@ -244,6 +319,24 @@
 
     private long? _currentUserId;
     private long? _currentBranchId;
+
+    private List<UploadedImage> _uploadedImages = new();
+    private List<ImageMatchResult> _imageMatchResults = new();
+    private int _matchedImagesCount => _imageMatchResults.Count(r => r.IsMatched);
+    private Dictionary<string, List<string>> _awbImages = new();
+
+    private class UploadedImage
+    {
+        public string Filename { get; set; } = "";
+        public string Base64Data { get; set; } = "";
+    }
+
+    private class ImageMatchResult
+    {
+        public string Filename { get; set; } = "";
+        public string? MatchedAwb { get; set; }
+        public bool IsMatched => !string.IsNullOrEmpty(MatchedAwb);
+    }
 
     protected override void OnInitialized()
     {
@@ -309,15 +402,27 @@
         {
             var requests = _parseResult.Rows
                 .Where(r => !HasRowError(r.RowNumber))
-                .Select(r => new PODUpdateRequest
-                {
-                    AwbNo = r.AwbNo,
-                    DeliveryStatus = PODUpdateService.ParseDeliveryStatus(r.DeliveryStatus) ?? DeliveryStatus.Delivered,
-                    DeliveryDate = r.DeliveryDate,
-                    ReceivedBy = r.ReceivedBy,
-                    Relation = PODUpdateService.ParseRelation(r.Relation),
-                    NonDeliveryReason = PODUpdateService.ParseNonDeliveryReason(r.NonDeliveryReason),
-                    Remarks = r.Remarks
+                .Select(r => {
+                    var request = new PODUpdateRequest
+                    {
+                        AwbNo = r.AwbNo,
+                        DeliveryStatus = PODUpdateService.ParseDeliveryStatus(r.DeliveryStatus) ?? DeliveryStatus.Delivered,
+                        DeliveryDate = r.DeliveryDate,
+                        ReceivedBy = r.ReceivedBy,
+                        Relation = PODUpdateService.ParseRelation(r.Relation),
+                        NonDeliveryReason = PODUpdateService.ParseNonDeliveryReason(r.NonDeliveryReason),
+                        Remarks = r.Remarks
+                    };
+
+                    var awbKey = r.AwbNo.Trim().ToUpperInvariant();
+                    if (_awbImages.TryGetValue(awbKey, out var images))
+                    {
+                        if (images.Count > 0) request.Photo1 = images[0];
+                        if (images.Count > 1) request.Photo2 = images[1];
+                        if (images.Count > 2) request.Photo3 = images[2];
+                    }
+
+                    return request;
                 })
                 .ToList();
 
@@ -326,14 +431,15 @@
 
             var successCount = _processResults.Count(r => r.Success);
             var failCount = _processResults.Count(r => !r.Success);
+            var withImages = requests.Count(r => !string.IsNullOrEmpty(r.Photo1));
 
             if (failCount == 0)
             {
-                Snackbar.Add($"All {successCount} POD(s) updated successfully!", Severity.Success);
+                Snackbar.Add($"All {successCount} POD(s) updated successfully! ({withImages} with images)", Severity.Success);
             }
             else
             {
-                Snackbar.Add($"Processed: {successCount} success, {failCount} failed", Severity.Warning);
+                Snackbar.Add($"Processed: {successCount} success, {failCount} failed ({withImages} with images)", Severity.Warning);
             }
         }
         catch (Exception ex)
@@ -428,10 +534,97 @@
         _parseResult = null;
         _processComplete = false;
         _processResults = null;
+        ClearImages();
     }
 
     private void SetDragClass() => _dragClass = $"{DefaultDragClass} mud-border-primary";
     private void ClearDragClass() => _dragClass = DefaultDragClass;
+
+    private async Task OnImagesSelected(IReadOnlyList<IBrowserFile> files)
+    {
+        _uploadedImages.Clear();
+        _imageMatchResults.Clear();
+        _awbImages.Clear();
+
+        if (files == null || !files.Any()) return;
+
+        var awbNumbers = _parseResult?.Rows.Select(r => r.AwbNo.Trim().ToUpperInvariant()).ToHashSet() ?? new HashSet<string>();
+
+        foreach (var file in files)
+        {
+            try
+            {
+                if (file.Size > 5 * 1024 * 1024) continue;
+
+                using var stream = file.OpenReadStream(maxAllowedSize: 5 * 1024 * 1024);
+                using var memoryStream = new MemoryStream();
+                await stream.CopyToAsync(memoryStream);
+                var base64 = Convert.ToBase64String(memoryStream.ToArray());
+                var contentType = file.ContentType ?? "image/jpeg";
+                var dataUrl = $"data:{contentType};base64,{base64}";
+
+                _uploadedImages.Add(new UploadedImage
+                {
+                    Filename = file.Name,
+                    Base64Data = dataUrl
+                });
+
+                var matchedAwb = FindMatchingAwb(file.Name, awbNumbers);
+                _imageMatchResults.Add(new ImageMatchResult
+                {
+                    Filename = file.Name,
+                    MatchedAwb = matchedAwb
+                });
+
+                if (!string.IsNullOrEmpty(matchedAwb))
+                {
+                    if (!_awbImages.ContainsKey(matchedAwb))
+                        _awbImages[matchedAwb] = new List<string>();
+
+                    if (_awbImages[matchedAwb].Count < 3)
+                        _awbImages[matchedAwb].Add(dataUrl);
+                }
+            }
+            catch
+            {
+            }
+        }
+
+        StateHasChanged();
+    }
+
+    private string? FindMatchingAwb(string filename, HashSet<string> awbNumbers)
+    {
+        var filenameWithoutExt = Path.GetFileNameWithoutExtension(filename).Trim().ToUpperInvariant();
+
+        if (awbNumbers.Contains(filenameWithoutExt))
+            return filenameWithoutExt;
+
+        var baseAwb = System.Text.RegularExpressions.Regex.Replace(filenameWithoutExt, @"[_\-\s]*\d*$", "");
+        if (awbNumbers.Contains(baseAwb))
+            return baseAwb;
+
+        foreach (var awb in awbNumbers)
+        {
+            if (filenameWithoutExt.StartsWith(awb) || filenameWithoutExt.Contains(awb))
+                return awb;
+        }
+
+        return null;
+    }
+
+    private void ClearImages()
+    {
+        _uploadedImages.Clear();
+        _imageMatchResults.Clear();
+        _awbImages.Clear();
+    }
+
+    private int GetImageCountForAwb(string awbNo)
+    {
+        var key = awbNo.Trim().ToUpperInvariant();
+        return _awbImages.TryGetValue(key, out var images) ? images.Count : 0;
+    }
 
     private string FormatFileSize(long bytes)
     {
