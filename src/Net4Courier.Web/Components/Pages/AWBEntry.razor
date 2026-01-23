@@ -379,8 +379,10 @@
                 </MudText>
                 <MudGrid Spacing="2">
                     <MudItem xs="12">
-                        <MudTextField @bind-Value="_forwardingAgentName" Label="Forwarding Agent" 
-                                      Variant="Variant.Outlined" Margin="Margin.Dense" />
+                        <MudAutocomplete T="Party" Label="Forwarding Agent" @bind-Value="_selectedForwardingAgent"
+                                         SearchFunc="SearchForwardingAgents" ToStringFunc="@(p => p?.Name ?? "")"
+                                         Variant="Variant.Outlined" Margin="Margin.Dense" Dense="true"
+                                         ShowProgressIndicator="true" />
                     </MudItem>
                     <MudItem xs="6">
                         <MudNumericField @bind-Value="_inscan.ForwardingCharge" Label="Forw. Rate" 
@@ -517,7 +519,8 @@
     private bool _copyCustomerToShipper;
     private City? _selectedConsignorCity;
     private City? _selectedConsigneeCity;
-    private string? _forwardingAgentName;
+    private List<Party> _forwardingAgents = new();
+    private Party? _selectedForwardingAgent;
     private string _createdBy = "";
     private string _modifiedBy = "";
     
@@ -718,6 +721,7 @@
     protected override async Task OnInitializedAsync()
     {
         _customers = await DbContext.Parties.Include(p => p.Addresses).Where(p => p.PartyType == PartyType.Customer && p.IsActive && !p.IsDeleted).OrderBy(p => p.Name).ToListAsync();
+        _forwardingAgents = await DbContext.Parties.Where(p => p.PartyType == PartyType.ForwardingAgent && p.IsActive && !p.IsDeleted).OrderBy(p => p.Name).ToListAsync();
         _cities = await DbContext.Cities.Include(c => c.Country).Include(c => c.State).Where(c => c.IsActive).OrderBy(c => c.Name).ToListAsync();
         _shipmentModes = await DbContext.ShipmentModes.Where(s => s.IsActive && !s.IsDeleted).OrderBy(s => s.SortOrder).ToListAsync();
         _airports = await DbContext.Ports.Where(p => p.PortType == PortType.Airport && p.IsActive && !p.IsDeleted).OrderBy(p => p.Name).ToListAsync();
@@ -739,6 +743,7 @@
                 _bookingTime = _inscan.TransactionDate.ToLocalTime().TimeOfDay;
                 _createdBy = $"{_inscan.CreatedBy} | {_inscan.CreatedAt:dd-MMM}";
                 _modifiedBy = _inscan.ModifiedAt.HasValue ? $"{_inscan.ModifiedBy} | {_inscan.ModifiedAt:dd-MMM}" : "";
+                _selectedForwardingAgent = _forwardingAgents.FirstOrDefault(p => p.Id == _inscan.ForwardingAgentId);
                 await LoadExistingOtherCharges();
                 SyncSelectedCitiesFromInscan();
             }
@@ -784,6 +789,15 @@
             return Task.FromResult(_cities.Take(20).AsEnumerable());
         
         var matches = _cities.Where(c => c.Name.Contains(value, StringComparison.OrdinalIgnoreCase)).Take(20);
+        return Task.FromResult(matches.AsEnumerable());
+    }
+
+    private Task<IEnumerable<Party>> SearchForwardingAgents(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return Task.FromResult(_forwardingAgents.Take(20).AsEnumerable());
+        
+        var matches = _forwardingAgents.Where(p => p.Name.Contains(value, StringComparison.OrdinalIgnoreCase)).Take(20);
         return Task.FromResult(matches.AsEnumerable());
     }
     
@@ -996,6 +1010,7 @@
         _inscan.ChargeableWeight = ChargeableWeight;
         _inscan.NetTotal = NetTotal;
         _inscan.IsCOD = _inscan.PaymentModeId == PaymentMode.COD || _inscan.PaymentModeId == PaymentMode.CAD;
+        _inscan.ForwardingAgentId = _selectedForwardingAgent?.Id;
 
         if (Id == 0)
         {
