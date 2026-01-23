@@ -1435,6 +1435,32 @@ public class DatabaseInitializationService : BackgroundService
                 _logger.LogInformation("Seeded Service Types");
             }
 
+            // Seed Vehicles
+            if (!await dbContext.Vehicles.AnyAsync(stoppingToken))
+            {
+                var branch = await dbContext.Branches.FirstOrDefaultAsync(b => !b.IsDeleted && b.IsActive, stoppingToken);
+                var company = await dbContext.Companies.FirstOrDefaultAsync(c => !c.IsDeleted, stoppingToken);
+                if (branch != null && company != null)
+                {
+                    var vehicles = new[]
+                    {
+                        new Net4Courier.Operations.Entities.Vehicle { CompanyId = company.Id, BranchId = branch.Id, VehicleNo = "DXB-1001", VehicleType = "Motorcycle", Make = "Honda", Model = "CBR150", Year = 2022, Capacity = 20, DriverName = "Ahmed Khan", DriverPhone = "+971-50-111-0001", CreatedAt = DateTime.UtcNow },
+                        new Net4Courier.Operations.Entities.Vehicle { CompanyId = company.Id, BranchId = branch.Id, VehicleNo = "DXB-1002", VehicleType = "Motorcycle", Make = "Yamaha", Model = "FZ25", Year = 2023, Capacity = 25, DriverName = "Mohammad Ali", DriverPhone = "+971-50-111-0002", CreatedAt = DateTime.UtcNow },
+                        new Net4Courier.Operations.Entities.Vehicle { CompanyId = company.Id, BranchId = branch.Id, VehicleNo = "DXB-2001", VehicleType = "Van", Make = "Toyota", Model = "Hiace", Year = 2021, Capacity = 1000, DriverName = "Rashid Saeed", DriverPhone = "+971-50-222-0001", CreatedAt = DateTime.UtcNow },
+                        new Net4Courier.Operations.Entities.Vehicle { CompanyId = company.Id, BranchId = branch.Id, VehicleNo = "DXB-2002", VehicleType = "Van", Make = "Nissan", Model = "Urvan", Year = 2022, Capacity = 1200, DriverName = "Faisal Ahmed", DriverPhone = "+971-50-222-0002", CreatedAt = DateTime.UtcNow },
+                        new Net4Courier.Operations.Entities.Vehicle { CompanyId = company.Id, BranchId = branch.Id, VehicleNo = "DXB-2003", VehicleType = "Van", Make = "Ford", Model = "Transit", Year = 2023, Capacity = 1500, DriverName = "Salim Omar", DriverPhone = "+971-50-222-0003", CreatedAt = DateTime.UtcNow },
+                        new Net4Courier.Operations.Entities.Vehicle { CompanyId = company.Id, BranchId = branch.Id, VehicleNo = "DXB-3001", VehicleType = "Truck", Make = "Isuzu", Model = "NPR", Year = 2020, Capacity = 3000, DriverName = "Khalid Hassan", DriverPhone = "+971-50-333-0001", CreatedAt = DateTime.UtcNow },
+                        new Net4Courier.Operations.Entities.Vehicle { CompanyId = company.Id, BranchId = branch.Id, VehicleNo = "DXB-3002", VehicleType = "Truck", Make = "Mitsubishi", Model = "Fuso", Year = 2021, Capacity = 5000, DriverName = "Yusuf Ibrahim", DriverPhone = "+971-50-333-0002", CreatedAt = DateTime.UtcNow },
+                        new Net4Courier.Operations.Entities.Vehicle { CompanyId = company.Id, BranchId = branch.Id, VehicleNo = "DXB-4001", VehicleType = "Pickup", Make = "Toyota", Model = "Hilux", Year = 2022, Capacity = 800, DriverName = "Samir Abbas", DriverPhone = "+971-50-444-0001", CreatedAt = DateTime.UtcNow },
+                        new Net4Courier.Operations.Entities.Vehicle { CompanyId = company.Id, BranchId = branch.Id, VehicleNo = "DXB-4002", VehicleType = "Pickup", Make = "Nissan", Model = "Navara", Year = 2023, Capacity = 900, DriverName = "Tariq Mahmoud", DriverPhone = "+971-50-444-0002", CreatedAt = DateTime.UtcNow },
+                        new Net4Courier.Operations.Entities.Vehicle { CompanyId = company.Id, BranchId = branch.Id, VehicleNo = "DXB-5001", VehicleType = "Bike", Make = "TVS", Model = "Apache", Year = 2023, Capacity = 15, DriverName = "Imran Shaikh", DriverPhone = "+971-50-555-0001", CreatedAt = DateTime.UtcNow }
+                    };
+                    dbContext.Vehicles.AddRange(vehicles);
+                    await dbContext.SaveChangesAsync(stoppingToken);
+                    _logger.LogInformation("Seeded Vehicles");
+                }
+            }
+
             if (!await dbContext.Ports.AnyAsync(stoppingToken))
             {
                 var ports = new[]
