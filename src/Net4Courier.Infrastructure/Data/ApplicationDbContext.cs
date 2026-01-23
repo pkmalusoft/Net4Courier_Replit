@@ -28,6 +28,7 @@ public class ApplicationDbContext : DbContext
     public DbSet<State> States => Set<State>();
     public DbSet<City> Cities => Set<City>();
     public DbSet<Location> Locations => Set<Location>();
+    public DbSet<Currency> Currencies => Set<Currency>();
     
     public DbSet<InscanMaster> InscanMasters => Set<InscanMaster>();
     public DbSet<InscanMasterItem> InscanMasterItems => Set<InscanMasterItem>();
@@ -298,6 +299,16 @@ public class ApplicationDbContext : DbContext
                   .OnDelete(DeleteBehavior.Restrict);
             entity.HasOne(e => e.Branch).WithMany().HasForeignKey(e => e.BranchId)
                   .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        modelBuilder.Entity<Currency>(entity =>
+        {
+            entity.ToTable("Currencies");
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Code).HasMaxLength(10).IsRequired();
+            entity.Property(e => e.Name).HasMaxLength(100).IsRequired();
+            entity.Property(e => e.Symbol).HasMaxLength(10);
+            entity.HasIndex(e => e.Code).IsUnique();
         });
 
         modelBuilder.Entity<ApiSetting>(entity =>
