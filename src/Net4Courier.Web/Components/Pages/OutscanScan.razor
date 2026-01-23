@@ -4,6 +4,7 @@
 @inject NavigationManager Navigation
 @inject IDialogService DialogService
 @inject Net4Courier.Web.Services.ShipmentStatusService ShipmentStatusService
+@inject ILogger<OutscanScan> Logger
 @using Microsoft.EntityFrameworkCore
 @using Net4Courier.Infrastructure.Data
 @using Net4Courier.Operations.Entities
@@ -195,16 +196,20 @@ else
 
     private async Task ProcessScan()
     {
+        Logger.LogInformation("[OUTSCAN] ProcessScan started. Input: {Input}", _scanInput);
+        
         if (string.IsNullOrWhiteSpace(_scanInput))
         {
             _scanMessage = "Please enter an AWB number";
             _scanSeverity = Severity.Warning;
+            Logger.LogWarning("[OUTSCAN] Empty input");
             return;
         }
         
         try
         {
             var awbNo = _scanInput.Trim().ToUpper();
+            Logger.LogInformation("[OUTSCAN] Step 1: Processing AWB {AwbNo}", awbNo);
             
             var existingInDrs = _drsDetails.Any(d => d.Inscan?.AWBNo == awbNo);
             if (existingInDrs)
@@ -212,9 +217,11 @@ else
                 _scanMessage = $"AWB {awbNo} is already in this DRS";
                 _scanSeverity = Severity.Warning;
                 _scanInput = string.Empty;
+                Logger.LogWarning("[OUTSCAN] AWB already in DRS");
                 return;
             }
             
+            Logger.LogInformation("[OUTSCAN] Step 2: Looking up AWB in database");
             var awb = await DbContext.InscanMasters
                 .FirstOrDefaultAsync(a => a.AWBNo == awbNo && !a.IsDeleted);
             
@@ -223,15 +230,19 @@ else
                 _scanMessage = $"AWB {awbNo} not found";
                 _scanSeverity = Severity.Error;
                 _scanInput = string.Empty;
+                Logger.LogWarning("[OUTSCAN] AWB not found in database");
                 return;
             }
+            Logger.LogInformation("[OUTSCAN] AWB found: Id={Id}, Status={Status}", awb.Id, awb.CourierStatusId);
             
+            Logger.LogInformation("[OUTSCAN] Step 3: Checking shipment status history");
             var currentStatusInfo = await DbContext.ShipmentStatusHistories
                 .Where(h => h.InscanMasterId == awb.Id)
                 .OrderByDescending(h => h.ChangedAt)
                 .ThenByDescending(h => h.Id)
                 .Select(h => new { h.StatusId, StatusCode = h.Status != null ? h.Status.Code : null })
                 .FirstOrDefaultAsync();
+            Logger.LogInformation("[OUTSCAN] Status history result: {StatusInfo}", currentStatusInfo?.StatusCode ?? "null");
             
             var allowedStatusCodes = new[] { "INSCAN_ORIGIN", "INSCAN_DESTINATION", "RETURN_INSCAN", "DESTINATION_PROCESSED", "QC_COMPLETED" };
             
@@ -244,6 +255,7 @@ else
                 _scanMessage = $"AWB {awbNo} is not available for outscan. Current status: {statusName}";
                 _scanSeverity = Severity.Warning;
                 _scanInput = string.Empty;
+                Logger.LogWarning("[OUTSCAN] AWB status not allowed for outscan: {Status}", statusName);
                 return;
             }
             else if (currentStatusInfo == null && awb.CourierStatusId != CourierStatus.InscanAtOrigin)
@@ -251,9 +263,11 @@ else
                 _scanMessage = $"AWB {awbNo} is not available for outscan. AWB must be inscanned first. Current status: {awb.CourierStatusId}";
                 _scanSeverity = Severity.Warning;
                 _scanInput = string.Empty;
+                Logger.LogWarning("[OUTSCAN] AWB not inscanned. CourierStatusId: {Status}", awb.CourierStatusId);
                 return;
             }
             
+            Logger.LogInformation("[OUTSCAN] Step 4: Checking if AWB is in another DRS");
             var alreadyInOtherDrs = await DbContext.Set<DRSDetail>()
                 .Include(d => d.DRS)
                 .AnyAsync(d => d.InscanId == awb.Id && d.DRS.Status != DRSStatus.Closed);
@@ -263,9 +277,11 @@ else
                 _scanMessage = $"AWB {awbNo} is already assigned to another open DRS";
                 _scanSeverity = Severity.Warning;
                 _scanInput = string.Empty;
+                Logger.LogWarning("[OUTSCAN] AWB already in another DRS");
                 return;
             }
             
+            Logger.LogInformation("[OUTSCAN] Step 5: Creating DRS detail");
             var nextSequence = _drsDetails.Count + 1;
             var codAmount = awb.PaymentModeId == PaymentMode.COD ? (awb.CODAmount ?? 0) : 0;
             
@@ -282,10 +298,13 @@ else
             };
             
             DbContext.Set<DRSDetail>().Add(detail);
+            Logger.LogInformation("[OUTSCAN] DRS detail created");
             
+            Logger.LogInformation("[OUTSCAN] Step 6: Updating AWB status");
             awb.CourierStatusId = CourierStatus.OutForDelivery;
             awb.ModifiedAt = DateTime.UtcNow;
             
+            Logger.LogInformation("[OUTSCAN] Step 7: Creating AWB tracking entry");
             var tracking = new AWBTracking
             {
                 InscanId = awb.Id,
@@ -296,21 +315,28 @@ else
             };
             DbContext.AWBTrackings.Add(tracking);
             
+            Logger.LogInformation("[OUTSCAN] Step 8: Saving changes to database");
             await DbContext.SaveChangesAsync();
+            Logger.LogInformation("[OUTSCAN] Database save successful");
             
+            Logger.LogInformation("[OUTSCAN] Step 9: Calling ShipmentStatusService.SetStatus");
             await ShipmentStatusService.SetStatus(
                 awb.Id, "OUT_FOR_DELIVERY", "Outscan", _drs!.Id, "DRS",
                 null, awb.ConsigneeCity, null, null,
                 $"Assigned to DRS {_drs.DRSNo} - {_drs.DeliveryEmployeeName}", isAutomatic: true);
+            Logger.LogInformation("[OUTSCAN] ShipmentStatusService.SetStatus completed");
         
             _scanMessage = $"AWB {awbNo} added successfully";
             _scanSeverity = Severity.Success;
             _scanInput = string.Empty;
             
+            Logger.LogInformation("[OUTSCAN] Step 10: Reloading data");
             await LoadData();
+            Logger.LogInformation("[OUTSCAN] ProcessScan completed successfully");
         }
         catch (Exception ex)
         {
+            Logger.LogError(ex, "[OUTSCAN] ERROR: {Message}. StackTrace: {StackTrace}", ex.Message, ex.StackTrace);
             _scanMessage = $"Error adding AWB: {ex.Message}";
             _scanSeverity = Severity.Error;
             Snackbar.Add($"Error: {ex.Message}", Severity.Error);
