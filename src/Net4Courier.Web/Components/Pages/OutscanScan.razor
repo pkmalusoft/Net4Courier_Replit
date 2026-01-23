@@ -311,13 +311,24 @@ else
                 EventDateTime = DateTime.UtcNow,
                 StatusId = CourierStatus.OutForDelivery,
                 Remarks = $"Out for delivery - Added to DRS {_drs!.DRSNo}",
-                CreatedAt = DateTime.UtcNow
+                CreatedAt = DateTime.UtcNow,
+                IsPublic = true,
+                IsDeleted = false
             };
             DbContext.AWBTrackings.Add(tracking);
             
             Logger.LogInformation("[OUTSCAN] Step 8: Saving changes to database");
-            await DbContext.SaveChangesAsync();
-            Logger.LogInformation("[OUTSCAN] Database save successful");
+            try
+            {
+                await DbContext.SaveChangesAsync();
+                Logger.LogInformation("[OUTSCAN] Database save successful");
+            }
+            catch (Exception dbEx)
+            {
+                var innerMessage = dbEx.InnerException?.Message ?? "No inner exception";
+                Logger.LogError(dbEx, "[OUTSCAN] Database save FAILED. Inner: {Inner}", innerMessage);
+                throw new Exception($"Database save failed: {innerMessage}", dbEx);
+            }
             
             Logger.LogInformation("[OUTSCAN] Step 9: Calling ShipmentStatusService.SetStatus");
             await ShipmentStatusService.SetStatus(
@@ -358,7 +369,9 @@ else
                 EventDateTime = DateTime.UtcNow,
                 StatusId = CourierStatus.InTransit,
                 Remarks = $"Removed from DRS {_drs!.DRSNo}",
-                CreatedAt = DateTime.UtcNow
+                CreatedAt = DateTime.UtcNow,
+                IsPublic = true,
+                IsDeleted = false
             };
             DbContext.AWBTrackings.Add(tracking);
         }
