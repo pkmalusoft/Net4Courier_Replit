@@ -202,110 +202,119 @@ else
             return;
         }
         
-        var awbNo = _scanInput.Trim().ToUpper();
-        
-        var existingInDrs = _drsDetails.Any(d => d.Inscan?.AWBNo == awbNo);
-        if (existingInDrs)
+        try
         {
-            _scanMessage = $"AWB {awbNo} is already in this DRS";
-            _scanSeverity = Severity.Warning;
-            _scanInput = string.Empty;
-            return;
-        }
-        
-        var awb = await DbContext.InscanMasters
-            .FirstOrDefaultAsync(a => a.AWBNo == awbNo && !a.IsDeleted);
+            var awbNo = _scanInput.Trim().ToUpper();
             
-        if (awb == null)
+            var existingInDrs = _drsDetails.Any(d => d.Inscan?.AWBNo == awbNo);
+            if (existingInDrs)
+            {
+                _scanMessage = $"AWB {awbNo} is already in this DRS";
+                _scanSeverity = Severity.Warning;
+                _scanInput = string.Empty;
+                return;
+            }
+            
+            var awb = await DbContext.InscanMasters
+                .FirstOrDefaultAsync(a => a.AWBNo == awbNo && !a.IsDeleted);
+            
+            if (awb == null)
+            {
+                _scanMessage = $"AWB {awbNo} not found";
+                _scanSeverity = Severity.Error;
+                _scanInput = string.Empty;
+                return;
+            }
+            
+            var currentStatusInfo = await DbContext.ShipmentStatusHistories
+                .Where(h => h.InscanMasterId == awb.Id)
+                .OrderByDescending(h => h.ChangedAt)
+                .ThenByDescending(h => h.Id)
+                .Select(h => new { h.StatusId, StatusCode = h.Status != null ? h.Status.Code : null })
+                .FirstOrDefaultAsync();
+            
+            var allowedStatusCodes = new[] { "INSCAN_ORIGIN", "INSCAN_DESTINATION", "RETURN_INSCAN", "DESTINATION_PROCESSED", "QC_COMPLETED" };
+            
+            if (currentStatusInfo != null && !string.IsNullOrEmpty(currentStatusInfo.StatusCode) && !allowedStatusCodes.Contains(currentStatusInfo.StatusCode))
+            {
+                var statusName = await DbContext.ShipmentStatuses
+                    .Where(s => s.Id == currentStatusInfo.StatusId)
+                    .Select(s => s.Name)
+                    .FirstOrDefaultAsync() ?? "Unknown";
+                _scanMessage = $"AWB {awbNo} is not available for outscan. Current status: {statusName}";
+                _scanSeverity = Severity.Warning;
+                _scanInput = string.Empty;
+                return;
+            }
+            else if (currentStatusInfo == null && awb.CourierStatusId != CourierStatus.InscanAtOrigin)
+            {
+                _scanMessage = $"AWB {awbNo} is not available for outscan. AWB must be inscanned first. Current status: {awb.CourierStatusId}";
+                _scanSeverity = Severity.Warning;
+                _scanInput = string.Empty;
+                return;
+            }
+            
+            var alreadyInOtherDrs = await DbContext.Set<DRSDetail>()
+                .Include(d => d.DRS)
+                .AnyAsync(d => d.InscanId == awb.Id && d.DRS.Status != DRSStatus.Closed);
+                
+            if (alreadyInOtherDrs)
+            {
+                _scanMessage = $"AWB {awbNo} is already assigned to another open DRS";
+                _scanSeverity = Severity.Warning;
+                _scanInput = string.Empty;
+                return;
+            }
+            
+            var nextSequence = _drsDetails.Count + 1;
+            var codAmount = awb.PaymentModeId == PaymentMode.COD ? (awb.CODAmount ?? 0) : 0;
+            
+            var detail = new DRSDetail
+            {
+                DRSId = DrsId,
+                InscanId = awb.Id,
+                Sequence = nextSequence,
+                AttemptNo = 1,
+                Status = "Pending",
+                CODAmount = codAmount,
+                CreatedAt = DateTime.UtcNow,
+                IsActive = true
+            };
+            
+            DbContext.Set<DRSDetail>().Add(detail);
+            
+            awb.CourierStatusId = CourierStatus.OutForDelivery;
+            awb.ModifiedAt = DateTime.UtcNow;
+            
+            var tracking = new AWBTracking
+            {
+                InscanId = awb.Id,
+                EventDateTime = DateTime.UtcNow,
+                StatusId = CourierStatus.OutForDelivery,
+                Remarks = $"Out for delivery - Added to DRS {_drs!.DRSNo}",
+                CreatedAt = DateTime.UtcNow
+            };
+            DbContext.AWBTrackings.Add(tracking);
+            
+            await DbContext.SaveChangesAsync();
+            
+            await ShipmentStatusService.SetStatus(
+                awb.Id, "OUT_FOR_DELIVERY", "Outscan", _drs!.Id, "DRS",
+                null, awb.ConsigneeCity, null, null,
+                $"Assigned to DRS {_drs.DRSNo} - {_drs.DeliveryEmployeeName}", isAutomatic: true);
+        
+            _scanMessage = $"AWB {awbNo} added successfully";
+            _scanSeverity = Severity.Success;
+            _scanInput = string.Empty;
+            
+            await LoadData();
+        }
+        catch (Exception ex)
         {
-            _scanMessage = $"AWB {awbNo} not found";
+            _scanMessage = $"Error adding AWB: {ex.Message}";
             _scanSeverity = Severity.Error;
-            _scanInput = string.Empty;
-            return;
+            Snackbar.Add($"Error: {ex.Message}", Severity.Error);
         }
-        
-        var currentStatusInfo = await DbContext.ShipmentStatusHistories
-            .Where(h => h.InscanMasterId == awb.Id)
-            .OrderByDescending(h => h.ChangedAt)
-            .ThenByDescending(h => h.Id)
-            .Select(h => new { h.StatusId, StatusCode = h.Status != null ? h.Status.Code : null })
-            .FirstOrDefaultAsync();
-        
-        var allowedStatusCodes = new[] { "INSCAN_ORIGIN", "INSCAN_DESTINATION", "RETURN_INSCAN", "DESTINATION_PROCESSED", "QC_COMPLETED" };
-        
-        if (currentStatusInfo != null && !string.IsNullOrEmpty(currentStatusInfo.StatusCode) && !allowedStatusCodes.Contains(currentStatusInfo.StatusCode))
-        {
-            var statusName = await DbContext.ShipmentStatuses
-                .Where(s => s.Id == currentStatusInfo.StatusId)
-                .Select(s => s.Name)
-                .FirstOrDefaultAsync() ?? "Unknown";
-            _scanMessage = $"AWB {awbNo} is not available for outscan. Current status: {statusName}";
-            _scanSeverity = Severity.Warning;
-            _scanInput = string.Empty;
-            return;
-        }
-        else if (currentStatusInfo == null && awb.CourierStatusId != CourierStatus.InscanAtOrigin)
-        {
-            _scanMessage = $"AWB {awbNo} is not available for outscan. AWB must be inscanned first. Current status: {awb.CourierStatusId}";
-            _scanSeverity = Severity.Warning;
-            _scanInput = string.Empty;
-            return;
-        }
-        
-        var alreadyInOtherDrs = await DbContext.Set<DRSDetail>()
-            .Include(d => d.DRS)
-            .AnyAsync(d => d.InscanId == awb.Id && d.DRS.Status != DRSStatus.Closed);
-            
-        if (alreadyInOtherDrs)
-        {
-            _scanMessage = $"AWB {awbNo} is already assigned to another open DRS";
-            _scanSeverity = Severity.Warning;
-            _scanInput = string.Empty;
-            return;
-        }
-        
-        var nextSequence = _drsDetails.Count + 1;
-        var codAmount = awb.PaymentModeId == PaymentMode.COD ? (awb.CODAmount ?? 0) : 0;
-        
-        var detail = new DRSDetail
-        {
-            DRSId = DrsId,
-            InscanId = awb.Id,
-            Sequence = nextSequence,
-            AttemptNo = 1,
-            Status = "Pending",
-            CODAmount = codAmount,
-            CreatedAt = DateTime.UtcNow,
-            IsActive = true
-        };
-        
-        DbContext.Set<DRSDetail>().Add(detail);
-        
-        awb.CourierStatusId = CourierStatus.OutForDelivery;
-        awb.ModifiedAt = DateTime.UtcNow;
-        
-        var tracking = new AWBTracking
-        {
-            InscanId = awb.Id,
-            EventDateTime = DateTime.UtcNow,
-            StatusId = CourierStatus.OutForDelivery,
-            Remarks = $"Out for delivery - Added to DRS {_drs!.DRSNo}",
-            CreatedAt = DateTime.UtcNow
-        };
-        DbContext.AWBTrackings.Add(tracking);
-        
-        await DbContext.SaveChangesAsync();
-        
-        await ShipmentStatusService.SetStatus(
-            awb.Id, "OUT_FOR_DELIVERY", "Outscan", _drs!.Id, "DRS",
-            null, awb.ConsigneeCity, null, null,
-            $"Assigned to DRS {_drs.DRSNo} - {_drs.DeliveryEmployeeName}", isAutomatic: true);
-        
-        _scanMessage = $"AWB {awbNo} added successfully";
-        _scanSeverity = Severity.Success;
-        _scanInput = string.Empty;
-        
-        await LoadData();
     }
 
     private async Task RemoveFromDRS(DRSDetail detail)
