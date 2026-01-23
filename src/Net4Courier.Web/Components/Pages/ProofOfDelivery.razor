@@ -11,6 +11,7 @@
 @inject IJSRuntime JS
 @inject IDialogService DialogService
 @inject Net4Courier.Web.Services.ShipmentStatusService ShipmentStatusService
+@rendermode InteractiveServer
 
 <PageTitle>Proof of Delivery</PageTitle>
 
@@ -250,19 +251,36 @@
     private int _currentPhotoIndex;
     private PODModel _pod = new();
 
-    protected override async Task OnInitializedAsync()
+    private bool _initialSearchPending;
+    private bool _jsReady;
+    private bool _signatureCanvasInitialized;
+
+    protected override void OnInitialized()
     {
         if (!string.IsNullOrEmpty(AwbNo))
         {
             _searchAwb = AwbNo;
-            await SearchAwb();
+            _initialSearchPending = true;
         }
     }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        if (firstRender && _selectedAwb != null)
+        if (firstRender)
         {
+            _jsReady = true;
+        }
+
+        if (_initialSearchPending && _jsReady)
+        {
+            _initialSearchPending = false;
+            await SearchAwb();
+        }
+        
+        if (_jsReady && _selectedAwb != null && !_signatureCanvasInitialized && 
+            (_pod.DeliveryStatus == DeliveryStatus.Delivered || _pod.DeliveryStatus == DeliveryStatus.PartialDelivery))
+        {
+            _signatureCanvasInitialized = true;
             await InitializeSignatureCanvas();
         }
     }
@@ -272,6 +290,7 @@
         if (string.IsNullOrWhiteSpace(_searchAwb)) return;
 
         _loading = true;
+        _signatureCanvasInitialized = false;
         StateHasChanged();
 
         try
@@ -286,8 +305,12 @@
             else
             {
                 _pod = new PODModel { DeliveryStatus = DeliveryStatus.Delivered };
-                await CaptureLocation();
-                await InitializeSignatureCanvas();
+                
+                if (_jsReady)
+                {
+                    try { await CaptureLocation(); } 
+                    catch (Exception ex) { Snackbar.Add($"Unable to capture GPS location. Please enable location services.", Severity.Warning); }
+                }
             }
         }
         finally
