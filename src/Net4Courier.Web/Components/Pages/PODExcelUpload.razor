@@ -378,6 +378,12 @@
             memoryStream.Position = 0;
 
             _parseResult = ExcelService.ParseExcel(memoryStream);
+            
+            if (_parseResult.Rows.Count > 0)
+            {
+                await ValidateAwbExistence();
+            }
+            
             _parsed = true;
         }
         catch (Exception ex)
@@ -388,6 +394,52 @@
         {
             _parsing = false;
             StateHasChanged();
+        }
+    }
+
+    private async Task ValidateAwbExistence()
+    {
+        if (_parseResult == null || _parseResult.Rows.Count == 0) return;
+
+        var awbNumbers = _parseResult.Rows
+            .Select(r => r.AwbNo.Trim())
+            .Where(a => !string.IsNullOrEmpty(a))
+            .Distinct()
+            .ToList();
+
+        if (awbNumbers.Count == 0) return;
+
+        await using var dbContext = await DbContextFactory.CreateDbContextAsync();
+        
+        var existingAwbSet = new HashSet<string>(StringComparer.Ordinal);
+        
+        foreach (var batch in awbNumbers.Chunk(100))
+        {
+            var batchList = batch.ToList();
+            var found = await dbContext.InscanMasters
+                .Where(i => !i.IsDeleted && i.AWBNo != null && batchList.Contains(i.AWBNo))
+                .Select(i => i.AWBNo!)
+                .ToListAsync();
+            
+            foreach (var awb in found)
+            {
+                existingAwbSet.Add(awb);
+            }
+        }
+
+        foreach (var row in _parseResult.Rows)
+        {
+            var awbKey = row.AwbNo.Trim();
+            if (!existingAwbSet.Contains(awbKey))
+            {
+                _parseResult.Errors.Add(new PODValidationError
+                {
+                    RowNumber = row.RowNumber,
+                    Column = "AWB No",
+                    Message = $"AWB '{row.AwbNo}' not found in system",
+                    IsCritical = true
+                });
+            }
         }
     }
 
