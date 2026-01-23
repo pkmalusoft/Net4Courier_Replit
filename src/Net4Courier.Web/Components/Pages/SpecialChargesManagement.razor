@@ -2,6 +2,7 @@
 @using Net4Courier.Infrastructure.Data
 @using Net4Courier.Finance.Entities
 @using Net4Courier.Masters.Entities
+@using Net4Courier.Operations.Entities
 @using Microsoft.EntityFrameworkCore
 @using Microsoft.AspNetCore.Components.Authorization
 @inject ApplicationDbContext Context
@@ -10,129 +11,245 @@
 @inject AuthenticationStateProvider AuthStateProvider
 @rendermode InteractiveServer
 
-<PageTitle>Special Charges Management</PageTitle>
+<PageTitle>Charges Management</PageTitle>
 
 <MudContainer MaxWidth="MaxWidth.ExtraLarge" Class="py-4">
-    <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center" Class="mb-4">
-        <MudText Typo="Typo.h5">Special Charges Management</MudText>
-        <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add"
-                   OnClick="OpenCreateDialog">
-            Add Charge
-        </MudButton>
-    </MudStack>
+    <MudText Typo="Typo.h5" Class="mb-4">Charges Management</MudText>
 
-    <MudPaper Class="pa-4 mb-4">
-        <MudGrid>
-            <MudItem xs="12" md="3">
-                <MudAutocomplete T="Party" Label="Customer" @bind-Value="_filterCustomer"
-                                 SearchFunc="SearchCustomers" ToStringFunc="@(p => p?.Name ?? "")"
-                                 Clearable="true" Variant="Variant.Outlined" Dense="true" />
-            </MudItem>
-            <MudItem xs="12" md="2">
-                <MudSelect T="SpecialChargeStatus?" Label="Status" @bind-Value="_filterStatus"
-                           Clearable="true" Variant="Variant.Outlined" Dense="true">
-                    @foreach (var status in Enum.GetValues<SpecialChargeStatus>())
-                    {
-                        <MudSelectItem Value="@((SpecialChargeStatus?)status)">@status</MudSelectItem>
-                    }
-                </MudSelect>
-            </MudItem>
-            <MudItem xs="12" md="2">
-                <MudButton Variant="Variant.Outlined" Color="Color.Primary" OnClick="LoadCharges" Class="mt-2">
-                    Search
-                </MudButton>
-            </MudItem>
-        </MudGrid>
-    </MudPaper>
+    <MudTabs Elevation="2" Rounded="true" ApplyEffectsToContainer="true" Class="mb-4">
+        <MudTabPanel Text="AWB Other Charges" Icon="@Icons.Material.Filled.LocalShipping">
+            <MudPaper Class="pa-4">
+                <MudText Typo="Typo.h6" Class="mb-3">Add Charges to AWB</MudText>
+                
+                <MudGrid>
+                    <MudItem xs="12" md="5">
+                        <MudAutocomplete T="InscanMaster" Label="Search AWB" Value="_selectedAWB"
+                                         SearchFunc="SearchAWB" ToStringFunc="@(a => a?.AWBNo ?? "")"
+                                         Placeholder="Enter AWB number to search..."
+                                         Variant="Variant.Outlined" Dense="true"
+                                         ResetValueOnEmptyText="true"
+                                         CoerceText="false"
+                                         DebounceInterval="300"
+                                         ValueChanged="OnAWBSelected" />
+                    </MudItem>
+                    <MudItem xs="12" md="2">
+                        <MudButton Variant="Variant.Filled" Color="Color.Primary" 
+                                   OnClick="LoadAWBCharges" Class="mt-1"
+                                   Disabled="@(_selectedAWB == null)">
+                            Load Charges
+                        </MudButton>
+                    </MudItem>
+                </MudGrid>
 
-    @if (_loading)
-    {
-        <MudProgressLinear Indeterminate="true" />
-    }
-    else
-    {
-        <MudTable Items="@_charges" Dense="true" Hover="true" Striped="true">
-            <HeaderContent>
-                <MudTh>Code</MudTh>
-                <MudTh>Charge Name</MudTh>
-                <MudTh>Customer</MudTh>
-                <MudTh>Type</MudTh>
-                <MudTh Style="text-align:right">Value</MudTh>
-                <MudTh>Period</MudTh>
-                <MudTh>Tax</MudTh>
-                <MudTh>Status</MudTh>
-                <MudTh>Actions</MudTh>
-            </HeaderContent>
-            <RowTemplate>
-                <MudTd>@context.ChargeCode</MudTd>
-                <MudTd>@context.ChargeName</MudTd>
-                <MudTd>@(context.CustomerName ?? "All Customers")</MudTd>
-                <MudTd>
-                    @if (context.ChargeType == ChargeType.Percentage)
-                    {
-                        <MudChip T="string" Size="Size.Small" Color="Color.Info">%</MudChip>
-                    }
-                    else
-                    {
-                        <MudChip T="string" Size="Size.Small" Color="Color.Default">Flat</MudChip>
-                    }
-                </MudTd>
-                <MudTd Style="text-align:right">
-                    @if (context.ChargeType == ChargeType.Percentage)
-                    {
-                        @($"{context.ChargeValue:N2}%")
-                    }
-                    else
-                    {
-                        @($"₹{context.ChargeValue:N2}")
-                    }
-                </MudTd>
-                <MudTd>@context.FromDate.ToString("dd-MMM-yy") - @context.ToDate.ToString("dd-MMM-yy")</MudTd>
-                <MudTd>
-                    @if (context.IsTaxApplicable)
-                    {
-                        <MudChip T="string" Size="Size.Small" Color="Color.Success">@($"{context.TaxPercent ?? 0}%")</MudChip>
-                    }
-                    else
-                    {
-                        <MudText Typo="Typo.caption">N/A</MudText>
-                    }
-                </MudTd>
-                <MudTd>
-                    <MudChip T="string" Size="Size.Small" Color="@GetStatusColor(context.Status)">
-                        @context.Status
-                    </MudChip>
-                </MudTd>
-                <MudTd>
-                    <MudStack Row="true" Spacing="1">
-                        @if (context.Status == SpecialChargeStatus.Draft && !context.IsLocked)
-                        {
-                            <MudIconButton Icon="@Icons.Material.Filled.Edit" Size="Size.Small" Color="Color.Primary"
-                                           OnClick="@(() => OpenEditDialog(context))" Title="Edit" />
-                            <MudIconButton Icon="@Icons.Material.Filled.CheckCircle" Size="Size.Small" Color="Color.Success"
-                                           OnClick="@(() => ApproveCharge(context))" Title="Approve" />
-                            <MudIconButton Icon="@Icons.Material.Filled.Cancel" Size="Size.Small" Color="Color.Error"
-                                           OnClick="@(() => CancelCharge(context))" Title="Cancel" />
-                        }
-                        @if (context.Status == SpecialChargeStatus.Approved && !context.IsLocked)
-                        {
-                            <MudIconButton Icon="@Icons.Material.Filled.Block" Size="Size.Small" Color="Color.Warning"
-                                           OnClick="@(() => CancelCharge(context))" Title="Cancel" />
-                        }
-                        @if (context.IsLocked)
-                        {
-                            <MudIcon Icon="@Icons.Material.Filled.Lock" Size="Size.Small" Color="Color.Secondary" />
-                        }
+                @if (_selectedAWB != null)
+                {
+                    <MudDivider Class="my-4" />
+                    
+                    <MudPaper Class="pa-3 mb-4" Elevation="0" Style="background-color: var(--mud-palette-background-grey);">
+                        <MudGrid>
+                            <MudItem xs="12" md="3">
+                                <MudText Typo="Typo.caption" Color="Color.Secondary">AWB Number</MudText>
+                                <MudText Typo="Typo.body1"><strong>@_selectedAWB.AWBNo</strong></MudText>
+                            </MudItem>
+                            <MudItem xs="12" md="3">
+                                <MudText Typo="Typo.caption" Color="Color.Secondary">Consignor</MudText>
+                                <MudText Typo="Typo.body1">@_selectedAWB.Consignor</MudText>
+                            </MudItem>
+                            <MudItem xs="12" md="2">
+                                <MudText Typo="Typo.caption" Color="Color.Secondary">Date</MudText>
+                                <MudText Typo="Typo.body1">@_selectedAWB.TransactionDate.ToString("dd-MMM-yyyy")</MudText>
+                            </MudItem>
+                            <MudItem xs="12" md="2">
+                                <MudText Typo="Typo.caption" Color="Color.Secondary">Courier Charge</MudText>
+                                <MudText Typo="Typo.body1">@((_selectedAWB.CourierCharge ?? 0).ToString("N2"))</MudText>
+                            </MudItem>
+                            <MudItem xs="12" md="2">
+                                <MudText Typo="Typo.caption" Color="Color.Secondary">Destination</MudText>
+                                <MudText Typo="Typo.body1">@_selectedAWB.ConsigneeCity</MudText>
+                            </MudItem>
+                        </MudGrid>
+                    </MudPaper>
+
+                    <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center" Class="mb-3">
+                        <MudText Typo="Typo.subtitle1">Other Charges</MudText>
+                        <MudButton Variant="Variant.Filled" Color="Color.Primary" Size="Size.Small"
+                                   StartIcon="@Icons.Material.Filled.Add" OnClick="OpenAddAWBChargeDialog">
+                            Add Charge
+                        </MudButton>
                     </MudStack>
-                </MudTd>
-            </RowTemplate>
-            <NoRecordsContent>
-                <MudText>No special charges found</MudText>
-            </NoRecordsContent>
-        </MudTable>
-    }
+
+                    @if (_loadingAWBCharges)
+                    {
+                        <MudProgressLinear Indeterminate="true" />
+                    }
+                    else
+                    {
+                        <MudTable Items="@_awbCharges" Dense="true" Hover="true" Striped="true">
+                            <HeaderContent>
+                                <MudTh>Code</MudTh>
+                                <MudTh>Charge Name</MudTh>
+                                <MudTh Style="text-align:right">Amount</MudTh>
+                                <MudTh>Notes</MudTh>
+                                <MudTh Style="width:100px">Actions</MudTh>
+                            </HeaderContent>
+                            <RowTemplate>
+                                <MudTd>@context.OtherChargeType?.Code</MudTd>
+                                <MudTd>@context.OtherChargeType?.Name</MudTd>
+                                <MudTd Style="text-align:right">@context.Amount.ToString("N2")</MudTd>
+                                <MudTd>@context.Notes</MudTd>
+                                <MudTd>
+                                    <MudStack Row="true" Spacing="1">
+                                        <MudIconButton Icon="@Icons.Material.Filled.Edit" Size="Size.Small" 
+                                                       Color="Color.Primary" OnClick="@(() => EditAWBCharge(context))" />
+                                        <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" 
+                                                       Color="Color.Error" OnClick="@(() => DeleteAWBCharge(context))" />
+                                    </MudStack>
+                                </MudTd>
+                            </RowTemplate>
+                            <NoRecordsContent>
+                                <MudText Class="pa-4">No charges added to this AWB</MudText>
+                            </NoRecordsContent>
+                        </MudTable>
+
+                        @if (_awbCharges.Any())
+                        {
+                            <MudPaper Class="pa-3 mt-3" Elevation="0" Style="background-color: var(--mud-palette-primary-lighten);">
+                                <MudStack Row="true" Justify="Justify.FlexEnd">
+                                    <MudText Typo="Typo.subtitle1">
+                                        <strong>Total Other Charges: @_awbCharges.Sum(c => c.Amount).ToString("N2")</strong>
+                                    </MudText>
+                                </MudStack>
+                            </MudPaper>
+                        }
+                    }
+                }
+            </MudPaper>
+        </MudTabPanel>
+
+        <MudTabPanel Text="Customer Special Charges" Icon="@Icons.Material.Filled.Person">
+            <MudPaper Class="pa-4">
+                <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center" Class="mb-4">
+                    <MudText Typo="Typo.h6">Customer Special Charges</MudText>
+                    <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add"
+                               OnClick="OpenCreateDialog">
+                        Add Charge
+                    </MudButton>
+                </MudStack>
+
+                <MudGrid Class="mb-4">
+                    <MudItem xs="12" md="3">
+                        <MudAutocomplete T="Party" Label="Customer" @bind-Value="_filterCustomer"
+                                         SearchFunc="SearchCustomers" ToStringFunc="@(p => p?.Name ?? "")"
+                                         Clearable="true" Variant="Variant.Outlined" Dense="true" />
+                    </MudItem>
+                    <MudItem xs="12" md="2">
+                        <MudSelect T="SpecialChargeStatus?" Label="Status" @bind-Value="_filterStatus"
+                                   Clearable="true" Variant="Variant.Outlined" Dense="true">
+                            @foreach (var status in Enum.GetValues<SpecialChargeStatus>())
+                            {
+                                <MudSelectItem Value="@((SpecialChargeStatus?)status)">@status</MudSelectItem>
+                            }
+                        </MudSelect>
+                    </MudItem>
+                    <MudItem xs="12" md="2">
+                        <MudButton Variant="Variant.Outlined" Color="Color.Primary" OnClick="LoadCharges" Class="mt-2">
+                            Search
+                        </MudButton>
+                    </MudItem>
+                </MudGrid>
+
+                @if (_loading)
+                {
+                    <MudProgressLinear Indeterminate="true" />
+                }
+                else
+                {
+                    <MudTable Items="@_charges" Dense="true" Hover="true" Striped="true">
+                        <HeaderContent>
+                            <MudTh>Code</MudTh>
+                            <MudTh>Charge Name</MudTh>
+                            <MudTh>Customer</MudTh>
+                            <MudTh>Type</MudTh>
+                            <MudTh Style="text-align:right">Value</MudTh>
+                            <MudTh>Period</MudTh>
+                            <MudTh>Tax</MudTh>
+                            <MudTh>Status</MudTh>
+                            <MudTh>Actions</MudTh>
+                        </HeaderContent>
+                        <RowTemplate>
+                            <MudTd>@context.ChargeCode</MudTd>
+                            <MudTd>@context.ChargeName</MudTd>
+                            <MudTd>@(context.CustomerName ?? "All Customers")</MudTd>
+                            <MudTd>
+                                @if (context.ChargeType == ChargeType.Percentage)
+                                {
+                                    <MudChip T="string" Size="Size.Small" Color="Color.Info">%</MudChip>
+                                }
+                                else
+                                {
+                                    <MudChip T="string" Size="Size.Small" Color="Color.Default">Flat</MudChip>
+                                }
+                            </MudTd>
+                            <MudTd Style="text-align:right">
+                                @if (context.ChargeType == ChargeType.Percentage)
+                                {
+                                    @($"{context.ChargeValue:N2}%")
+                                }
+                                else
+                                {
+                                    @($"{context.ChargeValue:N2}")
+                                }
+                            </MudTd>
+                            <MudTd>@context.FromDate.ToString("dd-MMM-yy") - @context.ToDate.ToString("dd-MMM-yy")</MudTd>
+                            <MudTd>
+                                @if (context.IsTaxApplicable)
+                                {
+                                    <MudChip T="string" Size="Size.Small" Color="Color.Success">@($"{context.TaxPercent ?? 0}%")</MudChip>
+                                }
+                                else
+                                {
+                                    <MudText Typo="Typo.caption">N/A</MudText>
+                                }
+                            </MudTd>
+                            <MudTd>
+                                <MudChip T="string" Size="Size.Small" Color="@GetStatusColor(context.Status)">
+                                    @context.Status
+                                </MudChip>
+                            </MudTd>
+                            <MudTd>
+                                <MudStack Row="true" Spacing="1">
+                                    @if (context.Status == SpecialChargeStatus.Draft && !context.IsLocked)
+                                    {
+                                        <MudIconButton Icon="@Icons.Material.Filled.Edit" Size="Size.Small" Color="Color.Primary"
+                                                       OnClick="@(() => OpenEditDialog(context))" Title="Edit" />
+                                        <MudIconButton Icon="@Icons.Material.Filled.CheckCircle" Size="Size.Small" Color="Color.Success"
+                                                       OnClick="@(() => ApproveCharge(context))" Title="Approve" />
+                                        <MudIconButton Icon="@Icons.Material.Filled.Cancel" Size="Size.Small" Color="Color.Error"
+                                                       OnClick="@(() => CancelCharge(context))" Title="Cancel" />
+                                    }
+                                    @if (context.Status == SpecialChargeStatus.Approved && !context.IsLocked)
+                                    {
+                                        <MudIconButton Icon="@Icons.Material.Filled.Block" Size="Size.Small" Color="Color.Warning"
+                                                       OnClick="@(() => CancelCharge(context))" Title="Cancel" />
+                                    }
+                                    @if (context.IsLocked)
+                                    {
+                                        <MudIcon Icon="@Icons.Material.Filled.Lock" Size="Size.Small" Color="Color.Secondary" />
+                                    }
+                                </MudStack>
+                            </MudTd>
+                        </RowTemplate>
+                        <NoRecordsContent>
+                            <MudText>No special charges found</MudText>
+                        </NoRecordsContent>
+                    </MudTable>
+                }
+            </MudPaper>
+        </MudTabPanel>
+    </MudTabs>
 </MudContainer>
 
+@* Customer Special Charge Dialog *@
 <MudDialog @bind-Visible="_showDialog">
     <TitleContent>
         <MudText Typo="Typo.h6">@(_editingCharge?.Id > 0 ? "Edit" : "Add") Special Charge</MudText>
@@ -166,7 +283,7 @@
                     <MudNumericField T="decimal" @bind-Value="_editingCharge.ChargeValue" Label="Value"
                                      Variant="Variant.Outlined" Format="N2"
                                      Adornment="Adornment.Start" 
-                                     AdornmentText="@(_editingCharge.ChargeType == ChargeType.Percentage ? "%" : "₹")" />
+                                     AdornmentText="@(_editingCharge.ChargeType == ChargeType.Percentage ? "%" : "")" />
                 </MudItem>
                 <MudItem xs="12" md="6">
                     <MudDatePicker Label="From Date" @bind-Date="_fromDate" DateFormat="dd-MMM-yyyy"
@@ -199,7 +316,63 @@
     </DialogActions>
 </MudDialog>
 
+@* AWB Other Charge Dialog *@
+<MudDialog @bind-Visible="_showAWBChargeDialog">
+    <TitleContent>
+        <MudText Typo="Typo.h6">@(_editingAWBCharge?.Id > 0 ? "Edit" : "Add") Other Charge</MudText>
+    </TitleContent>
+    <DialogContent>
+        @if (_editingAWBCharge != null)
+        {
+            <MudGrid>
+                <MudItem xs="12">
+                    <MudSelect T="OtherChargeType" Label="Charge Type" @bind-Value="_selectedChargeType"
+                               ToStringFunc="@(c => c != null ? $"{c.Code} - {c.Name}" : "")"
+                               Variant="Variant.Outlined" Required="true">
+                        @foreach (var chargeType in _otherChargeTypes)
+                        {
+                            <MudSelectItem Value="@chargeType">
+                                @chargeType.Code - @chargeType.Name 
+                                @if (chargeType.IsPercentage)
+                                {
+                                    <text> (@chargeType.DefaultAmount%)</text>
+                                }
+                                else
+                                {
+                                    <text> (@chargeType.DefaultAmount.ToString("N2"))</text>
+                                }
+                            </MudSelectItem>
+                        }
+                    </MudSelect>
+                </MudItem>
+                <MudItem xs="12" md="6">
+                    <MudNumericField T="decimal" @bind-Value="_editingAWBCharge.Amount" Label="Amount"
+                                     Variant="Variant.Outlined" Format="N2" Required="true" />
+                </MudItem>
+                <MudItem xs="12" md="6">
+                    @if (_selectedChargeType?.IsPercentage == true && _selectedAWB != null)
+                    {
+                        <MudButton Variant="Variant.Outlined" Color="Color.Secondary" Class="mt-2"
+                                   OnClick="CalculatePercentageAmount">
+                            Calculate @(_selectedChargeType.DefaultAmount)% of Courier Charge
+                        </MudButton>
+                    }
+                </MudItem>
+                <MudItem xs="12">
+                    <MudTextField @bind-Value="_editingAWBCharge.Notes" Label="Notes" Lines="2"
+                                  Variant="Variant.Outlined" />
+                </MudItem>
+            </MudGrid>
+        }
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="CloseAWBChargeDialog">Cancel</MudButton>
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="SaveAWBCharge">Save</MudButton>
+    </DialogActions>
+</MudDialog>
+
 @code {
+    // Customer Special Charges
     private bool _loading;
     private bool _showDialog;
     private List<SpecialCharge> _charges = new();
@@ -210,11 +383,199 @@
     private DateTime? _fromDate;
     private DateTime? _toDate;
 
+    // AWB Other Charges
+    private InscanMaster? _selectedAWB;
+    private List<AWBOtherCharge> _awbCharges = new();
+    private List<OtherChargeType> _otherChargeTypes = new();
+    private bool _loadingAWBCharges;
+    private bool _showAWBChargeDialog;
+    private AWBOtherCharge? _editingAWBCharge;
+    private OtherChargeType? _selectedChargeType;
+
     protected override async Task OnInitializedAsync()
     {
         await LoadCharges();
+        await LoadOtherChargeTypes();
     }
 
+    private async Task LoadOtherChargeTypes()
+    {
+        _otherChargeTypes = await Context.OtherChargeTypes
+            .Where(c => c.IsActive && !c.IsDeleted)
+            .OrderBy(c => c.SortOrder)
+            .ThenBy(c => c.Name)
+            .ToListAsync();
+    }
+
+    private async Task<IEnumerable<InscanMaster>> SearchAWB(string value)
+    {
+        if (string.IsNullOrWhiteSpace(value) || value.Length < 2)
+            return Enumerable.Empty<InscanMaster>();
+
+        return await Context.InscanMasters
+            .Where(a => a.IsActive && !a.IsDeleted && 
+                   a.AWBNo.Contains(value))
+            .OrderByDescending(a => a.TransactionDate)
+            .Take(20)
+            .ToListAsync();
+    }
+
+    private async Task OnAWBSelected(InscanMaster? awb)
+    {
+        _selectedAWB = awb;
+        if (awb != null)
+        {
+            await LoadAWBCharges();
+        }
+        else
+        {
+            _awbCharges.Clear();
+        }
+    }
+
+    private async Task LoadAWBCharges()
+    {
+        if (_selectedAWB == null) return;
+
+        _loadingAWBCharges = true;
+        StateHasChanged();
+
+        try
+        {
+            _awbCharges = await Context.AWBOtherCharges
+                .Include(c => c.OtherChargeType)
+                .Where(c => c.InscanId == _selectedAWB.Id && c.IsActive && !c.IsDeleted)
+                .ToListAsync();
+        }
+        finally
+        {
+            _loadingAWBCharges = false;
+            StateHasChanged();
+        }
+    }
+
+    private void OpenAddAWBChargeDialog()
+    {
+        if (_selectedAWB == null)
+        {
+            Snackbar.Add("Please select an AWB first", Severity.Warning);
+            return;
+        }
+
+        _editingAWBCharge = new AWBOtherCharge
+        {
+            InscanId = _selectedAWB.Id,
+            Amount = 0,
+            IsActive = true,
+            CreatedAt = DateTime.UtcNow
+        };
+        _selectedChargeType = null;
+        _showAWBChargeDialog = true;
+    }
+
+    private void EditAWBCharge(AWBOtherCharge charge)
+    {
+        _editingAWBCharge = charge;
+        _selectedChargeType = _otherChargeTypes.FirstOrDefault(c => c.Id == charge.OtherChargeTypeId);
+        _showAWBChargeDialog = true;
+    }
+
+    private void CloseAWBChargeDialog()
+    {
+        _showAWBChargeDialog = false;
+        _editingAWBCharge = null;
+        _selectedChargeType = null;
+    }
+
+    private void CalculatePercentageAmount()
+    {
+        if (_selectedChargeType != null && _selectedAWB != null && _editingAWBCharge != null)
+        {
+            var courierCharge = _selectedAWB.CourierCharge ?? 0;
+            _editingAWBCharge.Amount = Math.Round(courierCharge * _selectedChargeType.DefaultAmount / 100, 2);
+        }
+    }
+
+    private async Task SaveAWBCharge()
+    {
+        if (_editingAWBCharge == null || _selectedChargeType == null)
+        {
+            Snackbar.Add("Please select a charge type", Severity.Warning);
+            return;
+        }
+
+        if (_editingAWBCharge.Amount <= 0)
+        {
+            Snackbar.Add("Amount must be greater than zero", Severity.Warning);
+            return;
+        }
+
+        _editingAWBCharge.OtherChargeTypeId = _selectedChargeType.Id;
+
+        if (_editingAWBCharge.Id == 0)
+        {
+            Context.AWBOtherCharges.Add(_editingAWBCharge);
+        }
+        else
+        {
+            _editingAWBCharge.ModifiedAt = DateTime.UtcNow;
+        }
+
+        await Context.SaveChangesAsync();
+
+        // Update the AWB's total other charges
+        await UpdateAWBOtherChargesTotal();
+
+        Snackbar.Add("Charge saved successfully", Severity.Success);
+        CloseAWBChargeDialog();
+        await LoadAWBCharges();
+    }
+
+    private async Task UpdateAWBOtherChargesTotal()
+    {
+        if (_selectedAWB == null) return;
+
+        var totalOtherCharges = await Context.AWBOtherCharges
+            .Where(c => c.InscanId == _selectedAWB.Id && c.IsActive && !c.IsDeleted)
+            .SumAsync(c => c.Amount);
+
+        // Ensure the entity is being tracked
+        var entry = Context.Entry(_selectedAWB);
+        if (entry.State == EntityState.Detached)
+        {
+            Context.Attach(_selectedAWB);
+        }
+
+        _selectedAWB.OtherCharge = totalOtherCharges;
+        _selectedAWB.ModifiedAt = DateTime.UtcNow;
+        entry.Property(x => x.OtherCharge).IsModified = true;
+        entry.Property(x => x.ModifiedAt).IsModified = true;
+        
+        await Context.SaveChangesAsync();
+    }
+
+    private async Task DeleteAWBCharge(AWBOtherCharge charge)
+    {
+        var confirmed = await DialogService.ShowMessageBox(
+            "Delete Charge",
+            $"Are you sure you want to delete this charge?",
+            yesText: "Yes", cancelText: "No");
+
+        if (confirmed == true)
+        {
+            charge.IsDeleted = true;
+            charge.IsActive = false;
+            charge.ModifiedAt = DateTime.UtcNow;
+            await Context.SaveChangesAsync();
+
+            await UpdateAWBOtherChargesTotal();
+
+            Snackbar.Add("Charge deleted", Severity.Success);
+            await LoadAWBCharges();
+        }
+    }
+
+    // Customer Special Charges Methods
     private async Task LoadCharges()
     {
         _loading = true;
