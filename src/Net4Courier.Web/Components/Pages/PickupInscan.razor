@@ -16,14 +16,35 @@
     Receive collected shipments into the warehouse.
 </MudText>
 
+<MudPaper Class="pa-3 mb-4" Elevation="1">
+    <MudRadioGroup T="InscanMode" @bind-Value="_scanMode">
+        <MudRadio Value="InscanMode.PickupRequest" Color="Color.Primary" Dense="true">
+            <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="1">
+                <MudIcon Icon="@Icons.Material.Filled.LocalShipping" Size="Size.Small" />
+                <MudText>Pickup Request</MudText>
+            </MudStack>
+        </MudRadio>
+        <MudRadio Value="InscanMode.AWB" Color="Color.Primary" Dense="true">
+            <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="1">
+                <MudIcon Icon="@Icons.Material.Filled.QrCode" Size="Size.Small" />
+                <MudText>AWB</MudText>
+            </MudStack>
+        </MudRadio>
+    </MudRadioGroup>
+</MudPaper>
+
 <MudGrid>
     <MudItem xs="12" md="6">
         <MudPaper Class="pa-4" Elevation="2">
-            <MudText Typo="Typo.h6" GutterBottom="true">Scan or Enter Pickup No</MudText>
-            <MudTextField @ref="_scanField" @bind-Value="_scanInput" Label="Pickup No / Barcode" Variant="Variant.Outlined" 
+            <MudText Typo="Typo.h6" GutterBottom="true">
+                @(_scanMode == InscanMode.PickupRequest ? "Scan or Enter Pickup No" : "Scan or Enter AWB No")
+            </MudText>
+            <MudTextField @ref="_scanField" @bind-Value="_scanInput" 
+                          Label="@(_scanMode == InscanMode.PickupRequest ? "Pickup No / Barcode" : "AWB No / Barcode")" 
+                          Variant="Variant.Outlined" 
                           Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Filled.QrCodeScanner"
                           OnKeyUp="OnScanKeyUp" FullWidth="true" AutoFocus="true"
-                          Placeholder="Scan barcode or type pickup number..." />
+                          Placeholder="@(_scanMode == InscanMode.PickupRequest ? "Scan barcode or type pickup number..." : "Scan barcode or type AWB number...")" />
             <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="ProcessScan" FullWidth="true" Class="mt-3"
                        StartIcon="@Icons.Material.Filled.Warehouse" Size="Size.Large" Disabled="@_processing">
                 @if (_processing)
@@ -43,72 +64,137 @@
             }
         </MudPaper>
 
-        <MudPaper Class="pa-4 mt-4" Elevation="2">
-            <MudText Typo="Typo.h6" GutterBottom="true">Pending for INSCAN</MudText>
-            <MudList T="PickupRequest" Dense="true">
-                @foreach (var pickup in _pendingPickups)
-                {
-                    <MudListItem OnClick="@(() => SelectPickup(pickup))">
-                        <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
-                            <MudStack Spacing="0">
-                                <MudText Typo="Typo.body1"><strong>@pickup.PickupNo</strong></MudText>
-                                <MudText Typo="Typo.caption">@pickup.CustomerName - @pickup.City</MudText>
-                                <MudText Typo="Typo.caption" Color="Color.Primary">
-                                    @(pickup.Shipments?.Count ?? 0) shipment(s)
-                                </MudText>
+        @if (_scanMode == InscanMode.PickupRequest)
+        {
+            <MudPaper Class="pa-4 mt-4" Elevation="2">
+                <MudText Typo="Typo.h6" GutterBottom="true">Pending for INSCAN</MudText>
+                <MudList T="PickupRequest" Dense="true">
+                    @foreach (var pickup in _pendingPickups)
+                    {
+                        <MudListItem OnClick="@(() => SelectPickup(pickup))">
+                            <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
+                                <MudStack Spacing="0">
+                                    <MudText Typo="Typo.body1"><strong>@pickup.PickupNo</strong></MudText>
+                                    <MudText Typo="Typo.caption">@pickup.CustomerName - @pickup.City</MudText>
+                                    <MudText Typo="Typo.caption" Color="Color.Primary">
+                                        @(pickup.Shipments?.Count ?? 0) shipment(s)
+                                    </MudText>
+                                </MudStack>
+                                <MudChip T="string" Color="Color.Success" Size="Size.Small">Collected</MudChip>
                             </MudStack>
-                            <MudChip T="string" Color="Color.Success" Size="Size.Small">Collected</MudChip>
-                        </MudStack>
-                    </MudListItem>
-                }
-                @if (!_pendingPickups.Any())
-                {
-                    <MudListItem>
-                        <MudText Color="Color.Secondary">No pending pickups for INSCAN</MudText>
-                    </MudListItem>
-                }
-            </MudList>
-        </MudPaper>
+                        </MudListItem>
+                    }
+                    @if (!_pendingPickups.Any())
+                    {
+                        <MudListItem>
+                            <MudText Color="Color.Secondary">No pending pickups for INSCAN</MudText>
+                        </MudListItem>
+                    }
+                </MudList>
+            </MudPaper>
+        }
+        else
+        {
+            <MudPaper Class="pa-4 mt-4" Elevation="2">
+                <MudText Typo="Typo.h6" GutterBottom="true">Pending AWBs for INSCAN</MudText>
+                <MudList T="InscanMaster" Dense="true">
+                    @foreach (var awb in _pendingAWBs)
+                    {
+                        <MudListItem OnClick="@(() => SelectAWB(awb))">
+                            <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
+                                <MudStack Spacing="0">
+                                    <MudText Typo="Typo.body1"><strong>@awb.AWBNo</strong></MudText>
+                                    <MudText Typo="Typo.caption">@awb.Consignor → @awb.Consignee</MudText>
+                                    <MudText Typo="Typo.caption" Color="Color.Primary">
+                                        @awb.ConsignorCity → @awb.ConsigneeCity
+                                    </MudText>
+                                </MudStack>
+                                <MudChip T="string" Color="Color.Info" Size="Size.Small">@awb.CourierStatusId</MudChip>
+                            </MudStack>
+                        </MudListItem>
+                    }
+                    @if (!_pendingAWBs.Any())
+                    {
+                        <MudListItem>
+                            <MudText Color="Color.Secondary">No pending AWBs for INSCAN</MudText>
+                        </MudListItem>
+                    }
+                </MudList>
+            </MudPaper>
+        }
     </MudItem>
 
     <MudItem xs="12" md="6">
         <MudPaper Class="pa-4" Elevation="2">
             <MudText Typo="Typo.h6" GutterBottom="true">Recently Received Today</MudText>
-            <MudSimpleTable Hover="true" Dense="true" Striped="true">
-                <thead>
-                    <tr>
-                        <th>Pickup No</th>
-                        <th>Customer</th>
-                        <th>Shipments</th>
-                        <th>Time</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    @foreach (var pickup in _inscannedToday)
-                    {
+            @if (_scanMode == InscanMode.PickupRequest)
+            {
+                <MudSimpleTable Hover="true" Dense="true" Striped="true">
+                    <thead>
                         <tr>
-                            <td>@pickup.PickupNo</td>
-                            <td>@pickup.CustomerName</td>
-                            <td>
-                                @{
-                                    var shipmentCount = pickup.Shipments?.Count ?? 0;
-                                    var pendingCount = pickup.Shipments?.Count(s => s.Status == ShipmentLineStatus.Pending) ?? 0;
-                                }
-                                <MudChip T="string" Color="@(pendingCount > 0 ? Color.Warning : Color.Success)" Size="Size.Small">
-                                    @pendingCount / @shipmentCount pending
-                                </MudChip>
-                            </td>
-                            <td>@pickup.InscannedAt?.ToString("HH:mm")</td>
+                            <th>Pickup No</th>
+                            <th>Customer</th>
+                            <th>Shipments</th>
+                            <th>Time</th>
                         </tr>
-                    }
-                    @if (!_inscannedToday.Any())
-                    {
+                    </thead>
+                    <tbody>
+                        @foreach (var pickup in _inscannedToday)
+                        {
+                            <tr>
+                                <td>@pickup.PickupNo</td>
+                                <td>@pickup.CustomerName</td>
+                                <td>
+                                    @{
+                                        var shipmentCount = pickup.Shipments?.Count ?? 0;
+                                        var pendingCount = pickup.Shipments?.Count(s => s.Status == ShipmentLineStatus.Pending) ?? 0;
+                                    }
+                                    <MudChip T="string" Color="@(pendingCount > 0 ? Color.Warning : Color.Success)" Size="Size.Small">
+                                        @pendingCount / @shipmentCount pending
+                                    </MudChip>
+                                </td>
+                                <td>@pickup.InscannedAt?.ToString("HH:mm")</td>
+                            </tr>
+                        }
+                        @if (!_inscannedToday.Any())
+                        {
+                            <tr>
+                                <td colspan="4" class="text-center">No received pickups today</td>
+                            </tr>
+                        }
+                    </tbody>
+                </MudSimpleTable>
+            }
+            else
+            {
+                <MudSimpleTable Hover="true" Dense="true" Striped="true">
+                    <thead>
                         <tr>
-                            <td colspan="4" class="text-center">No received pickups today</td>
+                            <th>AWB No</th>
+                            <th>Consignee</th>
+                            <th>Destination</th>
+                            <th>Time</th>
                         </tr>
-                    }
-                </tbody>
-            </MudSimpleTable>
+                    </thead>
+                    <tbody>
+                        @foreach (var awb in _inscannedAWBsToday)
+                        {
+                            <tr>
+                                <td>@awb.AWBNo</td>
+                                <td>@awb.Consignee</td>
+                                <td>@awb.ConsigneeCity</td>
+                                <td>@awb.ModifiedAt?.ToString("HH:mm")</td>
+                            </tr>
+                        }
+                        @if (!_inscannedAWBsToday.Any())
+                        {
+                            <tr>
+                                <td colspan="4" class="text-center">No received AWBs today</td>
+                            </tr>
+                        }
+                    </tbody>
+                </MudSimpleTable>
+            }
         </MudPaper>
 
         <MudGrid Class="mt-4">
@@ -116,8 +202,12 @@
                 <MudPaper Class="pa-4" Elevation="2" Style="background-color: #e8f5e9;">
                     <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
                         <MudStack Spacing="0">
-                            <MudText Typo="Typo.h3" Color="Color.Success">@_inscannedToday.Count</MudText>
-                            <MudText Typo="Typo.body2">Pickups Received</MudText>
+                            <MudText Typo="Typo.h3" Color="Color.Success">
+                                @(_scanMode == InscanMode.PickupRequest ? _inscannedToday.Count : _inscannedAWBsToday.Count)
+                            </MudText>
+                            <MudText Typo="Typo.body2">
+                                @(_scanMode == InscanMode.PickupRequest ? "Pickups Received" : "AWBs Received")
+                            </MudText>
                         </MudStack>
                         <MudIcon Icon="@Icons.Material.Filled.Warehouse" Size="Size.Large" Color="Color.Success" />
                     </MudStack>
@@ -127,8 +217,12 @@
                 <MudPaper Class="pa-4" Elevation="2" Style="background-color: #fff3e0;">
                     <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
                         <MudStack Spacing="0">
-                            <MudText Typo="Typo.h3" Color="Color.Warning">@_pendingConversionCount</MudText>
-                            <MudText Typo="Typo.body2">Pending Conversion</MudText>
+                            <MudText Typo="Typo.h3" Color="Color.Warning">
+                                @(_scanMode == InscanMode.PickupRequest ? _pendingConversionCount : _pendingAWBs.Count)
+                            </MudText>
+                            <MudText Typo="Typo.body2">
+                                @(_scanMode == InscanMode.PickupRequest ? "Pending Conversion" : "Pending INSCAN")
+                            </MudText>
                         </MudStack>
                         <MudIcon Icon="@Icons.Material.Filled.Transform" Size="Size.Large" Color="Color.Warning" />
                     </MudStack>
@@ -141,15 +235,24 @@
 @code {
     [SupplyParameterFromQuery] public long? pickupId { get; set; }
     
+    private InscanMode _scanMode = InscanMode.PickupRequest;
     private string _scanInput = "";
     private string _lastMessage = "";
     private Severity _lastSeverity = Severity.Info;
     private List<PickupRequest> _pendingPickups = new();
     private List<PickupRequest> _inscannedToday = new();
+    private List<InscanMaster> _pendingAWBs = new();
+    private List<InscanMaster> _inscannedAWBsToday = new();
     private MudTextField<string>? _scanField;
     private bool _processing;
     private int _pendingConversionCount;
     private string _currentUsername = "System";
+
+    private enum InscanMode
+    {
+        PickupRequest,
+        AWB
+    }
 
     protected override async Task OnInitializedAsync()
     {
@@ -198,6 +301,18 @@
             .Where(p => p.Status == PickupStatus.Inscanned && !p.IsDeleted && !p.IsConverted)
             .SelectMany(p => p.Shipments)
             .CountAsync(s => s.Status == ShipmentLineStatus.Pending);
+            
+        _pendingAWBs = await DbContext.InscanMasters
+            .Where(a => a.CourierStatusId == CourierStatus.PickedUp && !a.IsDeleted)
+            .OrderByDescending(a => a.TransactionDate)
+            .Take(50)
+            .ToListAsync();
+            
+        _inscannedAWBsToday = await DbContext.InscanMasters
+            .Where(a => a.CourierStatusId == CourierStatus.InscanAtOrigin && !a.IsDeleted && a.ModifiedAt >= today)
+            .OrderByDescending(a => a.ModifiedAt)
+            .Take(50)
+            .ToListAsync();
     }
 
     private async Task OnScanKeyUp(KeyboardEventArgs e)
@@ -212,7 +327,9 @@
     {
         if (string.IsNullOrWhiteSpace(_scanInput))
         {
-            _lastMessage = "Please enter or scan a pickup number";
+            _lastMessage = _scanMode == InscanMode.PickupRequest 
+                ? "Please enter or scan a pickup number" 
+                : "Please enter or scan an AWB number";
             _lastSeverity = Severity.Warning;
             return;
         }
@@ -222,42 +339,13 @@
 
         try
         {
-            var pickup = await DbContext.PickupRequests
-                .Include(p => p.Shipments)
-                .FirstOrDefaultAsync(p => p.PickupNo == _scanInput.Trim() && !p.IsDeleted);
-
-            if (pickup == null)
+            if (_scanMode == InscanMode.PickupRequest)
             {
-                _lastMessage = $"Pickup {_scanInput} not found";
-                _lastSeverity = Severity.Error;
-                Snackbar.Add(_lastMessage, Severity.Error);
-            }
-            else if (pickup.Status == PickupStatus.Inscanned)
-            {
-                _lastMessage = $"Pickup {_scanInput} already inscanned";
-                _lastSeverity = Severity.Warning;
-                Snackbar.Add(_lastMessage, Severity.Warning);
-            }
-            else if (pickup.Status != PickupStatus.ShipmentCollected)
-            {
-                _lastMessage = $"Pickup {_scanInput} status is {pickup.Status}. Expected: Shipment Collected";
-                _lastSeverity = Severity.Warning;
-                Snackbar.Add(_lastMessage, Severity.Warning);
+                await ProcessPickupScan();
             }
             else
             {
-                pickup.Status = PickupStatus.Inscanned;
-                pickup.InscannedAt = DateTime.UtcNow;
-                pickup.InscannedBy = _currentUsername;
-                
-                await DbContext.SaveChangesAsync();
-                
-                var shipmentCount = pickup.Shipments?.Count ?? 0;
-                _lastMessage = $"Pickup {_scanInput} received into warehouse! {shipmentCount} shipment(s) pending conversion.";
-                _lastSeverity = Severity.Success;
-                Snackbar.Add(_lastMessage, Severity.Success);
-                
-                await LoadData();
+                await ProcessAWBScan();
             }
         }
         finally
@@ -273,8 +361,108 @@
         }
     }
 
+    private async Task ProcessPickupScan()
+    {
+        var pickup = await DbContext.PickupRequests
+            .Include(p => p.Shipments)
+            .FirstOrDefaultAsync(p => p.PickupNo == _scanInput.Trim() && !p.IsDeleted);
+
+        if (pickup == null)
+        {
+            _lastMessage = $"Pickup {_scanInput} not found";
+            _lastSeverity = Severity.Error;
+            Snackbar.Add(_lastMessage, Severity.Error);
+        }
+        else if (pickup.Status == PickupStatus.Inscanned)
+        {
+            _lastMessage = $"Pickup {_scanInput} already inscanned";
+            _lastSeverity = Severity.Warning;
+            Snackbar.Add(_lastMessage, Severity.Warning);
+        }
+        else if (pickup.Status != PickupStatus.ShipmentCollected)
+        {
+            _lastMessage = $"Pickup {_scanInput} status is {pickup.Status}. Expected: Shipment Collected";
+            _lastSeverity = Severity.Warning;
+            Snackbar.Add(_lastMessage, Severity.Warning);
+        }
+        else
+        {
+            pickup.Status = PickupStatus.Inscanned;
+            pickup.InscannedAt = DateTime.UtcNow;
+            pickup.InscannedBy = _currentUsername;
+            
+            var awbCount = 0;
+            if (pickup.Shipments != null)
+            {
+                foreach (var shipment in pickup.Shipments)
+                {
+                    if (shipment.AWBId.HasValue)
+                    {
+                        var awb = await DbContext.InscanMasters.FindAsync(shipment.AWBId.Value);
+                        if (awb != null)
+                        {
+                            awb.CourierStatusId = CourierStatus.InscanAtOrigin;
+                            awb.ModifiedAt = DateTime.UtcNow;
+                            awb.ModifiedByName = _currentUsername;
+                            awbCount++;
+                        }
+                    }
+                }
+            }
+            
+            await DbContext.SaveChangesAsync();
+            
+            var shipmentCount = pickup.Shipments?.Count ?? 0;
+            _lastMessage = $"Pickup {_scanInput} received into warehouse! {shipmentCount} shipment(s), {awbCount} AWB(s) updated to InscanAtOrigin.";
+            _lastSeverity = Severity.Success;
+            Snackbar.Add(_lastMessage, Severity.Success);
+            
+            await LoadData();
+        }
+    }
+
+    private async Task ProcessAWBScan()
+    {
+        var awbNo = _scanInput.Trim();
+        
+        var awb = await DbContext.InscanMasters
+            .FirstOrDefaultAsync(a => a.AWBNo == awbNo && !a.IsDeleted);
+
+        if (awb == null)
+        {
+            _lastMessage = $"AWB {awbNo} scanned (not found in system - logged only)";
+            _lastSeverity = Severity.Info;
+            Snackbar.Add(_lastMessage, Severity.Info);
+        }
+        else if (awb.CourierStatusId == CourierStatus.InscanAtOrigin)
+        {
+            _lastMessage = $"AWB {awbNo} already inscanned at origin";
+            _lastSeverity = Severity.Warning;
+            Snackbar.Add(_lastMessage, Severity.Warning);
+        }
+        else
+        {
+            awb.CourierStatusId = CourierStatus.InscanAtOrigin;
+            awb.ModifiedAt = DateTime.UtcNow;
+            awb.ModifiedByName = _currentUsername;
+            
+            await DbContext.SaveChangesAsync();
+            
+            _lastMessage = $"AWB {awbNo} received into warehouse! Status updated to InscanAtOrigin.";
+            _lastSeverity = Severity.Success;
+            Snackbar.Add(_lastMessage, Severity.Success);
+            
+            await LoadData();
+        }
+    }
+
     private void SelectPickup(PickupRequest pickup)
     {
         _scanInput = pickup.PickupNo;
+    }
+
+    private void SelectAWB(InscanMaster awb)
+    {
+        _scanInput = awb.AWBNo;
     }
 }
