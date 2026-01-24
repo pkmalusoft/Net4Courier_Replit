@@ -37,7 +37,7 @@ public class BankReconciliation : AuditableEntity
     
     public string? Notes { get; set; }
     
-    public virtual AccountHead BankAccount { get; set; } = null!;
+    public virtual BankAccount BankAccount { get; set; } = null!;
     public virtual ICollection<BankStatementImport> StatementImports { get; set; } = new List<BankStatementImport>();
     public virtual ICollection<ReconciliationMatch> Matches { get; set; } = new List<ReconciliationMatch>();
     public virtual ICollection<ReconciliationAdjustment> Adjustments { get; set; } = new List<ReconciliationAdjustment>();
