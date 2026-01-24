@@ -100,50 +100,64 @@
 
     protected override async Task OnInitializedAsync()
     {
-        await LoadData();
+        try
+        {
+            await LoadData();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error loading reconciliation: {ex.Message}", Severity.Error);
+        }
     }
 
     private async Task LoadData()
     {
-        _reconciliation = await DbContext.BankReconciliations
-            .Include(r => r.BankAccount)
-            .FirstOrDefaultAsync(r => r.Id == ReconciliationId);
-
-        if (_reconciliation == null)
+        try
         {
-            Snackbar.Add("Reconciliation not found", Severity.Error);
-            Navigation.NavigateTo("/bank-reconciliation");
-            return;
+            _reconciliation = await DbContext.BankReconciliations
+                .Include(r => r.BankAccount)
+                .FirstOrDefaultAsync(r => r.Id == ReconciliationId);
+
+            if (_reconciliation == null)
+            {
+                Snackbar.Add("Reconciliation not found", Severity.Error);
+                Navigation.NavigateTo("/bank-reconciliation");
+                return;
+            }
+
+            _statementLines = await DbContext.BankStatementLines
+                .Where(l => l.BankStatementImport!.BankReconciliationId == ReconciliationId)
+                .OrderBy(l => l.TransactionDate)
+                .ToListAsync();
+
+            var bankAccountHeadId = _reconciliation.BankAccount?.AccountHeadId ?? 0;
+            _unmatchedVouchers = await DbContext.Journals
+                .Where(j => j.VoucherType == "BV" 
+                         && j.IsPosted 
+                         && j.Entries.Any(e => e.AccountHeadId == bankAccountHeadId)
+                         && !DbContext.ReconciliationMatches.Any(m => m.JournalId == j.Id && !m.IsReversed))
+                .OrderBy(j => j.VoucherDate)
+                .ToListAsync();
+
+            _matches = await DbContext.ReconciliationMatches
+                .Include(m => m.BankStatementLine)
+                .Include(m => m.Journal)
+                .Where(m => m.BankReconciliationId == ReconciliationId && !m.IsReversed)
+                .OrderByDescending(m => m.MatchedAt)
+                .ToListAsync();
+
+            _adjustments = await DbContext.ReconciliationAdjustments
+                .Where(a => a.BankReconciliationId == ReconciliationId)
+                .OrderByDescending(a => a.CreatedAt)
+                .ToListAsync();
+
+            _selectedStatementLine = null;
+            _selectedVoucher = null;
         }
-
-        _statementLines = await DbContext.BankStatementLines
-            .Where(l => l.BankStatementImport!.BankReconciliationId == ReconciliationId)
-            .OrderBy(l => l.TransactionDate)
-            .ToListAsync();
-
-        var bankAccountHeadId = _reconciliation.BankAccount?.AccountHeadId ?? 0;
-        _unmatchedVouchers = await DbContext.Journals
-            .Where(j => j.VoucherType == "BV" 
-                     && j.IsPosted 
-                     && j.Entries.Any(e => e.AccountHeadId == bankAccountHeadId)
-                     && !DbContext.ReconciliationMatches.Any(m => m.JournalId == j.Id && !m.IsReversed))
-            .OrderBy(j => j.VoucherDate)
-            .ToListAsync();
-
-        _matches = await DbContext.ReconciliationMatches
-            .Include(m => m.BankStatementLine)
-            .Include(m => m.Journal)
-            .Where(m => m.BankReconciliationId == ReconciliationId && !m.IsReversed)
-            .OrderByDescending(m => m.MatchedAt)
-            .ToListAsync();
-
-        _adjustments = await DbContext.ReconciliationAdjustments
-            .Where(a => a.BankReconciliationId == ReconciliationId)
-            .OrderByDescending(a => a.CreatedAt)
-            .ToListAsync();
-
-        _selectedStatementLine = null;
-        _selectedVoucher = null;
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error loading data: {ex.Message}", Severity.Error);
+        }
     }
 
     private RenderFragment RenderImportTab() => __builder =>

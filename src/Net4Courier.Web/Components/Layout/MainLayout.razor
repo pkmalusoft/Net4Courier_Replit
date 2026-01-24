@@ -64,7 +64,33 @@
     </MudDrawer>
     <MudMainContent>
         <div class="pa-4">
-            @Body
+            <Microsoft.AspNetCore.Components.Web.ErrorBoundary @ref="_errorBoundary">
+                <ChildContent>
+                    @Body
+                </ChildContent>
+                <ErrorContent Context="exception">
+                    <MudContainer MaxWidth="MaxWidth.Small" Class="d-flex flex-column align-center justify-center" Style="min-height: 50vh;">
+                        <MudPaper Elevation="3" Class="pa-8 text-center" Style="max-width: 500px;">
+                            <MudIcon Icon="@Icons.Material.Filled.Error" Color="Color.Error" Size="Size.Large" Class="mb-4" />
+                            <MudText Typo="Typo.h5" Color="Color.Error" Class="mb-2">Something went wrong</MudText>
+                            <MudText Typo="Typo.body1" Color="Color.Secondary" Class="mb-4">
+                                @GetUserFriendlyMessage(exception)
+                            </MudText>
+                            <MudAlert Severity="Severity.Info" Dense="true" Class="mb-4">
+                                <MudText Typo="Typo.caption">If this problem persists, please contact support.</MudText>
+                            </MudAlert>
+                            <div class="d-flex gap-2 justify-center">
+                                <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Refresh" OnClick="RecoverFromError">
+                                    Try Again
+                                </MudButton>
+                                <MudButton Variant="Variant.Outlined" Color="Color.Default" StartIcon="@Icons.Material.Filled.Home" Href="/">
+                                    Go to Dashboard
+                                </MudButton>
+                            </div>
+                        </MudPaper>
+                    </MudContainer>
+                </ErrorContent>
+            </Microsoft.AspNetCore.Components.Web.ErrorBoundary>
         </div>
     </MudMainContent>
 </MudLayout>
@@ -118,6 +144,37 @@
     private string _userName = "";
     private string _userInitial = "U";
     private int _notificationCount = 0;
+    private Microsoft.AspNetCore.Components.Web.ErrorBoundary? _errorBoundary;
+
+    private void RecoverFromError()
+    {
+        _errorBoundary?.Recover();
+    }
+
+    private static string GetUserFriendlyMessage(Exception ex)
+    {
+        var message = ex.Message.ToLowerInvariant();
+        
+        if (message.Contains("42703") || (message.Contains("column") && message.Contains("does not exist")))
+            return "There was an issue with the database configuration. Please contact support.";
+        
+        if (message.Contains("42p01") || (message.Contains("relation") && message.Contains("does not exist")))
+            return "A required database table is missing. Please contact support.";
+        
+        if (message.Contains("connection") || message.Contains("timeout"))
+            return "Unable to connect to the server. Please check your connection and try again.";
+        
+        if (message.Contains("unauthorized") || message.Contains("permission"))
+            return "You don't have permission to access this resource.";
+        
+        if (ex is InvalidOperationException && message.Contains("sequence"))
+            return "There was an issue loading the data. Please try again.";
+
+        if (ex is ArgumentNullException or ArgumentException)
+            return "Invalid data was provided. Please check your input and try again.";
+
+        return "An unexpected error occurred. Please try again or contact support.";
+    }
 
     private MudTheme _theme = new()
     {

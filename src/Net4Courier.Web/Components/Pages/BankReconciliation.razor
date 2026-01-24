@@ -126,17 +126,31 @@
 
     protected override async Task OnInitializedAsync()
     {
-        await LoadBankAccounts();
-        await LoadReconciliations();
+        try
+        {
+            await LoadBankAccounts();
+            await LoadReconciliations();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error loading page: {ex.Message}", Severity.Error);
+        }
     }
 
     private async Task LoadBankAccounts()
     {
-        _bankAccounts = await DbContext.BankAccounts
-            .Where(b => b.IsActive)
-            .OrderBy(b => b.BankName)
-            .ThenBy(b => b.AccountName)
-            .ToListAsync();
+        try
+        {
+            _bankAccounts = await DbContext.BankAccounts
+                .Where(b => b.IsActive)
+                .OrderBy(b => b.BankName)
+                .ThenBy(b => b.AccountName)
+                .ToListAsync();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error loading bank accounts: {ex.Message}", Severity.Error);
+        }
     }
 
     private async Task LoadReconciliations()
@@ -157,15 +171,25 @@
                 query = query.Where(r => r.Status == _filterStatus.Value);
 
             if (_filterFromDate.HasValue)
-                query = query.Where(r => r.StatementDate >= _filterFromDate.Value);
+            {
+                var fromDate = DateTime.SpecifyKind(_filterFromDate.Value.Date, DateTimeKind.Utc);
+                query = query.Where(r => r.StatementDate >= fromDate);
+            }
 
             if (_filterToDate.HasValue)
-                query = query.Where(r => r.StatementDate <= _filterToDate.Value);
+            {
+                var toDate = DateTime.SpecifyKind(_filterToDate.Value.Date, DateTimeKind.Utc);
+                query = query.Where(r => r.StatementDate <= toDate);
+            }
 
             _reconciliations = await query
                 .OrderByDescending(r => r.StatementDate)
                 .ThenByDescending(r => r.Id)
                 .ToListAsync();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error loading reconciliations: {ex.Message}", Severity.Error);
         }
         finally
         {

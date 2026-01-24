@@ -141,6 +141,7 @@ builder.Services.AddScoped<EmpostFeeReportService>();
 builder.Services.AddScoped<IEmpostService, EmpostService>();
 builder.Services.AddScoped<IBankReconciliationService, BankReconciliationService>();
 builder.Services.AddScoped<IBankStatementImportService, BankStatementImportService>();
+builder.Services.AddScoped<IPageErrorHandler, PageErrorHandler>();
 builder.Services.AddAuthorizationCore();
 builder.Services.AddCascadingAuthenticationState();
 
