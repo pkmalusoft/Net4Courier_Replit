@@ -44,6 +44,15 @@
             </MudSelect>
         </MudItem>
         <MudItem xs="12" sm="6" md="2">
+            <MudSelect T="long?" @bind-Value="_courierFilter" Label="Courier" Variant="Variant.Outlined" AnchorOrigin="Origin.BottomCenter">
+                <MudSelectItem T="long?" Value="@((long?)null)">All Couriers</MudSelectItem>
+                @foreach (var courier in _courierEmployees)
+                {
+                    <MudSelectItem T="long?" Value="@((long?)courier.Id)">@courier.Name</MudSelectItem>
+                }
+            </MudSelect>
+        </MudItem>
+        <MudItem xs="12" sm="6" md="1">
             <MudButton Variant="Variant.Outlined" Color="Color.Primary" OnClick="Search" FullWidth="true" Class="mt-1">Search</MudButton>
         </MudItem>
         <MudItem xs="12" sm="6" md="1">
@@ -113,6 +122,81 @@
     </MudPaper>
 }
 
+@if (!_courierFilter.HasValue && _activeCommitments.Any())
+{
+    <MudText Typo="Typo.subtitle1" Class="mb-2 mt-4" Style="font-weight: 600;">Active Commitments by Courier</MudText>
+    @foreach (var group in GetCommittedPickupsGroupedByCourier())
+    {
+        var courierKey = group.Key;
+        <MudExpansionPanels Class="mb-2">
+            <MudExpansionPanel IsExpanded="@IsExpanded(courierKey)" IsExpandedChanged="@(v => SetExpanded(courierKey, v))">
+                <TitleContent>
+                    <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+                        <MudIcon Icon="@Icons.Material.Filled.Person" Size="Size.Small" />
+                        <MudText Typo="Typo.subtitle1" Style="font-weight: 600;">@group.Key</MudText>
+                        <MudChip T="string" Size="Size.Small" Color="Color.Primary">@group.Count() pickups</MudChip>
+                    </MudStack>
+                </TitleContent>
+                <ChildContent>
+                    <MudTable Items="@group.ToList()" Hover="true" Striped="true" Dense="true" Breakpoint="Breakpoint.Sm">
+                        <HeaderContent>
+                            <MudTh>Pickup No</MudTh>
+                            <MudTh>Request Date</MudTh>
+                            <MudTh>Customer</MudTh>
+                            <MudTh>Address</MudTh>
+                            <MudTh>Status</MudTh>
+                            <MudTh>Commitment</MudTh>
+                            <MudTh Style="width: 180px;">Actions</MudTh>
+                        </HeaderContent>
+                        <RowTemplate>
+                            <MudTd DataLabel="Pickup No">
+                                <MudLink Href="@($"/pickup-request-edit/{context.Id}")">@context.PickupNo</MudLink>
+                            </MudTd>
+                            <MudTd DataLabel="Request Date">@context.RequestDate.ToString("dd/MM/yyyy HH:mm")</MudTd>
+                            <MudTd DataLabel="Customer">@context.CustomerName</MudTd>
+                            <MudTd DataLabel="Address">@context.City, @context.PostalCode</MudTd>
+                            <MudTd DataLabel="Status">
+                                <MudChip T="string" Color="@GetStatusColor(context.Status)" Size="Size.Small">@GetStatusText(context.Status)</MudChip>
+                            </MudTd>
+                            <MudTd DataLabel="Commitment">
+                                @{
+                                    var grpCommitment = GetActiveCommitment(context.Id);
+                                    if (grpCommitment != null)
+                                    {
+                                        var grpTimeRemaining = grpCommitment.ExpiresAt - DateTime.UtcNow;
+                                        var grpIsExpiring = grpTimeRemaining.TotalMinutes <= 10;
+                                        <MudChip T="string" Size="Size.Small" Color="@(grpIsExpiring ? Color.Error : Color.Info)">
+                                            @(grpCommitment.Status == PickupCommitmentStatus.Confirmed ? "Confirmed" : FormatTimeRemaining(grpTimeRemaining))
+                                        </MudChip>
+                                    }
+                                }
+                            </MudTd>
+                            <MudTd>
+                                @{
+                                    var grpPickupCommitment = GetActiveCommitment(context.Id);
+                                }
+                                @if (grpPickupCommitment != null && grpPickupCommitment.Status == PickupCommitmentStatus.Active)
+                                {
+                                    <MudButton Variant="Variant.Filled" Color="Color.Success" Size="Size.Small" 
+                                               OnClick="@(() => ConfirmCommitment(grpPickupCommitment))">Confirm</MudButton>
+                                    <MudButton Variant="Variant.Text" Color="Color.Warning" Size="Size.Small"
+                                               OnClick="@(() => OverrideCommitment(context, grpPickupCommitment))">Override</MudButton>
+                                }
+                                else if (context.Status == PickupStatus.PickupRequest)
+                                {
+                                    <MudButton Variant="Variant.Outlined" Color="Color.Primary" Size="Size.Small"
+                                               OnClick="@(() => OpenAssignDialog(context))">Assign</MudButton>
+                                }
+                            </MudTd>
+                        </RowTemplate>
+                    </MudTable>
+                </ChildContent>
+            </MudExpansionPanel>
+        </MudExpansionPanels>
+    }
+}
+else
+{
 <MudPaper Elevation="2">
     <MudTable Items="@GetFilteredPickups()" Hover="true" Striped="true" Loading="@_loading" LoadingProgressColor="Color.Primary" Breakpoint="Breakpoint.Sm">
         <HeaderContent>
@@ -264,6 +348,7 @@
         </PagerContent>
     </MudTable>
 </MudPaper>
+}
 
 @if (_courierPerformance.Any())
 {
@@ -304,12 +389,14 @@
     private DateTime? _fromDate = DateTime.Today.AddDays(-7);
     private DateTime? _toDate = DateTime.Today;
     private PickupStatus? _statusFilter;
+    private long? _courierFilter;
     private Dictionary<PickupStatus, int> _statusCounts = new();
     private List<Employee> _courierEmployees = new();
     private CommitmentSummary _commitmentStats = new();
     private List<CourierPerformanceRow> _courierPerformance = new();
     private CommitmentFilterType _showCommitmentFilter = CommitmentFilterType.None;
     private System.Timers.Timer? _refreshTimer;
+    private Dictionary<string, bool> _expansionStates = new();
 
     protected override async Task OnInitializedAsync()
     {
@@ -433,26 +520,95 @@
 
     private List<PickupRequest> GetFilteredPickups()
     {
-        if (_showCommitmentFilter == CommitmentFilterType.None)
-            return _pickups;
+        var result = _pickups.AsEnumerable();
 
-        var committedPickupIds = _activeCommitments
-            .Where(c => c.Status == PickupCommitmentStatus.Active && c.ExpiresAt > DateTime.UtcNow)
-            .Select(c => c.PickupRequestId).ToHashSet();
-
-        var expiringSoonIds = _activeCommitments
-            .Where(c => c.Status == PickupCommitmentStatus.Active && 
-                        c.ExpiresAt > DateTime.UtcNow && 
-                        (c.ExpiresAt - DateTime.UtcNow).TotalMinutes <= 10)
-            .Select(c => c.PickupRequestId).ToHashSet();
-
-        return _showCommitmentFilter switch
+        if (_courierFilter.HasValue)
         {
-            CommitmentFilterType.Committed => _pickups.Where(p => committedPickupIds.Contains(p.Id)).ToList(),
-            CommitmentFilterType.ExpiringSoon => _pickups.Where(p => expiringSoonIds.Contains(p.Id)).ToList(),
-            CommitmentFilterType.Available => _pickups.Where(p => p.Status == PickupStatus.PickupRequest && !committedPickupIds.Contains(p.Id)).ToList(),
-            _ => _pickups
-        };
+            var courierPickupIds = _activeCommitments
+                .Where(c => c.CourierId == _courierFilter.Value && 
+                       (c.Status == PickupCommitmentStatus.Active || c.Status == PickupCommitmentStatus.Confirmed))
+                .Select(c => c.PickupRequestId).ToHashSet();
+            
+            result = result.Where(p => courierPickupIds.Contains(p.Id) || p.CourierId == _courierFilter.Value);
+        }
+
+        if (_showCommitmentFilter != CommitmentFilterType.None)
+        {
+            var committedPickupIds = _activeCommitments
+                .Where(c => c.Status == PickupCommitmentStatus.Active && c.ExpiresAt > DateTime.UtcNow)
+                .Select(c => c.PickupRequestId).ToHashSet();
+
+            var expiringSoonIds = _activeCommitments
+                .Where(c => c.Status == PickupCommitmentStatus.Active && 
+                            c.ExpiresAt > DateTime.UtcNow && 
+                            (c.ExpiresAt - DateTime.UtcNow).TotalMinutes <= 10)
+                .Select(c => c.PickupRequestId).ToHashSet();
+
+            result = _showCommitmentFilter switch
+            {
+                CommitmentFilterType.Committed => result.Where(p => committedPickupIds.Contains(p.Id)),
+                CommitmentFilterType.ExpiringSoon => result.Where(p => expiringSoonIds.Contains(p.Id)),
+                CommitmentFilterType.Available => result.Where(p => p.Status == PickupStatus.PickupRequest && !committedPickupIds.Contains(p.Id)),
+                _ => result
+            };
+        }
+
+        return result.ToList();
+    }
+
+    private IEnumerable<IGrouping<string, PickupRequest>> GetPickupsGroupedByCourier()
+    {
+        var pickups = GetFilteredPickups();
+        return pickups
+            .Select(p => new { 
+                Pickup = p, 
+                CourierName = GetCourierNameForPickup(p) 
+            })
+            .GroupBy(x => x.CourierName, x => x.Pickup)
+            .OrderBy(g => g.Key == "Unassigned" ? 1 : 0)
+            .ThenBy(g => g.Key);
+    }
+
+    private IEnumerable<IGrouping<string, PickupRequest>> GetCommittedPickupsGroupedByCourier()
+    {
+        var committedPickupIds = _activeCommitments
+            .Where(c => (c.Status == PickupCommitmentStatus.Active || c.Status == PickupCommitmentStatus.Confirmed) && c.ExpiresAt > DateTime.UtcNow)
+            .Select(c => c.PickupRequestId).ToHashSet();
+
+        var pickups = _pickups.Where(p => committedPickupIds.Contains(p.Id)).ToList();
+        return pickups
+            .Select(p => new { 
+                Pickup = p, 
+                CourierName = GetCommitmentCourierName(p.Id) 
+            })
+            .GroupBy(x => x.CourierName, x => x.Pickup)
+            .OrderBy(g => g.Key);
+    }
+
+    private string GetCommitmentCourierName(long pickupId)
+    {
+        var commitment = GetActiveCommitment(pickupId);
+        return commitment?.CourierName ?? "Unknown";
+    }
+
+    private string GetCourierNameForPickup(PickupRequest pickup)
+    {
+        var commitment = GetActiveCommitment(pickup.Id);
+        if (commitment != null)
+            return commitment.CourierName ?? "Unknown";
+        if (!string.IsNullOrEmpty(pickup.CourierName))
+            return pickup.CourierName;
+        return "Unassigned";
+    }
+
+    private bool IsExpanded(string key)
+    {
+        return _expansionStates.TryGetValue(key, out var value) ? value : true;
+    }
+
+    private void SetExpanded(string key, bool value)
+    {
+        _expansionStates[key] = value;
     }
 
     private string GetCommitmentFilterLabel() => _showCommitmentFilter switch
