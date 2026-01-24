@@ -101,6 +101,16 @@ The application is built on .NET 8 Blazor Server, utilizing a modular architectu
   - Services: BankReconciliationService, BankStatementImportService
   - UI: BankReconciliation.razor (list), ReconciliationWorkspace.razor (tabbed wizard), StartReconciliationDialog, ImportStatementDialog, ReconciliationAdjustmentDialog
   - Navigation: Accounts & Finance > General Ledger > Transactions > Bank Reconciliation
+- **Tax Management Module**: Configurable tax rates for VAT, GST, and other taxes including:
+  - Tax Rate Configuration: Code, Name, Description, Rate percentage with effective date ranges
+  - Default Tax Rate: One tax rate can be marked as default for automatic selection
+  - Account Linking: Link tax rates to Chart of Accounts for automatic posting
+  - Active/Inactive Management: Enable/disable tax rates without deletion
+  - Entities: TaxRate with AccountHead relationship
+  - UI: TaxManagement.razor with full CRUD operations
+  - Pre-seeded Rates: VAT 5% (default), Zero Rated 0%, Tax Exempt 0%
+  - Navigation: Accounts & Finance > General Ledger > Settings > Tax Setup
+  - SQL Schema: `sql/bank_tax_schema.sql` for deployment
 
 ## External Dependencies
 - **Database**: PostgreSQL
