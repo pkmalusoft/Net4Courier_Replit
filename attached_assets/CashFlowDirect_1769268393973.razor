@@ -1,0 +1,300 @@
+@page "/reports/cash-flow/direct"
+@layout MainLayout
+@using System.Net.Http.Json
+@using System.Text.Json
+@inject HttpClient Http
+@inject ISnackbar Snackbar
+@inject IAuthService AuthService
+
+<MudContainer MaxWidth="MaxWidth.Large" Class="mt-4">
+    <MudPaper Class="pa-4 mb-4">
+        <MudText Typo="Typo.h5" Class="mb-4">Cash Flow Statement - Direct Method</MudText>
+
+        <MudGrid>
+            <MudItem xs="12" sm="2">
+                <MudSelect T="int" Label="Year" @bind-Value="selectedYear" Variant="Variant.Outlined" Dense="true">
+                    @for (int y = DateTime.Now.Year; y >= DateTime.Now.Year - 10; y--)
+                    {
+                        <MudSelectItem Value="@y">@y</MudSelectItem>
+                    }
+                </MudSelect>
+            </MudItem>
+            <MudItem xs="12" sm="2">
+                <MudSelect T="int" Label="Period" @bind-Value="selectedMonth" Variant="Variant.Outlined" Dense="true">
+                    <MudSelectItem Value="0">Full Year</MudSelectItem>
+                    @for (int m = 1; m <= 12; m++)
+                    {
+                        var month = m;
+                        <MudSelectItem Value="@month">@(new DateTime(2000, month, 1).ToString("MMM"))</MudSelectItem>
+                    }
+                </MudSelect>
+            </MudItem>
+            <BranchDepartmentFilter @bind-SelectedBranchId="selectedBranchId" 
+                                    @bind-SelectedDepartmentId="selectedDepartmentId" 
+                                    IsLoading="isLoading" />
+            <MudItem xs="12" sm="4" Class="d-flex align-center gap-2">
+                <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="LoadReport" Disabled="isLoading">
+                    @if (isLoading)
+                    {
+                        <MudProgressCircular Size="MudBlazor.Size.Small" Indeterminate="true" Class="mr-2" />
+                    }
+                    Generate
+                </MudButton>
+                <MudButton Variant="Variant.Outlined" OnClick="ClearFilters">Clear</MudButton>
+            </MudItem>
+        </MudGrid>
+    </MudPaper>
+
+    @if (reportResult != null)
+    {
+        <MudPaper Class="pa-4">
+            <MudText Typo="Typo.subtitle1" Class="mb-4" Align="Align.Center">
+                <strong>Cash Flow Statement for the period @reportResult.PeriodStart.ToString("dd MMM yyyy") to @reportResult.PeriodEnd.ToString("dd MMM yyyy")</strong>
+            </MudText>
+
+            <MudPaper Class="pa-3 mb-4" Elevation="1" Style="background: var(--mud-palette-grey-lighten-4);">
+                <div class="d-flex justify-space-between">
+                    <MudText Typo="Typo.subtitle1">Opening Cash Balance</MudText>
+                    <MudText Typo="Typo.subtitle1"><strong>@FormatAmount(reportResult.OpeningCashBalance)</strong></MudText>
+                </div>
+            </MudPaper>
+
+            @RenderActivity("Cash Flow from Operating Activities", reportResult.OperatingActivities, "var(--mud-palette-success-lighten)")
+            @RenderActivity("Cash Flow from Investing Activities", reportResult.InvestingActivities, "var(--mud-palette-warning-lighten)")
+            @RenderActivity("Cash Flow from Financing Activities", reportResult.FinancingActivities, "var(--mud-palette-info-lighten)")
+
+            <MudDivider Class="my-4" />
+
+            <MudGrid>
+                <MudItem xs="12" md="6">
+                    <MudPaper Class="pa-3" Elevation="2" Style="@($"background: {(reportResult.NetChangeInCash >= 0 ? "var(--mud-palette-success-lighten)" : "var(--mud-palette-error-lighten)")};")">
+                        <div class="d-flex justify-space-between">
+                            <MudText Typo="Typo.h6"><strong>Net Change in Cash</strong></MudText>
+                            <MudText Typo="Typo.h6" Style="@GetAmountStyle(reportResult.NetChangeInCash)">
+                                <strong>@FormatAmount(reportResult.NetChangeInCash)</strong>
+                            </MudText>
+                        </div>
+                    </MudPaper>
+                </MudItem>
+                <MudItem xs="12" md="6">
+                    <MudPaper Class="pa-3" Elevation="2" Style="background: var(--mud-palette-primary-lighten);">
+                        <div class="d-flex justify-space-between">
+                            <MudText Typo="Typo.h6"><strong>Closing Cash Balance</strong></MudText>
+                            <MudText Typo="Typo.h6"><strong>@FormatAmount(reportResult.ClosingCashBalance)</strong></MudText>
+                        </div>
+                    </MudPaper>
+                </MudItem>
+            </MudGrid>
+        </MudPaper>
+    }
+    else if (!isLoading)
+    {
+        <MudPaper Class="pa-4">
+            <MudAlert Severity="Severity.Info">
+                Select parameters and click Generate to view the Direct Method Cash Flow Statement.
+            </MudAlert>
+        </MudPaper>
+    }
+</MudContainer>
+
+@code {
+    private int selectedYear = DateTime.Now.Year;
+    private int selectedMonth = 0;
+    private Guid? selectedBranchId;
+    private Guid? selectedDepartmentId;
+    private bool isLoading = false;
+    private CashFlowDirectResult? reportResult;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadReport();
+    }
+
+    private async Task LoadReport()
+    {
+        isLoading = true;
+        try
+        {
+            var request = CreateAuthenticatedRequest(HttpMethod.Post, "/api/cashflow/direct");
+
+            var requestBody = new { 
+                Year = selectedYear, 
+                Month = selectedMonth,
+                BranchId = selectedBranchId,
+                DepartmentId = selectedDepartmentId
+            };
+            request.Content = JsonContent.Create(requestBody);
+
+            var response = await Http.SendAsync(request);
+            if (response.IsSuccessStatusCode)
+            {
+                reportResult = await response.Content.ReadFromJsonAsync<CashFlowDirectResult>();
+            }
+            else
+            {
+                Snackbar.Add("Failed to load Cash Flow Statement", Severity.Error);
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private void ClearFilters()
+    {
+        selectedYear = DateTime.Now.Year;
+        selectedMonth = 0;
+        selectedBranchId = null;
+        selectedDepartmentId = null;
+        reportResult = null;
+    }
+
+    private RenderFragment RenderActivity(string title, CashFlowActivity activity, string bgColor) => __builder =>
+    {
+        <MudExpansionPanels Class="mb-3">
+            <MudExpansionPanel IsInitiallyExpanded="true">
+                <TitleContent>
+                    <div class="d-flex justify-space-between align-center" style="width: 100%;">
+                        <MudText Typo="Typo.subtitle1"><strong>@title</strong></MudText>
+                        <MudText Typo="Typo.subtitle1" Style="@GetAmountStyle(activity.NetCashFlow)">
+                            <strong>@FormatAmount(activity.NetCashFlow)</strong>
+                        </MudText>
+                    </div>
+                </TitleContent>
+                <ChildContent>
+                    @if (activity.Receipts.Any())
+                    {
+                        <MudText Typo="Typo.body2" Class="mb-2" Color="Color.Success"><strong>Cash Receipts</strong></MudText>
+                        <MudSimpleTable Dense="true" Class="mb-3" Style="background: var(--mud-palette-success-lighten);">
+                            <thead>
+                                <tr>
+                                    <th>Date</th>
+                                    <th>Voucher</th>
+                                    <th>Description</th>
+                                    <th>From Account</th>
+                                    <th style="text-align: right;">Amount</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var item in activity.Receipts)
+                                {
+                                    <tr>
+                                        <td>@item.Date.ToString("dd/MM/yyyy")</td>
+                                        <td>@item.VoucherNumber</td>
+                                        <td>@item.Description</td>
+                                        <td>@item.CounterpartAccount</td>
+                                        <td style="text-align: right;">@FormatAmount(item.Amount)</td>
+                                    </tr>
+                                }
+                                <tr style="font-weight: bold;">
+                                    <td colspan="4">Total Receipts</td>
+                                    <td style="text-align: right;">@FormatAmount(activity.TotalReceipts)</td>
+                                </tr>
+                            </tbody>
+                        </MudSimpleTable>
+                    }
+
+                    @if (activity.Payments.Any())
+                    {
+                        <MudText Typo="Typo.body2" Class="mb-2" Color="Color.Error"><strong>Cash Payments</strong></MudText>
+                        <MudSimpleTable Dense="true" Style="background: var(--mud-palette-error-lighten);">
+                            <thead>
+                                <tr>
+                                    <th>Date</th>
+                                    <th>Voucher</th>
+                                    <th>Description</th>
+                                    <th>To Account</th>
+                                    <th style="text-align: right;">Amount</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var item in activity.Payments)
+                                {
+                                    <tr>
+                                        <td>@item.Date.ToString("dd/MM/yyyy")</td>
+                                        <td>@item.VoucherNumber</td>
+                                        <td>@item.Description</td>
+                                        <td>@item.CounterpartAccount</td>
+                                        <td style="text-align: right;">@FormatAmount(item.Amount)</td>
+                                    </tr>
+                                }
+                                <tr style="font-weight: bold;">
+                                    <td colspan="4">Total Payments</td>
+                                    <td style="text-align: right;">@FormatAmount(activity.TotalPayments)</td>
+                                </tr>
+                            </tbody>
+                        </MudSimpleTable>
+                    }
+
+                    @if (!activity.Receipts.Any() && !activity.Payments.Any())
+                    {
+                        <MudText Typo="Typo.body2" Color="Color.Secondary">No transactions in this category</MudText>
+                    }
+                </ChildContent>
+            </MudExpansionPanel>
+        </MudExpansionPanels>
+    };
+
+    private string FormatAmount(decimal amount)
+    {
+        return amount.ToString("N2");
+    }
+
+    private string GetAmountStyle(decimal amount)
+    {
+        if (amount > 0) return "color: var(--mud-palette-success);";
+        if (amount < 0) return "color: var(--mud-palette-error);";
+        return "";
+    }
+
+    private HttpRequestMessage CreateAuthenticatedRequest(HttpMethod method, string uri)
+    {
+        var request = new HttpRequestMessage(method, uri);
+        var token = AuthService.GetAccessToken();
+        var tenantId = AuthService.GetTenantId();
+
+        if (!string.IsNullOrEmpty(token))
+            request.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
+        if (!string.IsNullOrEmpty(tenantId))
+            request.Headers.Add("X-Tenant-Id", tenantId);
+
+        return request;
+    }
+
+    private class CashFlowDirectResult
+    {
+        public string ReportType { get; set; } = "";
+        public DateTime PeriodStart { get; set; }
+        public DateTime PeriodEnd { get; set; }
+        public decimal OpeningCashBalance { get; set; }
+        public CashFlowActivity OperatingActivities { get; set; } = new();
+        public CashFlowActivity InvestingActivities { get; set; } = new();
+        public CashFlowActivity FinancingActivities { get; set; } = new();
+        public decimal NetChangeInCash { get; set; }
+        public decimal ClosingCashBalance { get; set; }
+    }
+
+    private class CashFlowActivity
+    {
+        public string ActivityType { get; set; } = "";
+        public List<CashFlowLineItem> Receipts { get; set; } = new();
+        public List<CashFlowLineItem> Payments { get; set; } = new();
+        public decimal TotalReceipts { get; set; }
+        public decimal TotalPayments { get; set; }
+        public decimal NetCashFlow { get; set; }
+    }
+
+    private class CashFlowLineItem
+    {
+        public DateTime Date { get; set; }
+        public string VoucherNumber { get; set; } = "";
+        public string Description { get; set; } = "";
+        public string CounterpartAccount { get; set; } = "";
+        public decimal Amount { get; set; }
+    }
+}
