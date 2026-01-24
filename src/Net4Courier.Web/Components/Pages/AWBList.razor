@@ -59,10 +59,14 @@
         </HeaderContent>
         <RowTemplate>
             <MudTd DataLabel="AWB No">
-                <MudLink Href="@($"/awb-entry/{context.Id}")">@context.AWBNo</MudLink>
-                @if (context.PickupRequestId.HasValue)
+                <div>
+                    <MudLink Href="@($"/awb-entry/{context.Id}")">@context.AWBNo</MudLink>
+                </div>
+                @if (context.PickupRequestId.HasValue && _pickupNoLookup.TryGetValue(context.PickupRequestId.Value, out var pickupNo))
                 {
-                    <MudText Typo="Typo.caption" Style="color: red;">PR-@context.PickupRequestId</MudText>
+                    <div>
+                        <MudText Typo="Typo.caption" Style="color: red;">@pickupNo</MudText>
+                    </div>
                 }
             </MudTd>
             <MudTd DataLabel="Date">@context.TransactionDate.ToString("dd/MM/yyyy")</MudTd>
@@ -94,6 +98,7 @@
 
 @code {
     private List<InscanMaster> _shipments = new();
+    private Dictionary<long, string> _pickupNoLookup = new();
     private bool _loading = true;
     private string _searchString = "";
     private DateTime? _fromDate = DateTime.Today;
@@ -144,6 +149,19 @@
         }
 
         _shipments = await query.OrderByDescending(i => i.TransactionDate).ThenByDescending(i => i.Id).Take(500).ToListAsync();
+        
+        var pickupIds = _shipments.Where(s => s.PickupRequestId.HasValue).Select(s => s.PickupRequestId!.Value).Distinct().ToList();
+        if (pickupIds.Any())
+        {
+            _pickupNoLookup = await DbContext.PickupRequests
+                .Where(p => pickupIds.Contains(p.Id))
+                .ToDictionaryAsync(p => p.Id, p => p.PickupNo);
+        }
+        else
+        {
+            _pickupNoLookup.Clear();
+        }
+        
         _loading = false;
     }
 
