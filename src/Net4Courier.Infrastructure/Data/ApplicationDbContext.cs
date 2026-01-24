@@ -33,6 +33,7 @@ public class ApplicationDbContext : DbContext
     
     public DbSet<InscanMaster> InscanMasters => Set<InscanMaster>();
     public DbSet<InscanMasterItem> InscanMasterItems => Set<InscanMasterItem>();
+    public DbSet<ShipmentDocument> ShipmentDocuments => Set<ShipmentDocument>();
     public DbSet<AWBTracking> AWBTrackings => Set<AWBTracking>();
     public DbSet<QuickInscanMaster> QuickInscanMasters => Set<QuickInscanMaster>();
     public DbSet<Manifest> Manifests => Set<Manifest>();
@@ -535,6 +536,18 @@ public class ApplicationDbContext : DbContext
             entity.HasKey(e => e.Id);
             entity.HasIndex(e => new { e.InscanId, e.EventDateTime });
             entity.HasOne(e => e.Inscan).WithMany(i => i.TrackingHistory).HasForeignKey(e => e.InscanId);
+        });
+
+        modelBuilder.Entity<ShipmentDocument>(entity =>
+        {
+            entity.ToTable("ShipmentDocuments");
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.DocumentType).HasMaxLength(100).IsRequired();
+            entity.Property(e => e.FileName).HasMaxLength(255).IsRequired();
+            entity.Property(e => e.ContentType).HasMaxLength(100).IsRequired();
+            entity.Property(e => e.Description).HasMaxLength(500);
+            entity.HasIndex(e => e.InscanMasterId);
+            entity.HasOne(e => e.InscanMaster).WithMany().HasForeignKey(e => e.InscanMasterId);
         });
 
         modelBuilder.Entity<QuickInscanMaster>(entity =>

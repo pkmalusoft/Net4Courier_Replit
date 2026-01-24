@@ -46,9 +46,10 @@ public enum ShipmentMode
 
 public enum DocumentType
 {
-    Document = 1,
-    Parcel = 2,
-    Cargo = 3
+    Letter = 1,
+    Document = 2,
+    ParcelUpto30Kg = 3,
+    ParcelAbove30Kg = 4
 }
 
 public enum ParcelType

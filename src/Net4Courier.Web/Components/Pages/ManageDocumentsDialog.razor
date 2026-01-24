@@ -1,0 +1,242 @@
+@using MudBlazor
+@using Microsoft.EntityFrameworkCore
+@using Microsoft.AspNetCore.Components.Forms
+@using Net4Courier.Infrastructure.Data
+@using Net4Courier.Operations.Entities
+@inject ApplicationDbContext DbContext
+@inject ISnackbar Snackbar
+
+<MudDialog>
+    <TitleContent>
+        <MudText Typo="Typo.h6">
+            <MudIcon Icon="@Icons.Material.Filled.Folder" Class="mr-2" />
+            Manage Documents - @ShipmentAWB
+        </MudText>
+    </TitleContent>
+    <DialogContent>
+        <MudGrid>
+            <MudItem xs="12">
+                <MudText Typo="Typo.subtitle2" Class="mb-2">Upload New Document</MudText>
+            </MudItem>
+            
+            <MudItem xs="12" md="4">
+                <MudSelect T="string" @bind-Value="_selectedDocumentType" Label="Document Type" 
+                           Variant="Variant.Outlined" Margin="Margin.Dense" Required="true">
+                    <MudSelectItem Value="@("Commercial Invoice")">Commercial Invoice</MudSelectItem>
+                    <MudSelectItem Value="@("Packing List")">Packing List</MudSelectItem>
+                    <MudSelectItem Value="@("Bill of Lading")">Bill of Lading</MudSelectItem>
+                    <MudSelectItem Value="@("Customs Declaration")">Customs Declaration</MudSelectItem>
+                    <MudSelectItem Value="@("Certificate of Origin")">Certificate of Origin</MudSelectItem>
+                    <MudSelectItem Value="@("Proof of Delivery")">Proof of Delivery</MudSelectItem>
+                    <MudSelectItem Value="@("ID Proof")">ID Proof</MudSelectItem>
+                    <MudSelectItem Value="@("Other")">Other</MudSelectItem>
+                </MudSelect>
+            </MudItem>
+            
+            <MudItem xs="12" md="5">
+                <MudFileUpload T="IBrowserFile" FilesChanged="OnFileSelected" Accept=".pdf,.jpg,.jpeg,.png,.doc,.docx">
+                    <ActivatorContent>
+                        <MudButton Variant="Variant.Outlined" Color="Color.Primary" 
+                                   StartIcon="@Icons.Material.Filled.CloudUpload" FullWidth="true">
+                            @(_selectedFile != null ? _selectedFile.Name : "Select File")
+                        </MudButton>
+                    </ActivatorContent>
+                </MudFileUpload>
+            </MudItem>
+            
+            <MudItem xs="12" md="3">
+                <MudButton Variant="Variant.Filled" Color="Color.Primary" 
+                           OnClick="UploadDocument" Disabled="@(_uploading || _selectedFile == null || string.IsNullOrEmpty(_selectedDocumentType))"
+                           FullWidth="true" StartIcon="@Icons.Material.Filled.Upload">
+                    @if (_uploading)
+                    {
+                        <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" />
+                    }
+                    Upload
+                </MudButton>
+            </MudItem>
+            
+            <MudItem xs="12">
+                <MudTextField @bind-Value="_description" Label="Description (Optional)" 
+                              Variant="Variant.Outlined" Margin="Margin.Dense" />
+            </MudItem>
+        </MudGrid>
+        
+        <MudDivider Class="my-4" />
+        
+        <MudText Typo="Typo.subtitle2" Class="mb-2">Uploaded Documents</MudText>
+        
+        @if (_loading)
+        {
+            <MudProgressLinear Indeterminate="true" Color="Color.Primary" />
+        }
+        else if (!_documents.Any())
+        {
+            <MudAlert Severity="Severity.Info" Variant="Variant.Text">
+                No documents uploaded yet for this shipment.
+            </MudAlert>
+        }
+        else
+        {
+            <MudTable Items="@_documents" Hover="true" Dense="true" Striped="true">
+                <HeaderContent>
+                    <MudTh>Type</MudTh>
+                    <MudTh>File Name</MudTh>
+                    <MudTh>Size</MudTh>
+                    <MudTh>Uploaded</MudTh>
+                    <MudTh Style="width: 100px;">Actions</MudTh>
+                </HeaderContent>
+                <RowTemplate>
+                    <MudTd DataLabel="Type">
+                        <MudChip T="string" Size="Size.Small" Color="Color.Primary" Variant="Variant.Text">
+                            @context.DocumentType
+                        </MudChip>
+                    </MudTd>
+                    <MudTd DataLabel="File Name">@context.FileName</MudTd>
+                    <MudTd DataLabel="Size">@FormatFileSize(context.FileSize)</MudTd>
+                    <MudTd DataLabel="Uploaded">@context.CreatedAt.ToString("dd/MM/yyyy HH:mm")</MudTd>
+                    <MudTd>
+                        <MudIconButton Icon="@Icons.Material.Filled.Download" Size="Size.Small" 
+                                       Color="Color.Primary" OnClick="@(() => DownloadDocument(context))" Title="Download" />
+                        <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" 
+                                       Color="Color.Error" OnClick="@(() => DeleteDocument(context))" Title="Delete" />
+                    </MudTd>
+                </RowTemplate>
+            </MudTable>
+        }
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Close">Close</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] private MudDialogInstance MudDialog { get; set; } = null!;
+    [Parameter] public long ShipmentId { get; set; }
+    [Parameter] public string ShipmentAWB { get; set; } = "";
+    [Inject] private IJSRuntime JS { get; set; } = null!;
+    
+    private List<ShipmentDocument> _documents = new();
+    private bool _loading = true;
+    private bool _uploading = false;
+    private IBrowserFile? _selectedFile;
+    private string _selectedDocumentType = "";
+    private string _description = "";
+    
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadDocuments();
+    }
+    
+    private async Task LoadDocuments()
+    {
+        _loading = true;
+        try
+        {
+            _documents = await DbContext.ShipmentDocuments
+                .Where(d => d.InscanMasterId == ShipmentId && !d.IsDeleted)
+                .OrderByDescending(d => d.CreatedAt)
+                .ToListAsync();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error loading documents: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+    
+    private void OnFileSelected(IBrowserFile file)
+    {
+        _selectedFile = file;
+    }
+    
+    private async Task UploadDocument()
+    {
+        if (_selectedFile == null || string.IsNullOrEmpty(_selectedDocumentType))
+            return;
+            
+        _uploading = true;
+        try
+        {
+            const long maxFileSize = 10 * 1024 * 1024;
+            if (_selectedFile.Size > maxFileSize)
+            {
+                Snackbar.Add("File size exceeds 10MB limit", Severity.Warning);
+                return;
+            }
+            
+            using var stream = _selectedFile.OpenReadStream(maxFileSize);
+            using var ms = new MemoryStream();
+            await stream.CopyToAsync(ms);
+            
+            var document = new ShipmentDocument
+            {
+                InscanMasterId = ShipmentId,
+                DocumentType = _selectedDocumentType,
+                FileName = _selectedFile.Name,
+                ContentType = _selectedFile.ContentType,
+                FileData = ms.ToArray(),
+                FileSize = _selectedFile.Size,
+                Description = _description,
+                CreatedAt = DateTime.UtcNow
+            };
+            
+            DbContext.ShipmentDocuments.Add(document);
+            await DbContext.SaveChangesAsync();
+            
+            Snackbar.Add("Document uploaded successfully", Severity.Success);
+            
+            _selectedFile = null;
+            _selectedDocumentType = "";
+            _description = "";
+            
+            await LoadDocuments();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error uploading document: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _uploading = false;
+        }
+    }
+    
+    private async Task DownloadDocument(ShipmentDocument document)
+    {
+        try
+        {
+            var base64 = Convert.ToBase64String(document.FileData);
+            await JS.InvokeVoidAsync("downloadFile", document.FileName, base64, document.ContentType);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error downloading document: {ex.Message}", Severity.Error);
+        }
+    }
+    
+    private async Task DeleteDocument(ShipmentDocument document)
+    {
+        document.IsDeleted = true;
+        document.ModifiedAt = DateTime.UtcNow;
+        await DbContext.SaveChangesAsync();
+        
+        Snackbar.Add("Document deleted", Severity.Success);
+        await LoadDocuments();
+    }
+    
+    private string FormatFileSize(long bytes)
+    {
+        if (bytes < 1024) return $"{bytes} B";
+        if (bytes < 1024 * 1024) return $"{bytes / 1024.0:F1} KB";
+        return $"{bytes / (1024.0 * 1024.0):F1} MB";
+    }
+    
+    private void Close()
+    {
+        MudDialog.Close();
+    }
+}
