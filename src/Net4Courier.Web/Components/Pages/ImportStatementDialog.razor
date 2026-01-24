@@ -1,0 +1,266 @@
+@inject ApplicationDbContext DbContext
+@inject ISnackbar Snackbar
+@inject IBankStatementImportService ImportService
+@using Microsoft.EntityFrameworkCore
+@using Net4Courier.Infrastructure.Data
+@using Net4Courier.Finance.Entities
+@using Net4Courier.Web.Services
+@using System.Text.Json
+
+<MudDialog>
+    <TitleContent>
+        <MudText Typo="Typo.h6">
+            <MudIcon Icon="@Icons.Material.Filled.Upload" Class="mr-2" />
+            Import Bank Statement
+        </MudText>
+    </TitleContent>
+    <DialogContent>
+        @if (_step == 1)
+        {
+            <MudStack Spacing="3">
+                <MudFileUpload T="IBrowserFile" FilesChanged="OnFileSelected" Accept=".csv">
+                    <ActivatorContent>
+                        <MudPaper Outlined="true" Class="pa-8 d-flex flex-column align-center justify-center" Style="border-style: dashed; cursor: pointer;">
+                            <MudIcon Icon="@Icons.Material.Filled.CloudUpload" Size="Size.Large" Color="Color.Primary" />
+                            <MudText Class="mt-2">Click to select CSV file or drag and drop</MudText>
+                            @if (!string.IsNullOrEmpty(_fileName))
+                            {
+                                <MudChip T="string" Color="Color.Primary" Class="mt-2">@_fileName</MudChip>
+                            }
+                        </MudPaper>
+                    </ActivatorContent>
+                </MudFileUpload>
+
+                @if (_previewHeaders.Any())
+                {
+                    <MudText Typo="Typo.subtitle2">Map Columns</MudText>
+                    <MudAlert Severity="Severity.Info" Dense="true">
+                        Map your CSV columns to the corresponding statement fields. At minimum, map Date, Description, and Debit/Credit.
+                    </MudAlert>
+                    
+                    <MudGrid>
+                        <MudItem xs="6">
+                            <MudSelect T="string" @bind-Value="_columnMapping.TransactionDate" Label="Transaction Date *" Variant="Variant.Outlined" Dense="true">
+                                <MudSelectItem Value="@string.Empty">-- Select --</MudSelectItem>
+                                @foreach (var h in _previewHeaders)
+                                {
+                                    <MudSelectItem Value="@h">@h</MudSelectItem>
+                                }
+                            </MudSelect>
+                        </MudItem>
+                        <MudItem xs="6">
+                            <MudSelect T="string" @bind-Value="_columnMapping.ValueDate" Label="Value Date" Variant="Variant.Outlined" Dense="true">
+                                <MudSelectItem Value="@string.Empty">-- Select --</MudSelectItem>
+                                @foreach (var h in _previewHeaders)
+                                {
+                                    <MudSelectItem Value="@h">@h</MudSelectItem>
+                                }
+                            </MudSelect>
+                        </MudItem>
+                        <MudItem xs="12">
+                            <MudSelect T="string" @bind-Value="_columnMapping.Description" Label="Description *" Variant="Variant.Outlined" Dense="true">
+                                <MudSelectItem Value="@string.Empty">-- Select --</MudSelectItem>
+                                @foreach (var h in _previewHeaders)
+                                {
+                                    <MudSelectItem Value="@h">@h</MudSelectItem>
+                                }
+                            </MudSelect>
+                        </MudItem>
+                        <MudItem xs="6">
+                            <MudSelect T="string" @bind-Value="_columnMapping.DebitAmount" Label="Debit Amount *" Variant="Variant.Outlined" Dense="true">
+                                <MudSelectItem Value="@string.Empty">-- Select --</MudSelectItem>
+                                @foreach (var h in _previewHeaders)
+                                {
+                                    <MudSelectItem Value="@h">@h</MudSelectItem>
+                                }
+                            </MudSelect>
+                        </MudItem>
+                        <MudItem xs="6">
+                            <MudSelect T="string" @bind-Value="_columnMapping.CreditAmount" Label="Credit Amount *" Variant="Variant.Outlined" Dense="true">
+                                <MudSelectItem Value="@string.Empty">-- Select --</MudSelectItem>
+                                @foreach (var h in _previewHeaders)
+                                {
+                                    <MudSelectItem Value="@h">@h</MudSelectItem>
+                                }
+                            </MudSelect>
+                        </MudItem>
+                        <MudItem xs="6">
+                            <MudSelect T="string" @bind-Value="_columnMapping.Balance" Label="Balance" Variant="Variant.Outlined" Dense="true">
+                                <MudSelectItem Value="@string.Empty">-- Select --</MudSelectItem>
+                                @foreach (var h in _previewHeaders)
+                                {
+                                    <MudSelectItem Value="@h">@h</MudSelectItem>
+                                }
+                            </MudSelect>
+                        </MudItem>
+                        <MudItem xs="6">
+                            <MudSelect T="string" @bind-Value="_columnMapping.ChequeNumber" Label="Cheque Number" Variant="Variant.Outlined" Dense="true">
+                                <MudSelectItem Value="@string.Empty">-- Select --</MudSelectItem>
+                                @foreach (var h in _previewHeaders)
+                                {
+                                    <MudSelectItem Value="@h">@h</MudSelectItem>
+                                }
+                            </MudSelect>
+                        </MudItem>
+                        <MudItem xs="6">
+                            <MudSelect T="string" @bind-Value="_columnMapping.ReferenceNumber" Label="Reference Number" Variant="Variant.Outlined" Dense="true">
+                                <MudSelectItem Value="@string.Empty">-- Select --</MudSelectItem>
+                                @foreach (var h in _previewHeaders)
+                                {
+                                    <MudSelectItem Value="@h">@h</MudSelectItem>
+                                }
+                            </MudSelect>
+                        </MudItem>
+                    </MudGrid>
+                }
+            </MudStack>
+        }
+        else if (_step == 2)
+        {
+            <MudStack Spacing="3">
+                <MudAlert Severity="Severity.Success">
+                    Successfully imported @_importedCount lines from @_fileName
+                </MudAlert>
+            </MudStack>
+        }
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Cancel">@(_step == 2 ? "Close" : "Cancel")</MudButton>
+        @if (_step == 1 && _previewHeaders.Any())
+        {
+            <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="Import" Disabled="@(!CanImport || _isImporting)">
+                @if (_isImporting)
+                {
+                    <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" />
+                }
+                Import Statement
+            </MudButton>
+        }
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter]
+    private MudDialogInstance MudDialog { get; set; } = null!;
+
+    [Parameter]
+    public long ReconciliationId { get; set; }
+
+    private int _step = 1;
+    private string _fileName = string.Empty;
+    private string _fileContent = string.Empty;
+    private List<string> _previewHeaders = new();
+    private ColumnMappingModel _columnMapping = new();
+    private bool _isImporting = false;
+    private int _importedCount = 0;
+
+    private bool CanImport => 
+        !string.IsNullOrEmpty(_columnMapping.TransactionDate) &&
+        !string.IsNullOrEmpty(_columnMapping.Description) &&
+        !string.IsNullOrEmpty(_columnMapping.DebitAmount) &&
+        !string.IsNullOrEmpty(_columnMapping.CreditAmount);
+
+    private async Task OnFileSelected(IBrowserFile file)
+    {
+        if (file == null) return;
+
+        _fileName = file.Name;
+        
+        using var stream = file.OpenReadStream(maxAllowedSize: 10 * 1024 * 1024);
+        using var reader = new System.IO.StreamReader(stream);
+        _fileContent = await reader.ReadToEndAsync();
+
+        var lines = _fileContent.Split('\n', StringSplitOptions.RemoveEmptyEntries);
+        if (lines.Length > 0)
+        {
+            _previewHeaders = lines[0].Split(',').Select(h => h.Trim().Trim('"')).ToList();
+        }
+    }
+
+    private async Task Import()
+    {
+        if (!CanImport || string.IsNullOrEmpty(_fileContent)) return;
+
+        _isImporting = true;
+        try
+        {
+            var mapping = new Dictionary<string, string>
+            {
+                ["TransactionDate"] = _columnMapping.TransactionDate,
+                ["ValueDate"] = _columnMapping.ValueDate ?? "",
+                ["Description"] = _columnMapping.Description,
+                ["DebitAmount"] = _columnMapping.DebitAmount,
+                ["CreditAmount"] = _columnMapping.CreditAmount,
+                ["Balance"] = _columnMapping.Balance ?? "",
+                ["ChequeNumber"] = _columnMapping.ChequeNumber ?? "",
+                ["ReferenceNumber"] = _columnMapping.ReferenceNumber ?? ""
+            };
+
+            var import = new BankStatementImport
+            {
+                BankReconciliationId = ReconciliationId,
+                FileName = _fileName,
+                Format = ImportFormat.CSV,
+                ImportedAt = DateTime.UtcNow,
+                ImportedByUserId = 1,
+                ColumnMapping = JsonSerializer.Serialize(mapping)
+            };
+
+            DbContext.BankStatementImports.Add(import);
+            await DbContext.SaveChangesAsync();
+
+            var (lines, fileHash) = await ImportService.ParseCsvStatement(_fileContent, mapping, import.Id);
+
+            var existingHash = await DbContext.BankStatementImports
+                .AnyAsync(i => i.FileHash == fileHash && i.Id != import.Id);
+
+            if (existingHash)
+            {
+                DbContext.BankStatementImports.Remove(import);
+                await DbContext.SaveChangesAsync();
+                Snackbar.Add("This statement has already been imported", Severity.Warning);
+                return;
+            }
+
+            import.FileHash = fileHash;
+            import.TotalLines = lines.Count;
+            import.ImportedLines = lines.Count;
+            import.SkippedLines = 0;
+
+            DbContext.BankStatementLines.AddRange(lines);
+            await DbContext.SaveChangesAsync();
+
+            _importedCount = lines.Count;
+            _step = 2;
+            Snackbar.Add($"Imported {lines.Count} statement lines", Severity.Success);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Import failed: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _isImporting = false;
+        }
+    }
+
+    private void Cancel()
+    {
+        if (_step == 2)
+            MudDialog.Close(DialogResult.Ok(true));
+        else
+            MudDialog.Cancel();
+    }
+
+    private class ColumnMappingModel
+    {
+        public string TransactionDate { get; set; } = "";
+        public string? ValueDate { get; set; }
+        public string Description { get; set; } = "";
+        public string DebitAmount { get; set; } = "";
+        public string CreditAmount { get; set; } = "";
+        public string? Balance { get; set; }
+        public string? ChequeNumber { get; set; }
+        public string? ReferenceNumber { get; set; }
+    }
+}

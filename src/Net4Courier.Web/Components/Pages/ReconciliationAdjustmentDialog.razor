@@ -1,0 +1,103 @@
+@inject ApplicationDbContext DbContext
+@inject ISnackbar Snackbar
+@using Microsoft.EntityFrameworkCore
+@using Net4Courier.Infrastructure.Data
+@using Net4Courier.Finance.Entities
+
+<MudDialog>
+    <TitleContent>
+        <MudText Typo="Typo.h6">
+            <MudIcon Icon="@Icons.Material.Filled.Edit" Class="mr-2" />
+            Add Reconciliation Adjustment
+        </MudText>
+    </TitleContent>
+    <DialogContent>
+        <MudGrid>
+            <MudItem xs="12">
+                <MudSelect T="ReconciliationAdjustmentType" @bind-Value="_adjustmentType" Label="Adjustment Type"
+                           Variant="Variant.Outlined" Required="true">
+                    <MudSelectItem Value="ReconciliationAdjustmentType.BankFee">Bank Fee</MudSelectItem>
+                    <MudSelectItem Value="ReconciliationAdjustmentType.BankInterest">Bank Interest</MudSelectItem>
+                    <MudSelectItem Value="ReconciliationAdjustmentType.BankCharge">Bank Charge</MudSelectItem>
+                    <MudSelectItem Value="ReconciliationAdjustmentType.UnrecordedDeposit">Unrecorded Deposit</MudSelectItem>
+                    <MudSelectItem Value="ReconciliationAdjustmentType.UnrecordedWithdrawal">Unrecorded Withdrawal</MudSelectItem>
+                    <MudSelectItem Value="ReconciliationAdjustmentType.Error">Error Correction</MudSelectItem>
+                    <MudSelectItem Value="ReconciliationAdjustmentType.Other">Other</MudSelectItem>
+                </MudSelect>
+            </MudItem>
+            <MudItem xs="12">
+                <MudTextField @bind-Value="_description" Label="Description" Variant="Variant.Outlined" Required="true" />
+            </MudItem>
+            <MudItem xs="12" sm="6">
+                <MudNumericField T="decimal" @bind-Value="_amount" Label="Amount" Variant="Variant.Outlined" Format="N2" Required="true" />
+            </MudItem>
+            <MudItem xs="12" sm="6">
+                <MudDatePicker @bind-Date="_adjustmentDate" Label="Adjustment Date" Variant="Variant.Outlined" DateFormat="dd-MMM-yyyy" />
+            </MudItem>
+            <MudItem xs="12">
+                <MudTextField @bind-Value="_notes" Label="Notes" Variant="Variant.Outlined" Lines="2" />
+            </MudItem>
+            <MudItem xs="12">
+                <MudAlert Severity="Severity.Info" Dense="true">
+                    Adjustments like bank fees and interest can be posted to create corresponding journal entries.
+                </MudAlert>
+            </MudItem>
+        </MudGrid>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Cancel">Cancel</MudButton>
+        <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="Save" Disabled="@(!CanSave)">
+            Add Adjustment
+        </MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter]
+    private MudDialogInstance MudDialog { get; set; } = null!;
+
+    [Parameter]
+    public long ReconciliationId { get; set; }
+
+    private ReconciliationAdjustmentType _adjustmentType = ReconciliationAdjustmentType.BankFee;
+    private string _description = string.Empty;
+    private decimal _amount;
+    private DateTime? _adjustmentDate = DateTime.Today;
+    private string? _notes;
+
+    private bool CanSave => !string.IsNullOrWhiteSpace(_description) && _amount != 0;
+
+    private async Task Save()
+    {
+        if (!CanSave) return;
+
+        try
+        {
+            var adjustment = new ReconciliationAdjustment
+            {
+                BankReconciliationId = ReconciliationId,
+                AdjustmentType = _adjustmentType,
+                Description = _description,
+                Amount = _amount,
+                AdjustmentDate = _adjustmentDate ?? DateTime.Today,
+                Notes = _notes,
+                IsPosted = false
+            };
+
+            DbContext.ReconciliationAdjustments.Add(adjustment);
+            await DbContext.SaveChangesAsync();
+
+            Snackbar.Add("Adjustment added successfully", Severity.Success);
+            MudDialog.Close(DialogResult.Ok(true));
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error adding adjustment: {ex.Message}", Severity.Error);
+        }
+    }
+
+    private void Cancel()
+    {
+        MudDialog.Cancel();
+    }
+}

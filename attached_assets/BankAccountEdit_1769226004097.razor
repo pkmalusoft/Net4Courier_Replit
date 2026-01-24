@@ -1,0 +1,322 @@
+@page "/bank-accounts/new"
+@page "/bank-accounts/edit/{Id:guid}"
+@layout MainLayout
+@using Web.Models
+@using Web.Services
+@inject HttpClient Http
+@inject IAuthService AuthService
+@inject ISnackbar Snackbar
+@inject NavigationManager Navigation
+
+<MudContainer MaxWidth="MaxWidth.Large" Class="mt-4">
+    <MudText Typo="Typo.h4" Class="mb-4">@(Id.HasValue ? "Edit" : "New") Bank Account</MudText>
+
+    <MudPaper Class="pa-6" Elevation="2">
+        <MudForm @ref="form" @bind-IsValid="@formIsValid">
+            <MudGrid>
+                <MudItem xs="12" md="6">
+                    <MudTextField @bind-Value="bankAccount.AccountNumber" 
+                                Label="Account Number" 
+                                Required="true"
+                                Immediate="true"
+                                Variant="Variant.Outlined"
+                                RequiredError="Account number is required"
+                                MaxLength="50" />
+                </MudItem>
+                <MudItem xs="12" md="6">
+                    <MudTextField @bind-Value="bankAccount.AccountName" 
+                                Label="Account Name" 
+                                Required="true"
+                                Immediate="true"
+                                Variant="Variant.Outlined"
+                                RequiredError="Account name is required"
+                                MaxLength="200" />
+                </MudItem>
+
+                <MudItem xs="12" md="6">
+                    <MudTextField @bind-Value="bankAccount.BankName" 
+                                Label="Bank Name" 
+                                Required="true"
+                                Immediate="true"
+                                Variant="Variant.Outlined"
+                                RequiredError="Bank name is required"
+                                MaxLength="100" />
+                </MudItem>
+                <MudItem xs="12" md="6">
+                    <MudTextField @bind-Value="bankAccount.BranchName" 
+                                Label="Branch Name" 
+                                Variant="Variant.Outlined"
+                                MaxLength="100" />
+                </MudItem>
+
+                <MudItem xs="12" md="6">
+                    <MudTextField @bind-Value="bankAccount.SwiftCode" 
+                                Label="SWIFT Code" 
+                                Variant="Variant.Outlined"
+                                MaxLength="20" />
+                </MudItem>
+                <MudItem xs="12" md="6">
+                    <MudTextField @bind-Value="bankAccount.IbanNumber" 
+                                Label="IBAN Number" 
+                                Variant="Variant.Outlined"
+                                MaxLength="50" />
+                </MudItem>
+
+                <MudItem xs="12" md="6">
+                    <MudSelect @bind-Value="bankAccount.ChartOfAccountId" 
+                             Label="Chart of Account" 
+                             Required="true"
+                             Variant="Variant.Outlined"
+                             T="Guid"
+                             RequiredError="Chart of Account is required">
+                        @foreach (var account in chartOfAccounts)
+                        {
+                            <MudSelectItem Value="@account.Id">@account.AccountCode - @account.AccountName</MudSelectItem>
+                        }
+                    </MudSelect>
+                </MudItem>
+                <MudItem xs="12" md="6">
+                    <MudSelect @bind-Value="bankAccount.CurrencyId" 
+                             Label="Currency" 
+                             Variant="Variant.Outlined"
+                             T="Guid?"
+                             Clearable="true">
+                        @foreach (var currency in currencies)
+                        {
+                            <MudSelectItem Value="@((Guid?)currency.Id)">@currency.Code - @currency.Name</MudSelectItem>
+                        }
+                    </MudSelect>
+                </MudItem>
+
+                <MudItem xs="12" md="6">
+                    <MudNumericField @bind-Value="bankAccount.OpeningBalance" 
+                                   Label="Opening Balance" 
+                                   Variant="Variant.Outlined"
+                                   Format="N2" />
+                </MudItem>
+                <MudItem xs="12" md="6">
+                    <MudDatePicker @bind-Date="openingBalanceDate" 
+                                 Label="Opening Balance Date" 
+                                 Variant="Variant.Outlined" />
+                </MudItem>
+
+                <MudItem xs="12">
+                    <MudTextField @bind-Value="bankAccount.Notes" 
+                                Label="Notes" 
+                                Variant="Variant.Outlined"
+                                Lines="3"
+                                MaxLength="500" />
+                </MudItem>
+
+                <MudItem xs="12">
+                    <MudCheckBox @bind-Value="bankAccount.IsActive" Label="Active" Color="Color.Primary" />
+                </MudItem>
+            </MudGrid>
+
+            @if (!string.IsNullOrEmpty(errorMessage))
+            {
+                <MudAlert Severity="Severity.Error" Class="mt-4">@errorMessage</MudAlert>
+            }
+
+            <MudDivider Class="my-6" />
+
+            <MudGrid>
+                <MudItem xs="12" sm="6" md="3">
+                    <MudButton Variant="Variant.Filled" 
+                              Color="Color.Primary" 
+                              FullWidth="true" 
+                              OnClick="Save" 
+                              Disabled="@(!formIsValid || isLoading)">
+                        Save
+                    </MudButton>
+                </MudItem>
+                <MudItem xs="12" sm="6" md="3">
+                    <MudButton Variant="Variant.Outlined" 
+                              Color="Color.Secondary" 
+                              FullWidth="true" 
+                              OnClick="Cancel" 
+                              Disabled="isLoading">
+                        Cancel
+                    </MudButton>
+                </MudItem>
+            </MudGrid>
+        </MudForm>
+    </MudPaper>
+</MudContainer>
+
+@code {
+    [Parameter]
+    public Guid? Id { get; set; }
+
+    private MudForm? form;
+    private bool formIsValid;
+    private BankAccountModel bankAccount = new();
+    private List<ChartOfAccountModel> chartOfAccounts = new();
+    private List<CurrencyModel> currencies = new();
+    private string errorMessage = "";
+    private bool isLoading = false;
+    private bool dataLoaded = false;
+
+    private DateTime? openingBalanceDate
+    {
+        get => bankAccount.OpeningBalanceDate;
+        set => bankAccount.OpeningBalanceDate = value ?? DateTime.UtcNow.Date;
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            var tenantId = AuthService.GetTenantId();
+            Http.DefaultRequestHeaders.Remove("X-Tenant-Id");
+            Http.DefaultRequestHeaders.Add("X-Tenant-Id", tenantId);
+
+            var accountsTask = Http.GetFromJsonAsync<List<ChartOfAccountModel>>("api/ChartOfAccount");
+            var currenciesTask = Http.GetFromJsonAsync<List<CurrencyModel>>("api/Currency");
+            
+            await Task.WhenAll(accountsTask, currenciesTask);
+            
+            chartOfAccounts = accountsTask.Result?.Where(a => a.IsActive).ToList() ?? new List<ChartOfAccountModel>();
+            currencies = currenciesTask.Result?.Where(c => c.IsActive).ToList() ?? new List<CurrencyModel>();
+
+            if (Id.HasValue)
+            {
+                var response = await Http.GetFromJsonAsync<BankAccountModel>($"api/BankAccount/{Id.Value}");
+                if (response != null)
+                {
+                    bankAccount = response;
+                }
+            }
+            else
+            {
+                bankAccount.OpeningBalanceDate = DateTime.UtcNow.Date;
+                bankAccount.IsActive = true;
+            }
+            dataLoaded = true;
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Failed to load data: {ex.Message}";
+            Snackbar.Add(errorMessage, Severity.Error);
+        }
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (dataLoaded && form != null)
+        {
+            dataLoaded = false;
+            await form.Validate();
+            StateHasChanged();
+        }
+    }
+
+    private async Task Save()
+    {
+        // Validate form on save click to ensure all fields are checked
+        if (form != null)
+        {
+            await form.Validate();
+        }
+        
+        if (!formIsValid)
+        {
+            Snackbar.Add("Please fill all required fields correctly", Severity.Warning);
+            return;
+        }
+
+        if (bankAccount.ChartOfAccountId == Guid.Empty)
+        {
+            Snackbar.Add("Please select a Chart of Account", Severity.Warning);
+            return;
+        }
+
+        errorMessage = "";
+        isLoading = true;
+
+        try
+        {
+            var tenantId = AuthService.GetTenantId();
+            Http.DefaultRequestHeaders.Remove("X-Tenant-Id");
+            Http.DefaultRequestHeaders.Add("X-Tenant-Id", tenantId);
+
+            if (Id.HasValue)
+            {
+                var response = await Http.PutAsJsonAsync($"api/BankAccount/{Id.Value}", bankAccount);
+                if (response.IsSuccessStatusCode)
+                {
+                    Snackbar.Add("Bank account updated successfully", Severity.Success);
+                    Navigation.NavigateTo("/bank-accounts");
+                }
+                else
+                {
+                    var error = await response.Content.ReadAsStringAsync();
+                    errorMessage = $"Error: {error}";
+                    Snackbar.Add(errorMessage, Severity.Error);
+                }
+            }
+            else
+            {
+                var response = await Http.PostAsJsonAsync("api/BankAccount", bankAccount);
+                if (response.IsSuccessStatusCode)
+                {
+                    Snackbar.Add("Bank account created successfully", Severity.Success);
+                    Navigation.NavigateTo("/bank-accounts");
+                }
+                else
+                {
+                    var error = await response.Content.ReadAsStringAsync();
+                    errorMessage = $"Error: {error}";
+                    Snackbar.Add(errorMessage, Severity.Error);
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Error: {ex.Message}";
+            Snackbar.Add(errorMessage, Severity.Error);
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private void Cancel()
+    {
+        Navigation.NavigateTo("/bank-accounts");
+    }
+
+    public class BankAccountModel
+    {
+        public Guid Id { get; set; }
+        public string AccountNumber { get; set; } = string.Empty;
+        public string AccountName { get; set; } = string.Empty;
+        public string BankName { get; set; } = string.Empty;
+        public string? BranchName { get; set; }
+        public string? SwiftCode { get; set; }
+        public string? IbanNumber { get; set; }
+        public Guid ChartOfAccountId { get; set; }
+        public Guid? CurrencyId { get; set; }
+        public decimal OpeningBalance { get; set; }
+        public DateTime OpeningBalanceDate { get; set; } = DateTime.UtcNow.Date;
+        public bool IsActive { get; set; } = true;
+        public string? Notes { get; set; }
+    }
+
+    public class ChartOfAccountModel
+    {
+        public Guid Id { get; set; }
+        public string AccountCode { get; set; } = string.Empty;
+        public string AccountName { get; set; } = string.Empty;
+        public bool IsActive { get; set; }
+    }
+
+    public class CurrencyModel
+    {
+        public Guid Id { get; set; }
+        public string Code { get; set; } = string.Empty;
+        public string Name { get; set; } = string.Empty;
+        public bool IsActive { get; set; }
+    }
+}

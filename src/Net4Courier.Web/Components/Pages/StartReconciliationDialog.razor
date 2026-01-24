@@ -1,0 +1,136 @@
+@inject ApplicationDbContext DbContext
+@inject ISnackbar Snackbar
+@inject IBankReconciliationService ReconciliationService
+@using Microsoft.EntityFrameworkCore
+@using Net4Courier.Infrastructure.Data
+@using Net4Courier.Finance.Entities
+@using Net4Courier.Web.Services
+
+<MudDialog>
+    <TitleContent>
+        <MudText Typo="Typo.h6">
+            <MudIcon Icon="@Icons.Material.Filled.PlayArrow" Class="mr-2" />
+            Start New Reconciliation
+        </MudText>
+    </TitleContent>
+    <DialogContent>
+        <MudGrid>
+            <MudItem xs="12">
+                <MudSelect T="long?" @bind-Value="_selectedBankAccountId" Label="Bank Account"
+                           Variant="Variant.Outlined" Required="true">
+                    @foreach (var account in BankAccounts)
+                    {
+                        <MudSelectItem Value="@((long?)account.Id)">@account.Code - @account.Name</MudSelectItem>
+                    }
+                </MudSelect>
+            </MudItem>
+            <MudItem xs="12">
+                <MudDatePicker @bind-Date="_statementDate" Label="Statement Date"
+                               Variant="Variant.Outlined" DateFormat="dd-MMM-yyyy" Required="true" />
+            </MudItem>
+            <MudItem xs="12" sm="6">
+                <MudNumericField T="decimal" @bind-Value="_statementOpeningBalance" Label="Statement Opening Balance"
+                                 Variant="Variant.Outlined" Format="N2" />
+            </MudItem>
+            <MudItem xs="12" sm="6">
+                <MudNumericField T="decimal" @bind-Value="_statementClosingBalance" Label="Statement Closing Balance"
+                                 Variant="Variant.Outlined" Format="N2" Required="true" />
+            </MudItem>
+            <MudItem xs="12">
+                <MudAlert Severity="Severity.Info" Dense="true">
+                    Book balance will be calculated automatically based on posted bank vouchers.
+                </MudAlert>
+            </MudItem>
+        </MudGrid>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Cancel">Cancel</MudButton>
+        <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="Start" Disabled="@(!CanStart)">
+            Start Reconciliation
+        </MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter]
+    private MudDialogInstance MudDialog { get; set; } = null!;
+
+    [Parameter]
+    public List<AccountHead> BankAccounts { get; set; } = new();
+
+    private long? _selectedBankAccountId;
+    private DateTime? _statementDate = DateTime.Today;
+    private decimal _statementOpeningBalance;
+    private decimal _statementClosingBalance;
+
+    private bool CanStart => _selectedBankAccountId.HasValue && _statementDate.HasValue;
+
+    private async Task Start()
+    {
+        if (!CanStart)
+        {
+            Snackbar.Add("Please fill in all required fields", Severity.Warning);
+            return;
+        }
+
+        try
+        {
+            var year = _statementDate!.Value.Year;
+            var lastRecNo = await DbContext.BankReconciliations
+                .Where(r => r.ReconciliationNumber.StartsWith($"REC-{year}/"))
+                .OrderByDescending(r => r.ReconciliationNumber)
+                .Select(r => r.ReconciliationNumber)
+                .FirstOrDefaultAsync();
+
+            var sequence = 1;
+            if (!string.IsNullOrEmpty(lastRecNo))
+            {
+                var parts = lastRecNo.Split('/');
+                if (parts.Length == 2 && int.TryParse(parts[1], out var lastSeq))
+                {
+                    sequence = lastSeq + 1;
+                }
+            }
+
+            var reconciliationNumber = $"REC-{year}/{sequence:D4}";
+
+            var bookOpeningBalance = await ReconciliationService.CalculateBookBalance(
+                _selectedBankAccountId!.Value, 
+                _statementDate.Value.AddDays(-1));
+
+            var bookClosingBalance = await ReconciliationService.CalculateBookBalance(
+                _selectedBankAccountId!.Value, 
+                _statementDate.Value);
+
+            var reconciliation = new Net4Courier.Finance.Entities.BankReconciliation
+            {
+                CompanyId = 1,
+                BranchId = 1,
+                BankAccountId = _selectedBankAccountId.Value,
+                ReconciliationNumber = reconciliationNumber,
+                StatementDate = DateTime.SpecifyKind(_statementDate.Value, DateTimeKind.Utc),
+                StatementOpeningBalance = _statementOpeningBalance,
+                StatementClosingBalance = _statementClosingBalance,
+                BookOpeningBalance = bookOpeningBalance,
+                BookClosingBalance = bookClosingBalance,
+                DifferenceAmount = _statementClosingBalance - bookClosingBalance,
+                Status = ReconciliationStatus.Draft
+            };
+
+            DbContext.BankReconciliations.Add(reconciliation);
+            await DbContext.SaveChangesAsync();
+
+            Snackbar.Add($"Reconciliation {reconciliationNumber} created successfully", Severity.Success);
+            MudDialog.Close(DialogResult.Ok(reconciliation.Id));
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error creating reconciliation: {ex.Message}", Severity.Error);
+        }
+    }
+
+    private void Cancel()
+    {
+        MudDialog.Cancel();
+    }
+}

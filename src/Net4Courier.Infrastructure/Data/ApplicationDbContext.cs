@@ -65,6 +65,12 @@ public class ApplicationDbContext : DbContext
     public DbSet<CreditNote> CreditNotes => Set<CreditNote>();
     public DbSet<DebitNote> DebitNotes => Set<DebitNote>();
     
+    public DbSet<BankReconciliation> BankReconciliations => Set<BankReconciliation>();
+    public DbSet<BankStatementImport> BankStatementImports => Set<BankStatementImport>();
+    public DbSet<BankStatementLine> BankStatementLines => Set<BankStatementLine>();
+    public DbSet<ReconciliationMatch> ReconciliationMatches => Set<ReconciliationMatch>();
+    public DbSet<ReconciliationAdjustment> ReconciliationAdjustments => Set<ReconciliationAdjustment>();
+    
     public DbSet<EmpostLicense> EmpostLicenses => Set<EmpostLicense>();
     public DbSet<EmpostAdvancePayment> EmpostAdvancePayments => Set<EmpostAdvancePayment>();
     public DbSet<EmpostQuarter> EmpostQuarters => Set<EmpostQuarter>();
@@ -1216,6 +1222,95 @@ public class ApplicationDbContext : DbContext
             entity.Property(e => e.Notes).HasMaxLength(1000);
             entity.HasIndex(e => new { e.EmpostLicenseId, e.PerformedAt });
             entity.HasIndex(e => new { e.EmpostQuarterId, e.Action });
+        });
+
+        modelBuilder.Entity<BankReconciliation>(entity =>
+        {
+            entity.ToTable("BankReconciliations");
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.ReconciliationNumber).HasMaxLength(50).IsRequired();
+            entity.Property(e => e.Notes).HasMaxLength(1000);
+            entity.Property(e => e.StatementOpeningBalance).HasPrecision(18, 2);
+            entity.Property(e => e.StatementClosingBalance).HasPrecision(18, 2);
+            entity.Property(e => e.BookOpeningBalance).HasPrecision(18, 2);
+            entity.Property(e => e.BookClosingBalance).HasPrecision(18, 2);
+            entity.Property(e => e.DifferenceAmount).HasPrecision(18, 2);
+            entity.HasIndex(e => new { e.BranchId, e.StatementDate });
+            entity.HasIndex(e => e.ReconciliationNumber).IsUnique();
+            entity.HasIndex(e => e.Status);
+            entity.HasOne(e => e.BankAccount).WithMany().HasForeignKey(e => e.BankAccountId)
+                  .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        modelBuilder.Entity<BankStatementImport>(entity =>
+        {
+            entity.ToTable("BankStatementImports");
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.FileName).HasMaxLength(500).IsRequired();
+            entity.Property(e => e.FileHash).HasMaxLength(100);
+            entity.Property(e => e.ColumnMapping).HasMaxLength(2000);
+            entity.Property(e => e.ErrorLog).HasMaxLength(2000);
+            entity.HasIndex(e => e.BankReconciliationId);
+            entity.HasIndex(e => e.FileHash);
+            entity.HasOne(e => e.BankReconciliation).WithMany(r => r.StatementImports)
+                  .HasForeignKey(e => e.BankReconciliationId).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<BankStatementLine>(entity =>
+        {
+            entity.ToTable("BankStatementLines");
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Description).HasMaxLength(500);
+            entity.Property(e => e.ChequeNumber).HasMaxLength(100);
+            entity.Property(e => e.ReferenceNumber).HasMaxLength(100);
+            entity.Property(e => e.MatchNotes).HasMaxLength(1000);
+            entity.Property(e => e.LineHash).HasMaxLength(100);
+            entity.Property(e => e.DebitAmount).HasPrecision(18, 2);
+            entity.Property(e => e.CreditAmount).HasPrecision(18, 2);
+            entity.Property(e => e.Balance).HasPrecision(18, 2);
+            entity.Ignore(e => e.NetAmount);
+            entity.HasIndex(e => e.BankStatementImportId);
+            entity.HasIndex(e => e.TransactionDate);
+            entity.HasIndex(e => e.IsMatched);
+            entity.HasOne(e => e.BankStatementImport).WithMany(i => i.StatementLines)
+                  .HasForeignKey(e => e.BankStatementImportId).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<ReconciliationMatch>(entity =>
+        {
+            entity.ToTable("ReconciliationMatches");
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.MatchGroup).HasMaxLength(50);
+            entity.Property(e => e.MatchNotes).HasMaxLength(500);
+            entity.Property(e => e.ReversalReason).HasMaxLength(500);
+            entity.Property(e => e.MatchedAmount).HasPrecision(18, 2);
+            entity.HasIndex(e => e.BankReconciliationId);
+            entity.HasIndex(e => e.BankStatementLineId);
+            entity.HasIndex(e => e.JournalId);
+            entity.HasIndex(e => e.IsReversed);
+            entity.HasOne(e => e.BankReconciliation).WithMany(r => r.Matches)
+                  .HasForeignKey(e => e.BankReconciliationId).OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne(e => e.BankStatementLine).WithMany(l => l.Matches)
+                  .HasForeignKey(e => e.BankStatementLineId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(e => e.Journal).WithMany()
+                  .HasForeignKey(e => e.JournalId).OnDelete(DeleteBehavior.Restrict);
+        });
+
+        modelBuilder.Entity<ReconciliationAdjustment>(entity =>
+        {
+            entity.ToTable("ReconciliationAdjustments");
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Description).HasMaxLength(500).IsRequired();
+            entity.Property(e => e.Notes).HasMaxLength(1000);
+            entity.Property(e => e.Amount).HasPrecision(18, 2);
+            entity.HasIndex(e => e.BankReconciliationId);
+            entity.HasIndex(e => e.IsPosted);
+            entity.HasOne(e => e.BankReconciliation).WithMany(r => r.Adjustments)
+                  .HasForeignKey(e => e.BankReconciliationId).OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne(e => e.BankStatementLine).WithMany()
+                  .HasForeignKey(e => e.BankStatementLineId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(e => e.Journal).WithMany()
+                  .HasForeignKey(e => e.JournalId).OnDelete(DeleteBehavior.Restrict);
         });
     }
 }

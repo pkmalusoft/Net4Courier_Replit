@@ -80,6 +80,18 @@ The application is built on .NET 8 Blazor Server, utilizing a modular architectu
   - Audit Reports: Comprehensive audit trail for all Empost-related actions
   - Entities: EmpostLicense, EmpostAdvancePayment, EmpostQuarter, EmpostShipmentFee, EmpostQuarterlySettlement, EmpostReturnAdjustment, EmpostAuditLog
   - SQL Schema: `sql/empost_schema.sql` for manual database deployment
+- **Bank Reconciliation Module**: Complete bank statement reconciliation for bank accounts including:
+  - Reconciliation Sessions: Create reconciliation sessions for bank accounts with statement date and balances
+  - Statement Import: Import bank statements from CSV with flexible column mapping (date, description, debit, credit, cheque number, reference)
+  - Auto-Matching: Automatic matching of statement lines to bank vouchers using multiple algorithms (exact amount/date, cheque number, reference matching with confidence scoring)
+  - Manual Matching: Side-by-side interface for manual matching of unmatched transactions
+  - Adjustments: Record adjustments (bank fees, interest, charges, unrecorded deposits/withdrawals) with posting capability
+  - Status Workflow: Draft → InProgress → Completed → Locked with status enforcement on operations
+  - Balance Calculation: Automatic book balance calculation and difference tracking
+  - Entities: BankReconciliation, BankStatementImport, BankStatementLine, ReconciliationMatch, ReconciliationAdjustment
+  - Services: BankReconciliationService, BankStatementImportService
+  - UI: BankReconciliation.razor (list), ReconciliationWorkspace.razor (matching), StartReconciliationDialog, ImportStatementDialog, ReconciliationAdjustmentDialog
+  - Navigation: Accounts & Finance > General Ledger > Transactions > Bank Reconciliation
 
 ## External Dependencies
 - **Database**: PostgreSQL

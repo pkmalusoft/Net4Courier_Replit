@@ -1,0 +1,374 @@
+@page "/bank-reconciliation/{ReconciliationId:long}"
+@inject ApplicationDbContext DbContext
+@inject ISnackbar Snackbar
+@inject IDialogService DialogService
+@inject NavigationManager Navigation
+@inject IBankReconciliationService ReconciliationService
+@using Microsoft.EntityFrameworkCore
+@using Net4Courier.Infrastructure.Data
+@using Net4Courier.Finance.Entities
+@using Net4Courier.Web.Services
+
+<MudContainer MaxWidth="MaxWidth.ExtraLarge" Class="mt-4">
+    @if (_reconciliation == null)
+    {
+        <MudProgressLinear Indeterminate="true" Color="Color.Primary" />
+    }
+    else
+    {
+        <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center" Class="mb-4">
+            <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="3">
+                <MudIconButton Icon="@Icons.Material.Filled.ArrowBack" OnClick="GoBack" />
+                <MudText Typo="Typo.h5">@_reconciliation.ReconciliationNumber</MudText>
+                <MudChip T="string" Size="Size.Small" Color="@GetStatusColor(_reconciliation.Status)">
+                    @_reconciliation.Status.ToString()
+                </MudChip>
+            </MudStack>
+            <MudStack Row="true" Spacing="2">
+                @if (_reconciliation.Status != ReconciliationStatus.Locked)
+                {
+                    <MudButton Variant="Variant.Outlined" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Upload"
+                               OnClick="OpenImportDialog">Import Statement</MudButton>
+                    <MudButton Variant="Variant.Outlined" Color="Color.Secondary" StartIcon="@Icons.Material.Filled.AutoMode"
+                               OnClick="AutoMatch">Auto-Match</MudButton>
+                    <MudButton Variant="Variant.Outlined" Color="Color.Info" StartIcon="@Icons.Material.Filled.Add"
+                               OnClick="OpenAdjustmentDialog">Add Adjustment</MudButton>
+                    @if (_reconciliation.DifferenceAmount == 0)
+                    {
+                        <MudButton Variant="Variant.Filled" Color="Color.Success" StartIcon="@Icons.Material.Filled.Check"
+                                   OnClick="CompleteReconciliation">Complete</MudButton>
+                    }
+                }
+            </MudStack>
+        </MudStack>
+
+        <MudGrid Class="mb-4">
+            <MudItem xs="12" md="3">
+                <MudPaper Class="pa-3" Elevation="1">
+                    <MudText Typo="Typo.caption" Color="Color.Secondary">Bank Account</MudText>
+                    <MudText Typo="Typo.body1"><b>@_reconciliation.BankAccount?.Name</b></MudText>
+                </MudPaper>
+            </MudItem>
+            <MudItem xs="12" md="2">
+                <MudPaper Class="pa-3" Elevation="1">
+                    <MudText Typo="Typo.caption" Color="Color.Secondary">Statement Date</MudText>
+                    <MudText Typo="Typo.body1"><b>@_reconciliation.StatementDate.ToString("dd-MMM-yyyy")</b></MudText>
+                </MudPaper>
+            </MudItem>
+            <MudItem xs="12" md="2">
+                <MudPaper Class="pa-3" Elevation="1">
+                    <MudText Typo="Typo.caption" Color="Color.Secondary">Statement Balance</MudText>
+                    <MudText Typo="Typo.body1"><b>@_reconciliation.StatementClosingBalance.ToString("N2")</b></MudText>
+                </MudPaper>
+            </MudItem>
+            <MudItem xs="12" md="2">
+                <MudPaper Class="pa-3" Elevation="1">
+                    <MudText Typo="Typo.caption" Color="Color.Secondary">Book Balance</MudText>
+                    <MudText Typo="Typo.body1"><b>@_reconciliation.BookClosingBalance.ToString("N2")</b></MudText>
+                </MudPaper>
+            </MudItem>
+            <MudItem xs="12" md="3">
+                <MudPaper Class="pa-3" Elevation="1" Style="@($"background-color: {(_reconciliation.DifferenceAmount == 0 ? "var(--mud-palette-success-lighten)" : "var(--mud-palette-error-lighten)")}")">
+                    <MudText Typo="Typo.caption" Color="Color.Secondary">Difference</MudText>
+                    <MudText Typo="Typo.body1" Color="@(_reconciliation.DifferenceAmount == 0 ? Color.Success : Color.Error)">
+                        <b>@_reconciliation.DifferenceAmount.ToString("N2")</b>
+                    </MudText>
+                </MudPaper>
+            </MudItem>
+        </MudGrid>
+
+        <MudGrid>
+            <MudItem xs="12" md="6">
+                <MudPaper Class="pa-3" Elevation="1">
+                    <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center" Class="mb-2">
+                        <MudText Typo="Typo.subtitle1"><b>Bank Statement Lines</b></MudText>
+                        <MudChip T="string" Size="Size.Small">@_statementLines.Count(l => l.IsMatched) / @_statementLines.Count matched</MudChip>
+                    </MudStack>
+                    <MudTable Items="@_statementLines" Dense="true" Hover="true" FixedHeader="true" Height="450px"
+                              RowClassFunc="@((line, _) => _selectedStatementLine?.Id == line.Id ? "selected-row" : "")"
+                              OnRowClick="@((TableRowClickEventArgs<BankStatementLine> args) => SelectStatementLine(args.Item))">
+                        <HeaderContent>
+                            <MudTh>Date</MudTh>
+                            <MudTh>Description</MudTh>
+                            <MudTh Style="text-align:right">Debit</MudTh>
+                            <MudTh Style="text-align:right">Credit</MudTh>
+                            <MudTh></MudTh>
+                        </HeaderContent>
+                        <RowTemplate>
+                            <MudTd>@context.TransactionDate.ToString("dd-MMM")</MudTd>
+                            <MudTd>
+                                <MudText Typo="Typo.body2" Style="max-width:200px;overflow:hidden;text-overflow:ellipsis">
+                                    @context.Description
+                                </MudText>
+                            </MudTd>
+                            <MudTd Style="text-align:right">@(context.DebitAmount > 0 ? context.DebitAmount.ToString("N2") : "")</MudTd>
+                            <MudTd Style="text-align:right">@(context.CreditAmount > 0 ? context.CreditAmount.ToString("N2") : "")</MudTd>
+                            <MudTd>
+                                @if (context.IsMatched)
+                                {
+                                    <MudIcon Icon="@Icons.Material.Filled.CheckCircle" Color="Color.Success" Size="Size.Small" />
+                                }
+                            </MudTd>
+                        </RowTemplate>
+                    </MudTable>
+                </MudPaper>
+            </MudItem>
+
+            <MudItem xs="12" md="6">
+                <MudPaper Class="pa-3" Elevation="1">
+                    <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center" Class="mb-2">
+                        <MudText Typo="Typo.subtitle1"><b>Bank Vouchers (Unmatched)</b></MudText>
+                        <MudChip T="string" Size="Size.Small">@_unmatchedVouchers.Count unmatched</MudChip>
+                    </MudStack>
+                    <MudTable Items="@_unmatchedVouchers" Dense="true" Hover="true" FixedHeader="true" Height="450px"
+                              RowClassFunc="@((voucher, _) => _selectedVoucher?.Id == voucher.Id ? "selected-row" : "")"
+                              OnRowClick="@((TableRowClickEventArgs<Journal> args) => SelectVoucher(args.Item))">
+                        <HeaderContent>
+                            <MudTh>Voucher No</MudTh>
+                            <MudTh>Date</MudTh>
+                            <MudTh>Reference</MudTh>
+                            <MudTh Style="text-align:right">Amount</MudTh>
+                        </HeaderContent>
+                        <RowTemplate>
+                            <MudTd>@context.VoucherNo</MudTd>
+                            <MudTd>@context.VoucherDate.ToString("dd-MMM")</MudTd>
+                            <MudTd>@context.Reference</MudTd>
+                            <MudTd Style="text-align:right">@((context.TotalDebit ?? context.TotalCredit ?? 0).ToString("N2"))</MudTd>
+                        </RowTemplate>
+                    </MudTable>
+                </MudPaper>
+            </MudItem>
+        </MudGrid>
+
+        @if (_selectedStatementLine != null && _selectedVoucher != null && !_selectedStatementLine.IsMatched)
+        {
+            <MudPaper Class="pa-3 mt-4" Elevation="2" Style="background-color: var(--mud-palette-primary-lighten);">
+                <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
+                    <MudText>
+                        Match statement line <b>@_selectedStatementLine.Description</b> 
+                        with voucher <b>@_selectedVoucher.VoucherNo</b>?
+                    </MudText>
+                    <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="CreateManualMatch">
+                        Match Selected
+                    </MudButton>
+                </MudStack>
+            </MudPaper>
+        }
+
+        <MudPaper Class="pa-3 mt-4" Elevation="1">
+            <MudText Typo="Typo.subtitle1" Class="mb-2"><b>Matched Transactions</b></MudText>
+            <MudTable Items="@_matches" Dense="true" Hover="true">
+                <HeaderContent>
+                    <MudTh>Statement Line</MudTh>
+                    <MudTh>Voucher</MudTh>
+                    <MudTh Style="text-align:right">Amount</MudTh>
+                    <MudTh>Match Type</MudTh>
+                    <MudTh>Notes</MudTh>
+                    <MudTh>Actions</MudTh>
+                </HeaderContent>
+                <RowTemplate>
+                    <MudTd>@context.BankStatementLine?.Description?.Substring(0, Math.Min(30, context.BankStatementLine?.Description?.Length ?? 0))...</MudTd>
+                    <MudTd>@context.Journal?.VoucherNo</MudTd>
+                    <MudTd Style="text-align:right">@context.MatchedAmount.ToString("N2")</MudTd>
+                    <MudTd>
+                        <MudChip T="string" Size="Size.Small" Color="@(context.MatchType == MatchType.Automatic ? Color.Info : Color.Default)">
+                            @context.MatchType.ToString()
+                        </MudChip>
+                    </MudTd>
+                    <MudTd>@context.MatchNotes</MudTd>
+                    <MudTd>
+                        @if (!context.IsReversed && _reconciliation.Status != ReconciliationStatus.Locked)
+                        {
+                            <MudIconButton Icon="@Icons.Material.Filled.LinkOff" Size="Size.Small" Color="Color.Warning"
+                                           OnClick="@(() => UnmatchTransaction(context))" Title="Unmatch" />
+                        }
+                    </MudTd>
+                </RowTemplate>
+                <NoRecordsContent>
+                    <MudText Align="Align.Center" Class="py-2">No matches yet.</MudText>
+                </NoRecordsContent>
+            </MudTable>
+        </MudPaper>
+    }
+</MudContainer>
+
+<style>
+    .selected-row {
+        background-color: var(--mud-palette-primary-lighten) !important;
+    }
+</style>
+
+@code {
+    [Parameter]
+    public long ReconciliationId { get; set; }
+
+    private Net4Courier.Finance.Entities.BankReconciliation? _reconciliation;
+    private List<BankStatementLine> _statementLines = new();
+    private List<Journal> _unmatchedVouchers = new();
+    private List<ReconciliationMatch> _matches = new();
+
+    private BankStatementLine? _selectedStatementLine;
+    private Journal? _selectedVoucher;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadData();
+    }
+
+    private async Task LoadData()
+    {
+        _reconciliation = await DbContext.BankReconciliations
+            .Include(r => r.BankAccount)
+            .FirstOrDefaultAsync(r => r.Id == ReconciliationId);
+
+        if (_reconciliation == null)
+        {
+            Snackbar.Add("Reconciliation not found", Severity.Error);
+            Navigation.NavigateTo("/bank-reconciliation");
+            return;
+        }
+
+        _statementLines = await DbContext.BankStatementLines
+            .Where(l => l.BankStatementImport!.BankReconciliationId == ReconciliationId)
+            .OrderBy(l => l.TransactionDate)
+            .ToListAsync();
+
+        _unmatchedVouchers = await DbContext.Journals
+            .Where(j => j.VoucherType == "BV" 
+                     && j.IsPosted 
+                     && j.Entries.Any(e => e.AccountHeadId == _reconciliation.BankAccountId)
+                     && !DbContext.ReconciliationMatches.Any(m => m.JournalId == j.Id && !m.IsReversed))
+            .OrderBy(j => j.VoucherDate)
+            .ToListAsync();
+
+        _matches = await DbContext.ReconciliationMatches
+            .Include(m => m.BankStatementLine)
+            .Include(m => m.Journal)
+            .Where(m => m.BankReconciliationId == ReconciliationId && !m.IsReversed)
+            .OrderByDescending(m => m.MatchedAt)
+            .ToListAsync();
+
+        _selectedStatementLine = null;
+        _selectedVoucher = null;
+    }
+
+    private void GoBack() => Navigation.NavigateTo("/bank-reconciliation");
+
+    private Color GetStatusColor(ReconciliationStatus status) => status switch
+    {
+        ReconciliationStatus.Draft => Color.Default,
+        ReconciliationStatus.InProgress => Color.Warning,
+        ReconciliationStatus.Completed => Color.Success,
+        ReconciliationStatus.Locked => Color.Info,
+        _ => Color.Default
+    };
+
+    private void SelectStatementLine(BankStatementLine line)
+    {
+        _selectedStatementLine = _selectedStatementLine?.Id == line.Id ? null : line;
+    }
+
+    private void SelectVoucher(Journal voucher)
+    {
+        _selectedVoucher = _selectedVoucher?.Id == voucher.Id ? null : voucher;
+    }
+
+    private async Task AutoMatch()
+    {
+        var count = await ReconciliationService.AutoMatchTransactions(ReconciliationId, 1);
+        Snackbar.Add($"Auto-matched {count} transactions", count > 0 ? Severity.Success : Severity.Info);
+        await LoadData();
+    }
+
+    private async Task CreateManualMatch()
+    {
+        if (_selectedStatementLine == null || _selectedVoucher == null) return;
+
+        var success = await ReconciliationService.CreateManualMatch(
+            ReconciliationId, 
+            _selectedStatementLine.Id, 
+            _selectedVoucher.Id, 
+            1);
+
+        if (success)
+        {
+            Snackbar.Add("Match created successfully", Severity.Success);
+            await LoadData();
+        }
+        else
+        {
+            Snackbar.Add("Failed to create match", Severity.Error);
+        }
+    }
+
+    private async Task UnmatchTransaction(ReconciliationMatch match)
+    {
+        var confirm = await DialogService.ShowMessageBox(
+            "Unmatch Transaction",
+            "Are you sure you want to unmatch this transaction?",
+            yesText: "Unmatch", cancelText: "Cancel");
+
+        if (confirm == true)
+        {
+            await ReconciliationService.UnmatchTransaction(match.Id, 1, "Manual unmatch");
+            Snackbar.Add("Transaction unmatched", Severity.Success);
+            await LoadData();
+        }
+    }
+
+    private async Task OpenImportDialog()
+    {
+        var parameters = new DialogParameters<ImportStatementDialog>();
+        parameters.Add(x => x.ReconciliationId, ReconciliationId);
+
+        var options = new DialogOptions { MaxWidth = MaxWidth.Medium, FullWidth = true };
+        var dialog = await DialogService.ShowAsync<ImportStatementDialog>("Import Bank Statement", parameters, options);
+        var result = await dialog.Result;
+
+        if (result != null && !result.Canceled)
+        {
+            await ReconciliationService.UpdateReconciliationBalances(ReconciliationId);
+            await LoadData();
+        }
+    }
+
+    private async Task OpenAdjustmentDialog()
+    {
+        var parameters = new DialogParameters<ReconciliationAdjustmentDialog>();
+        parameters.Add(x => x.ReconciliationId, ReconciliationId);
+
+        var options = new DialogOptions { MaxWidth = MaxWidth.Small, FullWidth = true };
+        var dialog = await DialogService.ShowAsync<ReconciliationAdjustmentDialog>("Add Adjustment", parameters, options);
+        var result = await dialog.Result;
+
+        if (result != null && !result.Canceled)
+        {
+            await ReconciliationService.UpdateReconciliationBalances(ReconciliationId);
+            await LoadData();
+        }
+    }
+
+    private async Task CompleteReconciliation()
+    {
+        if (_reconciliation == null) return;
+
+        var confirm = await DialogService.ShowMessageBox(
+            "Complete Reconciliation",
+            "This will mark the reconciliation as completed. Continue?",
+            yesText: "Complete", cancelText: "Cancel");
+
+        if (confirm == true)
+        {
+            var success = await ReconciliationService.CompleteReconciliation(ReconciliationId, 1);
+            if (success)
+            {
+                Snackbar.Add("Reconciliation completed", Severity.Success);
+            }
+            else
+            {
+                Snackbar.Add("Cannot complete: difference must be zero", Severity.Warning);
+            }
+            await LoadData();
+        }
+    }
+}

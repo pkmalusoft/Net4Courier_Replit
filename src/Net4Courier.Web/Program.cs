@@ -139,6 +139,8 @@ builder.Services.AddScoped<ISecureStorageService, SecureStorageService>();
 builder.Services.AddScoped<BookingWebhookService>();
 builder.Services.AddScoped<EmpostFeeReportService>();
 builder.Services.AddScoped<IEmpostService, EmpostService>();
+builder.Services.AddScoped<IBankReconciliationService, BankReconciliationService>();
+builder.Services.AddScoped<IBankStatementImportService, BankStatementImportService>();
 builder.Services.AddAuthorizationCore();
 builder.Services.AddCascadingAuthenticationState();
 
