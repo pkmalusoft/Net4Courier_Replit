@@ -1,0 +1,183 @@
+@inject ApplicationDbContext DbContext
+@inject ISnackbar Snackbar
+@using Microsoft.EntityFrameworkCore
+@using MudBlazor
+@using Net4Courier.Infrastructure.Data
+@using Net4Courier.Operations.Entities
+@using Net4Courier.Web.Services
+
+<MudDialog>
+    <TitleContent>
+        <MudText Typo="Typo.h6">@(_isEdit ? "Edit" : "New") Incentive Schedule</MudText>
+    </TitleContent>
+    <DialogContent>
+        <MudGrid>
+            <MudItem xs="12">
+                <MudTextField @bind-Value="_schedule.Name" Label="Schedule Name" Variant="Variant.Outlined" Required="true" />
+            </MudItem>
+            <MudItem xs="12">
+                <MudTextField @bind-Value="_schedule.Description" Label="Description" Variant="Variant.Outlined" Lines="2" />
+            </MudItem>
+            <MudItem xs="12" sm="6">
+                <MudSelect T="IncentiveCalculationType" @bind-Value="_schedule.CalculationType" Label="Calculation Type"
+                           Variant="Variant.Outlined" Required="true">
+                    @foreach (IncentiveCalculationType type in Enum.GetValues(typeof(IncentiveCalculationType)))
+                    {
+                        <MudSelectItem Value="@type">@type.ToString()</MudSelectItem>
+                    }
+                </MudSelect>
+            </MudItem>
+            <MudItem xs="12" sm="6">
+                <MudNumericField T="decimal" @bind-Value="_schedule.IncentiveRate" Label="Incentive Rate"
+                                 Variant="Variant.Outlined" Min="0" Required="true" />
+            </MudItem>
+            <MudItem xs="12" sm="6">
+                <MudAutocomplete T="long?" @bind-Value="_schedule.CustomerId" Label="Specific Customer (Optional)"
+                                 SearchFunc="SearchCustomers" ToStringFunc="@(id => GetCustomerName(id))"
+                                 Variant="Variant.Outlined" Clearable="true" />
+            </MudItem>
+            <MudItem xs="12" sm="6">
+                <MudTextField @bind-Value="_schedule.ZoneName" Label="Zone (Optional)" Variant="Variant.Outlined" />
+            </MudItem>
+            <MudItem xs="12" sm="6">
+                <MudNumericField T="decimal?" @bind-Value="_schedule.MinWeight" Label="Min Weight (kg)"
+                                 Variant="Variant.Outlined" Min="0" />
+            </MudItem>
+            <MudItem xs="12" sm="6">
+                <MudNumericField T="decimal?" @bind-Value="_schedule.MaxWeight" Label="Max Weight (kg)"
+                                 Variant="Variant.Outlined" Min="0" />
+            </MudItem>
+            <MudItem xs="12" sm="6">
+                <MudNumericField T="int?" @bind-Value="_schedule.MinPieces" Label="Min Pieces"
+                                 Variant="Variant.Outlined" Min="0" />
+            </MudItem>
+            <MudItem xs="12" sm="6">
+                <MudNumericField T="int?" @bind-Value="_schedule.MaxPieces" Label="Max Pieces"
+                                 Variant="Variant.Outlined" Min="0" />
+            </MudItem>
+            
+            <MudItem xs="12">
+                <MudDivider Class="my-2" />
+                <MudText Typo="Typo.subtitle2" Class="mb-2">Bonus Configuration (Optional)</MudText>
+            </MudItem>
+            <MudItem xs="12" sm="6">
+                <MudNumericField T="decimal?" @bind-Value="_schedule.BonusAmount" Label="Bonus Amount"
+                                 Variant="Variant.Outlined" Min="0" />
+            </MudItem>
+            <MudItem xs="12" sm="6">
+                <MudNumericField T="int?" @bind-Value="_schedule.BonusThreshold" Label="Pickups Required for Bonus"
+                                 Variant="Variant.Outlined" Min="1" />
+            </MudItem>
+            
+            <MudItem xs="12">
+                <MudDivider Class="my-2" />
+            </MudItem>
+            <MudItem xs="12" sm="6">
+                <MudDatePicker @bind-Date="_effectiveFromDate" Label="Effective From"
+                               Variant="Variant.Outlined" DateFormat="dd-MMM-yyyy" Required="true" />
+            </MudItem>
+            <MudItem xs="12" sm="6">
+                <MudDatePicker @bind-Date="_effectiveToDate" Label="Effective To (Optional)"
+                               Variant="Variant.Outlined" DateFormat="dd-MMM-yyyy" />
+            </MudItem>
+            <MudItem xs="12">
+                <MudSwitch T="bool" @bind-Value="_schedule.IsActive" Label="Active" Color="Color.Success" />
+            </MudItem>
+        </MudGrid>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Cancel">Cancel</MudButton>
+        <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="Save"
+                   Disabled="@(string.IsNullOrWhiteSpace(_schedule.Name) || _isSaving)">
+            @if (_isSaving) { <MudProgressCircular Size="Size.Small" Indeterminate="true" /> }
+            else { <span>Save</span> }
+        </MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] MudDialogInstance MudDialog { get; set; } = null!;
+    [Parameter] public IncentiveSchedule? Schedule { get; set; }
+
+    private IncentiveSchedule _schedule = new() { IsActive = true };
+    private DateTime? _effectiveFromDate;
+    private DateTime? _effectiveToDate;
+    private bool _isEdit = false;
+    private bool _isSaving = false;
+    private Dictionary<long, string> _customerNames = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        var customers = await DbContext.Parties.Where(p => p.IsActive).ToListAsync();
+        _customerNames = customers.ToDictionary(c => c.Id, c => c.Name);
+
+        if (Schedule != null)
+        {
+            _schedule = Schedule;
+            _isEdit = true;
+            _effectiveFromDate = _schedule.EffectiveFrom;
+            _effectiveToDate = _schedule.EffectiveTo;
+        }
+        else
+        {
+            _effectiveFromDate = DateTime.Today;
+        }
+    }
+
+    private Task<IEnumerable<long?>> SearchCustomers(string value)
+    {
+        IEnumerable<long?> result;
+        if (string.IsNullOrWhiteSpace(value))
+            result = _customerNames.Keys.Select(k => (long?)k).Take(20);
+        else
+            result = _customerNames
+                .Where(c => c.Value.Contains(value, StringComparison.OrdinalIgnoreCase))
+                .Select(c => (long?)c.Key)
+                .Take(20);
+        return Task.FromResult(result);
+    }
+
+    private string GetCustomerName(long? id) => id.HasValue && _customerNames.ContainsKey(id.Value) 
+        ? _customerNames[id.Value] : "";
+
+    private async Task Save()
+    {
+        if (string.IsNullOrWhiteSpace(_schedule.Name))
+        {
+            Snackbar.Add("Please enter a schedule name", Severity.Warning);
+            return;
+        }
+
+        _isSaving = true;
+        try
+        {
+            _schedule.EffectiveFrom = DateTime.SpecifyKind(_effectiveFromDate ?? DateTime.Today, DateTimeKind.Utc);
+            _schedule.EffectiveTo = _effectiveToDate.HasValue 
+                ? DateTime.SpecifyKind(_effectiveToDate.Value, DateTimeKind.Utc) 
+                : null;
+            
+            if (_schedule.CustomerId.HasValue && _customerNames.ContainsKey(_schedule.CustomerId.Value))
+                _schedule.CustomerName = _customerNames[_schedule.CustomerId.Value];
+
+            var service = new PickupIncentiveService(DbContext);
+            if (_isEdit)
+            {
+                await service.UpdateScheduleAsync(_schedule);
+            }
+            else
+            {
+                await service.CreateScheduleAsync(_schedule);
+            }
+
+            Snackbar.Add("Schedule saved successfully", Severity.Success);
+            MudDialog.Close(DialogResult.Ok(_schedule));
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error saving schedule: {ex.Message}", Severity.Error);
+        }
+        _isSaving = false;
+    }
+
+    private void Cancel() => MudDialog.Cancel();
+}

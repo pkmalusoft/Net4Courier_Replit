@@ -1,0 +1,303 @@
+@page "/pickup-commitments"
+@inject ApplicationDbContext DbContext
+@inject ISnackbar Snackbar
+@inject IDialogService DialogService
+@using Microsoft.EntityFrameworkCore
+@using Net4Courier.Infrastructure.Data
+@using Net4Courier.Operations.Entities
+@using Net4Courier.Web.Services
+
+<MudContainer MaxWidth="MaxWidth.ExtraLarge" Class="mt-4">
+    <MudText Typo="Typo.h4" Class="mb-4">Pickup Commitments</MudText>
+
+    <MudTabs Elevation="2" Rounded="true" ApplyEffectsToContainer="true">
+        <MudTabPanel Text="Available Pickups" Icon="@Icons.Material.Filled.LocalShipping">
+            <MudPaper Class="pa-4 mt-2" Elevation="1">
+                <MudText Typo="Typo.subtitle1" Class="mb-3">Pickups awaiting courier commitment</MudText>
+                
+                @if (_isLoading)
+                {
+                    <MudProgressLinear Indeterminate="true" Color="Color.Primary" />
+                }
+                else
+                {
+                    <MudTable Items="@_availablePickups" Dense="true" Hover="true" Bordered="true" Striped="true">
+                        <HeaderContent>
+                            <MudTh>Pickup No</MudTh>
+                            <MudTh>Scheduled Date</MudTh>
+                            <MudTh>Time Slot</MudTh>
+                            <MudTh>Customer</MudTh>
+                            <MudTh>Address</MudTh>
+                            <MudTh>Est. Pieces</MudTh>
+                            <MudTh>Actions</MudTh>
+                        </HeaderContent>
+                        <RowTemplate>
+                            <MudTd>@context.PickupNo</MudTd>
+                            <MudTd>@context.ScheduledDate?.ToString("dd-MMM-yyyy")</MudTd>
+                            <MudTd>@(context.ScheduledTimeFrom?.ToString("hh:mm tt") ?? "-") - @(context.ScheduledTimeTo?.ToString("hh:mm tt") ?? "-")</MudTd>
+                            <MudTd>@context.CustomerName</MudTd>
+                            <MudTd>@context.PickupAddress, @context.City</MudTd>
+                            <MudTd>@context.EstimatedPieces</MudTd>
+                            <MudTd>
+                                <MudButton Variant="Variant.Filled" Color="Color.Primary" Size="Size.Small"
+                                           OnClick="@(() => CommitToPickup(context))">
+                                    Commit
+                                </MudButton>
+                            </MudTd>
+                        </RowTemplate>
+                        <NoRecordsContent>
+                            <MudText Color="Color.Secondary">No available pickups</MudText>
+                        </NoRecordsContent>
+                    </MudTable>
+                }
+            </MudPaper>
+        </MudTabPanel>
+        
+        <MudTabPanel Text="My Commitments" Icon="@Icons.Material.Filled.Assignment">
+            <MudPaper Class="pa-4 mt-2" Elevation="1">
+                <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center" Class="mb-3">
+                    <MudText Typo="Typo.subtitle1">Your active commitments</MudText>
+                    <MudButton Variant="Variant.Outlined" Color="Color.Primary" Size="Size.Small" OnClick="LoadData">
+                        Refresh
+                    </MudButton>
+                </MudStack>
+                
+                <MudTable Items="@_myCommitments" Dense="true" Hover="true" Bordered="true" Striped="true">
+                    <HeaderContent>
+                        <MudTh>Pickup No</MudTh>
+                        <MudTh>Customer</MudTh>
+                        <MudTh>Committed At</MudTh>
+                        <MudTh>Expires At</MudTh>
+                        <MudTh>Time Left</MudTh>
+                        <MudTh>Status</MudTh>
+                        <MudTh>Actions</MudTh>
+                    </HeaderContent>
+                    <RowTemplate>
+                        <MudTd>@context.PickupRequest?.PickupNo</MudTd>
+                        <MudTd>@context.PickupRequest?.CustomerName</MudTd>
+                        <MudTd>@context.CommittedAt.ToString("dd-MMM HH:mm")</MudTd>
+                        <MudTd>@context.ExpiresAt.ToString("dd-MMM HH:mm")</MudTd>
+                        <MudTd>
+                            @{
+                                var remaining = context.ExpiresAt - DateTime.UtcNow;
+                                var color = remaining.TotalMinutes < 5 ? Color.Error : 
+                                           remaining.TotalMinutes < 15 ? Color.Warning : Color.Success;
+                            }
+                            <MudChip T="string" Size="Size.Small" Color="@color">
+                                @(remaining.TotalMinutes > 0 ? $"{remaining.Minutes}m {remaining.Seconds}s" : "Expired")
+                            </MudChip>
+                        </MudTd>
+                        <MudTd>
+                            <MudChip T="string" Size="Size.Small" Color="@GetStatusColor(context.Status)">
+                                @context.Status.ToString()
+                            </MudChip>
+                        </MudTd>
+                        <MudTd>
+                            @if (context.Status == PickupCommitmentStatus.Active)
+                            {
+                                <MudStack Row="true" Spacing="1">
+                                    <MudButton Variant="Variant.Filled" Color="Color.Success" Size="Size.Small"
+                                               OnClick="@(() => ConfirmCommitment(context))">
+                                        Confirm
+                                    </MudButton>
+                                    <MudButton Variant="Variant.Outlined" Color="Color.Error" Size="Size.Small"
+                                               OnClick="@(() => ReleaseCommitment(context))">
+                                        Release
+                                    </MudButton>
+                                    <MudButton Variant="Variant.Text" Color="Color.Primary" Size="Size.Small"
+                                               OnClick="@(() => ExtendCommitment(context))">
+                                        +15min
+                                    </MudButton>
+                                </MudStack>
+                            }
+                        </MudTd>
+                    </RowTemplate>
+                    <NoRecordsContent>
+                        <MudText Color="Color.Secondary">No active commitments</MudText>
+                    </NoRecordsContent>
+                </MudTable>
+            </MudPaper>
+        </MudTabPanel>
+        
+        <MudTabPanel Text="Statistics" Icon="@Icons.Material.Filled.Analytics">
+            <MudPaper Class="pa-4 mt-2" Elevation="1">
+                @if (_stats != null)
+                {
+                    <MudGrid>
+                        <MudItem xs="12" sm="4" md="2">
+                            <MudPaper Class="pa-4 text-center" Elevation="2">
+                                <MudText Typo="Typo.h4">@_stats.TotalCommitments</MudText>
+                                <MudText Typo="Typo.body2" Color="Color.Secondary">Total</MudText>
+                            </MudPaper>
+                        </MudItem>
+                        <MudItem xs="12" sm="4" md="2">
+                            <MudPaper Class="pa-4 text-center" Elevation="2" Style="background-color: var(--mud-palette-success-lighten)">
+                                <MudText Typo="Typo.h4">@_stats.Completed</MudText>
+                                <MudText Typo="Typo.body2">Completed</MudText>
+                            </MudPaper>
+                        </MudItem>
+                        <MudItem xs="12" sm="4" md="2">
+                            <MudPaper Class="pa-4 text-center" Elevation="2" Style="background-color: var(--mud-palette-info-lighten)">
+                                <MudText Typo="Typo.h4">@_stats.Confirmed</MudText>
+                                <MudText Typo="Typo.body2">Confirmed</MudText>
+                            </MudPaper>
+                        </MudItem>
+                        <MudItem xs="12" sm="4" md="2">
+                            <MudPaper Class="pa-4 text-center" Elevation="2" Style="background-color: var(--mud-palette-warning-lighten)">
+                                <MudText Typo="Typo.h4">@_stats.Active</MudText>
+                                <MudText Typo="Typo.body2">Active</MudText>
+                            </MudPaper>
+                        </MudItem>
+                        <MudItem xs="12" sm="4" md="2">
+                            <MudPaper Class="pa-4 text-center" Elevation="2" Style="background-color: var(--mud-palette-error-lighten)">
+                                <MudText Typo="Typo.h4">@_stats.Expired</MudText>
+                                <MudText Typo="Typo.body2">Expired</MudText>
+                            </MudPaper>
+                        </MudItem>
+                        <MudItem xs="12" sm="4" md="2">
+                            <MudPaper Class="pa-4 text-center" Elevation="2">
+                                <MudText Typo="Typo.h4">@_stats.CompletionRate.ToString("N1")%</MudText>
+                                <MudText Typo="Typo.body2">Completion Rate</MudText>
+                            </MudPaper>
+                        </MudItem>
+                    </MudGrid>
+                }
+            </MudPaper>
+        </MudTabPanel>
+    </MudTabs>
+</MudContainer>
+
+@code {
+    private bool _isLoading = true;
+    private List<PickupRequest> _availablePickups = new();
+    private List<PickupCommitment> _myCommitments = new();
+    private CourierCommitmentStats? _stats;
+    private long _currentCourierId = 1;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadData();
+    }
+
+    private async Task LoadData()
+    {
+        _isLoading = true;
+        try
+        {
+            var service = new PickupCommitmentService(DbContext);
+            
+            await service.ExpireOldCommitmentsAsync();
+            
+            _availablePickups = await service.GetAvailablePickupsAsync();
+            _myCommitments = await service.GetCourierCommitmentsAsync(_currentCourierId, activeOnly: true);
+            _stats = await service.GetCourierStatsAsync(_currentCourierId, DateTime.UtcNow.AddDays(-30), DateTime.UtcNow);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error loading data: {ex.Message}", Severity.Error);
+        }
+        _isLoading = false;
+    }
+
+    private Color GetStatusColor(PickupCommitmentStatus status) => status switch
+    {
+        PickupCommitmentStatus.Active => Color.Info,
+        PickupCommitmentStatus.Confirmed => Color.Success,
+        PickupCommitmentStatus.Completed => Color.Success,
+        PickupCommitmentStatus.Released => Color.Warning,
+        PickupCommitmentStatus.Expired => Color.Error,
+        _ => Color.Default
+    };
+
+    private async Task CommitToPickup(PickupRequest pickup)
+    {
+        try
+        {
+            var service = new PickupCommitmentService(DbContext);
+            var commitment = await service.CommitToPickupAsync(pickup.Id, _currentCourierId, "Current Courier", 30);
+            
+            if (commitment != null)
+            {
+                Snackbar.Add($"Committed to pickup {pickup.PickupNo}. You have 30 minutes to confirm.", Severity.Success);
+                await LoadData();
+            }
+            else
+            {
+                Snackbar.Add("This pickup is no longer available", Severity.Warning);
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error: {ex.Message}", Severity.Error);
+        }
+    }
+
+    private async Task ConfirmCommitment(PickupCommitment commitment)
+    {
+        try
+        {
+            var service = new PickupCommitmentService(DbContext);
+            var success = await service.ConfirmCommitmentAsync(commitment.Id);
+            
+            if (success)
+            {
+                Snackbar.Add("Pickup confirmed and assigned to you", Severity.Success);
+                await LoadData();
+            }
+            else
+            {
+                Snackbar.Add("Commitment has expired or is no longer valid", Severity.Warning);
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error: {ex.Message}", Severity.Error);
+        }
+    }
+
+    private async Task ReleaseCommitment(PickupCommitment commitment)
+    {
+        var result = await DialogService.ShowMessageBox(
+            "Release Commitment",
+            "Are you sure you want to release this pickup commitment?",
+            yesText: "Release", cancelText: "Cancel");
+        
+        if (result == true)
+        {
+            try
+            {
+                var service = new PickupCommitmentService(DbContext);
+                var success = await service.ReleaseCommitmentAsync(commitment.Id, "Released by courier");
+                
+                if (success)
+                {
+                    Snackbar.Add("Commitment released", Severity.Info);
+                    await LoadData();
+                }
+            }
+            catch (Exception ex)
+            {
+                Snackbar.Add($"Error: {ex.Message}", Severity.Error);
+            }
+        }
+    }
+
+    private async Task ExtendCommitment(PickupCommitment commitment)
+    {
+        try
+        {
+            var service = new PickupCommitmentService(DbContext);
+            var success = await service.ExtendCommitmentAsync(commitment.Id, 15);
+            
+            if (success)
+            {
+                Snackbar.Add("Extended by 15 minutes", Severity.Success);
+                await LoadData();
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error: {ex.Message}", Severity.Error);
+        }
+    }
+}

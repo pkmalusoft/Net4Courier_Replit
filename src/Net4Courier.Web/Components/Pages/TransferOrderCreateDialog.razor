@@ -1,0 +1,194 @@
+@inject ApplicationDbContext DbContext
+@inject ISnackbar Snackbar
+@using Microsoft.EntityFrameworkCore
+@using MudBlazor
+@using Net4Courier.Infrastructure.Data
+@using Net4Courier.Operations.Entities
+@using Net4Courier.Web.Services
+
+<MudDialog>
+    <TitleContent>
+        <MudText Typo="Typo.h6">Create Transfer Order</MudText>
+    </TitleContent>
+    <DialogContent>
+        <MudGrid>
+            <MudItem xs="12" sm="6">
+                <MudSelect T="long?" @bind-Value="_sourceBranchId" Label="Source Branch"
+                           Variant="Variant.Outlined" Required="true">
+                    @foreach (var branch in Branches ?? new List<Net4Courier.Masters.Entities.Branch>())
+                    {
+                        <MudSelectItem Value="@((long?)branch.Id)">@branch.Name</MudSelectItem>
+                    }
+                </MudSelect>
+            </MudItem>
+            <MudItem xs="12" sm="6">
+                <MudSelect T="long?" @bind-Value="_destBranchId" Label="Destination Branch"
+                           Variant="Variant.Outlined" Required="true">
+                    @foreach (var branch in Branches?.Where(b => b.Id != _sourceBranchId) ?? new List<Net4Courier.Masters.Entities.Branch>())
+                    {
+                        <MudSelectItem Value="@((long?)branch.Id)">@branch.Name</MudSelectItem>
+                    }
+                </MudSelect>
+            </MudItem>
+            <MudItem xs="12" sm="6">
+                <MudSelect T="TransferOrderType" @bind-Value="_transferType" Label="Transfer Type"
+                           Variant="Variant.Outlined">
+                    @foreach (TransferOrderType type in Enum.GetValues(typeof(TransferOrderType)))
+                    {
+                        <MudSelectItem Value="@type">@type.ToString()</MudSelectItem>
+                    }
+                </MudSelect>
+            </MudItem>
+            <MudItem xs="12" sm="6">
+                <MudTextField @bind-Value="_remarks" Label="Remarks" Variant="Variant.Outlined" />
+            </MudItem>
+        </MudGrid>
+
+        @if (_sourceBranchId.HasValue)
+        {
+            <MudDivider Class="my-4" />
+            
+            @if (_isLoadingShipments)
+            {
+                <MudProgressLinear Indeterminate="true" Color="Color.Primary" />
+            }
+            else
+            {
+                <MudText Typo="Typo.subtitle1" Class="mb-2">
+                    Select Shipments (@_selectedShipments.Count of @_availableShipments.Count selected)
+                </MudText>
+                
+                <MudTable Items="@_availableShipments" Dense="true" Hover="true" Bordered="true"
+                          MultiSelection="true" @bind-SelectedItems="_selectedShipments" FixedHeader="true" Height="300px">
+                    <HeaderContent>
+                        <MudTh>AWB No</MudTh>
+                        <MudTh>Transaction Date</MudTh>
+                        <MudTh>Destination</MudTh>
+                        <MudTh>Status</MudTh>
+                        <MudTh Style="text-align:right">Pieces</MudTh>
+                        <MudTh Style="text-align:right">Weight</MudTh>
+                    </HeaderContent>
+                    <RowTemplate>
+                        <MudTd>@context.AWBNo</MudTd>
+                        <MudTd>@context.TransactionDate.ToString("dd-MMM-yyyy")</MudTd>
+                        <MudTd>@context.ConsigneeCity</MudTd>
+                        <MudTd>@context.CourierStatusId.ToString()</MudTd>
+                        <MudTd Style="text-align:right">@context.Pieces</MudTd>
+                        <MudTd Style="text-align:right">@((context.Weight ?? 0).ToString("N2"))</MudTd>
+                    </RowTemplate>
+                </MudTable>
+
+                <MudPaper Class="pa-3 mt-4" Elevation="1">
+                    <MudGrid>
+                        <MudItem xs="4"><MudText>Total Shipments:</MudText></MudItem>
+                        <MudItem xs="8"><MudText><b>@_selectedShipments.Count</b></MudText></MudItem>
+                        <MudItem xs="4"><MudText>Total Pieces:</MudText></MudItem>
+                        <MudItem xs="8"><MudText><b>@_selectedShipments.Sum(s => s.Pieces ?? 0)</b></MudText></MudItem>
+                        <MudItem xs="4"><MudText>Total Weight:</MudText></MudItem>
+                        <MudItem xs="8"><MudText><b>@_selectedShipments.Sum(s => s.Weight ?? 0).ToString("N2") kg</b></MudText></MudItem>
+                    </MudGrid>
+                </MudPaper>
+            }
+        }
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Cancel">Cancel</MudButton>
+        <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="CreateTransfer"
+                   Disabled="@(!IsValid || _isSaving)">
+            @if (_isSaving) { <MudProgressCircular Size="Size.Small" Indeterminate="true" /> }
+            else { <span>Create Transfer</span> }
+        </MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] MudDialogInstance MudDialog { get; set; } = null!;
+    [Parameter] public List<Net4Courier.Masters.Entities.Branch>? Branches { get; set; }
+
+    private long? _sourceBranchId;
+    private long? _destBranchId;
+    private TransferOrderType _transferType = TransferOrderType.Standard;
+    private string? _remarks;
+    private List<InscanMaster> _availableShipments = new();
+    private HashSet<InscanMaster> _selectedShipments = new();
+    private bool _isLoadingShipments = false;
+    private bool _isSaving = false;
+
+    private bool IsValid => _sourceBranchId.HasValue && _destBranchId.HasValue && 
+                           _sourceBranchId != _destBranchId && _selectedShipments.Count > 0;
+
+    protected override void OnParametersSet()
+    {
+        if (_sourceBranchId.HasValue && _availableShipments.Count == 0)
+        {
+            _ = LoadAvailableShipments();
+        }
+    }
+
+    private async Task LoadAvailableShipments()
+    {
+        if (!_sourceBranchId.HasValue) return;
+
+        _isLoadingShipments = true;
+        StateHasChanged();
+
+        try
+        {
+            _availableShipments = await DbContext.InscanMasters
+                .Where(i => i.BranchId == _sourceBranchId)
+                .Where(i => i.CourierStatusId == Net4Courier.Kernel.Enums.CourierStatus.Pending ||
+                           i.CourierStatusId == Net4Courier.Kernel.Enums.CourierStatus.InscanAtOrigin ||
+                           i.CourierStatusId == Net4Courier.Kernel.Enums.CourierStatus.InscanAtDestination)
+                .Where(i => !DbContext.TransferOrderItems.Any(t => t.InscanMasterId == i.Id && 
+                    t.TransferOrder.Status != TransferOrderStatus.Cancelled))
+                .OrderByDescending(i => i.TransactionDate)
+                .Take(100)
+                .ToListAsync();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error loading shipments: {ex.Message}", Severity.Error);
+        }
+
+        _isLoadingShipments = false;
+        StateHasChanged();
+    }
+
+    private async Task CreateTransfer()
+    {
+        if (!IsValid)
+        {
+            Snackbar.Add("Please complete all required fields", Severity.Warning);
+            return;
+        }
+
+        _isSaving = true;
+        try
+        {
+            var sourceBranch = Branches?.FirstOrDefault(b => b.Id == _sourceBranchId);
+            var destBranch = Branches?.FirstOrDefault(b => b.Id == _destBranchId);
+
+            var service = new TransferOrderService(DbContext);
+            var transfer = await service.CreateTransferOrderAsync(
+                _sourceBranchId!.Value,
+                sourceBranch?.Name ?? "",
+                _destBranchId!.Value,
+                destBranch?.Name ?? "",
+                _transferType,
+                _selectedShipments.Select(s => s.Id).ToList(),
+                null, null, 1, "Admin",
+                _remarks
+            );
+
+            Snackbar.Add($"Transfer order {transfer.TransferNo} created", Severity.Success);
+            MudDialog.Close(DialogResult.Ok(transfer));
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error: {ex.Message}", Severity.Error);
+        }
+        _isSaving = false;
+    }
+
+    private void Cancel() => MudDialog.Cancel();
+}

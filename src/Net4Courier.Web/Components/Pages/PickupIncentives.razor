@@ -1,0 +1,328 @@
+@page "/pickup-incentives"
+@inject ApplicationDbContext DbContext
+@inject ISnackbar Snackbar
+@inject IDialogService DialogService
+@using Microsoft.EntityFrameworkCore
+@using Net4Courier.Infrastructure.Data
+@using Net4Courier.Operations.Entities
+@using Net4Courier.Web.Services
+
+<MudContainer MaxWidth="MaxWidth.ExtraLarge" Class="mt-4">
+    <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center" Class="mb-4">
+        <MudText Typo="Typo.h4">Pickup Incentives</MudText>
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add"
+                   OnClick="OpenScheduleDialog">
+            New Incentive Schedule
+        </MudButton>
+    </MudStack>
+
+    <MudTabs Elevation="2" Rounded="true" ApplyEffectsToContainer="true">
+        <MudTabPanel Text="Incentive Schedules" Icon="@Icons.Material.Filled.Schedule">
+            <MudPaper Class="pa-4 mt-2" Elevation="1">
+                @if (_isLoading)
+                {
+                    <MudProgressLinear Indeterminate="true" Color="Color.Primary" />
+                }
+                else
+                {
+                    <MudTable Items="@_schedules" Dense="true" Hover="true" Bordered="true" Striped="true">
+                        <HeaderContent>
+                            <MudTh>Name</MudTh>
+                            <MudTh>Type</MudTh>
+                            <MudTh Style="text-align:right">Rate</MudTh>
+                            <MudTh>Customer</MudTh>
+                            <MudTh>Zone</MudTh>
+                            <MudTh>Weight Range</MudTh>
+                            <MudTh>Bonus</MudTh>
+                            <MudTh>Effective</MudTh>
+                            <MudTh>Active</MudTh>
+                            <MudTh>Actions</MudTh>
+                        </HeaderContent>
+                        <RowTemplate>
+                            <MudTd>@context.Name</MudTd>
+                            <MudTd>@context.CalculationType.ToString()</MudTd>
+                            <MudTd Style="text-align:right">@context.IncentiveRate.ToString("N2")</MudTd>
+                            <MudTd>@(context.CustomerName ?? "All")</MudTd>
+                            <MudTd>@(context.ZoneName ?? "All")</MudTd>
+                            <MudTd>@($"{context.MinWeight?.ToString("N1") ?? "0"} - {context.MaxWeight?.ToString("N1") ?? "∞"} kg")</MudTd>
+                            <MudTd>
+                                @if (context.BonusAmount.HasValue)
+                                {
+                                    <MudChip T="string" Size="Size.Small" Color="Color.Success">
+                                        @context.BonusAmount.Value.ToString("N2") / @context.BonusThreshold pickups
+                                    </MudChip>
+                                }
+                            </MudTd>
+                            <MudTd>@context.EffectiveFrom.ToString("dd-MMM-yyyy")</MudTd>
+                            <MudTd>
+                                <MudSwitch T="bool" Value="@context.IsActive" Color="Color.Success" 
+                                           ValueChanged="@(v => ToggleScheduleActive(context, v))" />
+                            </MudTd>
+                            <MudTd>
+                                <MudStack Row="true" Spacing="1">
+                                    <MudIconButton Icon="@Icons.Material.Filled.Edit" Size="Size.Small" Color="Color.Primary"
+                                                   OnClick="@(() => EditSchedule(context))" />
+                                    <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" Color="Color.Error"
+                                                   OnClick="@(() => DeleteSchedule(context))" />
+                                </MudStack>
+                            </MudTd>
+                        </RowTemplate>
+                        <NoRecordsContent>
+                            <MudText Color="Color.Secondary">No incentive schedules configured</MudText>
+                        </NoRecordsContent>
+                    </MudTable>
+                }
+            </MudPaper>
+        </MudTabPanel>
+        
+        <MudTabPanel Text="Incentive Awards" Icon="@Icons.Material.Filled.EmojiEvents">
+            <MudPaper Class="pa-4 mt-2" Elevation="1">
+                <MudGrid Class="mb-4">
+                    <MudItem xs="12" sm="3">
+                        <MudDatePicker @bind-Date="_filterFromDate" Label="From Date"
+                                       Variant="Variant.Outlined" DateFormat="dd-MMM-yyyy" />
+                    </MudItem>
+                    <MudItem xs="12" sm="3">
+                        <MudDatePicker @bind-Date="_filterToDate" Label="To Date"
+                                       Variant="Variant.Outlined" DateFormat="dd-MMM-yyyy" />
+                    </MudItem>
+                    <MudItem xs="12" sm="3">
+                        <MudSelect T="IncentiveAwardStatus?" @bind-Value="_filterAwardStatus" Label="Status"
+                                   Variant="Variant.Outlined" Dense="true" Clearable="true">
+                            @foreach (IncentiveAwardStatus status in Enum.GetValues(typeof(IncentiveAwardStatus)))
+                            {
+                                <MudSelectItem Value="@((IncentiveAwardStatus?)status)">@status.ToString()</MudSelectItem>
+                            }
+                        </MudSelect>
+                    </MudItem>
+                    <MudItem xs="12" sm="3" Class="d-flex align-center">
+                        <MudButton Variant="Variant.Outlined" Color="Color.Primary" OnClick="LoadAwards" FullWidth="true">
+                            Apply Filters
+                        </MudButton>
+                    </MudItem>
+                </MudGrid>
+
+                <MudTable Items="@_awards" Dense="true" Hover="true" Bordered="true" Striped="true"
+                          MultiSelection="true" @bind-SelectedItems="_selectedAwards">
+                    <ToolBarContent>
+                        <MudButton Variant="Variant.Filled" Color="Color.Success" Size="Size.Small"
+                                   Disabled="@(!_selectedAwards.Any(a => a.Status == IncentiveAwardStatus.Pending))"
+                                   OnClick="ApproveSelectedAwards" Class="mr-2">
+                            Approve Selected
+                        </MudButton>
+                        <MudButton Variant="Variant.Filled" Color="Color.Primary" Size="Size.Small"
+                                   Disabled="@(!_selectedAwards.Any(a => a.Status == IncentiveAwardStatus.Approved))"
+                                   OnClick="MarkSelectedAsPaid">
+                            Mark as Paid
+                        </MudButton>
+                        <MudSpacer />
+                        <MudText Typo="Typo.body2">
+                            Total: <b>@_awards.Sum(a => a.TotalAmount).ToString("N2")</b> | 
+                            Pending: <b>@_awards.Where(a => a.Status == IncentiveAwardStatus.Pending).Sum(a => a.TotalAmount).ToString("N2")</b>
+                        </MudText>
+                    </ToolBarContent>
+                    <HeaderContent>
+                        <MudTh>Award Date</MudTh>
+                        <MudTh>Courier</MudTh>
+                        <MudTh>Pickup No</MudTh>
+                        <MudTh>Customer</MudTh>
+                        <MudTh Style="text-align:right">Pieces</MudTh>
+                        <MudTh Style="text-align:right">Weight</MudTh>
+                        <MudTh Style="text-align:right">Incentive</MudTh>
+                        <MudTh Style="text-align:right">Bonus</MudTh>
+                        <MudTh Style="text-align:right">Total</MudTh>
+                        <MudTh>Status</MudTh>
+                    </HeaderContent>
+                    <RowTemplate>
+                        <MudTd>@context.AwardDate.ToString("dd-MMM-yyyy")</MudTd>
+                        <MudTd>@context.CourierName</MudTd>
+                        <MudTd>@context.PickupNo</MudTd>
+                        <MudTd>@context.CustomerName</MudTd>
+                        <MudTd Style="text-align:right">@context.Pieces</MudTd>
+                        <MudTd Style="text-align:right">@context.Weight.ToString("N2")</MudTd>
+                        <MudTd Style="text-align:right">@context.IncentiveAmount.ToString("N2")</MudTd>
+                        <MudTd Style="text-align:right">@((context.BonusAmount ?? 0).ToString("N2"))</MudTd>
+                        <MudTd Style="text-align:right"><b>@context.TotalAmount.ToString("N2")</b></MudTd>
+                        <MudTd>
+                            <MudChip T="string" Size="Size.Small" Color="@GetAwardStatusColor(context.Status)">
+                                @context.Status.ToString()
+                            </MudChip>
+                        </MudTd>
+                    </RowTemplate>
+                    <NoRecordsContent>
+                        <MudText Color="Color.Secondary">No incentive awards found</MudText>
+                    </NoRecordsContent>
+                </MudTable>
+            </MudPaper>
+        </MudTabPanel>
+    </MudTabs>
+</MudContainer>
+
+@code {
+    private bool _isLoading = true;
+    private List<IncentiveSchedule> _schedules = new();
+    private List<IncentiveAward> _awards = new();
+    private HashSet<IncentiveAward> _selectedAwards = new();
+    
+    private DateTime? _filterFromDate;
+    private DateTime? _filterToDate;
+    private IncentiveAwardStatus? _filterAwardStatus;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _filterFromDate = DateTime.Today.AddDays(-30);
+        _filterToDate = DateTime.Today;
+        await LoadData();
+    }
+
+    private async Task LoadData()
+    {
+        _isLoading = true;
+        try
+        {
+            var service = new PickupIncentiveService(DbContext);
+            _schedules = await service.GetSchedulesAsync(activeOnly: false);
+            await LoadAwards();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error loading data: {ex.Message}", Severity.Error);
+        }
+        _isLoading = false;
+    }
+
+    private async Task LoadAwards()
+    {
+        try
+        {
+            var service = new PickupIncentiveService(DbContext);
+            _awards = await service.GetAwardsAsync(
+                fromDate: _filterFromDate,
+                toDate: _filterToDate,
+                status: _filterAwardStatus
+            );
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error loading awards: {ex.Message}", Severity.Error);
+        }
+    }
+
+    private Color GetAwardStatusColor(IncentiveAwardStatus status) => status switch
+    {
+        IncentiveAwardStatus.Pending => Color.Warning,
+        IncentiveAwardStatus.Approved => Color.Info,
+        IncentiveAwardStatus.Paid => Color.Success,
+        IncentiveAwardStatus.Cancelled => Color.Error,
+        _ => Color.Default
+    };
+
+    private async Task ToggleScheduleActive(IncentiveSchedule schedule, bool active)
+    {
+        try
+        {
+            schedule.IsActive = active;
+            var service = new PickupIncentiveService(DbContext);
+            await service.UpdateScheduleAsync(schedule);
+            Snackbar.Add($"Schedule {(active ? "activated" : "deactivated")}", Severity.Success);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error: {ex.Message}", Severity.Error);
+        }
+    }
+
+    private async Task OpenScheduleDialog()
+    {
+        var dialog = await DialogService.ShowAsync<IncentiveScheduleDialog>("New Incentive Schedule",
+            new DialogOptions { MaxWidth = MaxWidth.Medium, FullWidth = true });
+        var result = await dialog.Result;
+        if (result != null && !result.Canceled)
+        {
+            await LoadData();
+        }
+    }
+
+    private async Task EditSchedule(IncentiveSchedule schedule)
+    {
+        var parameters = new DialogParameters { ["Schedule"] = schedule };
+        var dialog = await DialogService.ShowAsync<IncentiveScheduleDialog>("Edit Incentive Schedule", parameters,
+            new DialogOptions { MaxWidth = MaxWidth.Medium, FullWidth = true });
+        var result = await dialog.Result;
+        if (result != null && !result.Canceled)
+        {
+            await LoadData();
+        }
+    }
+
+    private async Task DeleteSchedule(IncentiveSchedule schedule)
+    {
+        var confirm = await DialogService.ShowMessageBox(
+            "Delete Schedule",
+            $"Are you sure you want to delete '{schedule.Name}'?",
+            yesText: "Delete", cancelText: "Cancel");
+        
+        if (confirm == true)
+        {
+            try
+            {
+                var service = new PickupIncentiveService(DbContext);
+                await service.DeleteScheduleAsync(schedule.Id);
+                Snackbar.Add("Schedule deleted", Severity.Success);
+                await LoadData();
+            }
+            catch (Exception ex)
+            {
+                Snackbar.Add($"Error: {ex.Message}", Severity.Error);
+            }
+        }
+    }
+
+    private async Task ApproveSelectedAwards()
+    {
+        var pendingIds = _selectedAwards
+            .Where(a => a.Status == IncentiveAwardStatus.Pending)
+            .Select(a => a.Id)
+            .ToList();
+        
+        if (pendingIds.Any())
+        {
+            try
+            {
+                var service = new PickupIncentiveService(DbContext);
+                await service.ApproveAwardsAsync(pendingIds, 1, "Admin");
+                Snackbar.Add($"{pendingIds.Count} awards approved", Severity.Success);
+                await LoadAwards();
+                _selectedAwards.Clear();
+            }
+            catch (Exception ex)
+            {
+                Snackbar.Add($"Error: {ex.Message}", Severity.Error);
+            }
+        }
+    }
+
+    private async Task MarkSelectedAsPaid()
+    {
+        var approvedIds = _selectedAwards
+            .Where(a => a.Status == IncentiveAwardStatus.Approved)
+            .Select(a => a.Id)
+            .ToList();
+        
+        if (approvedIds.Any())
+        {
+            try
+            {
+                var service = new PickupIncentiveService(DbContext);
+                await service.MarkAwardsPaidAsync(approvedIds, $"PAY-{DateTime.UtcNow:yyyyMMdd-HHmmss}");
+                Snackbar.Add($"{approvedIds.Count} awards marked as paid", Severity.Success);
+                await LoadAwards();
+                _selectedAwards.Clear();
+            }
+            catch (Exception ex)
+            {
+                Snackbar.Add($"Error: {ex.Message}", Severity.Error);
+            }
+        }
+    }
+}

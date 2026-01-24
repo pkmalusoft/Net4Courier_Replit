@@ -107,6 +107,15 @@ public class ApplicationDbContext : DbContext
     public DbSet<ImportDocument> ImportDocuments => Set<ImportDocument>();
     
     public DbSet<ApiSetting> ApiSettings => Set<ApiSetting>();
+    
+    public DbSet<CODRemittance> CODRemittances => Set<CODRemittance>();
+    public DbSet<CODRemittanceDetail> CODRemittanceDetails => Set<CODRemittanceDetail>();
+    public DbSet<PickupCommitment> PickupCommitments => Set<PickupCommitment>();
+    public DbSet<IncentiveSchedule> IncentiveSchedules => Set<IncentiveSchedule>();
+    public DbSet<IncentiveAward> IncentiveAwards => Set<IncentiveAward>();
+    public DbSet<TransferOrder> TransferOrders => Set<TransferOrder>();
+    public DbSet<TransferOrderItem> TransferOrderItems => Set<TransferOrderItem>();
+    public DbSet<TransferOrderEvent> TransferOrderEvents => Set<TransferOrderEvent>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -1345,6 +1354,162 @@ public class ApplicationDbContext : DbContext
             entity.HasIndex(e => e.IsActive);
             entity.HasOne(e => e.AccountHead).WithMany()
                   .HasForeignKey(e => e.AccountHeadId).OnDelete(DeleteBehavior.SetNull);
+        });
+
+        modelBuilder.Entity<CODRemittance>(entity =>
+        {
+            entity.ToTable("CODRemittances");
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.RemittanceNo).HasMaxLength(50).IsRequired();
+            entity.Property(e => e.CustomerName).HasMaxLength(200);
+            entity.Property(e => e.CustomerCode).HasMaxLength(50);
+            entity.Property(e => e.PaymentMode).HasMaxLength(50);
+            entity.Property(e => e.PaymentReference).HasMaxLength(100);
+            entity.Property(e => e.BankName).HasMaxLength(100);
+            entity.Property(e => e.ChequeNo).HasMaxLength(50);
+            entity.Property(e => e.TransactionId).HasMaxLength(100);
+            entity.Property(e => e.ApprovedByUserName).HasMaxLength(200);
+            entity.Property(e => e.PaidByUserName).HasMaxLength(200);
+            entity.Property(e => e.Remarks).HasMaxLength(1000);
+            entity.Property(e => e.TotalCODAmount).HasPrecision(18, 2);
+            entity.Property(e => e.ServiceCharge).HasPrecision(18, 2);
+            entity.Property(e => e.ServiceChargePercent).HasPrecision(5, 2);
+            entity.Property(e => e.TaxAmount).HasPrecision(18, 2);
+            entity.Property(e => e.NetPayable).HasPrecision(18, 2);
+            entity.Property(e => e.PaidAmount).HasPrecision(18, 2);
+            entity.Property(e => e.BalanceAmount).HasPrecision(18, 2);
+            entity.HasIndex(e => e.RemittanceNo).IsUnique();
+            entity.HasIndex(e => new { e.CustomerId, e.RemittanceDate });
+            entity.HasIndex(e => new { e.BranchId, e.Status });
+        });
+
+        modelBuilder.Entity<CODRemittanceDetail>(entity =>
+        {
+            entity.ToTable("CODRemittanceDetails");
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.AWBNo).HasMaxLength(50).IsRequired();
+            entity.Property(e => e.ConsigneeName).HasMaxLength(200);
+            entity.Property(e => e.Remarks).HasMaxLength(500);
+            entity.Property(e => e.CODAmount).HasPrecision(18, 2);
+            entity.Property(e => e.CollectedAmount).HasPrecision(18, 2);
+            entity.Property(e => e.ServiceCharge).HasPrecision(18, 2);
+            entity.Property(e => e.NetPayable).HasPrecision(18, 2);
+            entity.HasIndex(e => e.CODRemittanceId);
+            entity.HasIndex(e => e.InscanMasterId);
+            entity.HasOne(e => e.CODRemittance).WithMany(r => r.Details)
+                  .HasForeignKey(e => e.CODRemittanceId).OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne(e => e.InscanMaster).WithMany()
+                  .HasForeignKey(e => e.InscanMasterId).OnDelete(DeleteBehavior.Restrict);
+        });
+
+        modelBuilder.Entity<PickupCommitment>(entity =>
+        {
+            entity.ToTable("PickupCommitments");
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.CourierName).HasMaxLength(200);
+            entity.Property(e => e.ReleaseReason).HasMaxLength(500);
+            entity.Property(e => e.ReleasedByUserName).HasMaxLength(200);
+            entity.Property(e => e.Remarks).HasMaxLength(1000);
+            entity.HasIndex(e => new { e.PickupRequestId, e.Status });
+            entity.HasIndex(e => new { e.CourierId, e.CommittedAt });
+            entity.HasIndex(e => e.ExpiresAt);
+            entity.HasOne(e => e.PickupRequest).WithMany()
+                  .HasForeignKey(e => e.PickupRequestId).OnDelete(DeleteBehavior.Restrict);
+        });
+
+        modelBuilder.Entity<IncentiveSchedule>(entity =>
+        {
+            entity.ToTable("IncentiveSchedules");
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Name).HasMaxLength(200).IsRequired();
+            entity.Property(e => e.Description).HasMaxLength(500);
+            entity.Property(e => e.CustomerName).HasMaxLength(200);
+            entity.Property(e => e.ZoneName).HasMaxLength(100);
+            entity.Property(e => e.IncentiveRate).HasPrecision(18, 4);
+            entity.Property(e => e.MinWeight).HasPrecision(18, 3);
+            entity.Property(e => e.MaxWeight).HasPrecision(18, 3);
+            entity.Property(e => e.BonusAmount).HasPrecision(18, 2);
+            entity.Property(e => e.Remarks).HasMaxLength(1000);
+            entity.HasIndex(e => new { e.CompanyId, e.IsActive });
+            entity.HasIndex(e => e.EffectiveFrom);
+        });
+
+        modelBuilder.Entity<IncentiveAward>(entity =>
+        {
+            entity.ToTable("IncentiveAwards");
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.CourierName).HasMaxLength(200);
+            entity.Property(e => e.PickupNo).HasMaxLength(50);
+            entity.Property(e => e.CustomerName).HasMaxLength(200);
+            entity.Property(e => e.PaymentReference).HasMaxLength(100);
+            entity.Property(e => e.Remarks).HasMaxLength(1000);
+            entity.Property(e => e.Weight).HasPrecision(18, 3);
+            entity.Property(e => e.IncentiveAmount).HasPrecision(18, 2);
+            entity.Property(e => e.BonusAmount).HasPrecision(18, 2);
+            entity.Property(e => e.TotalAmount).HasPrecision(18, 2);
+            entity.HasIndex(e => new { e.CourierId, e.AwardDate });
+            entity.HasIndex(e => new { e.IncentiveScheduleId, e.Status });
+            entity.HasOne(e => e.IncentiveSchedule).WithMany()
+                  .HasForeignKey(e => e.IncentiveScheduleId).OnDelete(DeleteBehavior.Restrict);
+        });
+
+        modelBuilder.Entity<TransferOrder>(entity =>
+        {
+            entity.ToTable("TransferOrders");
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.TransferNo).HasMaxLength(50).IsRequired();
+            entity.Property(e => e.SourceBranchName).HasMaxLength(200);
+            entity.Property(e => e.DestinationBranchName).HasMaxLength(200);
+            entity.Property(e => e.SourceWarehouseName).HasMaxLength(200);
+            entity.Property(e => e.DestinationWarehouseName).HasMaxLength(200);
+            entity.Property(e => e.VehicleNo).HasMaxLength(50);
+            entity.Property(e => e.DriverName).HasMaxLength(200);
+            entity.Property(e => e.DriverPhone).HasMaxLength(50);
+            entity.Property(e => e.SealNo).HasMaxLength(50);
+            entity.Property(e => e.DispatchedByUserName).HasMaxLength(200);
+            entity.Property(e => e.ReceivedByUserName).HasMaxLength(200);
+            entity.Property(e => e.Remarks).HasMaxLength(1000);
+            entity.Property(e => e.DispatchRemarks).HasMaxLength(1000);
+            entity.Property(e => e.ReceiptRemarks).HasMaxLength(1000);
+            entity.Property(e => e.TotalWeight).HasPrecision(18, 3);
+            entity.HasIndex(e => e.TransferNo).IsUnique();
+            entity.HasIndex(e => new { e.SourceBranchId, e.TransferDate });
+            entity.HasIndex(e => new { e.DestinationBranchId, e.Status });
+        });
+
+        modelBuilder.Entity<TransferOrderItem>(entity =>
+        {
+            entity.ToTable("TransferOrderItems");
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.AWBNo).HasMaxLength(50);
+            entity.Property(e => e.Description).HasMaxLength(500);
+            entity.Property(e => e.Dimensions).HasMaxLength(100);
+            entity.Property(e => e.ScannedByUserName).HasMaxLength(200);
+            entity.Property(e => e.ReceivedRemarks).HasMaxLength(500);
+            entity.Property(e => e.DamageDescription).HasMaxLength(500);
+            entity.Property(e => e.Remarks).HasMaxLength(500);
+            entity.Property(e => e.Weight).HasPrecision(18, 3);
+            entity.HasIndex(e => e.TransferOrderId);
+            entity.HasIndex(e => e.InscanMasterId);
+            entity.HasOne(e => e.TransferOrder).WithMany(t => t.Items)
+                  .HasForeignKey(e => e.TransferOrderId).OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne(e => e.InscanMaster).WithMany()
+                  .HasForeignKey(e => e.InscanMasterId).OnDelete(DeleteBehavior.Restrict);
+        });
+
+        modelBuilder.Entity<TransferOrderEvent>(entity =>
+        {
+            entity.ToTable("TransferOrderEvents");
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.EventType).HasMaxLength(50).IsRequired();
+            entity.Property(e => e.Description).HasMaxLength(500);
+            entity.Property(e => e.Location).HasMaxLength(200);
+            entity.Property(e => e.UserName).HasMaxLength(200);
+            entity.Property(e => e.OldValue).HasMaxLength(500);
+            entity.Property(e => e.NewValue).HasMaxLength(500);
+            entity.HasIndex(e => new { e.TransferOrderId, e.EventTime });
+            entity.HasOne(e => e.TransferOrder).WithMany(t => t.Events)
+                  .HasForeignKey(e => e.TransferOrderId).OnDelete(DeleteBehavior.Cascade);
         });
     }
 }

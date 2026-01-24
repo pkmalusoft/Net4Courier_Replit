@@ -1,0 +1,291 @@
+@page "/cod-remittance"
+@inject ApplicationDbContext DbContext
+@inject ISnackbar Snackbar
+@inject IDialogService DialogService
+@inject NavigationManager Navigation
+@using Microsoft.EntityFrameworkCore
+@using Net4Courier.Infrastructure.Data
+@using Net4Courier.Operations.Entities
+@using Net4Courier.Web.Services
+
+<MudContainer MaxWidth="MaxWidth.ExtraLarge" Class="mt-4">
+    <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center" Class="mb-4">
+        <MudText Typo="Typo.h4">COD Remittance</MudText>
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add"
+                   OnClick="OpenCreateRemittanceDialog">
+            Create Remittance
+        </MudButton>
+    </MudStack>
+
+    <MudPaper Class="pa-4 mb-4" Elevation="1">
+        <MudGrid>
+            <MudItem xs="12" sm="3">
+                <MudAutocomplete T="long?" @bind-Value="_filterCustomerId" Label="Customer"
+                                 SearchFunc="SearchCustomers" ToStringFunc="@(id => GetCustomerName(id))"
+                                 Variant="Variant.Outlined" Dense="true" Clearable="true" />
+            </MudItem>
+            <MudItem xs="12" sm="2">
+                <MudSelect T="CODRemittanceStatus?" @bind-Value="_filterStatus" Label="Status"
+                           Variant="Variant.Outlined" Dense="true" Clearable="true">
+                    @foreach (CODRemittanceStatus status in Enum.GetValues(typeof(CODRemittanceStatus)))
+                    {
+                        <MudSelectItem Value="@((CODRemittanceStatus?)status)">@status.ToString()</MudSelectItem>
+                    }
+                </MudSelect>
+            </MudItem>
+            <MudItem xs="12" sm="2">
+                <MudDatePicker @bind-Date="_filterFromDate" Label="From Date"
+                               Variant="Variant.Outlined" DateFormat="dd-MMM-yyyy" />
+            </MudItem>
+            <MudItem xs="12" sm="2">
+                <MudDatePicker @bind-Date="_filterToDate" Label="To Date"
+                               Variant="Variant.Outlined" DateFormat="dd-MMM-yyyy" />
+            </MudItem>
+            <MudItem xs="12" sm="3" Class="d-flex align-center gap-2">
+                <MudButton Variant="Variant.Outlined" Color="Color.Primary" OnClick="LoadRemittances">
+                    Apply Filters
+                </MudButton>
+                <MudButton Variant="Variant.Outlined" Color="Color.Secondary" OnClick="ClearFilters">
+                    Clear
+                </MudButton>
+            </MudItem>
+        </MudGrid>
+    </MudPaper>
+
+    @if (_isLoading)
+    {
+        <MudProgressLinear Indeterminate="true" Color="Color.Primary" />
+    }
+    else
+    {
+        <MudTabs Elevation="2" Rounded="true" ApplyEffectsToContainer="true" Class="mb-4">
+            <MudTabPanel Text="Pending COD Summary" Icon="@Icons.Material.Filled.AttachMoney">
+                <MudTable Items="@_pendingCODSummary" Hover="true" Dense="true" Bordered="true" Striped="true" Class="mt-2">
+                    <HeaderContent>
+                        <MudTh>Customer</MudTh>
+                        <MudTh Style="text-align:right">Shipments</MudTh>
+                        <MudTh Style="text-align:right">Total COD Amount</MudTh>
+                        <MudTh>Actions</MudTh>
+                    </HeaderContent>
+                    <RowTemplate>
+                        <MudTd>@context.CustomerName</MudTd>
+                        <MudTd Style="text-align:right">@context.ShipmentCount</MudTd>
+                        <MudTd Style="text-align:right">@context.TotalCODAmount.ToString("N2")</MudTd>
+                        <MudTd>
+                            <MudButton Variant="Variant.Text" Color="Color.Primary" Size="Size.Small"
+                                       OnClick="@(() => CreateRemittanceForCustomer(context.CustomerId, context.CustomerName))">
+                                Create Remittance
+                            </MudButton>
+                        </MudTd>
+                    </RowTemplate>
+                    <NoRecordsContent>
+                        <MudText Color="Color.Secondary">No pending COD to remit</MudText>
+                    </NoRecordsContent>
+                </MudTable>
+            </MudTabPanel>
+            
+            <MudTabPanel Text="Remittance List" Icon="@Icons.Material.Filled.List">
+                <MudTable Items="@_remittances" Hover="true" Dense="true" Bordered="true" Striped="true" Class="mt-2">
+                    <HeaderContent>
+                        <MudTh>Remittance No</MudTh>
+                        <MudTh>Date</MudTh>
+                        <MudTh>Customer</MudTh>
+                        <MudTh Style="text-align:right">Total COD</MudTh>
+                        <MudTh Style="text-align:right">Service Charge</MudTh>
+                        <MudTh Style="text-align:right">Net Payable</MudTh>
+                        <MudTh Style="text-align:right">Paid</MudTh>
+                        <MudTh Style="text-align:right">Balance</MudTh>
+                        <MudTh>Status</MudTh>
+                        <MudTh>Actions</MudTh>
+                    </HeaderContent>
+                    <RowTemplate>
+                        <MudTd>@context.RemittanceNo</MudTd>
+                        <MudTd>@context.RemittanceDate.ToString("dd-MMM-yyyy")</MudTd>
+                        <MudTd>@context.CustomerName</MudTd>
+                        <MudTd Style="text-align:right">@context.TotalCODAmount.ToString("N2")</MudTd>
+                        <MudTd Style="text-align:right">@context.ServiceCharge.ToString("N2")</MudTd>
+                        <MudTd Style="text-align:right">@context.NetPayable.ToString("N2")</MudTd>
+                        <MudTd Style="text-align:right">@context.PaidAmount.ToString("N2")</MudTd>
+                        <MudTd Style="text-align:right">@context.BalanceAmount.ToString("N2")</MudTd>
+                        <MudTd>
+                            <MudChip T="string" Size="Size.Small" Color="@GetStatusColor(context.Status)">
+                                @context.Status.ToString()
+                            </MudChip>
+                        </MudTd>
+                        <MudTd>
+                            <MudStack Row="true" Spacing="1">
+                                <MudIconButton Icon="@Icons.Material.Filled.Visibility" Size="Size.Small" Color="Color.Primary"
+                                               OnClick="@(() => ViewRemittance(context.Id))" />
+                                @if (context.Status == CODRemittanceStatus.Draft)
+                                {
+                                    <MudIconButton Icon="@Icons.Material.Filled.CheckCircle" Size="Size.Small" Color="Color.Success"
+                                                   OnClick="@(() => ApproveRemittance(context))" />
+                                }
+                                @if (context.Status == CODRemittanceStatus.Approved || context.Status == CODRemittanceStatus.PartiallyPaid)
+                                {
+                                    <MudIconButton Icon="@Icons.Material.Filled.Payment" Size="Size.Small" Color="Color.Primary"
+                                                   OnClick="@(() => OpenPaymentDialog(context))" />
+                                }
+                            </MudStack>
+                        </MudTd>
+                    </RowTemplate>
+                    <NoRecordsContent>
+                        <MudText Color="Color.Secondary">No remittances found</MudText>
+                    </NoRecordsContent>
+                </MudTable>
+            </MudTabPanel>
+        </MudTabs>
+    }
+</MudContainer>
+
+@code {
+    private bool _isLoading = true;
+    private List<Net4Courier.Operations.Entities.CODRemittance> _remittances = new();
+    private List<PendingCODSummary> _pendingCODSummary = new();
+    private Dictionary<long, string> _customerNames = new();
+    
+    private long? _filterCustomerId;
+    private CODRemittanceStatus? _filterStatus;
+    private DateTime? _filterFromDate;
+    private DateTime? _filterToDate;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadData();
+    }
+
+    private async Task LoadData()
+    {
+        _isLoading = true;
+        try
+        {
+            var service = new CODRemittanceService(DbContext);
+            _remittances = await service.GetRemittancesAsync(
+                customerId: _filterCustomerId,
+                fromDate: _filterFromDate,
+                toDate: _filterToDate,
+                status: _filterStatus
+            );
+            _pendingCODSummary = await service.GetPendingCODByCustomerAsync();
+            
+            var customers = await DbContext.Parties.Where(p => p.IsActive).ToListAsync();
+            _customerNames = customers.ToDictionary(c => c.Id, c => c.Name);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error loading data: {ex.Message}", Severity.Error);
+        }
+        _isLoading = false;
+    }
+
+    private async Task LoadRemittances() => await LoadData();
+
+    private void ClearFilters()
+    {
+        _filterCustomerId = null;
+        _filterStatus = null;
+        _filterFromDate = null;
+        _filterToDate = null;
+    }
+
+    private Task<IEnumerable<long?>> SearchCustomers(string value)
+    {
+        IEnumerable<long?> result;
+        if (string.IsNullOrWhiteSpace(value))
+            result = _customerNames.Keys.Select(k => (long?)k).Take(20);
+        else
+            result = _customerNames
+                .Where(c => c.Value.Contains(value, StringComparison.OrdinalIgnoreCase))
+                .Select(c => (long?)c.Key)
+                .Take(20);
+        return Task.FromResult(result);
+    }
+
+    private string GetCustomerName(long? id) => id.HasValue && _customerNames.ContainsKey(id.Value) 
+        ? _customerNames[id.Value] : "";
+
+    private Color GetStatusColor(CODRemittanceStatus status) => status switch
+    {
+        CODRemittanceStatus.Draft => Color.Default,
+        CODRemittanceStatus.Pending => Color.Warning,
+        CODRemittanceStatus.Approved => Color.Info,
+        CODRemittanceStatus.Paid => Color.Success,
+        CODRemittanceStatus.PartiallyPaid => Color.Secondary,
+        CODRemittanceStatus.Cancelled => Color.Error,
+        _ => Color.Default
+    };
+
+    private async Task OpenCreateRemittanceDialog()
+    {
+        var parameters = new DialogParameters
+        {
+            ["PendingCODSummary"] = _pendingCODSummary
+        };
+        var dialog = await DialogService.ShowAsync<CODRemittanceCreateDialog>("Create COD Remittance", parameters,
+            new DialogOptions { MaxWidth = MaxWidth.Large, FullWidth = true });
+        var result = await dialog.Result;
+        if (result != null && !result.Canceled)
+        {
+            await LoadData();
+        }
+    }
+
+    private async Task CreateRemittanceForCustomer(long customerId, string customerName)
+    {
+        var parameters = new DialogParameters
+        {
+            ["CustomerId"] = customerId,
+            ["CustomerName"] = customerName
+        };
+        var dialog = await DialogService.ShowAsync<CODRemittanceCreateDialog>("Create COD Remittance", parameters,
+            new DialogOptions { MaxWidth = MaxWidth.Large, FullWidth = true });
+        var result = await dialog.Result;
+        if (result != null && !result.Canceled)
+        {
+            await LoadData();
+        }
+    }
+
+    private void ViewRemittance(long id)
+    {
+        Navigation.NavigateTo($"/cod-remittance/{id}");
+    }
+
+    private async Task ApproveRemittance(Net4Courier.Operations.Entities.CODRemittance remittance)
+    {
+        var confirm = await DialogService.ShowMessageBox(
+            "Approve Remittance",
+            $"Are you sure you want to approve remittance {remittance.RemittanceNo}?",
+            yesText: "Approve", cancelText: "Cancel");
+        
+        if (confirm == true)
+        {
+            var service = new CODRemittanceService(DbContext);
+            var success = await service.ApproveRemittanceAsync(remittance.Id, 1, "Admin");
+            if (success)
+            {
+                Snackbar.Add("Remittance approved successfully", Severity.Success);
+                await LoadData();
+            }
+            else
+            {
+                Snackbar.Add("Failed to approve remittance", Severity.Error);
+            }
+        }
+    }
+
+    private async Task OpenPaymentDialog(Net4Courier.Operations.Entities.CODRemittance remittance)
+    {
+        var parameters = new DialogParameters
+        {
+            ["Remittance"] = remittance
+        };
+        var dialog = await DialogService.ShowAsync<CODRemittancePaymentDialog>("Process Payment", parameters,
+            new DialogOptions { MaxWidth = MaxWidth.Small, FullWidth = true });
+        var result = await dialog.Result;
+        if (result != null && !result.Canceled)
+        {
+            await LoadData();
+        }
+    }
+}

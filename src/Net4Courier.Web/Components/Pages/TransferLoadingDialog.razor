@@ -1,0 +1,87 @@
+@inject ApplicationDbContext DbContext
+@inject ISnackbar Snackbar
+@using MudBlazor
+@using Net4Courier.Infrastructure.Data
+@using Net4Courier.Operations.Entities
+@using Net4Courier.Web.Services
+
+<MudDialog>
+    <TitleContent>
+        <MudText Typo="Typo.h6">Start Loading - @Transfer?.TransferNo</MudText>
+    </TitleContent>
+    <DialogContent>
+        <MudGrid>
+            <MudItem xs="12">
+                <MudTextField @bind-Value="_vehicleNo" Label="Vehicle Number" Variant="Variant.Outlined" Required="true" />
+            </MudItem>
+            <MudItem xs="12" sm="6">
+                <MudTextField @bind-Value="_driverName" Label="Driver Name" Variant="Variant.Outlined" />
+            </MudItem>
+            <MudItem xs="12" sm="6">
+                <MudTextField @bind-Value="_driverPhone" Label="Driver Phone" Variant="Variant.Outlined" />
+            </MudItem>
+            <MudItem xs="12">
+                <MudTextField @bind-Value="_sealNo" Label="Seal Number" Variant="Variant.Outlined" />
+            </MudItem>
+        </MudGrid>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Cancel">Cancel</MudButton>
+        <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="StartLoading"
+                   Disabled="@(string.IsNullOrWhiteSpace(_vehicleNo) || _isSaving)">
+            @if (_isSaving) { <MudProgressCircular Size="Size.Small" Indeterminate="true" /> }
+            else { <span>Start Loading</span> }
+        </MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] MudDialogInstance MudDialog { get; set; } = null!;
+    [Parameter] public TransferOrder? Transfer { get; set; }
+
+    private string _vehicleNo = "";
+    private string? _driverName;
+    private string? _driverPhone;
+    private string? _sealNo;
+    private bool _isSaving = false;
+
+    private async Task StartLoading()
+    {
+        if (Transfer == null || string.IsNullOrWhiteSpace(_vehicleNo))
+        {
+            Snackbar.Add("Please enter vehicle number", Severity.Warning);
+            return;
+        }
+
+        _isSaving = true;
+        try
+        {
+            var service = new TransferOrderService(DbContext);
+            var success = await service.StartLoadingAsync(
+                Transfer.Id,
+                _vehicleNo,
+                _driverName,
+                _driverPhone,
+                _sealNo,
+                1, "Admin"
+            );
+
+            if (success)
+            {
+                Snackbar.Add("Loading started", Severity.Success);
+                MudDialog.Close(DialogResult.Ok(true));
+            }
+            else
+            {
+                Snackbar.Add("Failed to start loading", Severity.Error);
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error: {ex.Message}", Severity.Error);
+        }
+        _isSaving = false;
+    }
+
+    private void Cancel() => MudDialog.Cancel();
+}

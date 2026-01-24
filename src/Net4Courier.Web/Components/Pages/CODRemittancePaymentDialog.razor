@@ -1,0 +1,138 @@
+@inject ApplicationDbContext DbContext
+@inject ISnackbar Snackbar
+@using MudBlazor
+@using Net4Courier.Infrastructure.Data
+@using Net4Courier.Operations.Entities
+@using Net4Courier.Web.Services
+
+<MudDialog>
+    <TitleContent>
+        <MudText Typo="Typo.h6">Process Payment - @Remittance?.RemittanceNo</MudText>
+    </TitleContent>
+    <DialogContent>
+        <MudGrid>
+            <MudItem xs="12">
+                <MudPaper Class="pa-3" Elevation="1">
+                    <MudGrid>
+                        <MudItem xs="6"><MudText>Customer:</MudText></MudItem>
+                        <MudItem xs="6"><MudText><b>@Remittance?.CustomerName</b></MudText></MudItem>
+                        <MudItem xs="6"><MudText>Net Payable:</MudText></MudItem>
+                        <MudItem xs="6"><MudText><b>@Remittance?.NetPayable.ToString("N2")</b></MudText></MudItem>
+                        <MudItem xs="6"><MudText>Already Paid:</MudText></MudItem>
+                        <MudItem xs="6"><MudText><b>@Remittance?.PaidAmount.ToString("N2")</b></MudText></MudItem>
+                        <MudItem xs="6"><MudText Color="Color.Warning">Balance:</MudText></MudItem>
+                        <MudItem xs="6"><MudText Color="Color.Warning"><b>@Remittance?.BalanceAmount.ToString("N2")</b></MudText></MudItem>
+                    </MudGrid>
+                </MudPaper>
+            </MudItem>
+            <MudItem xs="12" sm="6">
+                <MudNumericField T="decimal" @bind-Value="_paidAmount" Label="Payment Amount"
+                                 Variant="Variant.Outlined" Min="0" Max="@(Remittance?.BalanceAmount ?? 0)" Required="true" />
+            </MudItem>
+            <MudItem xs="12" sm="6">
+                <MudSelect T="string" @bind-Value="_paymentMode" Label="Payment Mode"
+                           Variant="Variant.Outlined" Required="true">
+                    <MudSelectItem Value="@("Cash")">Cash</MudSelectItem>
+                    <MudSelectItem Value="@("Cheque")">Cheque</MudSelectItem>
+                    <MudSelectItem Value="@("Bank Transfer")">Bank Transfer</MudSelectItem>
+                    <MudSelectItem Value="@("Online")">Online Payment</MudSelectItem>
+                </MudSelect>
+            </MudItem>
+            
+            @if (_paymentMode == "Cheque")
+            {
+                <MudItem xs="12" sm="6">
+                    <MudTextField @bind-Value="_chequeNo" Label="Cheque Number" Variant="Variant.Outlined" />
+                </MudItem>
+                <MudItem xs="12" sm="6">
+                    <MudDatePicker @bind-Date="_chequeDate" Label="Cheque Date" Variant="Variant.Outlined" />
+                </MudItem>
+                <MudItem xs="12">
+                    <MudTextField @bind-Value="_bankName" Label="Bank Name" Variant="Variant.Outlined" />
+                </MudItem>
+            }
+            
+            @if (_paymentMode == "Bank Transfer" || _paymentMode == "Online")
+            {
+                <MudItem xs="12">
+                    <MudTextField @bind-Value="_transactionId" Label="Transaction ID / Reference" Variant="Variant.Outlined" />
+                </MudItem>
+            }
+            
+            <MudItem xs="12">
+                <MudTextField @bind-Value="_paymentReference" Label="Payment Reference / Notes" 
+                              Variant="Variant.Outlined" Lines="2" />
+            </MudItem>
+        </MudGrid>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Cancel">Cancel</MudButton>
+        <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="ProcessPayment"
+                   Disabled="@(_paidAmount <= 0 || string.IsNullOrEmpty(_paymentMode) || _isSaving)">
+            @if (_isSaving) { <MudProgressCircular Size="Size.Small" Indeterminate="true" /> }
+            else { <span>Process Payment</span> }
+        </MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] MudDialogInstance MudDialog { get; set; } = null!;
+    [Parameter] public CODRemittance? Remittance { get; set; }
+
+    private decimal _paidAmount;
+    private string _paymentMode = "Cash";
+    private string? _paymentReference;
+    private string? _bankName;
+    private string? _chequeNo;
+    private DateTime? _chequeDate;
+    private string? _transactionId;
+    private bool _isSaving = false;
+
+    protected override void OnInitialized()
+    {
+        _paidAmount = Remittance?.BalanceAmount ?? 0;
+    }
+
+    private async Task ProcessPayment()
+    {
+        if (Remittance == null || _paidAmount <= 0)
+        {
+            Snackbar.Add("Please enter a valid payment amount", Severity.Warning);
+            return;
+        }
+
+        _isSaving = true;
+        try
+        {
+            var service = new CODRemittanceService(DbContext);
+            var success = await service.ProcessPaymentAsync(
+                Remittance.Id,
+                _paidAmount,
+                _paymentMode,
+                _paymentReference,
+                _bankName,
+                _chequeNo,
+                _chequeDate,
+                _transactionId,
+                1, "Admin"
+            );
+
+            if (success)
+            {
+                Snackbar.Add("Payment processed successfully", Severity.Success);
+                MudDialog.Close(DialogResult.Ok(true));
+            }
+            else
+            {
+                Snackbar.Add("Failed to process payment", Severity.Error);
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error processing payment: {ex.Message}", Severity.Error);
+        }
+        _isSaving = false;
+    }
+
+    private void Cancel() => MudDialog.Cancel();
+}

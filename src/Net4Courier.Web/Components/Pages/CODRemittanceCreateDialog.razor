@@ -1,0 +1,176 @@
+@inject ApplicationDbContext DbContext
+@inject ISnackbar Snackbar
+@using Microsoft.EntityFrameworkCore
+@using MudBlazor
+@using Net4Courier.Infrastructure.Data
+@using Net4Courier.Operations.Entities
+@using Net4Courier.Web.Services
+
+<MudDialog>
+    <TitleContent>
+        <MudText Typo="Typo.h6">Create COD Remittance</MudText>
+    </TitleContent>
+    <DialogContent>
+        <MudGrid>
+            <MudItem xs="12" sm="6">
+                <MudAutocomplete T="long?" @bind-Value="_selectedCustomerId" Label="Customer"
+                                 SearchFunc="SearchCustomers" ToStringFunc="@(id => GetCustomerName(id))"
+                                 Variant="Variant.Outlined" Dense="true" Required="true" />
+            </MudItem>
+            <MudItem xs="12" sm="6">
+                <MudNumericField T="decimal" @bind-Value="_serviceChargePercent" Label="Service Charge %"
+                                 Variant="Variant.Outlined" Min="0" Max="100" Step="0.5M" />
+            </MudItem>
+        </MudGrid>
+
+        @if (_selectedCustomerId.HasValue)
+        {
+            <MudDivider Class="my-4" />
+            
+            @if (_isLoadingShipments)
+            {
+                <MudProgressLinear Indeterminate="true" Color="Color.Primary" />
+            }
+            else
+            {
+                <MudText Typo="Typo.subtitle1" Class="mb-2">
+                    Select Shipments for Remittance (@_selectedShipments.Count of @_pendingShipments.Count selected)
+                </MudText>
+                
+                <MudTable Items="@_pendingShipments" Dense="true" Hover="true" Bordered="true" 
+                          MultiSelection="true" @bind-SelectedItems="_selectedShipments" FixedHeader="true" Height="300px">
+                    <HeaderContent>
+                        <MudTh>AWB No</MudTh>
+                        <MudTh>Delivered Date</MudTh>
+                        <MudTh>Consignee</MudTh>
+                        <MudTh Style="text-align:right">COD Amount</MudTh>
+                    </HeaderContent>
+                    <RowTemplate>
+                        <MudTd>@context.AWBNo</MudTd>
+                        <MudTd>@context.DeliveredDate?.ToString("dd-MMM-yyyy")</MudTd>
+                        <MudTd>@context.Consignee</MudTd>
+                        <MudTd Style="text-align:right">@((context.CODAmount ?? 0).ToString("N2"))</MudTd>
+                    </RowTemplate>
+                </MudTable>
+
+                <MudPaper Class="pa-3 mt-4" Elevation="1">
+                    <MudGrid>
+                        <MudItem xs="6"><MudText>Total COD Amount:</MudText></MudItem>
+                        <MudItem xs="6" Style="text-align:right"><MudText><b>@_totalCOD.ToString("N2")</b></MudText></MudItem>
+                        <MudItem xs="6"><MudText>Service Charge (@_serviceChargePercent%):</MudText></MudItem>
+                        <MudItem xs="6" Style="text-align:right"><MudText><b>@_serviceCharge.ToString("N2")</b></MudText></MudItem>
+                        <MudItem xs="6"><MudText Color="Color.Primary">Net Payable:</MudText></MudItem>
+                        <MudItem xs="6" Style="text-align:right"><MudText Color="Color.Primary"><b>@_netPayable.ToString("N2")</b></MudText></MudItem>
+                    </MudGrid>
+                </MudPaper>
+            }
+        }
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Cancel">Cancel</MudButton>
+        <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="CreateRemittance"
+                   Disabled="@(!_selectedCustomerId.HasValue || _selectedShipments.Count == 0 || _isSaving)">
+            @if (_isSaving) { <MudProgressCircular Size="Size.Small" Indeterminate="true" /> }
+            else { <span>Create Remittance</span> }
+        </MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] MudDialogInstance MudDialog { get; set; } = null!;
+    [Parameter] public List<PendingCODSummary>? PendingCODSummary { get; set; }
+    [Parameter] public long? CustomerId { get; set; }
+    [Parameter] public string? CustomerName { get; set; }
+
+    private long? _selectedCustomerId;
+    private decimal _serviceChargePercent = 2.0M;
+    private List<InscanMaster> _pendingShipments = new();
+    private HashSet<InscanMaster> _selectedShipments = new();
+    private Dictionary<long, string> _customerNames = new();
+    private bool _isLoadingShipments = false;
+    private bool _isSaving = false;
+
+    private decimal _totalCOD => _selectedShipments.Sum(s => s.CODAmount ?? 0);
+    private decimal _serviceCharge => Math.Round(_totalCOD * (_serviceChargePercent / 100), 2);
+    private decimal _netPayable => _totalCOD - _serviceCharge;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var customers = await DbContext.Parties.Where(p => p.IsActive).ToListAsync();
+        _customerNames = customers.ToDictionary(c => c.Id, c => c.Name);
+
+        if (CustomerId.HasValue)
+        {
+            _selectedCustomerId = CustomerId;
+            await LoadPendingShipments();
+        }
+    }
+
+    private Task<IEnumerable<long?>> SearchCustomers(string value)
+    {
+        IEnumerable<long?> result;
+        if (string.IsNullOrWhiteSpace(value))
+            result = _customerNames.Keys.Select(k => (long?)k).Take(20);
+        else
+            result = _customerNames
+                .Where(c => c.Value.Contains(value, StringComparison.OrdinalIgnoreCase))
+                .Select(c => (long?)c.Key)
+                .Take(20);
+        return Task.FromResult(result);
+    }
+
+    private string GetCustomerName(long? id) => id.HasValue && _customerNames.ContainsKey(id.Value) 
+        ? _customerNames[id.Value] : "";
+
+    private async Task LoadPendingShipments()
+    {
+        if (!_selectedCustomerId.HasValue) return;
+
+        _isLoadingShipments = true;
+        StateHasChanged();
+
+        try
+        {
+            var service = new CODRemittanceService(DbContext);
+            _pendingShipments = await service.GetPendingCODShipmentsAsync(_selectedCustomerId.Value);
+            _selectedShipments = _pendingShipments.ToHashSet();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error loading shipments: {ex.Message}", Severity.Error);
+        }
+
+        _isLoadingShipments = false;
+    }
+
+    private async Task CreateRemittance()
+    {
+        if (!_selectedCustomerId.HasValue || _selectedShipments.Count == 0)
+        {
+            Snackbar.Add("Please select customer and shipments", Severity.Warning);
+            return;
+        }
+
+        _isSaving = true;
+        try
+        {
+            var service = new CODRemittanceService(DbContext);
+            var remittance = await service.CreateRemittanceAsync(
+                _selectedCustomerId.Value,
+                _selectedShipments.Select(s => s.Id).ToList(),
+                _serviceChargePercent,
+                null, null, null, 1, "Admin"
+            );
+
+            Snackbar.Add($"Remittance {remittance.RemittanceNo} created successfully", Severity.Success);
+            MudDialog.Close(DialogResult.Ok(remittance));
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error creating remittance: {ex.Message}", Severity.Error);
+        }
+        _isSaving = false;
+    }
+
+    private void Cancel() => MudDialog.Cancel();
+}

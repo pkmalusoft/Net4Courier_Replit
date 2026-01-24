@@ -1,0 +1,317 @@
+@page "/transfer-orders"
+@inject ApplicationDbContext DbContext
+@inject ISnackbar Snackbar
+@inject IDialogService DialogService
+@inject NavigationManager Navigation
+@using Microsoft.EntityFrameworkCore
+@using Net4Courier.Infrastructure.Data
+@using Net4Courier.Operations.Entities
+@using Net4Courier.Web.Services
+
+<MudContainer MaxWidth="MaxWidth.ExtraLarge" Class="mt-4">
+    <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center" Class="mb-4">
+        <MudText Typo="Typo.h4">Transfer Orders</MudText>
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add"
+                   OnClick="OpenCreateDialog">
+            New Transfer Order
+        </MudButton>
+    </MudStack>
+
+    <MudPaper Class="pa-4 mb-4" Elevation="1">
+        <MudGrid>
+            <MudItem xs="12" sm="3">
+                <MudSelect T="long?" @bind-Value="_filterSourceBranchId" Label="Source Branch"
+                           Variant="Variant.Outlined" Dense="true" Clearable="true">
+                    @foreach (var branch in _branches)
+                    {
+                        <MudSelectItem Value="@((long?)branch.Id)">@branch.Name</MudSelectItem>
+                    }
+                </MudSelect>
+            </MudItem>
+            <MudItem xs="12" sm="3">
+                <MudSelect T="long?" @bind-Value="_filterDestBranchId" Label="Destination Branch"
+                           Variant="Variant.Outlined" Dense="true" Clearable="true">
+                    @foreach (var branch in _branches)
+                    {
+                        <MudSelectItem Value="@((long?)branch.Id)">@branch.Name</MudSelectItem>
+                    }
+                </MudSelect>
+            </MudItem>
+            <MudItem xs="12" sm="2">
+                <MudSelect T="TransferOrderStatus?" @bind-Value="_filterStatus" Label="Status"
+                           Variant="Variant.Outlined" Dense="true" Clearable="true">
+                    @foreach (TransferOrderStatus status in Enum.GetValues(typeof(TransferOrderStatus)))
+                    {
+                        <MudSelectItem Value="@((TransferOrderStatus?)status)">@status.ToString()</MudSelectItem>
+                    }
+                </MudSelect>
+            </MudItem>
+            <MudItem xs="12" sm="2">
+                <MudDatePicker @bind-Date="_filterFromDate" Label="From Date"
+                               Variant="Variant.Outlined" DateFormat="dd-MMM-yyyy" />
+            </MudItem>
+            <MudItem xs="12" sm="2" Class="d-flex align-center">
+                <MudButton Variant="Variant.Outlined" Color="Color.Primary" OnClick="LoadTransfers" FullWidth="true">
+                    Apply Filters
+                </MudButton>
+            </MudItem>
+        </MudGrid>
+    </MudPaper>
+
+    @if (_isLoading)
+    {
+        <MudProgressLinear Indeterminate="true" Color="Color.Primary" />
+    }
+    else
+    {
+        <MudTable Items="@_transfers" Dense="true" Hover="true" Bordered="true" Striped="true">
+            <HeaderContent>
+                <MudTh>Transfer No</MudTh>
+                <MudTh>Date</MudTh>
+                <MudTh>From</MudTh>
+                <MudTh>To</MudTh>
+                <MudTh>Type</MudTh>
+                <MudTh Style="text-align:center">Items</MudTh>
+                <MudTh Style="text-align:right">Weight</MudTh>
+                <MudTh>Vehicle</MudTh>
+                <MudTh>Status</MudTh>
+                <MudTh>Actions</MudTh>
+            </HeaderContent>
+            <RowTemplate>
+                <MudTd>@context.TransferNo</MudTd>
+                <MudTd>@context.TransferDate.ToString("dd-MMM-yyyy")</MudTd>
+                <MudTd>@context.SourceBranchName</MudTd>
+                <MudTd>@context.DestinationBranchName</MudTd>
+                <MudTd>
+                    <MudChip T="string" Size="Size.Small" Color="@GetTypeColor(context.TransferType)">
+                        @context.TransferType.ToString()
+                    </MudChip>
+                </MudTd>
+                <MudTd Style="text-align:center">@context.TotalItems</MudTd>
+                <MudTd Style="text-align:right">@context.TotalWeight.ToString("N2") kg</MudTd>
+                <MudTd>@(context.VehicleNo ?? "-")</MudTd>
+                <MudTd>
+                    <MudChip T="string" Size="Size.Small" Color="@GetStatusColor(context.Status)">
+                        @context.Status.ToString()
+                    </MudChip>
+                </MudTd>
+                <MudTd>
+                    <MudStack Row="true" Spacing="1">
+                        <MudIconButton Icon="@Icons.Material.Filled.Visibility" Size="Size.Small" Color="Color.Primary"
+                                       OnClick="@(() => ViewTransfer(context.Id))" />
+                        @if (context.Status == TransferOrderStatus.Draft)
+                        {
+                            <MudIconButton Icon="@Icons.Material.Filled.CheckCircle" Size="Size.Small" Color="Color.Success"
+                                           OnClick="@(() => ConfirmTransfer(context))" />
+                            <MudIconButton Icon="@Icons.Material.Filled.Cancel" Size="Size.Small" Color="Color.Error"
+                                           OnClick="@(() => CancelTransfer(context))" />
+                        }
+                        @if (context.Status == TransferOrderStatus.Confirmed)
+                        {
+                            <MudIconButton Icon="@Icons.Material.Filled.LocalShipping" Size="Size.Small" Color="Color.Primary"
+                                           OnClick="@(() => StartLoading(context))" />
+                        }
+                        @if (context.Status == TransferOrderStatus.Loading)
+                        {
+                            <MudIconButton Icon="@Icons.Material.Filled.Send" Size="Size.Small" Color="Color.Primary"
+                                           OnClick="@(() => DispatchTransfer(context))" />
+                        }
+                        @if (context.Status == TransferOrderStatus.InTransit)
+                        {
+                            <MudIconButton Icon="@Icons.Material.Filled.FlightLand" Size="Size.Small" Color="Color.Success"
+                                           OnClick="@(() => MarkArrived(context))" />
+                        }
+                    </MudStack>
+                </MudTd>
+            </RowTemplate>
+            <NoRecordsContent>
+                <MudText Color="Color.Secondary">No transfer orders found</MudText>
+            </NoRecordsContent>
+        </MudTable>
+    }
+</MudContainer>
+
+@code {
+    private bool _isLoading = true;
+    private List<TransferOrder> _transfers = new();
+    private List<Net4Courier.Masters.Entities.Branch> _branches = new();
+    
+    private long? _filterSourceBranchId;
+    private long? _filterDestBranchId;
+    private TransferOrderStatus? _filterStatus;
+    private DateTime? _filterFromDate;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _branches = await DbContext.Branches.Where(b => b.IsActive).ToListAsync();
+        await LoadTransfers();
+    }
+
+    private async Task LoadTransfers()
+    {
+        _isLoading = true;
+        try
+        {
+            var service = new TransferOrderService(DbContext);
+            _transfers = await service.GetTransferOrdersAsync(
+                sourceBranchId: _filterSourceBranchId,
+                destinationBranchId: _filterDestBranchId,
+                fromDate: _filterFromDate,
+                status: _filterStatus
+            );
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error loading transfers: {ex.Message}", Severity.Error);
+        }
+        _isLoading = false;
+    }
+
+    private Color GetStatusColor(TransferOrderStatus status) => status switch
+    {
+        TransferOrderStatus.Draft => Color.Default,
+        TransferOrderStatus.Confirmed => Color.Info,
+        TransferOrderStatus.Loading => Color.Warning,
+        TransferOrderStatus.InTransit => Color.Primary,
+        TransferOrderStatus.Arrived => Color.Secondary,
+        TransferOrderStatus.Unloading => Color.Warning,
+        TransferOrderStatus.Received => Color.Success,
+        TransferOrderStatus.Completed => Color.Success,
+        TransferOrderStatus.Cancelled => Color.Error,
+        _ => Color.Default
+    };
+
+    private Color GetTypeColor(TransferOrderType type) => type switch
+    {
+        TransferOrderType.Standard => Color.Default,
+        TransferOrderType.Emergency => Color.Error,
+        TransferOrderType.Return => Color.Warning,
+        TransferOrderType.Consolidation => Color.Info,
+        _ => Color.Default
+    };
+
+    private async Task OpenCreateDialog()
+    {
+        var parameters = new DialogParameters { ["Branches"] = _branches };
+        var dialog = await DialogService.ShowAsync<TransferOrderCreateDialog>("New Transfer Order", parameters,
+            new DialogOptions { MaxWidth = MaxWidth.Large, FullWidth = true });
+        var result = await dialog.Result;
+        if (result != null && !result.Canceled)
+        {
+            await LoadTransfers();
+        }
+    }
+
+    private void ViewTransfer(long id)
+    {
+        Navigation.NavigateTo($"/transfer-orders/{id}");
+    }
+
+    private async Task ConfirmTransfer(TransferOrder transfer)
+    {
+        var confirm = await DialogService.ShowMessageBox(
+            "Confirm Transfer",
+            $"Confirm transfer {transfer.TransferNo}?",
+            yesText: "Confirm", cancelText: "Cancel");
+        
+        if (confirm == true)
+        {
+            try
+            {
+                var service = new TransferOrderService(DbContext);
+                var success = await service.ConfirmTransferOrderAsync(transfer.Id, 1, "Admin");
+                if (success)
+                {
+                    Snackbar.Add("Transfer confirmed", Severity.Success);
+                    await LoadTransfers();
+                }
+            }
+            catch (Exception ex)
+            {
+                Snackbar.Add($"Error: {ex.Message}", Severity.Error);
+            }
+        }
+    }
+
+    private async Task CancelTransfer(TransferOrder transfer)
+    {
+        var confirm = await DialogService.ShowMessageBox(
+            "Cancel Transfer",
+            $"Are you sure you want to cancel {transfer.TransferNo}?",
+            yesText: "Cancel Transfer", cancelText: "No");
+        
+        if (confirm == true)
+        {
+            try
+            {
+                var service = new TransferOrderService(DbContext);
+                var success = await service.CancelTransferAsync(transfer.Id, "Cancelled by user", 1, "Admin");
+                if (success)
+                {
+                    Snackbar.Add("Transfer cancelled", Severity.Info);
+                    await LoadTransfers();
+                }
+            }
+            catch (Exception ex)
+            {
+                Snackbar.Add($"Error: {ex.Message}", Severity.Error);
+            }
+        }
+    }
+
+    private async Task StartLoading(TransferOrder transfer)
+    {
+        var parameters = new DialogParameters { ["Transfer"] = transfer };
+        var dialog = await DialogService.ShowAsync<TransferLoadingDialog>("Start Loading", parameters,
+            new DialogOptions { MaxWidth = MaxWidth.Small, FullWidth = true });
+        var result = await dialog.Result;
+        if (result != null && !result.Canceled)
+        {
+            await LoadTransfers();
+        }
+    }
+
+    private async Task DispatchTransfer(TransferOrder transfer)
+    {
+        var confirm = await DialogService.ShowMessageBox(
+            "Dispatch Transfer",
+            $"Dispatch transfer {transfer.TransferNo}?",
+            yesText: "Dispatch", cancelText: "Cancel");
+        
+        if (confirm == true)
+        {
+            try
+            {
+                var service = new TransferOrderService(DbContext);
+                var success = await service.DispatchTransferAsync(transfer.Id, null, null, 1, "Admin");
+                if (success)
+                {
+                    Snackbar.Add("Transfer dispatched", Severity.Success);
+                    await LoadTransfers();
+                }
+            }
+            catch (Exception ex)
+            {
+                Snackbar.Add($"Error: {ex.Message}", Severity.Error);
+            }
+        }
+    }
+
+    private async Task MarkArrived(TransferOrder transfer)
+    {
+        try
+        {
+            var service = new TransferOrderService(DbContext);
+            var success = await service.MarkArrivedAsync(transfer.Id, 1, "Admin");
+            if (success)
+            {
+                Snackbar.Add("Transfer marked as arrived", Severity.Success);
+                await LoadTransfers();
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error: {ex.Message}", Severity.Error);
+        }
+    }
+}
