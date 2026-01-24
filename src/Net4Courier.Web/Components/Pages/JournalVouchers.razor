@@ -1,0 +1,257 @@
+@page "/journal"
+@page "/journal-vouchers"
+@inject ApplicationDbContext DbContext
+@inject IDialogService DialogService
+@inject ISnackbar Snackbar
+@using Microsoft.EntityFrameworkCore
+@using Net4Courier.Infrastructure.Data
+@using Net4Courier.Finance.Entities
+
+<PageTitle>Journal Vouchers - Net4Courier</PageTitle>
+
+<MudContainer MaxWidth="MaxWidth.ExtraLarge" Class="mt-4">
+    <MudPaper Class="pa-4" Elevation="2">
+        <MudStack Class="mt-2">
+            <MudStack Row="true" AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween">
+                <MudText Typo="Typo.h6">Journal Vouchers</MudText>
+                <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add" 
+                           OnClick="CreateNew">New Journal Voucher</MudButton>
+            </MudStack>
+
+            <MudStack Row="true" Spacing="3" Class="mb-2">
+                <MudDatePicker @bind-Date="_fromDate" Label="From Date" DateFormat="dd-MMM-yyyy" />
+                <MudDatePicker @bind-Date="_toDate" Label="To Date" DateFormat="dd-MMM-yyyy" />
+                <MudSelect T="string" @bind-Value="_filterStatus" Label="Status" Clearable="true" Style="width: 150px;">
+                    <MudSelectItem Value="@("All")">All</MudSelectItem>
+                    <MudSelectItem Value="@("Draft")">Draft</MudSelectItem>
+                    <MudSelectItem Value="@("Posted")">Posted</MudSelectItem>
+                </MudSelect>
+                <MudTextField @bind-Value="_searchText" Label="Search" Immediate="true" 
+                              Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Filled.Search" />
+                <MudButton Variant="Variant.Outlined" Color="Color.Primary" OnClick="LoadVouchers">Filter</MudButton>
+            </MudStack>
+
+            <MudTable Items="@_filteredVouchers" Hover="true" Striped="true" Dense="true" Loading="@_isLoading">
+                <HeaderContent>
+                    <MudTh>Voucher No</MudTh>
+                    <MudTh>Date</MudTh>
+                    <MudTh>Narration</MudTh>
+                    <MudTh>Reference</MudTh>
+                    <MudTh Style="text-align:right">Debit</MudTh>
+                    <MudTh Style="text-align:right">Credit</MudTh>
+                    <MudTh>Status</MudTh>
+                    <MudTh Style="width:150px">Actions</MudTh>
+                </HeaderContent>
+                <RowTemplate>
+                    <MudTd>@context.VoucherNo</MudTd>
+                    <MudTd>@context.VoucherDate.ToString("dd-MMM-yyyy")</MudTd>
+                    <MudTd>@context.Narration</MudTd>
+                    <MudTd>@context.Reference</MudTd>
+                    <MudTd Style="text-align:right">@context.TotalDebit?.ToString("N2")</MudTd>
+                    <MudTd Style="text-align:right">@context.TotalCredit?.ToString("N2")</MudTd>
+                    <MudTd>
+                        @if (context.IsPosted)
+                        {
+                            <MudChip T="string" Size="Size.Small" Color="Color.Success">Posted</MudChip>
+                        }
+                        else
+                        {
+                            <MudChip T="string" Size="Size.Small" Color="Color.Warning">Draft</MudChip>
+                        }
+                    </MudTd>
+                    <MudTd>
+                        <MudIconButton Icon="@Icons.Material.Filled.Visibility" Size="Size.Small" Color="Color.Info"
+                                       OnClick="@(() => ViewVoucher(context))" />
+                        @if (!context.IsPosted)
+                        {
+                            <MudIconButton Icon="@Icons.Material.Filled.Edit" Size="Size.Small"
+                                           OnClick="@(() => EditVoucher(context))" />
+                            <MudIconButton Icon="@Icons.Material.Filled.Check" Size="Size.Small" Color="Color.Success"
+                                           OnClick="@(() => PostVoucher(context))" Title="Post" />
+                            <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" Color="Color.Error"
+                                           OnClick="@(() => DeleteVoucher(context))" />
+                        }
+                        else
+                        {
+                            <MudIconButton Icon="@Icons.Material.Filled.Undo" Size="Size.Small" Color="Color.Warning"
+                                           OnClick="@(() => UnpostVoucher(context))" Title="Unpost" />
+                        }
+                    </MudTd>
+                </RowTemplate>
+                <NoRecordsContent>
+                    <MudText>No journal vouchers found</MudText>
+                </NoRecordsContent>
+            </MudTable>
+        </MudStack>
+    </MudPaper>
+</MudContainer>
+
+@code {
+    private List<Journal> _vouchers = new();
+    private bool _isLoading = true;
+    private DateTime? _fromDate = DateTime.SpecifyKind(DateTime.Today.AddMonths(-1), DateTimeKind.Utc);
+    private DateTime? _toDate = DateTime.SpecifyKind(DateTime.Today, DateTimeKind.Utc);
+    private string _searchText = "";
+    private string _filterStatus = "All";
+
+    private IEnumerable<Journal> _filteredVouchers => string.IsNullOrEmpty(_searchText)
+        ? _vouchers
+        : _vouchers.Where(v => 
+            (v.VoucherNo?.Contains(_searchText, StringComparison.OrdinalIgnoreCase) ?? false) ||
+            (v.Narration?.Contains(_searchText, StringComparison.OrdinalIgnoreCase) ?? false) ||
+            (v.Reference?.Contains(_searchText, StringComparison.OrdinalIgnoreCase) ?? false));
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadVouchers();
+    }
+
+    private async Task LoadVouchers()
+    {
+        _isLoading = true;
+        try
+        {
+            var query = DbContext.Journals
+                .Include(j => j.Entries)
+                .Where(j => j.VoucherType == "JV" && !j.IsDeleted);
+
+            if (_fromDate.HasValue)
+            {
+                var fromUtc = DateTime.SpecifyKind(_fromDate.Value.Date, DateTimeKind.Utc);
+                query = query.Where(j => j.VoucherDate >= fromUtc);
+            }
+
+            if (_toDate.HasValue)
+            {
+                var toUtc = DateTime.SpecifyKind(_toDate.Value.Date.AddDays(1).AddTicks(-1), DateTimeKind.Utc);
+                query = query.Where(j => j.VoucherDate <= toUtc);
+            }
+
+            if (_filterStatus == "Draft")
+                query = query.Where(j => !j.IsPosted);
+            else if (_filterStatus == "Posted")
+                query = query.Where(j => j.IsPosted);
+
+            _vouchers = await query.OrderByDescending(j => j.VoucherDate)
+                .ThenByDescending(j => j.VoucherNo)
+                .ToListAsync();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error loading vouchers: {ex.Message}", Severity.Error);
+        }
+        _isLoading = false;
+    }
+
+    private async Task CreateNew()
+    {
+        var parameters = new DialogParameters
+        {
+            ["Journal"] = null
+        };
+        var options = new DialogOptions { MaxWidth = MaxWidth.Large, FullWidth = true, CloseOnEscapeKey = true };
+        var dialog = await DialogService.ShowAsync<JournalEntryDialog>("New Journal Voucher", parameters, options);
+        var result = await dialog.Result;
+        if (result != null && !result.Canceled)
+        {
+            await LoadVouchers();
+        }
+    }
+
+    private async Task ViewVoucher(Journal journal)
+    {
+        var parameters = new DialogParameters
+        {
+            ["Journal"] = journal,
+            ["IsReadOnly"] = true
+        };
+        var options = new DialogOptions { MaxWidth = MaxWidth.Large, FullWidth = true, CloseOnEscapeKey = true };
+        await DialogService.ShowAsync<JournalEntryDialog>("View Journal Voucher", parameters, options);
+    }
+
+    private async Task EditVoucher(Journal journal)
+    {
+        var parameters = new DialogParameters
+        {
+            ["Journal"] = journal
+        };
+        var options = new DialogOptions { MaxWidth = MaxWidth.Large, FullWidth = true, CloseOnEscapeKey = true };
+        var dialog = await DialogService.ShowAsync<JournalEntryDialog>("Edit Journal Voucher", parameters, options);
+        var result = await dialog.Result;
+        if (result != null && !result.Canceled)
+        {
+            await LoadVouchers();
+        }
+    }
+
+    private async Task PostVoucher(Journal journal)
+    {
+        var confirm = await DialogService.ShowMessageBox(
+            "Confirm Post",
+            $"Are you sure you want to post voucher {journal.VoucherNo}? Posted vouchers cannot be edited.",
+            yesText: "Post", cancelText: "Cancel");
+        
+        if (confirm == true)
+        {
+            try
+            {
+                journal.IsPosted = true;
+                journal.PostedAt = DateTime.UtcNow;
+                await DbContext.SaveChangesAsync();
+                Snackbar.Add("Voucher posted successfully", Severity.Success);
+                await LoadVouchers();
+            }
+            catch (Exception ex)
+            {
+                Snackbar.Add($"Error posting voucher: {ex.Message}", Severity.Error);
+            }
+        }
+    }
+
+    private async Task UnpostVoucher(Journal journal)
+    {
+        var confirm = await DialogService.ShowMessageBox(
+            "Confirm Unpost",
+            $"Are you sure you want to unpost voucher {journal.VoucherNo}?",
+            yesText: "Unpost", cancelText: "Cancel");
+        
+        if (confirm == true)
+        {
+            try
+            {
+                journal.IsPosted = false;
+                journal.PostedAt = null;
+                await DbContext.SaveChangesAsync();
+                Snackbar.Add("Voucher unposted successfully", Severity.Success);
+                await LoadVouchers();
+            }
+            catch (Exception ex)
+            {
+                Snackbar.Add($"Error unposting voucher: {ex.Message}", Severity.Error);
+            }
+        }
+    }
+
+    private async Task DeleteVoucher(Journal journal)
+    {
+        var confirm = await DialogService.ShowMessageBox(
+            "Confirm Delete",
+            $"Are you sure you want to delete voucher {journal.VoucherNo}?",
+            yesText: "Delete", cancelText: "Cancel");
+        
+        if (confirm == true)
+        {
+            try
+            {
+                journal.IsDeleted = true;
+                await DbContext.SaveChangesAsync();
+                Snackbar.Add("Voucher deleted successfully", Severity.Success);
+                await LoadVouchers();
+            }
+            catch (Exception ex)
+            {
+                Snackbar.Add($"Error deleting voucher: {ex.Message}", Severity.Error);
+            }
+        }
+    }
+}

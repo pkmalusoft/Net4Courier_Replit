@@ -1,0 +1,445 @@
+@page "/gl/journal-vouchers"
+@layout MainLayout
+@using Web.Models
+@using Web.Services
+@using System.Text.Json
+@using System.Text.Json.Serialization
+@inject HttpClient Http
+@inject IAuthService AuthService
+@inject NavigationManager Navigation
+@inject ISnackbar Snackbar
+
+<MudContainer MaxWidth="MaxWidth.ExtraLarge" Class="mt-4">
+    <MudText Typo="Typo.h4" Class="mb-4">Journal Vouchers</MudText>
+    
+    <MudPaper Class="pa-4 mb-4">
+        <MudGrid>
+            <MudItem xs="12" sm="3">
+                <MudSelect @bind-Value="selectedStatus" Label="Status" T="string">
+                    <MudSelectItem Value="@("All")">All</MudSelectItem>
+                    <MudSelectItem Value="@("Draft")">Draft</MudSelectItem>
+                    <MudSelectItem Value="@("Posted")">Posted</MudSelectItem>
+                </MudSelect>
+            </MudItem>
+            <MudItem xs="12" sm="3">
+                <MudDatePicker @bind-Date="fromDate" Label="From Date" Clearable="true" />
+            </MudItem>
+            <MudItem xs="12" sm="3">
+                <MudDatePicker @bind-Date="toDate" Label="To Date" Clearable="true" />
+            </MudItem>
+            <MudItem xs="12" sm="3">
+                <MudButton Variant="Variant.Filled" 
+                          Color="Color.Primary" 
+                          StartIcon="@Icons.Material.Filled.Add"
+                          OnClick="CreateNew"
+                          FullWidth="true">
+                    Create New
+                </MudButton>
+            </MudItem>
+        </MudGrid>
+        
+        <MudGrid Class="mt-2">
+            <MudItem xs="12" sm="4">
+                <MudButton Variant="Variant.Outlined" 
+                          Color="Color.Secondary" 
+                          OnClick="ApplyFilters"
+                          FullWidth="true">
+                    Apply Filters
+                </MudButton>
+            </MudItem>
+            <MudItem xs="12" sm="4">
+                <MudButton Variant="Variant.Text" 
+                          Color="Color.Default" 
+                          OnClick="ClearFilters"
+                          FullWidth="true">
+                    Clear Filters
+                </MudButton>
+            </MudItem>
+            <MudItem xs="12" sm="4">
+                <MudCheckBox @bind-Value="includeVoided" Label="Include Voided" Color="Color.Secondary" />
+            </MudItem>
+        </MudGrid>
+    </MudPaper>
+
+    <MudPaper Class="pa-4">
+        @if (isLoading)
+        {
+            <MudProgressCircular Indeterminate="true" />
+        }
+        else
+        {
+            <MudDataGrid T="JournalEntryDto" 
+                        Items="@journalEntries" 
+                        Dense="true"
+                        Hover="true"
+                        ReadOnly="true"
+                        Height="600px">
+                <Columns>
+                    <PropertyColumn Property="x => x.EntryNumber" Title="Entry No" />
+                    <PropertyColumn Property="x => x.EntryDate" Title="Entry Date" Format="dd MMM yyyy" />
+                    <PropertyColumn Property="x => x.Description" Title="Description" />
+                    <PropertyColumn Property="x => x.Source" Title="Source">
+                        <CellTemplate>
+                            <MudChip Size="MudBlazor.Size.Small" Color="@GetSourceColor(context.Item.Source)">
+                                @context.Item.Source
+                            </MudChip>
+                        </CellTemplate>
+                    </PropertyColumn>
+                    <PropertyColumn Property="x => x.TotalDebit" Title="Debit" Format="N2">
+                        <CellTemplate>
+                            <MudText Style="text-align: right;">@context.Item.TotalDebit.ToString("N2")</MudText>
+                        </CellTemplate>
+                    </PropertyColumn>
+                    <PropertyColumn Property="x => x.TotalCredit" Title="Credit" Format="N2">
+                        <CellTemplate>
+                            <MudText Style="text-align: right;">@context.Item.TotalCredit.ToString("N2")</MudText>
+                        </CellTemplate>
+                    </PropertyColumn>
+                    <PropertyColumn Property="x => x.Status" Title="Status">
+                        <CellTemplate>
+                            <MudChip Size="MudBlazor.Size.Small" Color="@GetStatusColor(context.Item.Status)">
+                                @context.Item.Status
+                            </MudChip>
+                        </CellTemplate>
+                    </PropertyColumn>
+                    <TemplateColumn Title="Actions">
+                        <CellTemplate>
+                            @if (!context.Item.IsVoided)
+                            {
+                                <MudIconButton Icon="@Icons.Material.Filled.Visibility" 
+                                             Size="MudBlazor.Size.Small" 
+                                             Color="Color.Info"
+                                             OnClick="@(() => ViewEntry(context.Item.Id))" />
+                                @if (context.Item.Status == "Draft")
+                                {
+                                    <MudIconButton Icon="@Icons.Material.Filled.Edit" 
+                                                 Size="MudBlazor.Size.Small" 
+                                                 Color="Color.Primary"
+                                                 OnClick="@(() => EditEntry(context.Item.Id))" />
+                                }
+                                @if (context.Item.Status == "Posted" && IsAdminOrOwner())
+                                {
+                                    <MudTooltip Text="Void Entry">
+                                        <MudIconButton Icon="@Icons.Material.Filled.NotInterested" 
+                                                     Size="MudBlazor.Size.Small" 
+                                                     Color="Color.Error"
+                                                     OnClick="@(() => OpenVoidDialog(context.Item))" />
+                                    </MudTooltip>
+                                }
+                            }
+                            else
+                            {
+                                <MudChip Size="MudBlazor.Size.Small" Color="Color.Error">VOIDED</MudChip>
+                            }
+                        </CellTemplate>
+                    </TemplateColumn>
+                </Columns>
+            </MudDataGrid>
+        }
+    </MudPaper>
+</MudContainer>
+
+@if (voidDialogVisible)
+{
+    <MudDialog @bind-Visible="voidDialogVisible" Options="new DialogOptions { CloseButton = true, MaxWidth = MaxWidth.Small }">
+        <TitleContent>
+            <MudText Typo="Typo.h6">Void Journal Entry</MudText>
+        </TitleContent>
+        <DialogContent>
+            <MudText Typo="Typo.body1" Class="mb-4">
+                Are you sure you want to void entry <strong>@entryToVoid?.EntryNumber</strong>?
+            </MudText>
+            <MudText Typo="Typo.body2" Color="Color.Warning" Class="mb-4">
+                This action cannot be undone. The entry will be marked as voided and excluded from reports.
+            </MudText>
+            <MudTextField @bind-Value="voidReason" 
+                          Label="Void Reason" 
+                          Required="true" 
+                          Lines="3"
+                          Variant="Variant.Outlined" 
+                          HelperText="Please provide a reason for voiding this entry" />
+        </DialogContent>
+        <DialogActions>
+            <MudButton OnClick="CloseVoidDialog" Color="Color.Default">Cancel</MudButton>
+            <MudButton OnClick="VoidEntry" Color="Color.Error" Variant="Variant.Filled">Void Entry</MudButton>
+        </DialogActions>
+    </MudDialog>
+}
+
+@code {
+    private List<JournalEntryDto> journalEntries = new();
+    private string selectedStatus = "All";
+    private DateTime? fromDate = null;
+    private DateTime? toDate = null;
+    private bool includeVoided = false;
+    private bool isLoading = false;
+    private bool voidDialogVisible = false;
+    private JournalEntryDto? entryToVoid;
+    private string voidReason = string.Empty;
+
+    private static readonly JsonSerializerOptions _jsonOptions = new()
+    {
+        PropertyNameCaseInsensitive = true,
+        Converters = { new JsonStringEnumConverter() }
+    };
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadJournalEntries();
+    }
+
+    private async Task LoadJournalEntries()
+    {
+        isLoading = true;
+        try
+        {
+            var tenantId = AuthService.GetTenantId();
+            var token = AuthService.GetAccessToken();
+            
+            Http.DefaultRequestHeaders.Remove("X-Tenant-Id");
+            Http.DefaultRequestHeaders.Add("X-Tenant-Id", tenantId);
+            
+            if (!string.IsNullOrEmpty(token))
+            {
+                Http.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
+            }
+            
+            var queryParams = new List<string>();
+            
+            if (selectedStatus != "All")
+            {
+                var statusValue = selectedStatus switch
+                {
+                    "Draft" => "0",
+                    "Posted" => "1",
+                    "Cancelled" => "2",
+                    _ => null
+                };
+                if (statusValue != null)
+                    queryParams.Add($"status={statusValue}");
+            }
+            
+            if (fromDate.HasValue)
+            {
+                queryParams.Add($"fromDate={fromDate.Value:yyyy-MM-dd}");
+            }
+            
+            if (toDate.HasValue)
+            {
+                queryParams.Add($"toDate={toDate.Value:yyyy-MM-dd}");
+            }
+            
+            queryParams.Add($"includeVoided={includeVoided.ToString().ToLower()}");
+            
+            var queryString = queryParams.Count > 0 ? "?" + string.Join("&", queryParams) : "";
+            var url = $"api/JournalEntry{queryString}";
+            
+            var response = await Http.GetAsync(url);
+            if (response.IsSuccessStatusCode)
+            {
+                var entries = await response.Content.ReadFromJsonAsync<List<JournalEntryApiDto>>(_jsonOptions) ?? new();
+                journalEntries = entries.Select(e => new JournalEntryDto
+                {
+                    Id = e.Id,
+                    EntryNumber = e.EntryNumber,
+                    EntryDate = e.EntryDate,
+                    Description = e.Description,
+                    Status = e.Status.ToString(),
+                    Source = e.Source.ToString(),
+                    IsVoided = e.IsVoided,
+                    TotalDebit = e.Lines?.Sum(l => l.Debit) ?? 0,
+                    TotalCredit = e.Lines?.Sum(l => l.Credit) ?? 0
+                }).ToList();
+            }
+            else
+            {
+                var errorContent = await response.Content.ReadAsStringAsync();
+                if (response.StatusCode == System.Net.HttpStatusCode.Unauthorized)
+                {
+                    Snackbar.Add("Please log in to view journal entries.", Severity.Warning);
+                }
+                else
+                {
+                    Snackbar.Add($"Error loading journal entries: {response.StatusCode}", Severity.Error);
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error loading journal entries: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private async Task ApplyFilters()
+    {
+        if (fromDate.HasValue && toDate.HasValue && fromDate.Value > toDate.Value)
+        {
+            Snackbar.Add("From Date cannot be greater than To Date. Please correct the date range.", Severity.Error);
+            return;
+        }
+        await LoadJournalEntries();
+    }
+
+    private async Task ClearFilters()
+    {
+        selectedStatus = "All";
+        fromDate = null;
+        toDate = null;
+        includeVoided = false;
+        await LoadJournalEntries();
+    }
+
+    private void CreateNew()
+    {
+        Navigation.NavigateTo("/gl/journal-entry");
+    }
+
+    private void ViewEntry(Guid id)
+    {
+        Navigation.NavigateTo($"/gl/journal-entry/view/{id}");
+    }
+
+    private void EditEntry(Guid id)
+    {
+        Navigation.NavigateTo($"/gl/journal-entry/edit/{id}");
+    }
+
+    private bool IsAdminOrOwner()
+    {
+        var roles = AuthService.GetUserRoles();
+        return roles.Contains("owner") || roles.Contains("admin");
+    }
+
+    private void OpenVoidDialog(JournalEntryDto entry)
+    {
+        entryToVoid = entry;
+        voidReason = string.Empty;
+        voidDialogVisible = true;
+    }
+
+    private void CloseVoidDialog()
+    {
+        voidDialogVisible = false;
+        entryToVoid = null;
+        voidReason = string.Empty;
+    }
+
+    private async Task VoidEntry()
+    {
+        if (entryToVoid == null || string.IsNullOrWhiteSpace(voidReason))
+        {
+            Snackbar.Add("Please provide a void reason.", Severity.Warning);
+            return;
+        }
+
+        try
+        {
+            var tenantId = AuthService.GetTenantId();
+            var token = AuthService.GetAccessToken();
+            
+            Http.DefaultRequestHeaders.Remove("X-Tenant-Id");
+            Http.DefaultRequestHeaders.Add("X-Tenant-Id", tenantId);
+            
+            if (!string.IsNullOrEmpty(token))
+            {
+                Http.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
+            }
+
+            var response = await Http.PostAsJsonAsync($"api/JournalEntry/{entryToVoid.Id}/void", new { voidReason = voidReason });
+            
+            if (response.IsSuccessStatusCode)
+            {
+                Snackbar.Add("Journal entry voided successfully.", Severity.Success);
+                CloseVoidDialog();
+                await LoadJournalEntries();
+            }
+            else
+            {
+                var error = await response.Content.ReadAsStringAsync();
+                Snackbar.Add($"Error voiding entry: {error}", Severity.Error);
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error voiding entry: {ex.Message}", Severity.Error);
+        }
+    }
+
+    private Color GetStatusColor(string status)
+    {
+        return status switch
+        {
+            "Draft" => Color.Warning,
+            "Posted" => Color.Success,
+            "Cancelled" => Color.Error,
+            _ => Color.Default
+        };
+    }
+
+    private Color GetSourceColor(string source)
+    {
+        return source switch
+        {
+            "Manual" => Color.Primary,
+            "SalesInvoice" => Color.Info,
+            "PurchaseBill" => Color.Secondary,
+            "CashBank" => Color.Success,
+            "YearEndClosing" => Color.Warning,
+            "OpeningBalance" => Color.Tertiary,
+            _ => Color.Default
+        };
+    }
+
+    public class JournalEntryDto
+    {
+        public Guid Id { get; set; }
+        public string EntryNumber { get; set; } = string.Empty;
+        public DateTime EntryDate { get; set; }
+        public string Description { get; set; } = string.Empty;
+        public string Status { get; set; } = string.Empty;
+        public string Source { get; set; } = string.Empty;
+        public bool IsVoided { get; set; }
+        public decimal TotalDebit { get; set; }
+        public decimal TotalCredit { get; set; }
+    }
+
+    public class JournalEntryApiDto
+    {
+        public Guid Id { get; set; }
+        public string EntryNumber { get; set; } = string.Empty;
+        public DateTime EntryDate { get; set; }
+        public string Description { get; set; } = string.Empty;
+        public JournalEntryStatus Status { get; set; }
+        public JournalEntrySource Source { get; set; }
+        public bool IsVoided { get; set; }
+        public List<JournalEntryLineDto>? Lines { get; set; }
+    }
+
+    public class JournalEntryLineDto
+    {
+        public decimal Debit { get; set; }
+        public decimal Credit { get; set; }
+    }
+
+    public enum JournalEntryStatus
+    {
+        Draft,
+        Posted,
+        Cancelled
+    }
+
+    public enum JournalEntrySource
+    {
+        Manual,
+        SalesInvoice,
+        PurchaseBill,
+        CashBank,
+        YearEndClosing,
+        OpeningBalance,
+        PriorPeriodAdjustment
+    }
+}
