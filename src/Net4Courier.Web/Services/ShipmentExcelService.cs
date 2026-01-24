@@ -21,7 +21,8 @@ public class ShipmentExcelService
 
     public byte[] GenerateTemplateWithMasterData(
         IEnumerable<City> cities,
-        IEnumerable<Country> countries)
+        IEnumerable<Country> countries,
+        IEnumerable<Net4Courier.Masters.Entities.ServiceType>? serviceTypes = null)
     {
         using var workbook = new XLWorkbook();
         
@@ -32,6 +33,8 @@ public class ShipmentExcelService
         CreateDocumentTypesSheet(workbook);
         CreateCountriesSheet(workbook, countries);
         CreateCitiesSheet(workbook, cities);
+        if (serviceTypes != null)
+            CreateServiceTypesSheet(workbook, serviceTypes);
         
         using var stream = new MemoryStream();
         workbook.SaveAs(stream);
@@ -168,6 +171,44 @@ public class ShipmentExcelService
         sheet.Column(1).Width = 10;
         sheet.Column(2).Width = 25;
         sheet.Column(3).Width = 25;
+    }
+
+    private void CreateServiceTypesSheet(XLWorkbook workbook, IEnumerable<Net4Courier.Masters.Entities.ServiceType> serviceTypes)
+    {
+        var sheet = workbook.Worksheets.Add("Service Types");
+        
+        sheet.Cell(1, 1).Value = "Service Type Reference";
+        sheet.Cell(1, 1).Style.Font.Bold = true;
+        sheet.Cell(1, 1).Style.Font.FontSize = 14;
+        sheet.Range(1, 1, 1, 4).Merge();
+        
+        sheet.Cell(3, 1).Value = "Code";
+        sheet.Cell(3, 2).Value = "Name";
+        sheet.Cell(3, 3).Value = "Description";
+        sheet.Cell(3, 4).Value = "Transit Days";
+        sheet.Cell(3, 1).Style.Font.Bold = true;
+        sheet.Cell(3, 2).Style.Font.Bold = true;
+        sheet.Cell(3, 3).Style.Font.Bold = true;
+        sheet.Cell(3, 4).Style.Font.Bold = true;
+        sheet.Cell(3, 1).Style.Fill.BackgroundColor = XLColor.LightBlue;
+        sheet.Cell(3, 2).Style.Fill.BackgroundColor = XLColor.LightBlue;
+        sheet.Cell(3, 3).Style.Fill.BackgroundColor = XLColor.LightBlue;
+        sheet.Cell(3, 4).Style.Fill.BackgroundColor = XLColor.LightBlue;
+        
+        int row = 4;
+        foreach (var serviceType in serviceTypes.OrderBy(s => s.SortOrder).ThenBy(s => s.Name))
+        {
+            sheet.Cell(row, 1).Value = serviceType.Code;
+            sheet.Cell(row, 2).Value = serviceType.Name;
+            sheet.Cell(row, 3).Value = serviceType.Description ?? "";
+            sheet.Cell(row, 4).Value = serviceType.TransitDays?.ToString() ?? "";
+            row++;
+        }
+        
+        sheet.Column(1).Width = 12;
+        sheet.Column(2).Width = 25;
+        sheet.Column(3).Width = 40;
+        sheet.Column(4).Width = 12;
     }
 
     private void CreateShipmentsSheet(IXLWorksheet sheet, XLWorkbook workbook)
