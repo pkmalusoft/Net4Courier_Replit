@@ -1,21 +1,24 @@
 @page "/pickup-management"
+@page "/pickup-dashboard"
 @inject ApplicationDbContext DbContext
 @inject NavigationManager NavigationManager
 @inject IDialogService DialogService
 @inject ISnackbar Snackbar
 @inject IJSRuntime JSRuntime
 @inject AuthenticationStateProvider AuthStateProvider
+@inject PickupCommitmentService CommitmentService
 @using Microsoft.EntityFrameworkCore
 @using Microsoft.AspNetCore.Components.Authorization
 @using Net4Courier.Infrastructure.Data
 @using Net4Courier.Operations.Entities
 @using Net4Courier.Operations.Enums
 @using Net4Courier.Masters.Entities
+@using Net4Courier.Web.Services
 @using ClosedXML.Excel
 
-<PageTitle>Pickup Management - Net4Courier</PageTitle>
+<PageTitle>Pickup Dashboard - Net4Courier</PageTitle>
 
-<MudText Typo="Typo.h4" GutterBottom="true">Pickup Management</MudText>
+<MudText Typo="Typo.h4" GutterBottom="true">Pickup Dashboard</MudText>
 
 <MudPaper Class="pa-4 mb-4" Elevation="2">
     <MudGrid>
@@ -56,40 +59,62 @@
 </MudPaper>
 
 <MudGrid Class="mb-4">
-    <MudItem xs="6" sm="2">
+    <MudItem xs="6" sm="4" md="2">
         <MudPaper Class="pa-3 d-flex flex-column align-center" Style="background-color: #fff3e0;">
             <MudText Typo="Typo.h5" Color="Color.Warning">@_statusCounts.GetValueOrDefault(PickupStatus.PickupRequest)</MudText>
             <MudText Typo="Typo.caption">Pending</MudText>
         </MudPaper>
     </MudItem>
-    <MudItem xs="6" sm="2">
+    <MudItem xs="6" sm="4" md="2">
         <MudPaper Class="pa-3 d-flex flex-column align-center" Style="background-color: #e3f2fd;">
             <MudText Typo="Typo.h5" Color="Color.Info">@_statusCounts.GetValueOrDefault(PickupStatus.AssignedForCollection)</MudText>
             <MudText Typo="Typo.caption">Assigned</MudText>
         </MudPaper>
     </MudItem>
-    <MudItem xs="6" sm="2">
-        <MudPaper Class="pa-3 d-flex flex-column align-center" Style="background-color: #ffebee;">
-            <MudText Typo="Typo.h5" Color="Color.Error">@_statusCounts.GetValueOrDefault(PickupStatus.Attempted)</MudText>
-            <MudText Typo="Typo.caption">Attempted</MudText>
-        </MudPaper>
-    </MudItem>
-    <MudItem xs="6" sm="2">
+    <MudItem xs="6" sm="4" md="2">
         <MudPaper Class="pa-3 d-flex flex-column align-center" Style="background-color: #e8f5e9;">
             <MudText Typo="Typo.h5" Color="Color.Success">@_statusCounts.GetValueOrDefault(PickupStatus.ShipmentCollected)</MudText>
             <MudText Typo="Typo.caption">Collected</MudText>
         </MudPaper>
     </MudItem>
-    <MudItem xs="6" sm="2">
-        <MudPaper Class="pa-3 d-flex flex-column align-center" Style="background-color: #f3e5f5;">
-            <MudText Typo="Typo.h5" Color="Color.Secondary">@_statusCounts.GetValueOrDefault(PickupStatus.Inscanned)</MudText>
-            <MudText Typo="Typo.caption">Inscanned</MudText>
+    <MudItem xs="6" sm="4" md="2">
+        <MudPaper Class="pa-3 d-flex flex-column align-center cursor-pointer" Style="background-color: #fce4ec;" @onclick="() => _showCommitmentFilter = CommitmentFilterType.Committed">
+            <MudText Typo="Typo.h5" Style="color: #ad1457;">@_commitmentStats.ActiveCommitments</MudText>
+            <MudText Typo="Typo.caption">Committed</MudText>
+        </MudPaper>
+    </MudItem>
+    <MudItem xs="6" sm="4" md="2">
+        <MudPaper Class="pa-3 d-flex flex-column align-center cursor-pointer" Style="background-color: #ffebee;" @onclick="() => _showCommitmentFilter = CommitmentFilterType.ExpiringSoon">
+            <MudText Typo="Typo.h5" Color="Color.Error">@_commitmentStats.ExpiringSoon</MudText>
+            <MudText Typo="Typo.caption">Expiring Soon</MudText>
+        </MudPaper>
+    </MudItem>
+    <MudItem xs="6" sm="4" md="2">
+        <MudPaper Class="pa-3 d-flex flex-column align-center cursor-pointer" Style="background-color: #e8f5e9;" @onclick="() => _showCommitmentFilter = CommitmentFilterType.Available">
+            <MudText Typo="Typo.h5" Style="color: #2e7d32;">@_commitmentStats.AvailablePickups</MudText>
+            <MudText Typo="Typo.caption">Available</MudText>
         </MudPaper>
     </MudItem>
 </MudGrid>
 
+@if (_showCommitmentFilter != CommitmentFilterType.None)
+{
+    <MudPaper Class="pa-2 mb-4" Elevation="1" Style="background-color: #f5f5f5;">
+        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+            <MudIcon Icon="@Icons.Material.Filled.FilterList" Size="Size.Small" />
+            <MudText Typo="Typo.body2">
+                Showing: <strong>@GetCommitmentFilterLabel()</strong>
+            </MudText>
+            <MudSpacer />
+            <MudButton Variant="Variant.Text" Size="Size.Small" OnClick="() => { _showCommitmentFilter = CommitmentFilterType.None; Search(); }">
+                Clear Filter
+            </MudButton>
+        </MudStack>
+    </MudPaper>
+}
+
 <MudPaper Elevation="2">
-    <MudTable Items="@_pickups" Hover="true" Striped="true" Loading="@_loading" LoadingProgressColor="Color.Primary" Breakpoint="Breakpoint.Sm">
+    <MudTable Items="@GetFilteredPickups()" Hover="true" Striped="true" Loading="@_loading" LoadingProgressColor="Color.Primary" Breakpoint="Breakpoint.Sm">
         <HeaderContent>
             <MudTh>Pickup No</MudTh>
             <MudTh>Request Date</MudTh>
@@ -97,8 +122,9 @@
             <MudTh>Address</MudTh>
             <MudTh>Est. Pieces</MudTh>
             <MudTh>Status</MudTh>
+            <MudTh>Commitment</MudTh>
             <MudTh>Courier</MudTh>
-            <MudTh Style="width: 180px;">Actions</MudTh>
+            <MudTh Style="width: 200px;">Actions</MudTh>
         </HeaderContent>
         <RowTemplate>
             <MudTd DataLabel="Pickup No">
@@ -111,33 +137,122 @@
             <MudTd DataLabel="Status">
                 <MudChip T="string" Color="@GetStatusColor(context.Status)" Size="Size.Small">@GetStatusText(context.Status)</MudChip>
             </MudTd>
-            <MudTd DataLabel="Courier">@(context.CourierName ?? "-")</MudTd>
+            <MudTd DataLabel="Commitment">
+                @{
+                    var commitment = GetActiveCommitment(context.Id);
+                    if (commitment != null)
+                    {
+                        var timeRemaining = commitment.ExpiresAt - DateTime.UtcNow;
+                        var isExpiringSoon = timeRemaining.TotalMinutes <= 10;
+                        var chipColor = isExpiringSoon ? Color.Error : Color.Info;
+                        var statusText = commitment.Status == PickupCommitmentStatus.Confirmed ? "Confirmed" : 
+                                         (isExpiringSoon ? $"{(int)timeRemaining.TotalMinutes}m left" : "Committed");
+                        <MudStack Spacing="0">
+                            <MudChip T="string" Color="@chipColor" Size="Size.Small" Icon="@Icons.Material.Filled.Schedule">
+                                @statusText
+                            </MudChip>
+                            @if (commitment.Status == PickupCommitmentStatus.Active && timeRemaining.TotalMinutes > 0)
+                            {
+                                <MudText Typo="Typo.caption" Color="@(isExpiringSoon ? Color.Error : Color.Default)">
+                                    @FormatTimeRemaining(timeRemaining)
+                                </MudText>
+                            }
+                        </MudStack>
+                    }
+                    else if (context.Status == PickupStatus.PickupRequest)
+                    {
+                        <MudChip T="string" Color="Color.Success" Size="Size.Small" Variant="Variant.Outlined">Available</MudChip>
+                    }
+                    else
+                    {
+                        <MudText Typo="Typo.caption" Color="Color.Default">-</MudText>
+                    }
+                }
+            </MudTd>
+            <MudTd DataLabel="Courier">
+                @if (!string.IsNullOrEmpty(context.CourierName))
+                {
+                    <MudStack Spacing="0">
+                        <MudText Typo="Typo.body2">@context.CourierName</MudText>
+                        @if (!string.IsNullOrEmpty(context.CourierPhone))
+                        {
+                            <MudText Typo="Typo.caption" Color="Color.Default">@context.CourierPhone</MudText>
+                        }
+                    </MudStack>
+                }
+                else
+                {
+                    var commitment = GetActiveCommitment(context.Id);
+                    if (commitment != null)
+                    {
+                        <MudStack Spacing="0">
+                            <MudText Typo="Typo.body2" Color="Color.Info">@commitment.CourierName</MudText>
+                            <MudText Typo="Typo.caption">(Committed)</MudText>
+                        </MudStack>
+                    }
+                    else
+                    {
+                        <MudText>-</MudText>
+                    }
+                }
+            </MudTd>
             <MudTd>
+                @{
+                    var pickupCommitment = GetActiveCommitment(context.Id);
+                }
                 @if (context.Status == PickupStatus.PickupRequest || context.Status == PickupStatus.Attempted)
                 {
-                    <MudIconButton Icon="@Icons.Material.Filled.AssignmentInd" Size="Size.Small" Color="Color.Primary" 
-                                   OnClick="@(() => OpenAssignDialog(context))" Title="Assign Courier" />
+                    @if (pickupCommitment != null && pickupCommitment.Status == PickupCommitmentStatus.Active)
+                    {
+                        <MudTooltip Text="Override Commitment">
+                            <MudIconButton Icon="@Icons.Material.Filled.SwapHoriz" Size="Size.Small" Color="Color.Warning" 
+                                           OnClick="@(() => OverrideCommitment(context, pickupCommitment))" />
+                        </MudTooltip>
+                        <MudTooltip Text="Confirm & Assign">
+                            <MudIconButton Icon="@Icons.Material.Filled.CheckCircle" Size="Size.Small" Color="Color.Success" 
+                                           OnClick="@(() => ConfirmCommitment(pickupCommitment))" />
+                        </MudTooltip>
+                    }
+                    else
+                    {
+                        <MudTooltip Text="Assign Courier">
+                            <MudIconButton Icon="@Icons.Material.Filled.AssignmentInd" Size="Size.Small" Color="Color.Primary" 
+                                           OnClick="@(() => OpenAssignDialog(context))" />
+                        </MudTooltip>
+                    }
                 }
                 @if (context.Status == PickupStatus.AssignedForCollection)
                 {
-                    <MudIconButton Icon="@Icons.Material.Filled.CheckCircle" Size="Size.Small" Color="Color.Success" 
-                                   OnClick="@(() => MarkCollected(context))" Title="Mark Collected" />
-                    <MudIconButton Icon="@Icons.Material.Filled.ErrorOutline" Size="Size.Small" Color="Color.Error" 
-                                   OnClick="@(() => MarkAttempted(context))" Title="Mark Attempted" />
+                    <MudTooltip Text="Mark Collected">
+                        <MudIconButton Icon="@Icons.Material.Filled.CheckCircle" Size="Size.Small" Color="Color.Success" 
+                                       OnClick="@(() => MarkCollected(context))" />
+                    </MudTooltip>
+                    <MudTooltip Text="Mark Attempted">
+                        <MudIconButton Icon="@Icons.Material.Filled.ErrorOutline" Size="Size.Small" Color="Color.Error" 
+                                       OnClick="@(() => MarkAttempted(context))" />
+                    </MudTooltip>
                 }
                 @if (context.Status == PickupStatus.ShipmentCollected)
                 {
-                    <MudIconButton Icon="@Icons.Material.Filled.QrCodeScanner" Size="Size.Small" Color="Color.Secondary" 
-                                   OnClick="@(() => NavigateToInscan(context))" Title="INSCAN" />
+                    <MudTooltip Text="INSCAN">
+                        <MudIconButton Icon="@Icons.Material.Filled.QrCodeScanner" Size="Size.Small" Color="Color.Secondary" 
+                                       OnClick="@(() => NavigateToInscan(context))" />
+                    </MudTooltip>
                 }
-                <MudIconButton Icon="@Icons.Material.Filled.Edit" Size="Size.Small" Color="Color.Default" 
-                               Href="@($"/pickup-request-edit/{context.Id}")" Title="Edit" />
-                <MudIconButton Icon="@Icons.Material.Filled.Update" Size="Size.Small" Color="Color.Warning" 
-                               OnClick="@(() => OpenStatusChangeDialog(context))" Title="Change Status" />
+                <MudTooltip Text="Edit">
+                    <MudIconButton Icon="@Icons.Material.Filled.Edit" Size="Size.Small" Color="Color.Default" 
+                                   Href="@($"/pickup-request-edit/{context.Id}")" />
+                </MudTooltip>
+                <MudTooltip Text="Change Status">
+                    <MudIconButton Icon="@Icons.Material.Filled.Update" Size="Size.Small" Color="Color.Warning" 
+                                   OnClick="@(() => OpenStatusChangeDialog(context))" />
+                </MudTooltip>
                 @if (context.Status == PickupStatus.PickupRequest)
                 {
-                    <MudIconButton Icon="@Icons.Material.Filled.Cancel" Size="Size.Small" Color="Color.Error" 
-                                   OnClick="@(() => CancelPickup(context))" Title="Cancel" />
+                    <MudTooltip Text="Cancel">
+                        <MudIconButton Icon="@Icons.Material.Filled.Cancel" Size="Size.Small" Color="Color.Error" 
+                                       OnClick="@(() => CancelPickup(context))" />
+                    </MudTooltip>
                 }
             </MudTd>
         </RowTemplate>
@@ -150,8 +265,40 @@
     </MudTable>
 </MudPaper>
 
+@if (_courierPerformance.Any())
+{
+    <MudPaper Class="pa-4 mt-4" Elevation="2">
+        <MudText Typo="Typo.h6" GutterBottom="true">Courier Performance (Today)</MudText>
+        <MudTable Items="@_courierPerformance" Hover="true" Dense="true">
+            <HeaderContent>
+                <MudTh>Courier</MudTh>
+                <MudTh>Active</MudTh>
+                <MudTh>Confirmed</MudTh>
+                <MudTh>Completed</MudTh>
+                <MudTh>Expired</MudTh>
+                <MudTh>Released</MudTh>
+                <MudTh>Rate</MudTh>
+            </HeaderContent>
+            <RowTemplate>
+                <MudTd>@context.CourierName</MudTd>
+                <MudTd><MudChip T="string" Size="Size.Small" Color="Color.Info">@context.Active</MudChip></MudTd>
+                <MudTd><MudChip T="string" Size="Size.Small" Color="Color.Primary">@context.Confirmed</MudChip></MudTd>
+                <MudTd><MudChip T="string" Size="Size.Small" Color="Color.Success">@context.Completed</MudChip></MudTd>
+                <MudTd><MudChip T="string" Size="Size.Small" Color="Color.Warning">@context.Expired</MudChip></MudTd>
+                <MudTd><MudChip T="string" Size="Size.Small" Color="Color.Default">@context.Released</MudChip></MudTd>
+                <MudTd>
+                    <MudProgressLinear Color="@GetRateColor(context.CompletionRate)" Value="@((double)context.CompletionRate)" Max="100" Style="min-width: 80px;" />
+                    <MudText Typo="Typo.caption">@context.CompletionRate.ToString("0.0")%</MudText>
+                </MudTd>
+            </RowTemplate>
+        </MudTable>
+    </MudPaper>
+}
+
 @code {
     private List<PickupRequest> _pickups = new();
+    private List<PickupCommitment> _activeCommitments = new();
+    private Dictionary<long, PickupCommitment> _commitmentByPickup = new();
     private bool _loading = true;
     private string _searchString = "";
     private DateTime? _fromDate = DateTime.Today.AddDays(-7);
@@ -159,6 +306,10 @@
     private PickupStatus? _statusFilter;
     private Dictionary<PickupStatus, int> _statusCounts = new();
     private List<Employee> _courierEmployees = new();
+    private CommitmentSummary _commitmentStats = new();
+    private List<CourierPerformanceRow> _courierPerformance = new();
+    private CommitmentFilterType _showCommitmentFilter = CommitmentFilterType.None;
+    private System.Timers.Timer? _refreshTimer;
 
     protected override async Task OnInitializedAsync()
     {
@@ -169,6 +320,29 @@
             .ToListAsync();
         await Search();
         await LoadStatusCounts();
+        await LoadCommitmentData();
+        await LoadCourierPerformance();
+        StartAutoRefresh();
+    }
+
+    private void StartAutoRefresh()
+    {
+        _refreshTimer = new System.Timers.Timer(30000);
+        _refreshTimer.Elapsed += async (s, e) =>
+        {
+            await InvokeAsync(async () =>
+            {
+                await LoadCommitmentData();
+                StateHasChanged();
+            });
+        };
+        _refreshTimer.Start();
+    }
+
+    public void Dispose()
+    {
+        _refreshTimer?.Stop();
+        _refreshTimer?.Dispose();
     }
 
     private async Task Search()
@@ -201,7 +375,104 @@
         }
 
         _pickups = await query.OrderByDescending(p => p.RequestDate).ThenByDescending(p => p.Id).Take(500).ToListAsync();
+        await LoadCommitmentData();
         _loading = false;
+    }
+
+    private async Task LoadCommitmentData()
+    {
+        var pickupIds = _pickups.Select(p => p.Id).ToList();
+        
+        _activeCommitments = await DbContext.PickupCommitments
+            .Where(c => pickupIds.Contains(c.PickupRequestId) && 
+                   (c.Status == PickupCommitmentStatus.Active || c.Status == PickupCommitmentStatus.Confirmed))
+            .ToListAsync();
+
+        _commitmentByPickup = _activeCommitments
+            .GroupBy(c => c.PickupRequestId)
+            .ToDictionary(g => g.Key, g => g.OrderByDescending(c => c.CommittedAt).First());
+
+        var pendingPickupIds = _pickups.Where(p => p.Status == PickupStatus.PickupRequest).Select(p => p.Id).ToList();
+        var committedPickupIds = _activeCommitments.Where(c => c.Status == PickupCommitmentStatus.Active && c.ExpiresAt > DateTime.UtcNow)
+            .Select(c => c.PickupRequestId).ToHashSet();
+
+        _commitmentStats = new CommitmentSummary
+        {
+            ActiveCommitments = _activeCommitments.Count(c => c.Status == PickupCommitmentStatus.Active && c.ExpiresAt > DateTime.UtcNow),
+            ExpiringSoon = _activeCommitments.Count(c => c.Status == PickupCommitmentStatus.Active && 
+                                                         c.ExpiresAt > DateTime.UtcNow && 
+                                                         (c.ExpiresAt - DateTime.UtcNow).TotalMinutes <= 10),
+            AvailablePickups = pendingPickupIds.Count(id => !committedPickupIds.Contains(id))
+        };
+    }
+
+    private async Task LoadCourierPerformance()
+    {
+        var today = DateTime.UtcNow.Date;
+        var todayCommitments = await DbContext.PickupCommitments
+            .Where(c => c.CommittedAt >= today)
+            .ToListAsync();
+
+        _courierPerformance = todayCommitments
+            .GroupBy(c => new { c.CourierId, c.CourierName })
+            .Select(g => new CourierPerformanceRow
+            {
+                CourierId = g.Key.CourierId,
+                CourierName = g.Key.CourierName,
+                Active = g.Count(c => c.Status == PickupCommitmentStatus.Active && c.ExpiresAt > DateTime.UtcNow),
+                Confirmed = g.Count(c => c.Status == PickupCommitmentStatus.Confirmed),
+                Completed = g.Count(c => c.Status == PickupCommitmentStatus.Completed),
+                Expired = g.Count(c => c.Status == PickupCommitmentStatus.Expired),
+                Released = g.Count(c => c.Status == PickupCommitmentStatus.Released),
+                Total = g.Count()
+            })
+            .OrderByDescending(x => x.Total)
+            .Take(10)
+            .ToList();
+    }
+
+    private List<PickupRequest> GetFilteredPickups()
+    {
+        if (_showCommitmentFilter == CommitmentFilterType.None)
+            return _pickups;
+
+        var committedPickupIds = _activeCommitments
+            .Where(c => c.Status == PickupCommitmentStatus.Active && c.ExpiresAt > DateTime.UtcNow)
+            .Select(c => c.PickupRequestId).ToHashSet();
+
+        var expiringSoonIds = _activeCommitments
+            .Where(c => c.Status == PickupCommitmentStatus.Active && 
+                        c.ExpiresAt > DateTime.UtcNow && 
+                        (c.ExpiresAt - DateTime.UtcNow).TotalMinutes <= 10)
+            .Select(c => c.PickupRequestId).ToHashSet();
+
+        return _showCommitmentFilter switch
+        {
+            CommitmentFilterType.Committed => _pickups.Where(p => committedPickupIds.Contains(p.Id)).ToList(),
+            CommitmentFilterType.ExpiringSoon => _pickups.Where(p => expiringSoonIds.Contains(p.Id)).ToList(),
+            CommitmentFilterType.Available => _pickups.Where(p => p.Status == PickupStatus.PickupRequest && !committedPickupIds.Contains(p.Id)).ToList(),
+            _ => _pickups
+        };
+    }
+
+    private string GetCommitmentFilterLabel() => _showCommitmentFilter switch
+    {
+        CommitmentFilterType.Committed => "Committed Pickups",
+        CommitmentFilterType.ExpiringSoon => "Expiring Soon",
+        CommitmentFilterType.Available => "Available for Commitment",
+        _ => "All"
+    };
+
+    private PickupCommitment? GetActiveCommitment(long pickupId)
+    {
+        return _commitmentByPickup.TryGetValue(pickupId, out var commitment) ? commitment : null;
+    }
+
+    private string FormatTimeRemaining(TimeSpan time)
+    {
+        if (time.TotalMinutes < 1) return "< 1 min";
+        if (time.TotalMinutes < 60) return $"{(int)time.TotalMinutes} min";
+        return $"{(int)time.TotalHours}h {time.Minutes}m";
     }
 
     private async Task LoadStatusCounts()
@@ -236,6 +507,49 @@
         PickupStatus.Cancelled => "Cancelled",
         _ => status.ToString()
     };
+
+    private Color GetRateColor(decimal rate) => rate switch
+    {
+        >= 80 => Color.Success,
+        >= 60 => Color.Warning,
+        _ => Color.Error
+    };
+
+    private async Task ConfirmCommitment(PickupCommitment commitment)
+    {
+        var result = await CommitmentService.ConfirmCommitmentAsync(commitment.Id);
+        if (result)
+        {
+            Snackbar.Add($"Commitment confirmed and pickup assigned to {commitment.CourierName}", Severity.Success);
+            await Search();
+            await LoadStatusCounts();
+        }
+        else
+        {
+            Snackbar.Add("Failed to confirm commitment - it may have expired", Severity.Error);
+            await LoadCommitmentData();
+        }
+    }
+
+    private async Task OverrideCommitment(PickupRequest pickup, PickupCommitment commitment)
+    {
+        var confirm = await DialogService.ShowMessageBox(
+            "Override Commitment",
+            $"This will release the commitment from {commitment.CourierName} and allow you to assign to a different courier. Continue?",
+            "Yes, Override", "Cancel");
+
+        if (confirm == true)
+        {
+            var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+            var userIdClaim = authState.User.FindFirst("UserId")?.Value;
+            var userName = authState.User.FindFirst("FullName")?.Value ?? authState.User.Identity?.Name ?? "System";
+            var userId = long.TryParse(userIdClaim, out var uid) ? uid : (long?)null;
+
+            await CommitmentService.ReleaseCommitmentAsync(commitment.Id, "Override by dispatcher", userId, userName);
+            Snackbar.Add($"Commitment from {commitment.CourierName} released", Severity.Info);
+            await OpenAssignDialog(pickup);
+        }
+    }
 
     private async Task OpenAssignDialog(PickupRequest pickup)
     {
@@ -274,10 +588,18 @@
         {
             pickup.Status = PickupStatus.ShipmentCollected;
             pickup.CollectedAt = DateTime.UtcNow;
+
+            var commitment = GetActiveCommitment(pickup.Id);
+            if (commitment != null && commitment.Status == PickupCommitmentStatus.Confirmed)
+            {
+                await CommitmentService.CompleteCommitmentAsync(commitment.Id);
+            }
+
             await DbContext.SaveChangesAsync();
             Snackbar.Add("Pickup marked as collected", Severity.Success);
             await Search();
             await LoadStatusCounts();
+            await LoadCourierPerformance();
         }
     }
 
@@ -355,12 +677,12 @@
         using var workbook = new XLWorkbook();
         var worksheet = workbook.Worksheets.Add("Pickups");
 
-        worksheet.Cell(1, 1).Value = "Pickup Management";
+        worksheet.Cell(1, 1).Value = "Pickup Dashboard";
         worksheet.Cell(1, 1).Style.Font.Bold = true;
         worksheet.Cell(1, 1).Style.Font.FontSize = 14;
-        worksheet.Range(1, 1, 1, 7).Merge();
+        worksheet.Range(1, 1, 1, 8).Merge();
 
-        var headers = new[] { "Pickup No", "Date", "Customer", "Address", "Est Pieces", "Status", "Courier" };
+        var headers = new[] { "Pickup No", "Date", "Customer", "Address", "Est Pieces", "Status", "Commitment", "Courier" };
         for (int i = 0; i < headers.Length; i++)
         {
             worksheet.Cell(3, i + 1).Value = headers[i];
@@ -371,13 +693,16 @@
         int row = 4;
         foreach (var pickup in _pickups)
         {
+            var commitment = GetActiveCommitment(pickup.Id);
             worksheet.Cell(row, 1).Value = pickup.PickupNo ?? "";
             worksheet.Cell(row, 2).Value = pickup.RequestDate.ToString("dd/MM/yyyy HH:mm");
             worksheet.Cell(row, 3).Value = pickup.CustomerName ?? "";
             worksheet.Cell(row, 4).Value = $"{pickup.City}, {pickup.PostalCode}";
             worksheet.Cell(row, 5).Value = pickup.EstimatedPieces;
             worksheet.Cell(row, 6).Value = GetStatusText(pickup.Status);
-            worksheet.Cell(row, 7).Value = pickup.CourierName ?? "-";
+            worksheet.Cell(row, 7).Value = commitment != null ? $"Committed ({commitment.CourierName})" : 
+                                           (pickup.Status == PickupStatus.PickupRequest ? "Available" : "-");
+            worksheet.Cell(row, 8).Value = pickup.CourierName ?? (commitment?.CourierName ?? "-");
             row++;
         }
 
@@ -389,7 +714,29 @@
 
         using var stream = new MemoryStream();
         workbook.SaveAs(stream);
-        var fileName = $"Pickups_{DateTime.Now:yyyyMMdd_HHmmss}.xlsx";
+        var fileName = $"PickupDashboard_{DateTime.Now:yyyyMMdd_HHmmss}.xlsx";
         await JSRuntime.InvokeVoidAsync("downloadFileFromStream", fileName, Convert.ToBase64String(stream.ToArray()));
+    }
+
+    private enum CommitmentFilterType { None, Committed, ExpiringSoon, Available }
+
+    private class CommitmentSummary
+    {
+        public int ActiveCommitments { get; set; }
+        public int ExpiringSoon { get; set; }
+        public int AvailablePickups { get; set; }
+    }
+
+    private class CourierPerformanceRow
+    {
+        public long CourierId { get; set; }
+        public string CourierName { get; set; } = "";
+        public int Active { get; set; }
+        public int Confirmed { get; set; }
+        public int Completed { get; set; }
+        public int Expired { get; set; }
+        public int Released { get; set; }
+        public int Total { get; set; }
+        public decimal CompletionRate => Total > 0 ? (decimal)Completed / Total * 100 : 0;
     }
 }
