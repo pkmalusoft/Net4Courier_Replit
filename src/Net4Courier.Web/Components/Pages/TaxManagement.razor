@@ -1,0 +1,261 @@
+@page "/tax-management"
+@inject ApplicationDbContext DbContext
+@inject ISnackbar Snackbar
+@inject IDialogService DialogService
+@using Microsoft.EntityFrameworkCore
+@using Net4Courier.Infrastructure.Data
+@using Net4Courier.Finance.Entities
+
+<PageTitle>Tax Setup - Net4Courier</PageTitle>
+
+<MudPaper Class="pa-4" Elevation="0">
+    <MudToolBar Dense="true" Class="pl-0">
+        <MudText Typo="Typo.h6">Tax Setup</MudText>
+        <MudSpacer />
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add" OnClick="OpenAddDialog">
+            Add Tax Rate
+        </MudButton>
+    </MudToolBar>
+
+    <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-3">
+        Configure tax rates for invoicing and billing (VAT, GST, Service Tax, etc.)
+    </MudText>
+
+    <MudTable Items="_taxRates" Hover="true" Dense="true" Loading="_loading">
+        <HeaderContent>
+            <MudTh>Code</MudTh>
+            <MudTh>Name</MudTh>
+            <MudTh Style="text-align:right">Rate %</MudTh>
+            <MudTh>Effective From</MudTh>
+            <MudTh>Effective To</MudTh>
+            <MudTh>Default</MudTh>
+            <MudTh>Status</MudTh>
+            <MudTh Style="width: 120px;">Actions</MudTh>
+        </HeaderContent>
+        <RowTemplate>
+            <MudTd>@context.Code</MudTd>
+            <MudTd>@context.Name</MudTd>
+            <MudTd Style="text-align:right">@context.Rate.ToString("N2")%</MudTd>
+            <MudTd>@(context.EffectiveFrom?.ToString("dd-MMM-yyyy") ?? "-")</MudTd>
+            <MudTd>@(context.EffectiveTo?.ToString("dd-MMM-yyyy") ?? "-")</MudTd>
+            <MudTd>
+                @if (context.IsDefault)
+                {
+                    <MudIcon Icon="@Icons.Material.Filled.Star" Color="Color.Primary" Size="Size.Small" />
+                }
+            </MudTd>
+            <MudTd>
+                <MudChip T="string" Size="Size.Small" Color="@(context.IsActive ? Color.Success : Color.Default)">
+                    @(context.IsActive ? "Active" : "Inactive")
+                </MudChip>
+            </MudTd>
+            <MudTd>
+                <MudIconButton Icon="@Icons.Material.Filled.Edit" Size="Size.Small" OnClick="@(() => OpenEditDialog(context))" />
+                <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" Color="Color.Error" OnClick="@(() => DeleteTaxRate(context))" />
+            </MudTd>
+        </RowTemplate>
+        <NoRecordsContent>
+            <MudText>No tax rates found. Click "Add Tax Rate" to create one.</MudText>
+        </NoRecordsContent>
+    </MudTable>
+</MudPaper>
+
+<MudDialog @bind-Visible="_dialogVisible" Options="new DialogOptions { MaxWidth = MaxWidth.Small, FullWidth = true }">
+    <TitleContent>
+        <MudText Typo="Typo.h6">@(_editingTaxRate.Id == 0 ? "Add Tax Rate" : "Edit Tax Rate")</MudText>
+    </TitleContent>
+    <DialogContent>
+        <MudGrid Spacing="2">
+            <MudItem xs="4">
+                <MudTextField @bind-Value="_editingTaxRate.Code" Label="Code*" Variant="Variant.Outlined" Required="true" />
+            </MudItem>
+            <MudItem xs="8">
+                <MudTextField @bind-Value="_editingTaxRate.Name" Label="Name*" Variant="Variant.Outlined" Required="true" />
+            </MudItem>
+            <MudItem xs="12">
+                <MudTextField @bind-Value="_editingTaxRate.Description" Label="Description" Variant="Variant.Outlined" Lines="2" />
+            </MudItem>
+            <MudItem xs="4">
+                <MudNumericField @bind-Value="_editingTaxRate.Rate" Label="Rate %*" Variant="Variant.Outlined" Min="0" Max="100" Step="0.01M" Format="N2" />
+            </MudItem>
+            <MudItem xs="4">
+                <MudDatePicker @bind-Date="_effectiveFrom" Label="Effective From" Variant="Variant.Outlined" DateFormat="dd-MMM-yyyy" />
+            </MudItem>
+            <MudItem xs="4">
+                <MudDatePicker @bind-Date="_effectiveTo" Label="Effective To" Variant="Variant.Outlined" DateFormat="dd-MMM-yyyy" />
+            </MudItem>
+            <MudItem xs="12">
+                <MudSelect T="long?" @bind-Value="_editingTaxRate.AccountHeadId" Label="Tax Account (Liability)" Variant="Variant.Outlined" Clearable="true">
+                    @foreach (var account in _accountHeads)
+                    {
+                        <MudSelectItem Value="@((long?)account.Id)">@account.Code - @account.Name</MudSelectItem>
+                    }
+                </MudSelect>
+            </MudItem>
+            <MudItem xs="4">
+                <MudCheckBox @bind-Value="_editingTaxRate.IsDefault" Label="Default" Color="Color.Primary" />
+            </MudItem>
+            <MudItem xs="4">
+                <MudCheckBox @bind-Value="_editingTaxRate.IsActive" Label="Active" Color="Color.Success" />
+            </MudItem>
+        </MudGrid>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="CloseDialog">Cancel</MudButton>
+        <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="SaveTaxRate">Save</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    private List<TaxRate> _taxRates = new();
+    private List<AccountHead> _accountHeads = new();
+    private bool _loading = true;
+    private bool _dialogVisible;
+    private TaxRate _editingTaxRate = new();
+    private DateTime? _effectiveFrom;
+    private DateTime? _effectiveTo;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadData();
+    }
+
+    private async Task LoadData()
+    {
+        _loading = true;
+        try
+        {
+            _taxRates = await DbContext.TaxRates
+                .Where(t => !t.IsDeleted)
+                .OrderBy(t => t.Code)
+                .ToListAsync();
+
+            _accountHeads = await DbContext.AccountHeads
+                .Where(a => a.IsActive && !a.IsDeleted && !a.IsGroup)
+                .OrderBy(a => a.Code)
+                .ToListAsync();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error loading data: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private void OpenAddDialog()
+    {
+        _editingTaxRate = new TaxRate { IsActive = true };
+        _effectiveFrom = null;
+        _effectiveTo = null;
+        _dialogVisible = true;
+    }
+
+    private void OpenEditDialog(TaxRate taxRate)
+    {
+        _editingTaxRate = new TaxRate
+        {
+            Id = taxRate.Id,
+            Code = taxRate.Code,
+            Name = taxRate.Name,
+            Description = taxRate.Description,
+            Rate = taxRate.Rate,
+            IsDefault = taxRate.IsDefault,
+            IsActive = taxRate.IsActive,
+            AccountHeadId = taxRate.AccountHeadId,
+            EffectiveFrom = taxRate.EffectiveFrom,
+            EffectiveTo = taxRate.EffectiveTo
+        };
+        _effectiveFrom = taxRate.EffectiveFrom;
+        _effectiveTo = taxRate.EffectiveTo;
+        _dialogVisible = true;
+    }
+
+    private void CloseDialog()
+    {
+        _dialogVisible = false;
+    }
+
+    private async Task SaveTaxRate()
+    {
+        if (string.IsNullOrWhiteSpace(_editingTaxRate.Code) || string.IsNullOrWhiteSpace(_editingTaxRate.Name))
+        {
+            Snackbar.Add("Code and Name are required", Severity.Warning);
+            return;
+        }
+
+        try
+        {
+            _editingTaxRate.EffectiveFrom = _effectiveFrom.HasValue ? DateTime.SpecifyKind(_effectiveFrom.Value, DateTimeKind.Utc) : null;
+            _editingTaxRate.EffectiveTo = _effectiveTo.HasValue ? DateTime.SpecifyKind(_effectiveTo.Value, DateTimeKind.Utc) : null;
+
+            if (_editingTaxRate.Id == 0)
+            {
+                _editingTaxRate.CreatedAt = DateTime.UtcNow;
+                DbContext.TaxRates.Add(_editingTaxRate);
+            }
+            else
+            {
+                var existing = await DbContext.TaxRates.FindAsync(_editingTaxRate.Id);
+                if (existing != null)
+                {
+                    existing.Code = _editingTaxRate.Code;
+                    existing.Name = _editingTaxRate.Name;
+                    existing.Description = _editingTaxRate.Description;
+                    existing.Rate = _editingTaxRate.Rate;
+                    existing.IsDefault = _editingTaxRate.IsDefault;
+                    existing.IsActive = _editingTaxRate.IsActive;
+                    existing.AccountHeadId = _editingTaxRate.AccountHeadId;
+                    existing.EffectiveFrom = _editingTaxRate.EffectiveFrom;
+                    existing.EffectiveTo = _editingTaxRate.EffectiveTo;
+                    existing.ModifiedAt = DateTime.UtcNow;
+                }
+            }
+
+            if (_editingTaxRate.IsDefault)
+            {
+                var others = await DbContext.TaxRates.Where(t => t.Id != _editingTaxRate.Id && t.IsDefault).ToListAsync();
+                foreach (var other in others)
+                {
+                    other.IsDefault = false;
+                }
+            }
+
+            await DbContext.SaveChangesAsync();
+            Snackbar.Add("Tax rate saved successfully", Severity.Success);
+            CloseDialog();
+            await LoadData();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error saving: {ex.Message}", Severity.Error);
+        }
+    }
+
+    private async Task DeleteTaxRate(TaxRate taxRate)
+    {
+        var result = await DialogService.ShowMessageBox(
+            "Confirm Delete",
+            $"Are you sure you want to delete the tax rate '{taxRate.Name}'?",
+            yesText: "Delete",
+            cancelText: "Cancel");
+
+        if (result == true)
+        {
+            try
+            {
+                taxRate.IsDeleted = true;
+                taxRate.ModifiedAt = DateTime.UtcNow;
+                await DbContext.SaveChangesAsync();
+                Snackbar.Add("Tax rate deleted", Severity.Success);
+                await LoadData();
+            }
+            catch (Exception ex)
+            {
+                Snackbar.Add($"Error deleting: {ex.Message}", Severity.Error);
+            }
+        }
+    }
+}

@@ -64,6 +64,7 @@ public class ApplicationDbContext : DbContext
     public DbSet<ControlAccountSetting> ControlAccountSettings => Set<ControlAccountSetting>();
     public DbSet<CreditNote> CreditNotes => Set<CreditNote>();
     public DbSet<DebitNote> DebitNotes => Set<DebitNote>();
+    public DbSet<TaxRate> TaxRates => Set<TaxRate>();
     
     public DbSet<BankAccount> BankAccounts => Set<BankAccount>();
     public DbSet<BankReconciliation> BankReconciliations => Set<BankReconciliation>();
@@ -1330,6 +1331,20 @@ public class ApplicationDbContext : DbContext
                   .HasForeignKey(e => e.BankStatementLineId).OnDelete(DeleteBehavior.Restrict);
             entity.HasOne(e => e.Journal).WithMany()
                   .HasForeignKey(e => e.JournalId).OnDelete(DeleteBehavior.Restrict);
+        });
+
+        modelBuilder.Entity<TaxRate>(entity =>
+        {
+            entity.ToTable("TaxRates");
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Code).HasMaxLength(50).IsRequired();
+            entity.Property(e => e.Name).HasMaxLength(200).IsRequired();
+            entity.Property(e => e.Description).HasMaxLength(500);
+            entity.Property(e => e.Rate).HasPrecision(10, 4);
+            entity.HasIndex(e => e.Code).IsUnique();
+            entity.HasIndex(e => e.IsActive);
+            entity.HasOne(e => e.AccountHead).WithMany()
+                  .HasForeignKey(e => e.AccountHeadId).OnDelete(DeleteBehavior.SetNull);
         });
     }
 }
