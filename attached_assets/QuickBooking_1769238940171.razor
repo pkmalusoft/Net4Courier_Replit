@@ -1,0 +1,244 @@
+@page "/courier/rate-calculator"
+@layout MainLayout
+@using Web.Services
+@inject HttpClient Http
+@inject IAuthService AuthService
+@inject ISnackbar Snackbar
+@inject NavigationManager Navigation
+
+<MudContainer MaxWidth="MaxWidth.Medium" Class="mt-4">
+    <MudPaper Class="pa-6" Style="background: linear-gradient(135deg, #00838f 0%, #006064 100%); border-radius: 16px;">
+        <MudForm @ref="form">
+            <MudStack Spacing="4">
+                <MudText Typo="Typo.h5" Style="color: white; font-weight: 600;">I am sending from</MudText>
+                
+                <MudSelect T="CourierZoneLookup" 
+                          @bind-Value="originZone"
+                          Label="Origin City"
+                          Placeholder="Select origin city"
+                          Variant="Variant.Filled"
+                          Style="background: white; border-radius: 8px;"
+                          Dense="true"
+                          ToStringFunc="@(z => z?.DisplayName ?? string.Empty)">
+                    @foreach (var zone in zones)
+                    {
+                        <MudSelectItem Value="@zone">@zone.DisplayName</MudSelectItem>
+                    }
+                </MudSelect>
+                
+                <MudText Typo="Typo.h6" Style="color: white;">to</MudText>
+                
+                <MudSelect T="CourierZoneLookup" 
+                          @bind-Value="destinationZone"
+                          Label="Destination City"
+                          Placeholder="To city"
+                          Variant="Variant.Filled"
+                          Style="background: white; border-radius: 8px;"
+                          Dense="true"
+                          ToStringFunc="@(z => z?.DisplayName ?? string.Empty)">
+                    @foreach (var zone in zones)
+                    {
+                        <MudSelectItem Value="@zone">@zone.DisplayName</MudSelectItem>
+                    }
+                </MudSelect>
+                
+                <MudCheckBox @bind-Value="isResidential" 
+                            Label="I am shipping to a residence"
+                            Style="color: white;"
+                            Color="Color.Default" />
+                
+                <MudGrid>
+                    <MudItem xs="6">
+                        <MudText Typo="Typo.body2" Style="color: white; margin-bottom: 4px;">Type of package</MudText>
+                        <MudSelect T="string" @bind-Value="packageType"
+                                  Variant="Variant.Filled"
+                                  Style="background: white; border-radius: 8px;"
+                                  Dense="true">
+                            <MudSelectItem Value="@("Document")">Document</MudSelectItem>
+                            <MudSelectItem Value="@("Parcel")">Parcel</MudSelectItem>
+                            <MudSelectItem Value="@("Fragile")">Fragile</MudSelectItem>
+                            <MudSelectItem Value="@("Electronics")">Electronics</MudSelectItem>
+                        </MudSelect>
+                    </MudItem>
+                    <MudItem xs="6">
+                        <MudText Typo="Typo.body2" Style="color: white; margin-bottom: 4px;">Weight of package</MudText>
+                        <MudNumericField T="decimal" @bind-Value="weight"
+                                        Variant="Variant.Filled"
+                                        Style="background: white; border-radius: 8px;"
+                                        Adornment="Adornment.End"
+                                        AdornmentText="KG"
+                                        Min="0.1m"
+                                        Step="0.5m"
+                                        Dense="true" />
+                    </MudItem>
+                </MudGrid>
+                
+                <MudText Typo="Typo.body2" Style="color: white;">Custom Dimensions</MudText>
+                <MudGrid>
+                    <MudItem xs="4">
+                        <MudNumericField T="decimal" @bind-Value="length"
+                                        Variant="Variant.Filled"
+                                        Style="background: white; border-radius: 8px;"
+                                        Adornment="Adornment.End"
+                                        AdornmentText="CM"
+                                        Label="Length"
+                                        Min="1"
+                                        Dense="true" />
+                    </MudItem>
+                    <MudItem xs="4">
+                        <MudNumericField T="decimal" @bind-Value="width"
+                                        Variant="Variant.Filled"
+                                        Style="background: white; border-radius: 8px;"
+                                        Adornment="Adornment.End"
+                                        AdornmentText="CM"
+                                        Label="Width"
+                                        Min="1"
+                                        Dense="true" />
+                    </MudItem>
+                    <MudItem xs="4">
+                        <MudNumericField T="decimal" @bind-Value="height"
+                                        Variant="Variant.Filled"
+                                        Style="background: white; border-radius: 8px;"
+                                        Adornment="Adornment.End"
+                                        AdornmentText="CM"
+                                        Label="Height"
+                                        Min="1"
+                                        Dense="true" />
+                    </MudItem>
+                </MudGrid>
+
+                <MudButton Variant="Variant.Filled"
+                          Color="Color.Primary"
+                          Size="Size.Large"
+                          Style="background-color: #00acc1; border-radius: 8px; text-transform: none; font-weight: 600; color: white;"
+                          FullWidth="true"
+                          Disabled="true">
+                    Show Rates
+                </MudButton>
+                
+                <MudAlert Severity="Severity.Info" Variant="Variant.Outlined" Dense="true" Style="background: rgba(255,255,255,0.9);">
+                    Rate calculation under development
+                </MudAlert>
+            </MudStack>
+        </MudForm>
+    </MudPaper>
+</MudContainer>
+
+@code {
+    private MudForm? form;
+    private bool isCalculating = false;
+    private bool isBooking = false;
+    
+    private CourierZoneLookup? originZone;
+    private CourierZoneLookup? destinationZone;
+    private bool isResidential = false;
+    private string packageType = "Parcel";
+    private decimal weight = 1.0m;
+    private decimal length = 10m;
+    private decimal width = 10m;
+    private decimal height = 10m;
+    
+    private List<CourierZoneLookup> zones = new();
+    private List<RateResultDto> rateResults = new();
+    
+    private bool CanShowRates => originZone != null && destinationZone != null && weight > 0;
+    
+    protected override async Task OnInitializedAsync()
+    {
+        SetAuthHeaders();
+        await LoadZones();
+    }
+    
+    private void SetAuthHeaders()
+    {
+        var token = AuthService.GetAccessToken();
+        var tenantId = AuthService.GetTenantId();
+        Http.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
+        Http.DefaultRequestHeaders.Remove("X-Tenant-Id");
+        if (!string.IsNullOrEmpty(tenantId))
+        {
+            Http.DefaultRequestHeaders.Add("X-Tenant-Id", tenantId);
+        }
+    }
+    
+    private async Task LoadZones()
+    {
+        try
+        {
+            var response = await Http.GetAsync("/api/courier/zones");
+            if (response.IsSuccessStatusCode)
+            {
+                var result = await response.Content.ReadFromJsonAsync<List<CourierZoneLookup>>();
+                zones = result ?? new();
+            }
+            
+            if (!zones.Any())
+            {
+                zones = GetDefaultCountryZones();
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error loading zones: {ex.Message}", Severity.Warning);
+            zones = GetDefaultCountryZones();
+        }
+    }
+    
+    private List<CourierZoneLookup> GetDefaultCountryZones()
+    {
+        return new List<CourierZoneLookup>
+        {
+            new() { Id = Guid.NewGuid(), ZoneCode = "UAE", ZoneName = "United Arab Emirates", Country = "United Arab Emirates" },
+            new() { Id = Guid.NewGuid(), ZoneCode = "KSA", ZoneName = "Saudi Arabia", Country = "Saudi Arabia" },
+            new() { Id = Guid.NewGuid(), ZoneCode = "QAT", ZoneName = "Qatar", Country = "Qatar" },
+            new() { Id = Guid.NewGuid(), ZoneCode = "KWT", ZoneName = "Kuwait", Country = "Kuwait" },
+            new() { Id = Guid.NewGuid(), ZoneCode = "BHR", ZoneName = "Bahrain", Country = "Bahrain" },
+            new() { Id = Guid.NewGuid(), ZoneCode = "OMN", ZoneName = "Oman", Country = "Oman" },
+            new() { Id = Guid.NewGuid(), ZoneCode = "IND", ZoneName = "India", Country = "India" },
+            new() { Id = Guid.NewGuid(), ZoneCode = "USA", ZoneName = "United States", Country = "United States" },
+            new() { Id = Guid.NewGuid(), ZoneCode = "GBR", ZoneName = "United Kingdom", Country = "United Kingdom" },
+            new() { Id = Guid.NewGuid(), ZoneCode = "DEU", ZoneName = "Germany", Country = "Germany" },
+            new() { Id = Guid.NewGuid(), ZoneCode = "FRA", ZoneName = "France", Country = "France" },
+            new() { Id = Guid.NewGuid(), ZoneCode = "CHN", ZoneName = "China", Country = "China" },
+            new() { Id = Guid.NewGuid(), ZoneCode = "JPN", ZoneName = "Japan", Country = "Japan" },
+            new() { Id = Guid.NewGuid(), ZoneCode = "AUS", ZoneName = "Australia", Country = "Australia" },
+            new() { Id = Guid.NewGuid(), ZoneCode = "SGP", ZoneName = "Singapore", Country = "Singapore" },
+            new() { Id = Guid.NewGuid(), ZoneCode = "MYS", ZoneName = "Malaysia", Country = "Malaysia" },
+            new() { Id = Guid.NewGuid(), ZoneCode = "PAK", ZoneName = "Pakistan", Country = "Pakistan" },
+            new() { Id = Guid.NewGuid(), ZoneCode = "BGD", ZoneName = "Bangladesh", Country = "Bangladesh" },
+            new() { Id = Guid.NewGuid(), ZoneCode = "PHL", ZoneName = "Philippines", Country = "Philippines" },
+            new() { Id = Guid.NewGuid(), ZoneCode = "EGY", ZoneName = "Egypt", Country = "Egypt" }
+        };
+    }
+    
+    public class CourierZoneLookup
+    {
+        public Guid Id { get; set; }
+        public string ZoneCode { get; set; } = string.Empty;
+        public string ZoneName { get; set; } = string.Empty;
+        public string? City { get; set; }
+        public string? Country { get; set; }
+        public string DisplayName => !string.IsNullOrEmpty(City) 
+            ? $"{City}, {Country ?? ZoneName}" 
+            : (Country ?? ZoneName);
+    }
+    
+    public class RateResultDto
+    {
+        public Guid ServiceTypeId { get; set; }
+        public string ServiceTypeName { get; set; } = string.Empty;
+        public string ServiceTypeCode { get; set; } = string.Empty;
+        public bool IsExpress { get; set; }
+        public int TransitDays { get; set; }
+        public decimal BaseFreight { get; set; }
+        public decimal FuelSurcharge { get; set; }
+        public decimal TotalPrice { get; set; }
+        public string Currency { get; set; } = "AED";
+    }
+    
+    public class QuickBookingResultDto
+    {
+        public Guid ShipmentId { get; set; }
+        public string AwbNumber { get; set; } = string.Empty;
+    }
+}
