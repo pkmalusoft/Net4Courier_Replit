@@ -31,6 +31,16 @@ The application is built on .NET 8 Blazor Server, utilizing a modular architectu
 - **Customer Account Number**: Auto-generation or manual entry with validation.
 - **Operations Workflow**: Includes AWB entry and generation, pickup management (request to inscan), pickup schedules, outscan/DRS management, and AWB tracking.
 - **Financial Features**: Invoice/receipt management, journaling, self-referential account heads, financial period management, dynamic other charges, and comprehensive Account Receivables (Customer Master, Credit Notes, Aging Reports, AR Reports) and Account Payables (Supplier Master, Debit Notes).
+- **Cash and Bank Vouchers**: Comprehensive cash and bank transaction management via `/cash-bank` route. Features include:
+  - Tabbed interface for Cash Vouchers (CV) and Bank Vouchers (BV)
+  - Receipt/Payment direction selection with proper accounting treatment
+  - Receipt vouchers: Cash/Bank account debited, counterpart accounts credited
+  - Payment vouchers: Cash/Bank account credited, counterpart accounts debited
+  - Multi-line journal entries with account selection from Chart of Accounts
+  - Automatic voucher number generation (CV-YYYYMM-NNNNN or BV-YYYYMM-NNNNN)
+  - Post/Unpost workflow for voucher lifecycle management
+  - Date and account filtering with Excel export
+  - View/Edit/Delete functionality for draft vouchers
 - **AWB Other Charges Management**: Special Charges Management page with tabbed interface for AWB-specific charges and customer-level special charges. Features include:
   - AWB search with autocomplete for selecting shipments
   - Add charges using Other Charge Types master (percentage or flat amount)
