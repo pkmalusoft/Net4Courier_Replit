@@ -1,0 +1,325 @@
+@inject ApplicationDbContext DbContext
+@inject IDialogService DialogService
+@inject ISnackbar Snackbar
+@using Microsoft.EntityFrameworkCore
+@using Net4Courier.Infrastructure.Data
+@using Net4Courier.Finance.Entities
+@using ClosedXML.Excel
+
+<MudStack Class="mt-4">
+    <MudStack Row="true" AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween">
+        <MudText Typo="Typo.h6">@VoucherTypeName Vouchers</MudText>
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add" 
+                   OnClick="CreateNew">New @VoucherTypeName Voucher</MudButton>
+    </MudStack>
+
+    <MudStack Row="true" Spacing="3" Class="mb-2">
+        <MudDatePicker @bind-Date="_fromDate" Label="From Date" DateFormat="dd-MMM-yyyy" />
+        <MudDatePicker @bind-Date="_toDate" Label="To Date" DateFormat="dd-MMM-yyyy" />
+        <MudSelect T="long?" @bind-Value="_filterAccountId" Label="Account" Clearable="true" Style="width: 200px;">
+            @foreach (var acc in _accounts)
+            {
+                <MudSelectItem Value="@((long?)acc.Id)">@acc.Name</MudSelectItem>
+            }
+        </MudSelect>
+        <MudTextField @bind-Value="_searchText" Label="Search" Immediate="true" 
+                      Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Filled.Search" />
+        <MudButton Variant="Variant.Outlined" Color="Color.Primary" OnClick="LoadVouchers">Filter</MudButton>
+        <MudButton Variant="Variant.Outlined" Color="Color.Success" StartIcon="@Icons.Material.Filled.Download"
+                   OnClick="DownloadExcel" Disabled="@(_vouchers.Count == 0)">Excel</MudButton>
+    </MudStack>
+
+    <MudTable Items="@_filteredVouchers" Hover="true" Striped="true" Dense="true" Loading="@_isLoading">
+        <HeaderContent>
+            <MudTh>Voucher No</MudTh>
+            <MudTh>Date</MudTh>
+            <MudTh>@VoucherTypeName Account</MudTh>
+            <MudTh>Narration</MudTh>
+            <MudTh Style="text-align:right">Debit</MudTh>
+            <MudTh Style="text-align:right">Credit</MudTh>
+            <MudTh>Status</MudTh>
+            <MudTh Style="width:150px">Actions</MudTh>
+        </HeaderContent>
+        <RowTemplate>
+            <MudTd>@context.VoucherNo</MudTd>
+            <MudTd>@context.VoucherDate.ToString("dd-MMM-yyyy")</MudTd>
+            <MudTd>@GetPrimaryAccountName(context)</MudTd>
+            <MudTd>@context.Narration</MudTd>
+            <MudTd Style="text-align:right">@context.TotalDebit?.ToString("N2")</MudTd>
+            <MudTd Style="text-align:right">@context.TotalCredit?.ToString("N2")</MudTd>
+            <MudTd>
+                @if (context.IsPosted)
+                {
+                    <MudChip T="string" Size="Size.Small" Color="Color.Success">Posted</MudChip>
+                }
+                else
+                {
+                    <MudChip T="string" Size="Size.Small" Color="Color.Warning">Draft</MudChip>
+                }
+            </MudTd>
+            <MudTd>
+                <MudIconButton Icon="@Icons.Material.Filled.Visibility" Size="Size.Small" Color="Color.Info"
+                               OnClick="@(() => ViewVoucher(context))" />
+                @if (!context.IsPosted)
+                {
+                    <MudIconButton Icon="@Icons.Material.Filled.Edit" Size="Size.Small"
+                                   OnClick="@(() => EditVoucher(context))" />
+                    <MudIconButton Icon="@Icons.Material.Filled.Check" Size="Size.Small" Color="Color.Success"
+                                   OnClick="@(() => PostVoucher(context))" Title="Post" />
+                    <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" Color="Color.Error"
+                                   OnClick="@(() => DeleteVoucher(context))" />
+                }
+                else
+                {
+                    <MudIconButton Icon="@Icons.Material.Filled.Undo" Size="Size.Small" Color="Color.Warning"
+                                   OnClick="@(() => UnpostVoucher(context))" Title="Unpost" />
+                }
+            </MudTd>
+        </RowTemplate>
+        <NoRecordsContent>
+            <MudText>No vouchers found</MudText>
+        </NoRecordsContent>
+    </MudTable>
+</MudStack>
+
+@code {
+    [Parameter]
+    public string VoucherType { get; set; } = "CV";
+
+    [Parameter]
+    public string VoucherTypeName { get; set; } = "Cash";
+
+    [Parameter]
+    public AccountNature AccountNature { get; set; } = AccountNature.CashAccount;
+
+    private List<Journal> _vouchers = new();
+    private List<AccountHead> _accounts = new();
+    private bool _isLoading = true;
+    private DateTime? _fromDate = DateTime.Today.AddMonths(-1);
+    private DateTime? _toDate = DateTime.Today;
+    private string _searchText = "";
+    private long? _filterAccountId;
+
+    private IEnumerable<Journal> _filteredVouchers => string.IsNullOrEmpty(_searchText)
+        ? _vouchers
+        : _vouchers.Where(v => 
+            (v.VoucherNo?.Contains(_searchText, StringComparison.OrdinalIgnoreCase) ?? false) ||
+            (v.Narration?.Contains(_searchText, StringComparison.OrdinalIgnoreCase) ?? false) ||
+            (v.Reference?.Contains(_searchText, StringComparison.OrdinalIgnoreCase) ?? false));
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadAccounts();
+        await LoadVouchers();
+    }
+
+    private async Task LoadAccounts()
+    {
+        _accounts = await DbContext.AccountHeads
+            .Where(a => a.AccountNature == AccountNature && a.IsActive && !a.IsGroup)
+            .OrderBy(a => a.Name)
+            .ToListAsync();
+    }
+
+    private async Task LoadVouchers()
+    {
+        _isLoading = true;
+        try
+        {
+            var query = DbContext.Journals
+                .Include(j => j.Entries)
+                .Where(j => j.VoucherType == VoucherType && !j.IsDeleted);
+
+            if (_fromDate.HasValue)
+                query = query.Where(j => j.VoucherDate >= _fromDate.Value);
+
+            if (_toDate.HasValue)
+                query = query.Where(j => j.VoucherDate <= _toDate.Value);
+
+            if (_filterAccountId.HasValue)
+                query = query.Where(j => j.Entries.Any(e => e.AccountHeadId == _filterAccountId.Value));
+
+            _vouchers = await query.OrderByDescending(j => j.VoucherDate)
+                .ThenByDescending(j => j.VoucherNo)
+                .ToListAsync();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error loading vouchers: {ex.Message}", Severity.Error);
+        }
+        _isLoading = false;
+    }
+
+    private string GetPrimaryAccountName(Journal journal)
+    {
+        var primaryEntry = journal.Entries.FirstOrDefault(e => 
+            _accounts.Any(a => a.Id == e.AccountHeadId));
+        return primaryEntry?.AccountName ?? "-";
+    }
+
+    private async Task CreateNew()
+    {
+        var parameters = new DialogParameters
+        {
+            ["VoucherType"] = VoucherType,
+            ["VoucherTypeName"] = VoucherTypeName,
+            ["AccountNature"] = AccountNature,
+            ["Journal"] = null
+        };
+        var options = new DialogOptions { MaxWidth = MaxWidth.Large, FullWidth = true, CloseOnEscapeKey = true };
+        var dialog = await DialogService.ShowAsync<VoucherEntryDialog>($"New {VoucherTypeName} Voucher", parameters, options);
+        var result = await dialog.Result;
+        if (result != null && !result.Canceled)
+        {
+            await LoadVouchers();
+        }
+    }
+
+    private async Task ViewVoucher(Journal journal)
+    {
+        var parameters = new DialogParameters
+        {
+            ["VoucherType"] = VoucherType,
+            ["VoucherTypeName"] = VoucherTypeName,
+            ["AccountNature"] = AccountNature,
+            ["Journal"] = journal,
+            ["IsReadOnly"] = true
+        };
+        var options = new DialogOptions { MaxWidth = MaxWidth.Large, FullWidth = true, CloseOnEscapeKey = true };
+        await DialogService.ShowAsync<VoucherEntryDialog>($"View {VoucherTypeName} Voucher", parameters, options);
+    }
+
+    private async Task EditVoucher(Journal journal)
+    {
+        var parameters = new DialogParameters
+        {
+            ["VoucherType"] = VoucherType,
+            ["VoucherTypeName"] = VoucherTypeName,
+            ["AccountNature"] = AccountNature,
+            ["Journal"] = journal
+        };
+        var options = new DialogOptions { MaxWidth = MaxWidth.Large, FullWidth = true, CloseOnEscapeKey = true };
+        var dialog = await DialogService.ShowAsync<VoucherEntryDialog>($"Edit {VoucherTypeName} Voucher", parameters, options);
+        var result = await dialog.Result;
+        if (result != null && !result.Canceled)
+        {
+            await LoadVouchers();
+        }
+    }
+
+    private async Task PostVoucher(Journal journal)
+    {
+        var confirm = await DialogService.ShowMessageBox(
+            "Confirm Post",
+            $"Are you sure you want to post voucher {journal.VoucherNo}? Posted vouchers cannot be edited.",
+            yesText: "Post", cancelText: "Cancel");
+        
+        if (confirm == true)
+        {
+            try
+            {
+                journal.IsPosted = true;
+                journal.PostedAt = DateTime.UtcNow;
+                await DbContext.SaveChangesAsync();
+                Snackbar.Add("Voucher posted successfully", Severity.Success);
+                await LoadVouchers();
+            }
+            catch (Exception ex)
+            {
+                Snackbar.Add($"Error posting voucher: {ex.Message}", Severity.Error);
+            }
+        }
+    }
+
+    private async Task UnpostVoucher(Journal journal)
+    {
+        var confirm = await DialogService.ShowMessageBox(
+            "Confirm Unpost",
+            $"Are you sure you want to unpost voucher {journal.VoucherNo}? This will allow editing.",
+            yesText: "Unpost", cancelText: "Cancel");
+        
+        if (confirm == true)
+        {
+            try
+            {
+                journal.IsPosted = false;
+                journal.PostedAt = null;
+                journal.PostedBy = null;
+                await DbContext.SaveChangesAsync();
+                Snackbar.Add("Voucher unposted successfully", Severity.Success);
+                await LoadVouchers();
+            }
+            catch (Exception ex)
+            {
+                Snackbar.Add($"Error unposting voucher: {ex.Message}", Severity.Error);
+            }
+        }
+    }
+
+    private async Task DeleteVoucher(Journal journal)
+    {
+        var confirm = await DialogService.ShowMessageBox(
+            "Confirm Delete",
+            $"Are you sure you want to delete voucher {journal.VoucherNo}?",
+            yesText: "Delete", cancelText: "Cancel");
+        
+        if (confirm == true)
+        {
+            try
+            {
+                journal.IsDeleted = true;
+                await DbContext.SaveChangesAsync();
+                Snackbar.Add("Voucher deleted successfully", Severity.Success);
+                await LoadVouchers();
+            }
+            catch (Exception ex)
+            {
+                Snackbar.Add($"Error deleting voucher: {ex.Message}", Severity.Error);
+            }
+        }
+    }
+
+    private async Task DownloadExcel()
+    {
+        try
+        {
+            using var workbook = new XLWorkbook();
+            var worksheet = workbook.Worksheets.Add($"{VoucherTypeName} Vouchers");
+
+            worksheet.Cell(1, 1).Value = "Voucher No";
+            worksheet.Cell(1, 2).Value = "Date";
+            worksheet.Cell(1, 3).Value = "Account";
+            worksheet.Cell(1, 4).Value = "Narration";
+            worksheet.Cell(1, 5).Value = "Debit";
+            worksheet.Cell(1, 6).Value = "Credit";
+            worksheet.Cell(1, 7).Value = "Status";
+            worksheet.Range(1, 1, 1, 7).Style.Font.Bold = true;
+
+            int row = 2;
+            foreach (var v in _filteredVouchers)
+            {
+                worksheet.Cell(row, 1).Value = v.VoucherNo;
+                worksheet.Cell(row, 2).Value = v.VoucherDate.ToString("dd-MMM-yyyy");
+                worksheet.Cell(row, 3).Value = GetPrimaryAccountName(v);
+                worksheet.Cell(row, 4).Value = v.Narration;
+                worksheet.Cell(row, 5).Value = v.TotalDebit ?? 0;
+                worksheet.Cell(row, 6).Value = v.TotalCredit ?? 0;
+                worksheet.Cell(row, 7).Value = v.IsPosted ? "Posted" : "Draft";
+                row++;
+            }
+
+            worksheet.Columns().AdjustToContents();
+
+            using var stream = new MemoryStream();
+            workbook.SaveAs(stream);
+            var content = stream.ToArray();
+            var fileName = $"{VoucherTypeName}_Vouchers_{DateTime.Now:yyyyMMdd}.xlsx";
+
+            Snackbar.Add("Excel file prepared. Check your downloads.", Severity.Success);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error generating Excel: {ex.Message}", Severity.Error);
+        }
+    }
+}

@@ -1,0 +1,429 @@
+@inject ApplicationDbContext DbContext
+@inject ISnackbar Snackbar
+@using Microsoft.EntityFrameworkCore
+@using Net4Courier.Infrastructure.Data
+@using Net4Courier.Finance.Entities
+
+<MudDialog>
+    <TitleContent>
+        <MudText Typo="Typo.h6">
+            <MudIcon Icon="@(VoucherType == "CV" ? Icons.Material.Filled.Money : Icons.Material.Filled.AccountBalance)" Class="mr-2" />
+            @(Journal == null ? "New" : "Edit") @VoucherTypeName Voucher
+        </MudText>
+    </TitleContent>
+    <DialogContent>
+        @if (_isLoading)
+        {
+            <MudProgressLinear Indeterminate="true" Color="Color.Primary" />
+        }
+        else
+        {
+            <MudGrid>
+                <MudItem xs="12" sm="3">
+                    <MudTextField @bind-Value="_voucherNo" Label="Voucher No" ReadOnly="true" 
+                                  Variant="Variant.Outlined" Dense="true" />
+                </MudItem>
+                <MudItem xs="12" sm="3">
+                    <MudDatePicker @bind-Date="_voucherDate" Label="Voucher Date" DateFormat="dd-MMM-yyyy"
+                                   Variant="Variant.Outlined" Disabled="@IsReadOnly" />
+                </MudItem>
+                <MudItem xs="12" sm="3">
+                    <MudSelect T="VoucherDirection" @bind-Value="_direction" Label="Voucher Type"
+                               Variant="Variant.Outlined" Required="true" Disabled="@(IsReadOnly || Journal != null)">
+                        <MudSelectItem Value="VoucherDirection.Receipt">Receipt (Money In)</MudSelectItem>
+                        <MudSelectItem Value="VoucherDirection.Payment">Payment (Money Out)</MudSelectItem>
+                    </MudSelect>
+                </MudItem>
+                <MudItem xs="12" sm="3">
+                    <MudSelect T="long?" @bind-Value="_primaryAccountId" Label="@($"{VoucherTypeName} Account")"
+                               Variant="Variant.Outlined" Required="true" Disabled="@IsReadOnly">
+                        @foreach (var acc in _primaryAccounts)
+                        {
+                            <MudSelectItem Value="@((long?)acc.Id)">@acc.Code - @acc.Name</MudSelectItem>
+                        }
+                    </MudSelect>
+                </MudItem>
+                <MudItem xs="12" sm="8">
+                    <MudTextField @bind-Value="_narration" Label="Narration"
+                                  Variant="Variant.Outlined" Disabled="@IsReadOnly" />
+                </MudItem>
+                <MudItem xs="12" sm="4">
+                    <MudTextField @bind-Value="_reference" Label="Reference/Cheque No"
+                                  Variant="Variant.Outlined" Disabled="@IsReadOnly" />
+                </MudItem>
+            </MudGrid>
+
+            <MudDivider Class="my-4" />
+
+            <MudStack Row="true" AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween" Class="mb-2">
+                <MudText Typo="Typo.subtitle1">
+                    <b>@(_direction == VoucherDirection.Receipt ? "Received From (Credit Accounts)" : "Paid To (Debit Accounts)")</b>
+                </MudText>
+                @if (!IsReadOnly)
+                {
+                    <MudButton Variant="Variant.Outlined" Color="Color.Primary" Size="Size.Small"
+                               StartIcon="@Icons.Material.Filled.Add" OnClick="AddEntry">Add Entry</MudButton>
+                }
+            </MudStack>
+
+            <MudTable Items="@_entries" Dense="true" Hover="true" Bordered="true">
+                <HeaderContent>
+                    <MudTh Style="width:350px">Account</MudTh>
+                    <MudTh>Narration</MudTh>
+                    <MudTh Style="width:150px;text-align:right">Amount</MudTh>
+                    @if (!IsReadOnly)
+                    {
+                        <MudTh Style="width:60px">Actions</MudTh>
+                    }
+                </HeaderContent>
+                <RowTemplate>
+                    <MudTd>
+                        @if (IsReadOnly)
+                        {
+                            <MudText>@context.AccountName</MudText>
+                        }
+                        else
+                        {
+                            <MudSelect T="long?" Value="@context.AccountHeadId" ValueChanged="@((val) => OnAccountChanged(context, val))"
+                                       Variant="Variant.Text" Dense="true" Margin="Margin.Dense">
+                                @foreach (var acc in _allAccounts)
+                                {
+                                    <MudSelectItem Value="@((long?)acc.Id)">@acc.Code - @acc.Name</MudSelectItem>
+                                }
+                            </MudSelect>
+                        }
+                    </MudTd>
+                    <MudTd>
+                        @if (IsReadOnly)
+                        {
+                            <MudText>@context.Narration</MudText>
+                        }
+                        else
+                        {
+                            <MudTextField @bind-Value="@context.Narration" Variant="Variant.Text" Dense="true" Margin="Margin.Dense" />
+                        }
+                    </MudTd>
+                    <MudTd Style="text-align:right">
+                        @if (IsReadOnly)
+                        {
+                            <MudText>@GetEntryAmount(context).ToString("N2")</MudText>
+                        }
+                        else
+                        {
+                            <MudNumericField Value="@GetEntryAmount(context)" ValueChanged="@((decimal val) => SetEntryAmount(context, val))" 
+                                           Variant="Variant.Text" Dense="true" Margin="Margin.Dense" Format="N2" Min="0" />
+                        }
+                    </MudTd>
+                    @if (!IsReadOnly)
+                    {
+                        <MudTd>
+                            <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" Color="Color.Error"
+                                           OnClick="@(() => RemoveEntry(context))" />
+                        </MudTd>
+                    }
+                </RowTemplate>
+                <FooterContent>
+                    <MudTd colspan="2" Style="text-align:right"><b>Total @(_direction == VoucherDirection.Receipt ? "Receipt" : "Payment"):</b></MudTd>
+                    <MudTd Style="text-align:right"><b>@TotalAmount.ToString("N2")</b></MudTd>
+                    @if (!IsReadOnly)
+                    {
+                        <MudTd></MudTd>
+                    }
+                </FooterContent>
+            </MudTable>
+
+            <MudPaper Class="pa-3 mt-4" Elevation="1" Style="background-color: var(--mud-palette-background-grey);">
+                <MudStack Row="true" Justify="Justify.SpaceBetween">
+                    <MudText Typo="Typo.subtitle2">
+                        @VoucherTypeName Account: <b>@(_direction == VoucherDirection.Receipt ? "DEBIT" : "CREDIT")</b>
+                    </MudText>
+                    <MudText Typo="Typo.subtitle2">
+                        <b>@TotalAmount.ToString("N2")</b>
+                    </MudText>
+                </MudStack>
+                <MudText Typo="Typo.caption" Color="Color.Secondary">
+                    @(_direction == VoucherDirection.Receipt 
+                        ? $"Money received into {VoucherTypeName} account - account balance increases" 
+                        : $"Money paid from {VoucherTypeName} account - account balance decreases")
+                </MudText>
+            </MudPaper>
+        }
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Cancel">@(IsReadOnly ? "Close" : "Cancel")</MudButton>
+        @if (!IsReadOnly)
+        {
+            <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="Save" Disabled="@(!CanSave)">
+                Save
+            </MudButton>
+        }
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter]
+    private MudDialogInstance MudDialog { get; set; } = null!;
+
+    [Parameter]
+    public string VoucherType { get; set; } = "CV";
+
+    [Parameter]
+    public string VoucherTypeName { get; set; } = "Cash";
+
+    [Parameter]
+    public AccountNature AccountNature { get; set; } = AccountNature.CashAccount;
+
+    [Parameter]
+    public Journal? Journal { get; set; }
+
+    [Parameter]
+    public bool IsReadOnly { get; set; }
+
+    private enum VoucherDirection { Receipt, Payment }
+
+    private bool _isLoading = true;
+    private string _voucherNo = "";
+    private DateTime? _voucherDate = DateTime.Today;
+    private VoucherDirection _direction = VoucherDirection.Receipt;
+    private long? _primaryAccountId;
+    private string? _narration;
+    private string? _reference;
+    private List<JournalEntry> _entries = new();
+    private List<AccountHead> _primaryAccounts = new();
+    private List<AccountHead> _allAccounts = new();
+
+    private decimal TotalAmount => _entries.Sum(e => GetEntryAmount(e));
+    private bool CanSave => _primaryAccountId.HasValue && _entries.Any(e => e.AccountHeadId > 0 && GetEntryAmount(e) > 0) && TotalAmount > 0;
+
+    private decimal GetEntryAmount(JournalEntry entry)
+    {
+        return _direction == VoucherDirection.Receipt ? (entry.Credit ?? 0) : (entry.Debit ?? 0);
+    }
+
+    private void SetEntryAmount(JournalEntry entry, decimal amount)
+    {
+        if (_direction == VoucherDirection.Receipt)
+        {
+            entry.Credit = amount;
+            entry.Debit = null;
+        }
+        else
+        {
+            entry.Debit = amount;
+            entry.Credit = null;
+        }
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadAccounts();
+
+        if (Journal != null)
+        {
+            _voucherNo = Journal.VoucherNo;
+            _voucherDate = Journal.VoucherDate;
+            _narration = Journal.Narration;
+            _reference = Journal.Reference;
+            
+            var primaryEntry = Journal.Entries.FirstOrDefault(e => 
+                _primaryAccounts.Any(a => a.Id == e.AccountHeadId));
+            
+            if (primaryEntry != null)
+            {
+                _primaryAccountId = primaryEntry.AccountHeadId;
+                _direction = (primaryEntry.Debit ?? 0) > 0 ? VoucherDirection.Receipt : VoucherDirection.Payment;
+            }
+            
+            _entries = Journal.Entries
+                .Where(e => !_primaryAccounts.Any(a => a.Id == e.AccountHeadId))
+                .Select(e => new JournalEntry
+                {
+                    AccountHeadId = e.AccountHeadId,
+                    AccountCode = e.AccountCode,
+                    AccountName = e.AccountName,
+                    Debit = e.Debit,
+                    Credit = e.Credit,
+                    Narration = e.Narration,
+                    PartyId = e.PartyId,
+                    CostCentre = e.CostCentre
+                })
+                .ToList();
+        }
+        else
+        {
+            _voucherNo = await GenerateVoucherNo();
+            _entries.Add(new JournalEntry());
+        }
+
+        _isLoading = false;
+    }
+
+    private async Task LoadAccounts()
+    {
+        _primaryAccounts = await DbContext.AccountHeads
+            .Where(a => a.AccountNature == AccountNature && a.IsActive && !a.IsGroup)
+            .OrderBy(a => a.Name)
+            .ToListAsync();
+
+        _allAccounts = await DbContext.AccountHeads
+            .Where(a => a.IsActive && !a.IsGroup && a.AccountNature != AccountNature)
+            .OrderBy(a => a.Classification)
+            .ThenBy(a => a.Code)
+            .ToListAsync();
+    }
+
+    private async Task<string> GenerateVoucherNo()
+    {
+        var prefix = VoucherType == "CV" ? "CV" : "BV";
+        var year = DateTime.Now.Year;
+        var month = DateTime.Now.Month;
+        
+        var lastNo = await DbContext.Journals
+            .Where(j => j.VoucherType == VoucherType && j.VoucherNo.StartsWith($"{prefix}-"))
+            .OrderByDescending(j => j.Id)
+            .Select(j => j.VoucherNo)
+            .FirstOrDefaultAsync();
+
+        int nextNum = 1;
+        if (!string.IsNullOrEmpty(lastNo))
+        {
+            var parts = lastNo.Split('-');
+            if (parts.Length > 1 && int.TryParse(parts[^1], out int lastNum))
+            {
+                nextNum = lastNum + 1;
+            }
+        }
+
+        return $"{prefix}-{year}{month:D2}-{nextNum:D5}";
+    }
+
+    private void OnAccountChanged(JournalEntry entry, long? accountId)
+    {
+        entry.AccountHeadId = accountId ?? 0;
+        var account = _allAccounts.FirstOrDefault(a => a.Id == accountId);
+        if (account != null)
+        {
+            entry.AccountCode = account.Code;
+            entry.AccountName = account.Name;
+        }
+    }
+
+    private void AddEntry()
+    {
+        _entries.Add(new JournalEntry());
+    }
+
+    private void RemoveEntry(JournalEntry entry)
+    {
+        _entries.Remove(entry);
+    }
+
+    private async Task Save()
+    {
+        if (!CanSave)
+        {
+            Snackbar.Add("Please add at least one entry with an account and amount", Severity.Warning);
+            return;
+        }
+
+        try
+        {
+            var primaryAccount = _primaryAccounts.FirstOrDefault(a => a.Id == _primaryAccountId);
+            if (primaryAccount == null)
+            {
+                Snackbar.Add($"Please select a {VoucherTypeName} account", Severity.Warning);
+                return;
+            }
+
+            Journal journal;
+            if (Journal == null)
+            {
+                journal = new Journal
+                {
+                    VoucherNo = _voucherNo,
+                    VoucherDate = _voucherDate ?? DateTime.Today,
+                    VoucherType = VoucherType,
+                    Narration = _narration,
+                    Reference = _reference,
+                    IsPosted = false,
+                    CreatedAt = DateTime.UtcNow
+                };
+                DbContext.Journals.Add(journal);
+            }
+            else
+            {
+                journal = Journal;
+                journal.VoucherDate = _voucherDate ?? DateTime.Today;
+                journal.Narration = _narration;
+                journal.Reference = _reference;
+                journal.ModifiedAt = DateTime.UtcNow;
+                
+                var existingEntries = await DbContext.JournalEntries
+                    .Where(e => e.JournalId == journal.Id)
+                    .ToListAsync();
+                DbContext.JournalEntries.RemoveRange(existingEntries);
+            }
+
+            var primaryEntry = new JournalEntry
+            {
+                AccountHeadId = primaryAccount.Id,
+                AccountCode = primaryAccount.Code,
+                AccountName = primaryAccount.Name,
+                Narration = _narration
+            };
+
+            if (_direction == VoucherDirection.Receipt)
+            {
+                primaryEntry.Debit = TotalAmount;
+                primaryEntry.Credit = null;
+            }
+            else
+            {
+                primaryEntry.Debit = null;
+                primaryEntry.Credit = TotalAmount;
+            }
+            journal.Entries.Add(primaryEntry);
+
+            foreach (var entry in _entries.Where(e => e.AccountHeadId > 0 && GetEntryAmount(e) > 0))
+            {
+                var newEntry = new JournalEntry
+                {
+                    AccountHeadId = entry.AccountHeadId,
+                    AccountCode = entry.AccountCode,
+                    AccountName = entry.AccountName,
+                    Narration = entry.Narration ?? _narration,
+                    PartyId = entry.PartyId,
+                    CostCentre = entry.CostCentre
+                };
+                
+                if (_direction == VoucherDirection.Receipt)
+                {
+                    newEntry.Credit = GetEntryAmount(entry);
+                    newEntry.Debit = null;
+                }
+                else
+                {
+                    newEntry.Debit = GetEntryAmount(entry);
+                    newEntry.Credit = null;
+                }
+                journal.Entries.Add(newEntry);
+            }
+
+            journal.TotalDebit = journal.Entries.Sum(e => e.Debit ?? 0);
+            journal.TotalCredit = journal.Entries.Sum(e => e.Credit ?? 0);
+
+            await DbContext.SaveChangesAsync();
+            Snackbar.Add($"{VoucherTypeName} voucher saved successfully", Severity.Success);
+            MudDialog.Close(DialogResult.Ok(true));
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error saving voucher: {ex.Message}", Severity.Error);
+        }
+    }
+
+    private void Cancel()
+    {
+        MudDialog.Cancel();
+    }
+}

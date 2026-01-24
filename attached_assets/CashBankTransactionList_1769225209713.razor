@@ -1,0 +1,429 @@
+@page "/cash-bank-transactions"
+@layout MainLayout
+@using Web.Models
+@using Web.Services
+@inject ICashBankTransactionService CashBankTransactionService
+@inject HttpClient Http
+@inject IAuthService AuthService
+@inject NavigationManager Navigation
+@inject ISnackbar Snackbar
+
+<MudContainer MaxWidth="MaxWidth.ExtraLarge" Class="mt-4">
+    <MudText Typo="Typo.h4" Class="mb-4">Cash & Bank Transactions</MudText>
+    
+    <MudPaper Class="pa-4 mb-4">
+        <MudGrid>
+            <MudItem xs="12" sm="3">
+                <MudSelect @bind-Value="selectedTransactionType" Label="Transaction Type" T="TransactionType?">
+                    <MudSelectItem Value="@((TransactionType?)null)">All</MudSelectItem>
+                    <MudSelectItem Value="@((TransactionType?)TransactionType.Bank)">Bank</MudSelectItem>
+                    <MudSelectItem Value="@((TransactionType?)TransactionType.Cash)">Cash</MudSelectItem>
+                </MudSelect>
+            </MudItem>
+            <MudItem xs="12" sm="3">
+                <MudSelect @bind-Value="selectedRecPayType" Label="Receipt/Payment" T="RecPayType?">
+                    <MudSelectItem Value="@((RecPayType?)null)">All</MudSelectItem>
+                    <MudSelectItem Value="@((RecPayType?)RecPayType.Receipt)">Receipt</MudSelectItem>
+                    <MudSelectItem Value="@((RecPayType?)RecPayType.Payment)">Payment</MudSelectItem>
+                </MudSelect>
+            </MudItem>
+            <MudItem xs="12" sm="3">
+                <MudSelect @bind-Value="selectedStatusFilter" Label="Status" T="string">
+                    <MudSelectItem Value="@("All")">All</MudSelectItem>
+                    <MudSelectItem Value="@("Draft")">Draft</MudSelectItem>
+                    <MudSelectItem Value="@("Posted")">Posted</MudSelectItem>
+                    <MudSelectItem Value="@("Cancelled")">Cancelled</MudSelectItem>
+                    <MudSelectItem Value="@("Void")">Void</MudSelectItem>
+                </MudSelect>
+            </MudItem>
+            <MudItem xs="12" sm="3">
+                <MudButton Variant="Variant.Filled" 
+                          Color="Color.Primary" 
+                          StartIcon="@Icons.Material.Filled.Add"
+                          OnClick="CreateNew"
+                          FullWidth="true">
+                    Create New
+                </MudButton>
+            </MudItem>
+        </MudGrid>
+        
+        <MudGrid Class="mt-2">
+            <MudItem xs="12" sm="4">
+                <MudButton Variant="Variant.Outlined" 
+                          Color="Color.Secondary" 
+                          OnClick="ApplyFilters"
+                          FullWidth="true">
+                    Apply Filters
+                </MudButton>
+            </MudItem>
+            <MudItem xs="12" sm="4">
+                <MudButton Variant="Variant.Text" 
+                          Color="Color.Default" 
+                          OnClick="ClearFilters"
+                          FullWidth="true">
+                    Clear Filters
+                </MudButton>
+            </MudItem>
+        </MudGrid>
+    </MudPaper>
+
+    <MudPaper Class="pa-4">
+        @if (isLoading)
+        {
+            <MudProgressCircular Indeterminate="true" />
+        }
+        else
+        {
+            <MudDataGrid T="CashBankTransaction" 
+                        Items="@transactions" 
+                        Dense="true"
+                        Hover="true"
+                        ReadOnly="true"
+                        Height="600px">
+                <Columns>
+                    <PropertyColumn Property="x => x.VoucherNo" Title="Voucher No" />
+                    <PropertyColumn Property="x => x.VoucherDate" Title="Voucher Date" Format="dd MMM yyyy" />
+                    <PropertyColumn Property="x => x.TransactionType" Title="Type">
+                        <CellTemplate>
+                            <MudChip Size="MudBlazor.Size.Small" Color="@(context.Item.TransactionType == TransactionType.Bank ? Color.Primary : Color.Info)">
+                                @context.Item.TransactionType
+                            </MudChip>
+                        </CellTemplate>
+                    </PropertyColumn>
+                    <PropertyColumn Property="x => x.RecPayType" Title="Rec/Pay">
+                        <CellTemplate>
+                            <MudChip Size="MudBlazor.Size.Small" Color="@(context.Item.RecPayType == RecPayType.Receipt ? Color.Success : Color.Warning)">
+                                @context.Item.RecPayType
+                            </MudChip>
+                        </CellTemplate>
+                    </PropertyColumn>
+                    <PropertyColumn Property="x => x.SourceAccount" Title="Source Account">
+                        <CellTemplate>
+                            @{
+                                var bankAccountName = GetBankAccountName(context.Item.BankAccountId);
+                                if (!string.IsNullOrEmpty(bankAccountName))
+                                {
+                                    <MudText>@bankAccountName</MudText>
+                                    @if (context.Item.SourceAccount != null)
+                                    {
+                                        <MudText Typo="Typo.caption" Style="color: gray;">GL: @context.Item.SourceAccount.AccountCode</MudText>
+                                    }
+                                }
+                                else if (context.Item.SourceAccount != null)
+                                {
+                                    <MudText>@context.Item.SourceAccount.AccountCode - @context.Item.SourceAccount.AccountName</MudText>
+                                }
+                                else
+                                {
+                                    <MudText>-</MudText>
+                                }
+                            }
+                        </CellTemplate>
+                    </PropertyColumn>
+                    <PropertyColumn Property="x => x.TotalAmount" Title="Total Amount" Format="N2">
+                        <CellTemplate>
+                            <MudText Style="text-align: right;">@context.Item.TotalAmount.ToString("N2")</MudText>
+                        </CellTemplate>
+                    </PropertyColumn>
+                    <PropertyColumn Property="x => x.Status" Title="Status">
+                        <CellTemplate>
+                            <MudChip Size="MudBlazor.Size.Small" Color="@GetStatusColor(context.Item.Status)">
+                                @context.Item.Status
+                            </MudChip>
+                        </CellTemplate>
+                    </PropertyColumn>
+                    <TemplateColumn Title="Attach" Sortable="false">
+                        <CellTemplate>
+                            @{
+                                var attachmentCount = GetAttachmentCount(context.Item.Id);
+                                if (attachmentCount > 0)
+                                {
+                                    <MudTooltip Text="@($"{attachmentCount} attachment(s) - Click to view")">
+                                        <MudBadge Content="@attachmentCount" Color="Color.Primary" Overlap="true">
+                                            <MudIconButton Icon="@Icons.Material.Filled.AttachFile" 
+                                                         Size="MudBlazor.Size.Small" 
+                                                         Color="Color.Info"
+                                                         OnClick="@(() => ViewAttachments(context.Item.Id))" />
+                                        </MudBadge>
+                                    </MudTooltip>
+                                }
+                                else
+                                {
+                                    <MudIcon Icon="@Icons.Material.Outlined.AttachFile" 
+                                           Size="MudBlazor.Size.Small" 
+                                           Style="opacity: 0.3;" />
+                                }
+                            }
+                        </CellTemplate>
+                    </TemplateColumn>
+                    <TemplateColumn Title="Actions">
+                        <CellTemplate>
+                            <MudIconButton Icon="@Icons.Material.Filled.Edit" 
+                                         Size="MudBlazor.Size.Small" 
+                                         Color="Color.Primary"
+                                         OnClick="@(() => EditTransaction(context.Item.Id))" />
+                            @if (context.Item.Status == CashBankStatus.Posted && !context.Item.IsVoided && IsAdminOrOwner())
+                            {
+                                <MudTooltip Text="Void Transaction">
+                                    <MudIconButton Icon="@Icons.Material.Filled.NotInterested" 
+                                                 Size="MudBlazor.Size.Small" 
+                                                 Color="Color.Error"
+                                                 OnClick="@(() => OpenVoidDialog(context.Item))" />
+                                </MudTooltip>
+                            }
+                            @if (context.Item.IsVoided)
+                            {
+                                <MudChip Size="MudBlazor.Size.Small" Color="Color.Error">VOIDED</MudChip>
+                            }
+                        </CellTemplate>
+                    </TemplateColumn>
+                </Columns>
+            </MudDataGrid>
+        }
+    </MudPaper>
+</MudContainer>
+
+@if (voidDialogVisible)
+{
+    <MudDialog Visible="true" Options="new DialogOptions { CloseButton = false, MaxWidth = MaxWidth.Small }">
+        <TitleContent>
+            <MudText Typo="Typo.h6">Void Transaction</MudText>
+        </TitleContent>
+        <DialogContent>
+            <MudText Typo="Typo.body1" Class="mb-4">
+                Are you sure you want to void transaction <strong>@transactionToVoid?.VoucherNo</strong>?
+            </MudText>
+            <MudText Typo="Typo.body2" Color="Color.Warning" Class="mb-4">
+                This action cannot be undone. The transaction will be marked as voided and excluded from reports.
+            </MudText>
+            <MudTextField @bind-Value="voidReason" 
+                          Label="Void Reason" 
+                          Required="true" 
+                          Lines="3"
+                          Variant="Variant.Outlined" 
+                          HelperText="Please provide a reason for voiding this transaction" />
+        </DialogContent>
+        <DialogActions>
+            <MudButton OnClick="CloseVoidDialog" Color="Color.Default">Cancel</MudButton>
+            <MudButton OnClick="VoidTransaction" Color="Color.Error" Variant="Variant.Filled">Void Transaction</MudButton>
+        </DialogActions>
+    </MudDialog>
+}
+
+@code {
+    private List<CashBankTransaction> transactions = new();
+    private List<BankAccountModel> bankAccounts = new();
+    private TransactionType? selectedTransactionType = null;
+    private RecPayType? selectedRecPayType = null;
+    private string selectedStatusFilter = "All";
+    private bool isLoading = false;
+    private bool voidDialogVisible = false;
+    private CashBankTransaction? transactionToVoid;
+    private string voidReason = string.Empty;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadBankAccounts();
+        await LoadTransactions();
+    }
+    
+    private async Task LoadBankAccounts()
+    {
+        try
+        {
+            var tenantId = AuthService.GetTenantId();
+            Http.DefaultRequestHeaders.Remove("X-Tenant-Id");
+            Http.DefaultRequestHeaders.Add("X-Tenant-Id", tenantId);
+            
+            bankAccounts = await Http.GetFromJsonAsync<List<BankAccountModel>>("api/BankAccount") ?? new List<BankAccountModel>();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error loading bank accounts: {ex.Message}", Severity.Warning);
+        }
+    }
+    
+    private string GetBankAccountName(Guid? bankAccountId)
+    {
+        if (!bankAccountId.HasValue) return string.Empty;
+        
+        var bankAccount = bankAccounts.FirstOrDefault(b => b.Id == bankAccountId.Value);
+        if (bankAccount != null)
+        {
+            return $"{bankAccount.AccountName} - {bankAccount.BankName} (Acc# {bankAccount.AccountNumber})";
+        }
+        return string.Empty;
+    }
+
+    private async Task LoadTransactions()
+    {
+        isLoading = true;
+        try
+        {
+            bool includeVoided = selectedStatusFilter == "Void";
+            CashBankStatus? status = selectedStatusFilter switch
+            {
+                "Draft" => CashBankStatus.Draft,
+                "Posted" => CashBankStatus.Posted,
+                "Cancelled" => CashBankStatus.Cancelled,
+                _ => null
+            };
+
+            var allTransactions = await CashBankTransactionService.GetAllAsync(
+                selectedTransactionType,
+                selectedRecPayType,
+                status,
+                null,
+                null,
+                includeVoided
+            );
+
+            if (selectedStatusFilter == "Void")
+            {
+                transactions = allTransactions.Where(t => t.IsVoided).ToList();
+            }
+            else
+            {
+                transactions = allTransactions;
+            }
+
+            // Load attachment counts for all transactions
+            await LoadAttachmentCounts();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error loading transactions: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private async Task ApplyFilters()
+    {
+        await LoadTransactions();
+    }
+
+    private async Task ClearFilters()
+    {
+        selectedTransactionType = null;
+        selectedRecPayType = null;
+        selectedStatusFilter = "All";
+        await LoadTransactions();
+    }
+
+    private Color GetStatusColor(CashBankStatus status)
+    {
+        return status switch
+        {
+            CashBankStatus.Draft => Color.Default,
+            CashBankStatus.Posted => Color.Success,
+            CashBankStatus.Cancelled => Color.Error,
+            _ => Color.Default
+        };
+    }
+
+    private void CreateNew()
+    {
+        Navigation.NavigateTo("/cash-bank-transaction/new");
+    }
+
+    private void EditTransaction(Guid id)
+    {
+        Navigation.NavigateTo($"/cash-bank-transaction/edit/{id}");
+    }
+
+    private bool IsAdminOrOwner()
+    {
+        var userRoles = AuthService.GetUserRoles();
+        return userRoles.Contains("admin") || userRoles.Contains("owner");
+    }
+
+    private void OpenVoidDialog(CashBankTransaction transaction)
+    {
+        transactionToVoid = transaction;
+        voidReason = string.Empty;
+        voidDialogVisible = true;
+    }
+
+    private void CloseVoidDialog()
+    {
+        voidDialogVisible = false;
+        transactionToVoid = null;
+        voidReason = string.Empty;
+    }
+
+    private async Task VoidTransaction()
+    {
+        if (transactionToVoid == null || string.IsNullOrWhiteSpace(voidReason))
+        {
+            Snackbar.Add("Please provide a void reason", Severity.Warning);
+            return;
+        }
+
+        try
+        {
+            var request = new { voidReason };
+            var response = await Http.PostAsJsonAsync($"api/CashBankTransaction/{transactionToVoid.Id}/void", request);
+
+            if (response.IsSuccessStatusCode)
+            {
+                Snackbar.Add($"Transaction {transactionToVoid.VoucherNo} has been voided successfully", Severity.Success);
+                CloseVoidDialog();
+                await LoadTransactions();
+            }
+            else
+            {
+                var error = await response.Content.ReadAsStringAsync();
+                Snackbar.Add($"Error voiding transaction: {error}", Severity.Error);
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error voiding transaction: {ex.Message}", Severity.Error);
+        }
+    }
+    
+    private class BankAccountModel
+    {
+        public Guid Id { get; set; }
+        public string AccountNumber { get; set; } = string.Empty;
+        public string AccountName { get; set; } = string.Empty;
+        public string BankName { get; set; } = string.Empty;
+    }
+
+    // Attachment counts dictionary
+    private Dictionary<Guid, int> attachmentCounts = new();
+
+    private async Task LoadAttachmentCounts()
+    {
+        try
+        {
+            var transactionIds = transactions.Select(t => t.Id).ToList();
+            if (transactionIds.Count == 0) return;
+
+            // Use bulk endpoint to get all counts in a single request
+            var response = await Http.PostAsJsonAsync("api/VoucherAttachment/counts/bulk", transactionIds);
+            if (response.IsSuccessStatusCode)
+            {
+                var counts = await response.Content.ReadFromJsonAsync<Dictionary<Guid, int>>();
+                attachmentCounts = counts ?? new Dictionary<Guid, int>();
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error loading attachment counts: {ex.Message}", Severity.Warning);
+        }
+    }
+
+    private int GetAttachmentCount(Guid transactionId)
+    {
+        return attachmentCounts.TryGetValue(transactionId, out var count) ? count : 0;
+    }
+
+    private void ViewAttachments(Guid transactionId)
+    {
+        Navigation.NavigateTo($"/cash-bank-transaction/edit/{transactionId}#attachments");
+    }
+}
