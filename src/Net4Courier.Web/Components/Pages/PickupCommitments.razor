@@ -5,10 +5,30 @@
 @using Microsoft.EntityFrameworkCore
 @using Net4Courier.Infrastructure.Data
 @using Net4Courier.Operations.Entities
+@using Net4Courier.Masters.Entities
 @using Net4Courier.Web.Services
 
 <MudContainer MaxWidth="MaxWidth.ExtraLarge" Class="mt-4">
     <MudText Typo="Typo.h4" Class="mb-4">Pickup Commitments</MudText>
+
+    <MudPaper Class="pa-4 mb-4" Elevation="2">
+        <MudGrid>
+            <MudItem xs="12" sm="6" md="3">
+                <MudSelect T="long?" @bind-Value="_courierFilter" Label="Courier" Variant="Variant.Outlined" AnchorOrigin="Origin.BottomCenter">
+                    <MudSelectItem T="long?" Value="@((long?)null)">All Couriers</MudSelectItem>
+                    @foreach (var courier in _courierEmployees)
+                    {
+                        <MudSelectItem T="long?" Value="@((long?)courier.Id)">@courier.Name</MudSelectItem>
+                    }
+                </MudSelect>
+            </MudItem>
+            <MudItem xs="12" sm="6" md="2">
+                <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="LoadData" FullWidth="true" Class="mt-1">
+                    Apply Filter
+                </MudButton>
+            </MudItem>
+        </MudGrid>
+    </MudPaper>
 
     <MudTabs Elevation="2" Rounded="true" ApplyEffectsToContainer="true">
         <MudTabPanel Text="Available Pickups" Icon="@Icons.Material.Filled.LocalShipping">
@@ -53,10 +73,10 @@
             </MudPaper>
         </MudTabPanel>
         
-        <MudTabPanel Text="My Commitments" Icon="@Icons.Material.Filled.Assignment">
+        <MudTabPanel Text="@(_courierFilter.HasValue ? "Courier Commitments" : "All Commitments")" Icon="@Icons.Material.Filled.Assignment">
             <MudPaper Class="pa-4 mt-2" Elevation="1">
                 <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center" Class="mb-3">
-                    <MudText Typo="Typo.subtitle1">Your active commitments</MudText>
+                    <MudText Typo="Typo.subtitle1">@(_courierFilter.HasValue ? "Courier's active commitments" : "All active commitments")</MudText>
                     <MudButton Variant="Variant.Outlined" Color="Color.Primary" Size="Size.Small" OnClick="LoadData">
                         Refresh
                     </MudButton>
@@ -65,6 +85,10 @@
                 <MudTable Items="@_myCommitments" Dense="true" Hover="true" Bordered="true" Striped="true">
                     <HeaderContent>
                         <MudTh>Pickup No</MudTh>
+                        @if (!_courierFilter.HasValue)
+                        {
+                            <MudTh>Courier</MudTh>
+                        }
                         <MudTh>Customer</MudTh>
                         <MudTh>Committed At</MudTh>
                         <MudTh>Expires At</MudTh>
@@ -74,6 +98,10 @@
                     </HeaderContent>
                     <RowTemplate>
                         <MudTd>@context.PickupRequest?.PickupNo</MudTd>
+                        @if (!_courierFilter.HasValue)
+                        {
+                            <MudTd>@context.CourierName</MudTd>
+                        }
                         <MudTd>@context.PickupRequest?.CustomerName</MudTd>
                         <MudTd>@context.CommittedAt.ToString("dd-MMM HH:mm")</MudTd>
                         <MudTd>@context.ExpiresAt.ToString("dd-MMM HH:mm")</MudTd>
@@ -173,10 +201,22 @@
     private List<PickupCommitment> _myCommitments = new();
     private CourierCommitmentStats? _stats;
     private long _currentCourierId = 1;
+    private long? _courierFilter = null;
+    private List<(long Id, string Name)> _courierEmployees = new();
 
     protected override async Task OnInitializedAsync()
     {
+        await LoadCouriers();
         await LoadData();
+    }
+
+    private async Task LoadCouriers()
+    {
+        _courierEmployees = await DbContext.Parties
+            .Where(p => p.PartyType == PartyType.DeliveryAgent && p.IsActive && !p.IsDeleted)
+            .OrderBy(p => p.Name)
+            .Select(p => new ValueTuple<long, string>(p.Id, p.Name))
+            .ToListAsync();
     }
 
     private async Task LoadData()
@@ -189,8 +229,22 @@
             await service.ExpireOldCommitmentsAsync();
             
             _availablePickups = await service.GetAvailablePickupsAsync();
-            _myCommitments = await service.GetCourierCommitmentsAsync(_currentCourierId, activeOnly: true);
-            _stats = await service.GetCourierStatsAsync(_currentCourierId, DateTime.UtcNow.AddDays(-30), DateTime.UtcNow);
+            
+            var courierId = _courierFilter ?? _currentCourierId;
+            if (_courierFilter.HasValue)
+            {
+                _myCommitments = await service.GetCourierCommitmentsAsync(courierId, activeOnly: true);
+                _stats = await service.GetCourierStatsAsync(courierId, DateTime.UtcNow.AddDays(-30), DateTime.UtcNow);
+            }
+            else
+            {
+                _myCommitments = await DbContext.PickupCommitments
+                    .Include(c => c.PickupRequest)
+                    .Where(c => (c.Status == PickupCommitmentStatus.Active || c.Status == PickupCommitmentStatus.Confirmed) && c.ExpiresAt > DateTime.UtcNow)
+                    .OrderBy(c => c.ExpiresAt)
+                    .ToListAsync();
+                _stats = null;
+            }
         }
         catch (Exception ex)
         {
