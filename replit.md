@@ -112,6 +112,14 @@ The application is built on .NET 8 Blazor Server, utilizing a modular architectu
   - Navigation: Accounts & Finance > General Ledger > Settings > Tax Setup
   - SQL Schema: `sql/bank_tax_schema.sql` for deployment
 
+- **Global Error Handling**: Robust error handling to prevent unexpected login redirects including:
+  - Built-in Blazor ErrorBoundary in MainLayout with user-friendly error messages
+  - PageErrorHandler service for centralized error handling with MudBlazor Snackbar integration
+  - Error message sanitization - raw exception details are never exposed to users
+  - Recovery options: "Try Again" and "Go to Dashboard" buttons on error pages
+  - Try-catch blocks in key pages (BankReconciliation, ReconciliationWorkspace, BankAccounts, TaxManagement)
+  - DateTime queries use UTC format for PostgreSQL compatibility
+
 ## External Dependencies
 - **Database**: PostgreSQL
 - **UI Framework**: MudBlazor
