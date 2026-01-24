@@ -80,6 +80,14 @@ The application is built on .NET 8 Blazor Server, utilizing a modular architectu
   - Audit Reports: Comprehensive audit trail for all Empost-related actions
   - Entities: EmpostLicense, EmpostAdvancePayment, EmpostQuarter, EmpostShipmentFee, EmpostQuarterlySettlement, EmpostReturnAdjustment, EmpostAuditLog
   - SQL Schema: `sql/empost_schema.sql` for manual database deployment
+- **Bank Account Management**: Dedicated BankAccount entity for managing bank accounts including:
+  - Account Details: AccountNumber, AccountName, BankName, BranchName
+  - International Banking Codes: SWIFT code and IBAN for cross-border transactions
+  - Financial Tracking: Opening balance, opening balance date, and currency support
+  - Chart of Accounts Integration: Link to AccountHead for ledger posting
+  - Entities: BankAccount
+  - UI: BankAccounts.razor (list), BankAccountEdit.razor (create/edit)
+  - Navigation: Accounts & Finance > General Ledger > Settings > Bank Accounts
 - **Bank Reconciliation Module**: Complete bank statement reconciliation for bank accounts including:
   - Reconciliation Sessions: Create reconciliation sessions for bank accounts with statement date and balances
   - Statement Import: Import bank statements from CSV with flexible column mapping (date, description, debit, credit, cheque number, reference)
@@ -88,9 +96,10 @@ The application is built on .NET 8 Blazor Server, utilizing a modular architectu
   - Adjustments: Record adjustments (bank fees, interest, charges, unrecorded deposits/withdrawals) with posting capability
   - Status Workflow: Draft → InProgress → Completed → Locked with status enforcement on operations
   - Balance Calculation: Automatic book balance calculation and difference tracking
-  - Entities: BankReconciliation, BankStatementImport, BankStatementLine, ReconciliationMatch, ReconciliationAdjustment
+  - Tabbed Wizard Interface: 5-step workflow (Import Statement → Auto Match → Manual Match → Adjustments → Finalize)
+  - Entities: BankReconciliation (links to BankAccount), BankStatementImport, BankStatementLine, ReconciliationMatch, ReconciliationAdjustment
   - Services: BankReconciliationService, BankStatementImportService
-  - UI: BankReconciliation.razor (list), ReconciliationWorkspace.razor (matching), StartReconciliationDialog, ImportStatementDialog, ReconciliationAdjustmentDialog
+  - UI: BankReconciliation.razor (list), ReconciliationWorkspace.razor (tabbed wizard), StartReconciliationDialog, ImportStatementDialog, ReconciliationAdjustmentDialog
   - Navigation: Accounts & Finance > General Ledger > Transactions > Bank Reconciliation
 
 ## External Dependencies
