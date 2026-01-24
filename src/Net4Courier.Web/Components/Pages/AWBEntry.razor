@@ -526,8 +526,11 @@
 @code {
     [Parameter] public long Id { get; set; }
     [SupplyParameterFromQuery] public bool convertPickup { get; set; }
+    [SupplyParameterFromQuery(Name = "portal")] public string? Portal { get; set; }
 
     private InscanMaster _inscan = new();
+    private bool _isCustomerPortal => Portal == "customer";
+    private Party? _loggedInCustomerParty;
     private bool _pickupDialogOpened = false;
     private MudForm _form = null!;
     private bool _formIsValid;
@@ -764,6 +767,27 @@
         {
             _nextAWBPreview = await AWBNumberService.PreviewNextAWBNumber(_currentBranch.Id);
         }
+        
+        // Customer Portal: Load logged-in customer's Party based on user email
+        if (_isCustomerPortal)
+        {
+            var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+            var user = authState.User;
+            if (user.Identity?.IsAuthenticated == true)
+            {
+                var userIdClaim = user.FindFirst("UserId")?.Value;
+                if (long.TryParse(userIdClaim, out var userId))
+                {
+                    var dbUser = await DbContext.Users.FindAsync(userId);
+                    if (dbUser != null)
+                    {
+                        _loggedInCustomerParty = await DbContext.Parties
+                            .Include(p => p.Addresses)
+                            .FirstOrDefaultAsync(p => p.Email == dbUser.Email && p.PartyType == PartyType.Customer && !p.IsDeleted);
+                    }
+                }
+            }
+        }
 
         if (Id > 0)
         {
@@ -794,6 +818,45 @@
             _inscan.TransactionDate = DateTime.UtcNow;
             _inscan.ConsignorCountry = "India";
             _inscan.ConsigneeCountry = "India";
+            
+            // Customer Portal: Auto-fill Payment Mode = Account, Customer, and Shipper details
+            if (_isCustomerPortal && _loggedInCustomerParty != null)
+            {
+                _inscan.PaymentModeId = PaymentMode.Account;
+                _inscan.CustomerId = _loggedInCustomerParty.Id;
+                _copyCustomerToShipper = true;
+                
+                // Auto-populate shipper/consignor from customer
+                _inscan.Consignor = _loggedInCustomerParty.Name;
+                _inscan.ConsignorPhone = _loggedInCustomerParty.Phone;
+                _inscan.ConsignorMobile = _loggedInCustomerParty.Mobile;
+                
+                var primaryAddress = _loggedInCustomerParty.Addresses
+                    .Where(a => !a.IsDeleted)
+                    .FirstOrDefault(a => a.AddressType == "Primary") 
+                    ?? _loggedInCustomerParty.Addresses.FirstOrDefault(a => !a.IsDeleted);
+                
+                if (primaryAddress != null)
+                {
+                    var addressParts = new[] { primaryAddress.BuildingName, primaryAddress.Street, primaryAddress.Area }
+                        .Where(s => !string.IsNullOrWhiteSpace(s));
+                    _inscan.ConsignorAddress1 = string.Join(", ", addressParts);
+                    _inscan.ConsignorCity = primaryAddress.City;
+                    _inscan.ConsignorState = primaryAddress.State;
+                    _inscan.ConsignorCountry = primaryAddress.Country;
+                    _inscan.ConsignorPostalCode = primaryAddress.PostalCode;
+                    
+                    var city = _cities.FirstOrDefault(c => 
+                        c.Name == primaryAddress.City && 
+                        (c.Country?.Name == primaryAddress.Country || c.State?.Name == primaryAddress.State));
+                    if (city == null)
+                        city = _cities.FirstOrDefault(c => c.Name == primaryAddress.City);
+                    if (city != null)
+                    {
+                        _selectedConsignorCity = city;
+                    }
+                }
+            }
         }
         
         await LoadPaymentModeAccount(_inscan.PaymentModeId);
