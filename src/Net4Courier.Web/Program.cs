@@ -7,6 +7,7 @@ using Net4Courier.Infrastructure.Data;
 using Net4Courier.Infrastructure.Services;
 using Net4Courier.Web.Components;
 using Net4Courier.Web.Services;
+using Net4Courier.Operations.Services;
 using QuestPDF.Infrastructure;
 
 // Log startup immediately
@@ -133,6 +134,7 @@ builder.Services.AddScoped<AWBNumberService>();
 builder.Services.AddScoped<IPermissionService, PermissionService>();
 builder.Services.AddScoped<ImportExcelService>();
 builder.Services.AddScoped<ShipmentExcelService>();
+builder.Services.AddSingleton<BarcodeService>();
 builder.Services.AddScoped<PODUpdateService>();
 builder.Services.AddScoped<PODExcelService>();
 builder.Services.AddScoped<ISecureStorageService, SecureStorageService>();

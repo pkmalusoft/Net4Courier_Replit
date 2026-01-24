@@ -123,6 +123,9 @@ public class InscanMaster : AuditableEntity
     public string? JobCode { get; set; }
     public string? ReferenceNo { get; set; }
     
+    public byte[]? BarcodeImage { get; set; }
+    public byte[]? BarcodeImageVertical { get; set; }
+    
     public bool IsRTS { get; set; }
     public long? OriginalShipmentId { get; set; }
     public RTSChargeMode? RTSChargeMode { get; set; }
