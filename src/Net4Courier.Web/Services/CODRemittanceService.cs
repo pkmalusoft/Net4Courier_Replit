@@ -86,6 +86,73 @@ public class CODRemittanceService
             .ToListAsync();
     }
 
+    public async Task<List<PendingCODShipmentView>> GetAllPendingCODShipmentsAsync(long? branchId = null)
+    {
+        var query = _context.InscanMasters
+            .Where(i => i.IsCOD && i.CODCollected && i.CODAmount > 0)
+            .Where(i => i.CustomerId.HasValue && i.CustomerId > 0)
+            .Where(i => !_context.CODRemittanceDetails.Any(d => d.InscanMasterId == i.Id));
+
+        if (branchId.HasValue)
+            query = query.Where(i => i.BranchId == branchId);
+
+        var shipments = await query
+            .OrderBy(i => i.DeliveredDate)
+            .ToListAsync();
+
+        var today = DateTime.UtcNow.Date;
+        return shipments.Select(s => new PendingCODShipmentView
+        {
+            Id = s.Id,
+            AWBNo = s.AWBNo,
+            DeliveredDate = s.DeliveredDate,
+            Consignee = s.Consignee,
+            ConsignorName = s.Consignor,
+            CustomerId = s.CustomerId,
+            CODAmount = s.CODAmount ?? 0,
+            DeliveryAgentName = s.DeliveredTo ?? s.ReceivedBy,
+            DaysOutstanding = s.DeliveredDate.HasValue ? (int)(today - s.DeliveredDate.Value.Date).TotalDays : 0
+        }).ToList();
+    }
+
+    public async Task<CODRemittanceDashboardSummary> GetDashboardSummaryAsync(long? branchId = null)
+    {
+        var pendingShipmentsQuery = _context.InscanMasters
+            .Where(i => i.IsCOD && i.CODCollected && i.CODAmount > 0)
+            .Where(i => !_context.CODRemittanceDetails.Any(d => d.InscanMasterId == i.Id));
+
+        if (branchId.HasValue)
+            pendingShipmentsQuery = pendingShipmentsQuery.Where(i => i.BranchId == branchId);
+
+        var pendingShipmentCount = await pendingShipmentsQuery.CountAsync();
+        var totalPendingCOD = await pendingShipmentsQuery.SumAsync(i => i.CODAmount ?? 0);
+
+        var remittancesQuery = _context.CODRemittances.AsQueryable();
+        if (branchId.HasValue)
+            remittancesQuery = remittancesQuery.Where(r => r.BranchId == branchId);
+
+        var remittances = await remittancesQuery
+            .Where(r => r.Status != CODRemittanceStatus.Cancelled)
+            .ToListAsync();
+
+        var totalRemittedAmount = remittances.Sum(r => r.PaidAmount);
+        var totalCollectedCOD = remittances.Sum(r => r.TotalCODAmount);
+        var balanceDue = remittances.Sum(r => r.BalanceAmount);
+        var pendingRemittanceCount = remittances.Count(r => r.Status != CODRemittanceStatus.Paid && r.Status != CODRemittanceStatus.Cancelled);
+
+        return new CODRemittanceDashboardSummary
+        {
+            TotalPendingCOD = totalPendingCOD,
+            PendingShipmentCount = pendingShipmentCount,
+            TotalCollectedCOD = totalCollectedCOD,
+            CollectedShipmentCount = remittances.Sum(r => r.Details?.Count ?? 0),
+            TotalRemittedAmount = totalRemittedAmount,
+            RemittanceCount = remittances.Count,
+            BalanceDue = balanceDue,
+            PendingRemittanceCount = pendingRemittanceCount
+        };
+    }
+
     public async Task<CODRemittance> CreateRemittanceAsync(
         long customerId,
         List<long> shipmentIds,
@@ -250,4 +317,29 @@ public class PendingCODSummary
     public string CustomerName { get; set; } = string.Empty;
     public int ShipmentCount { get; set; }
     public decimal TotalCODAmount { get; set; }
+}
+
+public class CODRemittanceDashboardSummary
+{
+    public decimal TotalPendingCOD { get; set; }
+    public int PendingShipmentCount { get; set; }
+    public decimal TotalCollectedCOD { get; set; }
+    public int CollectedShipmentCount { get; set; }
+    public decimal TotalRemittedAmount { get; set; }
+    public int RemittanceCount { get; set; }
+    public decimal BalanceDue { get; set; }
+    public int PendingRemittanceCount { get; set; }
+}
+
+public class PendingCODShipmentView
+{
+    public long Id { get; set; }
+    public string AWBNo { get; set; } = string.Empty;
+    public DateTime? DeliveredDate { get; set; }
+    public string? Consignee { get; set; }
+    public string? ConsignorName { get; set; }
+    public long? CustomerId { get; set; }
+    public decimal CODAmount { get; set; }
+    public string? DeliveryAgentName { get; set; }
+    public int DaysOutstanding { get; set; }
 }
