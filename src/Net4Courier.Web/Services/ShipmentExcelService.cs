@@ -254,10 +254,10 @@ public class ShipmentExcelService
             ("Length (cm)", false),
             ("Width (cm)", false),
             ("Height (cm)", false),
-            ("Cargo Description", false),
-            ("Special Instructions", false),
-            ("COD Amount", false),
-            ("Reference No", false)
+            ("Cargo Description *", true),
+            ("Special Instructions *", true),
+            ("COD Amount *", true),
+            ("Reference No *", true)
         };
 
         foreach (var (header, required) in headers)
@@ -289,10 +289,11 @@ public class ShipmentExcelService
             "5. Document Type values: Document, NonDocument (see Document Types tab)",
             "6. Weight should be in kilograms",
             "7. Dimensions (Length, Width, Height) should be in centimeters",
-            "8. If COD Amount is provided, the shipment will be marked as COD",
+            "8. COD Amount is required - use 0 if not applicable, otherwise shipment will be marked as COD",
             "9. Shipper and Consignee details are required for tracking",
             "10. Movement Type (Domestic/International) is auto-calculated based on countries",
-            "11. See Countries and Cities tabs for valid country/city codes"
+            "11. See Countries and Cities tabs for valid country/city codes",
+            "12. Cargo Description, Special Instructions, COD Amount, and Reference No are mandatory fields"
         };
 
         foreach (var instruction in instructionList)
@@ -461,6 +462,26 @@ public class ShipmentExcelService
         if (string.IsNullOrWhiteSpace(dto.ConsigneeCountry))
         {
             errors.Add(new ShipmentValidationError { RowNumber = dto.RowNumber, Field = "Consignee Country", Message = "Consignee Country is required" });
+        }
+
+        if (string.IsNullOrWhiteSpace(dto.CargoDescription))
+        {
+            errors.Add(new ShipmentValidationError { RowNumber = dto.RowNumber, Field = "Cargo Description", Message = "Cargo Description is required" });
+        }
+
+        if (string.IsNullOrWhiteSpace(dto.SpecialInstructions))
+        {
+            errors.Add(new ShipmentValidationError { RowNumber = dto.RowNumber, Field = "Special Instructions", Message = "Special Instructions is required" });
+        }
+
+        if (!dto.CODAmount.HasValue)
+        {
+            errors.Add(new ShipmentValidationError { RowNumber = dto.RowNumber, Field = "COD Amount", Message = "COD Amount is required (use 0 if not applicable)" });
+        }
+
+        if (string.IsNullOrWhiteSpace(dto.ReferenceNo))
+        {
+            errors.Add(new ShipmentValidationError { RowNumber = dto.RowNumber, Field = "Reference No", Message = "Reference No is required" });
         }
     }
 
