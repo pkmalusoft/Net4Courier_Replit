@@ -28,6 +28,7 @@ The application is built on .NET 8 Blazor Server, adopting a modular architectur
 ### Technical Implementations
 - **Entity Management**: Comprehensive CRUD operations for core entities such as Company, Branch, User, Role, Financial Year, Parties, AWB, Invoices, Receipts.
 - **Financial Features**: Includes invoice/receipt management, journaling, self-referential account heads, financial period management, dynamic other charges, Account Receivables, Account Payables, Cash and Bank Vouchers, and Bank Account Management.
+- **Financial Reports**: 17 comprehensive reports including Trial Balance (Standard, Grouped, Monthly, Detailed), Profit & Loss (Item Wise, Period Comparison), Customer Reports (Ledger, Aging, Statement), Chart of Accounts, Cash Flow Statement (Indirect Method), and Balance Sheet.
 - **Operations Workflow**: Covers AWB entry and generation, pickup management (request to inscan), outscan/DRS management, AWB tracking, Proof of Delivery (POD), Return to Shipper (RTS), Master Airwaybill (MAWB) processing, COD Remittance, Pickup Commitment, Pickup Incentive, and Transfer Order management.
 - **Enhanced Pickup Dashboard**: Unified dispatcher view with commitment status integration, showing committed pickups, expiring soon alerts, available pickups, courier performance metrics, countdown timers, and quick actions for commitment confirmation/override with 30-second auto-refresh.
 - **Master Data Management**: Includes configurable Rate Card Management, Service Type Management, Shipment Mode Management, Port Master, Currency Management, and extensive Geographic Master Data.
@@ -35,6 +36,14 @@ The application is built on .NET 8 Blazor Server, adopting a modular architectur
 - **API Integration**: Provides configuration and webhook endpoints for third-party booking websites.
 - **Knowledge Base**: Integrated documentation using Markdig for "How To Guides" and operational flows.
 - **Error Handling**: Robust global error handling with `ErrorBoundary`, `PageErrorHandler`, and `MudBlazor Snackbar` integration.
+
+## Entity Property Reference
+Key entity property names used in reports:
+- **Branch**: `Id`, `Name`, `Code` (not BranchId/BranchName)
+- **Party**: `Id`, `Name`, `Code` (not PartyId/PartyCode)
+- **AccountHead**: `Code`, `Name`, `Classification` (enum), `ParentId`, `Parent`, `AccountGroup`, `AccountNature`
+- **JournalEntry**: `Debit`, `Credit` (nullable decimals), `JournalId`, `AccountHeadId`, `PartyId`
+- **Journal**: `VoucherDate`, `VoucherNo`, `BranchId` (date/branch info on parent Journal, not JournalEntry)
 
 ## External Dependencies
 - **Database**: PostgreSQL

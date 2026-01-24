@@ -1,0 +1,235 @@
+@page "/reports/customer-ledger"
+@using Microsoft.EntityFrameworkCore
+@using Net4Courier.Infrastructure.Data
+@using Net4Courier.Finance.Entities
+@using Net4Courier.Masters.Entities
+@inject ApplicationDbContext DbContext
+@inject ISnackbar Snackbar
+
+<PageTitle>Customer Ledger</PageTitle>
+
+<MudContainer MaxWidth="MaxWidth.ExtraLarge" Class="mt-4">
+    <MudPaper Class="pa-4">
+        <MudText Typo="Typo.h5" Class="mb-4">Customer Ledger</MudText>
+
+        <MudGrid>
+            <MudItem xs="12" md="3">
+                <MudAutocomplete T="Party" Label="Select Customer" @bind-Value="_selectedCustomer"
+                                 SearchFunc="@SearchCustomers" ToStringFunc="@(p => p?.Name ?? "")"
+                                 ShowProgressIndicator="true" />
+            </MudItem>
+            <MudItem xs="12" md="2">
+                <MudDatePicker Label="From Date" @bind-Date="_fromDate" DateFormat="dd/MM/yyyy" />
+            </MudItem>
+            <MudItem xs="12" md="2">
+                <MudDatePicker Label="To Date" @bind-Date="_toDate" DateFormat="dd/MM/yyyy" />
+            </MudItem>
+            <MudItem xs="12" md="2">
+                <MudSelect T="long?" Label="Branch" @bind-Value="_selectedBranchId" Clearable>
+                    @foreach (var branch in _branches)
+                    {
+                        <MudSelectItem Value="@((long?)branch.Id)">@branch.Name</MudSelectItem>
+                    }
+                </MudSelect>
+            </MudItem>
+            <MudItem xs="12" md="3" Class="d-flex align-end">
+                <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="LoadReport" Class="mr-2">
+                    <MudIcon Icon="@Icons.Material.Filled.Search" Class="mr-1" /> Generate
+                </MudButton>
+            </MudItem>
+        </MudGrid>
+
+        @if (_isLoading)
+        {
+            <MudProgressLinear Color="Color.Primary" Indeterminate="true" Class="my-4" />
+        }
+        else if (_transactions.Any())
+        {
+            <MudPaper Class="pa-3 my-4" Elevation="0" Style="background-color: #e3f2fd;">
+                <MudGrid>
+                    <MudItem xs="12" md="4">
+                        <MudText Typo="Typo.subtitle1"><strong>@_selectedCustomer?.Name</strong></MudText>
+                        <MudText Typo="Typo.caption">@_selectedCustomer?.Code</MudText>
+                    </MudItem>
+                    <MudItem xs="12" md="4">
+                        <MudText>Opening Balance: <strong>@_openingBalance.ToString("N2")</strong></MudText>
+                    </MudItem>
+                    <MudItem xs="12" md="4" Style="text-align: right">
+                        <MudText>Closing Balance: <strong Color="@(_closingBalance >= 0 ? Color.Success : Color.Error)">@_closingBalance.ToString("N2")</strong></MudText>
+                    </MudItem>
+                </MudGrid>
+            </MudPaper>
+
+            <MudTable Items="@_transactions" Hover="true" Striped="true" Dense="true"
+                      FixedHeader="true" Height="calc(100vh - 450px)">
+                <HeaderContent>
+                    <MudTh>Date</MudTh>
+                    <MudTh>Voucher No</MudTh>
+                    <MudTh>Type</MudTh>
+                    <MudTh>Narration</MudTh>
+                    <MudTh Style="text-align: right">Debit</MudTh>
+                    <MudTh Style="text-align: right">Credit</MudTh>
+                    <MudTh Style="text-align: right">Balance</MudTh>
+                </HeaderContent>
+                <RowTemplate>
+                    <MudTd>@context.VoucherDate.ToString("dd/MM/yyyy")</MudTd>
+                    <MudTd>@context.VoucherNo</MudTd>
+                    <MudTd>
+                        <MudChip T="string" Size="Size.Small" Color="@GetVoucherColor(context.VoucherType)">
+                            @context.VoucherType
+                        </MudChip>
+                    </MudTd>
+                    <MudTd>@context.Narration</MudTd>
+                    <MudTd Style="text-align: right">@(context.Debit > 0 ? context.Debit.ToString("N2") : "")</MudTd>
+                    <MudTd Style="text-align: right">@(context.Credit > 0 ? context.Credit.ToString("N2") : "")</MudTd>
+                    <MudTd Style="text-align: right">
+                        <MudText Color="@(context.RunningBalance >= 0 ? Color.Success : Color.Error)">
+                            @context.RunningBalance.ToString("N2")
+                        </MudText>
+                    </MudTd>
+                </RowTemplate>
+                <FooterContent>
+                    <MudTd colspan="4"><strong>Total</strong></MudTd>
+                    <MudTd Style="text-align: right"><strong>@_transactions.Sum(t => t.Debit).ToString("N2")</strong></MudTd>
+                    <MudTd Style="text-align: right"><strong>@_transactions.Sum(t => t.Credit).ToString("N2")</strong></MudTd>
+                    <MudTd Style="text-align: right"><strong>@_closingBalance.ToString("N2")</strong></MudTd>
+                </FooterContent>
+            </MudTable>
+        }
+        else if (!_isLoading)
+        {
+            <MudAlert Severity="Severity.Info" Class="mt-4">Select a customer and date range to generate the ledger report.</MudAlert>
+        }
+    </MudPaper>
+</MudContainer>
+
+@code {
+    private Party? _selectedCustomer;
+    private DateTime? _fromDate = new DateTime(DateTime.Today.Year, 1, 1);
+    private DateTime? _toDate = DateTime.Today;
+    private long? _selectedBranchId;
+    private bool _isLoading = false;
+    private List<LedgerTransaction> _transactions = new();
+    private List<Branch> _branches = new();
+    private decimal _openingBalance = 0;
+    private decimal _closingBalance = 0;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _branches = await DbContext.Branches.Where(b => b.IsActive).OrderBy(b => b.Name).ToListAsync();
+    }
+
+    private async Task<IEnumerable<Party>> SearchCustomers(string value)
+    {
+        if (string.IsNullOrEmpty(value))
+            return await DbContext.Parties.Where(p => p.IsActive).Take(10).ToListAsync();
+
+        return await DbContext.Parties
+            .Where(p => p.IsActive && (p.Name.Contains(value) || (p.Code != null && p.Code.Contains(value))))
+            .Take(20)
+            .ToListAsync();
+    }
+
+    private async Task LoadReport()
+    {
+        if (_selectedCustomer == null)
+        {
+            Snackbar.Add("Please select a customer", Severity.Warning);
+            return;
+        }
+
+        if (!_fromDate.HasValue || !_toDate.HasValue)
+        {
+            Snackbar.Add("Please select date range", Severity.Warning);
+            return;
+        }
+
+        _isLoading = true;
+        _transactions.Clear();
+        StateHasChanged();
+
+        try
+        {
+            var fromDateUtc = DateTime.SpecifyKind(_fromDate.Value.Date, DateTimeKind.Utc);
+            var toDateUtc = DateTime.SpecifyKind(_toDate.Value.Date.AddDays(1).AddTicks(-1), DateTimeKind.Utc);
+
+            var journalsQuery = DbContext.Journals
+                .Include(j => j.Entries)
+                .Where(j => j.Entries.Any(e => e.PartyId == _selectedCustomer.Id));
+
+            if (_selectedBranchId.HasValue)
+            {
+                journalsQuery = journalsQuery.Where(j => j.BranchId == _selectedBranchId.Value);
+            }
+
+            var openingJournals = await journalsQuery
+                .Where(j => j.VoucherDate < fromDateUtc)
+                .ToListAsync();
+
+            var openingEntries = openingJournals.SelectMany(j => j.Entries.Where(e => e.PartyId == _selectedCustomer.Id)).ToList();
+            _openingBalance = openingEntries.Sum(e => (e.Debit ?? 0) - (e.Credit ?? 0));
+
+            var periodJournals = await journalsQuery
+                .Where(j => j.VoucherDate >= fromDateUtc && j.VoucherDate <= toDateUtc)
+                .OrderBy(j => j.VoucherDate)
+                .ThenBy(j => j.Id)
+                .ToListAsync();
+
+            decimal runningBalance = _openingBalance;
+
+            foreach (var journal in periodJournals)
+            {
+                var entry = journal.Entries.FirstOrDefault(e => e.PartyId == _selectedCustomer.Id);
+                if (entry == null) continue;
+
+                var debit = entry.Debit ?? 0;
+                var credit = entry.Credit ?? 0;
+                runningBalance += debit - credit;
+                
+                _transactions.Add(new LedgerTransaction
+                {
+                    VoucherDate = journal.VoucherDate,
+                    VoucherNo = journal.VoucherNo,
+                    VoucherType = journal.VoucherType ?? "",
+                    Narration = entry.Narration ?? journal.Narration ?? "",
+                    Debit = debit,
+                    Credit = credit,
+                    RunningBalance = runningBalance
+                });
+            }
+
+            _closingBalance = runningBalance;
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error loading report: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _isLoading = false;
+        }
+    }
+
+    private Color GetVoucherColor(string voucherType)
+    {
+        return voucherType switch
+        {
+            "Invoice" => Color.Primary,
+            "Receipt" => Color.Success,
+            "Payment" => Color.Error,
+            "Journal" => Color.Info,
+            _ => Color.Default
+        };
+    }
+
+    private class LedgerTransaction
+    {
+        public DateTime VoucherDate { get; set; }
+        public string VoucherNo { get; set; } = "";
+        public string VoucherType { get; set; } = "";
+        public string Narration { get; set; } = "";
+        public decimal Debit { get; set; }
+        public decimal Credit { get; set; }
+        public decimal RunningBalance { get; set; }
+    }
+}

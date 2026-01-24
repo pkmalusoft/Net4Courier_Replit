@@ -1,0 +1,264 @@
+@page "/reports/profit-loss-period"
+@using Microsoft.EntityFrameworkCore
+@using Net4Courier.Infrastructure.Data
+@using Net4Courier.Finance.Entities
+@using Net4Courier.Masters.Entities
+@inject ApplicationDbContext DbContext
+@inject ISnackbar Snackbar
+
+<PageTitle>Profit & Loss - Period Comparison</PageTitle>
+
+<MudContainer MaxWidth="MaxWidth.ExtraLarge" Class="mt-4">
+    <MudPaper Class="pa-4">
+        <MudText Typo="Typo.h5" Class="mb-4">Profit & Loss - Period Comparison</MudText>
+
+        <MudGrid>
+            <MudItem xs="12" md="2">
+                <MudDatePicker Label="Period 1 From" @bind-Date="_period1From" DateFormat="dd/MM/yyyy" />
+            </MudItem>
+            <MudItem xs="12" md="2">
+                <MudDatePicker Label="Period 1 To" @bind-Date="_period1To" DateFormat="dd/MM/yyyy" />
+            </MudItem>
+            <MudItem xs="12" md="2">
+                <MudDatePicker Label="Period 2 From" @bind-Date="_period2From" DateFormat="dd/MM/yyyy" />
+            </MudItem>
+            <MudItem xs="12" md="2">
+                <MudDatePicker Label="Period 2 To" @bind-Date="_period2To" DateFormat="dd/MM/yyyy" />
+            </MudItem>
+            <MudItem xs="12" md="2">
+                <MudSelect T="long?" Label="Branch" @bind-Value="_selectedBranchId" Clearable>
+                    @foreach (var branch in _branches)
+                    {
+                        <MudSelectItem Value="@((long?)branch.Id)">@branch.Name</MudSelectItem>
+                    }
+                </MudSelect>
+            </MudItem>
+            <MudItem xs="12" md="2" Class="d-flex align-end">
+                <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="LoadReport" FullWidth="true">
+                    <MudIcon Icon="@Icons.Material.Filled.Compare" Class="mr-1" /> Compare
+                </MudButton>
+            </MudItem>
+        </MudGrid>
+
+        @if (_isLoading)
+        {
+            <MudProgressLinear Color="Color.Primary" Indeterminate="true" Class="my-4" />
+        }
+        else if (_reportData.Any())
+        {
+            <MudTable Items="@_reportData" Hover="true" Striped="true" Dense="true" Class="mt-4"
+                      FixedHeader="true" Height="calc(100vh - 400px)" GroupBy="@_groupDefinition">
+                <HeaderContent>
+                    <MudTh>Account</MudTh>
+                    <MudTh Style="text-align: right">Period 1</MudTh>
+                    <MudTh Style="text-align: right">Period 2</MudTh>
+                    <MudTh Style="text-align: right">Variance</MudTh>
+                    <MudTh Style="text-align: right">% Change</MudTh>
+                </HeaderContent>
+                <GroupHeaderTemplate>
+                    <MudTh colspan="5" Style="background-color: #e3f2fd;">
+                        <MudText Typo="Typo.subtitle1"><strong>@context.Key</strong></MudText>
+                    </MudTh>
+                </GroupHeaderTemplate>
+                <RowTemplate>
+                    <MudTd>
+                        <MudText Typo="Typo.body2">@context.AccountName</MudText>
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">@context.AccountCode</MudText>
+                    </MudTd>
+                    <MudTd Style="text-align: right">@context.Period1Amount.ToString("N2")</MudTd>
+                    <MudTd Style="text-align: right">@context.Period2Amount.ToString("N2")</MudTd>
+                    <MudTd Style="text-align: right">
+                        <MudText Color="@(context.Variance >= 0 ? Color.Success : Color.Error)">
+                            @context.Variance.ToString("N2")
+                        </MudText>
+                    </MudTd>
+                    <MudTd Style="text-align: right">
+                        <MudChip T="string" Size="Size.Small" Color="@(context.PercentChange >= 0 ? Color.Success : Color.Error)">
+                            @(context.PercentChange >= 0 ? "+" : "")@context.PercentChange.ToString("N1")%
+                        </MudChip>
+                    </MudTd>
+                </RowTemplate>
+            </MudTable>
+
+            <MudGrid Class="mt-4">
+                <MudItem xs="12" md="6">
+                    <MudPaper Class="pa-4" Elevation="2">
+                        <MudText Typo="Typo.h6" Class="mb-3">Period 1 Summary</MudText>
+                        <MudText Typo="Typo.caption">@_period1From?.ToString("dd/MM/yyyy") - @_period1To?.ToString("dd/MM/yyyy")</MudText>
+                        <MudDivider Class="my-2" />
+                        <MudGrid>
+                            <MudItem xs="6"><MudText>Income:</MudText></MudItem>
+                            <MudItem xs="6" Style="text-align: right"><MudText Color="Color.Success">@_period1Income.ToString("N2")</MudText></MudItem>
+                            <MudItem xs="6"><MudText>Expenditure:</MudText></MudItem>
+                            <MudItem xs="6" Style="text-align: right"><MudText Color="Color.Error">@_period1Expenses.ToString("N2")</MudText></MudItem>
+                            <MudItem xs="6"><MudText><strong>Net P/L:</strong></MudText></MudItem>
+                            <MudItem xs="6" Style="text-align: right">
+                                <MudText Color="@(_period1Income - _period1Expenses >= 0 ? Color.Success : Color.Error)">
+                                    <strong>@((_period1Income - _period1Expenses).ToString("N2"))</strong>
+                                </MudText>
+                            </MudItem>
+                        </MudGrid>
+                    </MudPaper>
+                </MudItem>
+                <MudItem xs="12" md="6">
+                    <MudPaper Class="pa-4" Elevation="2">
+                        <MudText Typo="Typo.h6" Class="mb-3">Period 2 Summary</MudText>
+                        <MudText Typo="Typo.caption">@_period2From?.ToString("dd/MM/yyyy") - @_period2To?.ToString("dd/MM/yyyy")</MudText>
+                        <MudDivider Class="my-2" />
+                        <MudGrid>
+                            <MudItem xs="6"><MudText>Income:</MudText></MudItem>
+                            <MudItem xs="6" Style="text-align: right"><MudText Color="Color.Success">@_period2Income.ToString("N2")</MudText></MudItem>
+                            <MudItem xs="6"><MudText>Expenditure:</MudText></MudItem>
+                            <MudItem xs="6" Style="text-align: right"><MudText Color="Color.Error">@_period2Expenses.ToString("N2")</MudText></MudItem>
+                            <MudItem xs="6"><MudText><strong>Net P/L:</strong></MudText></MudItem>
+                            <MudItem xs="6" Style="text-align: right">
+                                <MudText Color="@(_period2Income - _period2Expenses >= 0 ? Color.Success : Color.Error)">
+                                    <strong>@((_period2Income - _period2Expenses).ToString("N2"))</strong>
+                                </MudText>
+                            </MudItem>
+                        </MudGrid>
+                    </MudPaper>
+                </MudItem>
+            </MudGrid>
+        }
+        else if (!_isLoading)
+        {
+            <MudAlert Severity="Severity.Info" Class="mt-4">No data found for the selected criteria. Please generate the report.</MudAlert>
+        }
+    </MudPaper>
+</MudContainer>
+
+@code {
+    private DateTime? _period1From = new DateTime(DateTime.Today.Year - 1, 1, 1);
+    private DateTime? _period1To = new DateTime(DateTime.Today.Year - 1, 12, 31);
+    private DateTime? _period2From = new DateTime(DateTime.Today.Year, 1, 1);
+    private DateTime? _period2To = DateTime.Today;
+    private long? _selectedBranchId;
+    private bool _isLoading = false;
+    private List<PeriodComparisonItem> _reportData = new();
+    private List<Branch> _branches = new();
+    private decimal _period1Income, _period1Expenses, _period2Income, _period2Expenses;
+
+    private TableGroupDefinition<PeriodComparisonItem> _groupDefinition = new()
+    {
+        GroupName = "Classification",
+        Selector = (e) => e.Classification,
+        Expandable = true,
+        IsInitiallyExpanded = true
+    };
+
+    protected override async Task OnInitializedAsync()
+    {
+        _branches = await DbContext.Branches.Where(b => b.IsActive).OrderBy(b => b.Name).ToListAsync();
+    }
+
+    private async Task LoadReport()
+    {
+        if (!_period1From.HasValue || !_period1To.HasValue || !_period2From.HasValue || !_period2To.HasValue)
+        {
+            Snackbar.Add("Please select all date ranges", Severity.Warning);
+            return;
+        }
+
+        _isLoading = true;
+        _reportData.Clear();
+        StateHasChanged();
+
+        try
+        {
+            var p1FromUtc = DateTime.SpecifyKind(_period1From.Value.Date, DateTimeKind.Utc);
+            var p1ToUtc = DateTime.SpecifyKind(_period1To.Value.Date.AddDays(1).AddTicks(-1), DateTimeKind.Utc);
+            var p2FromUtc = DateTime.SpecifyKind(_period2From.Value.Date, DateTimeKind.Utc);
+            var p2ToUtc = DateTime.SpecifyKind(_period2To.Value.Date.AddDays(1).AddTicks(-1), DateTimeKind.Utc);
+
+            var accountHeads = await DbContext.AccountHeads
+                .Where(a => a.IsActive && 
+                    (a.Classification == AccountClassification.Income || a.Classification == AccountClassification.Expenditure))
+                .OrderBy(a => a.Classification)
+                .ThenBy(a => a.Code)
+                .ToListAsync();
+
+            var period1JournalsQuery = DbContext.Journals
+                .Include(j => j.Entries)
+                .Where(j => j.VoucherDate >= p1FromUtc && j.VoucherDate <= p1ToUtc);
+
+            var period2JournalsQuery = DbContext.Journals
+                .Include(j => j.Entries)
+                .Where(j => j.VoucherDate >= p2FromUtc && j.VoucherDate <= p2ToUtc);
+
+            if (_selectedBranchId.HasValue)
+            {
+                period1JournalsQuery = period1JournalsQuery.Where(j => j.BranchId == _selectedBranchId.Value);
+                period2JournalsQuery = period2JournalsQuery.Where(j => j.BranchId == _selectedBranchId.Value);
+            }
+
+            var period1Entries = (await period1JournalsQuery.ToListAsync()).SelectMany(j => j.Entries).ToList();
+            var period2Entries = (await period2JournalsQuery.ToListAsync()).SelectMany(j => j.Entries).ToList();
+
+            _period1Income = 0; _period1Expenses = 0;
+            _period2Income = 0; _period2Expenses = 0;
+
+            foreach (var account in accountHeads)
+            {
+                var p1AccountEntries = period1Entries.Where(e => e.AccountHeadId == account.Id).ToList();
+                var p2AccountEntries = period2Entries.Where(e => e.AccountHeadId == account.Id).ToList();
+
+                var p1Debit = p1AccountEntries.Sum(e => e.Debit ?? 0);
+                var p1Credit = p1AccountEntries.Sum(e => e.Credit ?? 0);
+                var p2Debit = p2AccountEntries.Sum(e => e.Debit ?? 0);
+                var p2Credit = p2AccountEntries.Sum(e => e.Credit ?? 0);
+
+                decimal p1Amount, p2Amount;
+                if (account.Classification == AccountClassification.Income)
+                {
+                    p1Amount = p1Credit - p1Debit;
+                    p2Amount = p2Credit - p2Debit;
+                    _period1Income += Math.Abs(p1Amount);
+                    _period2Income += Math.Abs(p2Amount);
+                }
+                else
+                {
+                    p1Amount = p1Debit - p1Credit;
+                    p2Amount = p2Debit - p2Credit;
+                    _period1Expenses += Math.Abs(p1Amount);
+                    _period2Expenses += Math.Abs(p2Amount);
+                }
+
+                if (p1Amount == 0 && p2Amount == 0) continue;
+
+                var variance = p2Amount - p1Amount;
+                var percentChange = p1Amount != 0 ? (variance / Math.Abs(p1Amount)) * 100 : (p2Amount != 0 ? 100 : 0);
+
+                _reportData.Add(new PeriodComparisonItem
+                {
+                    AccountCode = account.Code,
+                    AccountName = account.Name,
+                    Classification = account.Classification.ToString(),
+                    Period1Amount = Math.Abs(p1Amount),
+                    Period2Amount = Math.Abs(p2Amount),
+                    Variance = variance,
+                    PercentChange = percentChange
+                });
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error loading report: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _isLoading = false;
+        }
+    }
+
+    private class PeriodComparisonItem
+    {
+        public string AccountCode { get; set; } = "";
+        public string AccountName { get; set; } = "";
+        public string Classification { get; set; } = "";
+        public decimal Period1Amount { get; set; }
+        public decimal Period2Amount { get; set; }
+        public decimal Variance { get; set; }
+        public decimal PercentChange { get; set; }
+    }
+}

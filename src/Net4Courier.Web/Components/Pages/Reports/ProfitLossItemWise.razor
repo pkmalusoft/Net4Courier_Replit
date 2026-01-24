@@ -1,0 +1,238 @@
+@page "/reports/profit-loss-item-wise"
+@using Microsoft.EntityFrameworkCore
+@using Net4Courier.Infrastructure.Data
+@using Net4Courier.Finance.Entities
+@using Net4Courier.Masters.Entities
+@inject ApplicationDbContext DbContext
+@inject ISnackbar Snackbar
+
+<PageTitle>Profit & Loss - Item Wise</PageTitle>
+
+<MudContainer MaxWidth="MaxWidth.ExtraLarge" Class="mt-4">
+    <MudPaper Class="pa-4">
+        <MudText Typo="Typo.h5" Class="mb-4">Profit & Loss Statement - Item Wise</MudText>
+
+        <MudGrid>
+            <MudItem xs="12" md="3">
+                <MudDatePicker Label="From Date" @bind-Date="_fromDate" DateFormat="dd/MM/yyyy" />
+            </MudItem>
+            <MudItem xs="12" md="3">
+                <MudDatePicker Label="To Date" @bind-Date="_toDate" DateFormat="dd/MM/yyyy" />
+            </MudItem>
+            <MudItem xs="12" md="3">
+                <MudSelect T="long?" Label="Branch" @bind-Value="_selectedBranchId" Clearable>
+                    @foreach (var branch in _branches)
+                    {
+                        <MudSelectItem Value="@((long?)branch.Id)">@branch.Name</MudSelectItem>
+                    }
+                </MudSelect>
+            </MudItem>
+            <MudItem xs="12" md="3" Class="d-flex align-end">
+                <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="LoadReport" Class="mr-2">
+                    <MudIcon Icon="@Icons.Material.Filled.Search" Class="mr-1" /> Generate
+                </MudButton>
+            </MudItem>
+        </MudGrid>
+
+        @if (_isLoading)
+        {
+            <MudProgressLinear Color="Color.Primary" Indeterminate="true" Class="my-4" />
+        }
+        else if (_incomeItems.Any() || _expenseItems.Any())
+        {
+            <MudGrid Class="mt-4">
+                <MudItem xs="12" md="6">
+                    <MudPaper Class="pa-4" Elevation="2">
+                        <MudText Typo="Typo.h6" Color="Color.Success" Class="mb-3">
+                            <MudIcon Icon="@Icons.Material.Filled.TrendingUp" Class="mr-2" />
+                            Income
+                        </MudText>
+                        <MudTable Items="@_incomeItems" Hover="true" Dense="true" Striped="true">
+                            <HeaderContent>
+                                <MudTh>Account</MudTh>
+                                <MudTh Style="text-align: right">Amount</MudTh>
+                                <MudTh Style="text-align: right">%</MudTh>
+                            </HeaderContent>
+                            <RowTemplate>
+                                <MudTd>
+                                    <MudText Typo="Typo.body2">@context.AccountName</MudText>
+                                    <MudText Typo="Typo.caption" Color="Color.Secondary">@context.AccountCode</MudText>
+                                </MudTd>
+                                <MudTd Style="text-align: right">@context.Amount.ToString("N2")</MudTd>
+                                <MudTd Style="text-align: right">@context.Percentage.ToString("N1")%</MudTd>
+                            </RowTemplate>
+                            <FooterContent>
+                                <MudTd><strong>Total Income</strong></MudTd>
+                                <MudTd Style="text-align: right"><strong>@_totalIncome.ToString("N2")</strong></MudTd>
+                                <MudTd Style="text-align: right"><strong>100%</strong></MudTd>
+                            </FooterContent>
+                        </MudTable>
+                    </MudPaper>
+                </MudItem>
+
+                <MudItem xs="12" md="6">
+                    <MudPaper Class="pa-4" Elevation="2">
+                        <MudText Typo="Typo.h6" Color="Color.Error" Class="mb-3">
+                            <MudIcon Icon="@Icons.Material.Filled.TrendingDown" Class="mr-2" />
+                            Expenditure
+                        </MudText>
+                        <MudTable Items="@_expenseItems" Hover="true" Dense="true" Striped="true">
+                            <HeaderContent>
+                                <MudTh>Account</MudTh>
+                                <MudTh Style="text-align: right">Amount</MudTh>
+                                <MudTh Style="text-align: right">%</MudTh>
+                            </HeaderContent>
+                            <RowTemplate>
+                                <MudTd>
+                                    <MudText Typo="Typo.body2">@context.AccountName</MudText>
+                                    <MudText Typo="Typo.caption" Color="Color.Secondary">@context.AccountCode</MudText>
+                                </MudTd>
+                                <MudTd Style="text-align: right">@context.Amount.ToString("N2")</MudTd>
+                                <MudTd Style="text-align: right">@context.Percentage.ToString("N1")%</MudTd>
+                            </RowTemplate>
+                            <FooterContent>
+                                <MudTd><strong>Total Expenditure</strong></MudTd>
+                                <MudTd Style="text-align: right"><strong>@_totalExpenses.ToString("N2")</strong></MudTd>
+                                <MudTd Style="text-align: right"><strong>100%</strong></MudTd>
+                            </FooterContent>
+                        </MudTable>
+                    </MudPaper>
+                </MudItem>
+            </MudGrid>
+
+            <MudPaper Class="pa-4 mt-4" Elevation="3">
+                <MudGrid>
+                    <MudItem xs="12" md="4">
+                        <MudText Typo="Typo.subtitle1">Total Income</MudText>
+                        <MudText Typo="Typo.h5" Color="Color.Success">@_totalIncome.ToString("N2")</MudText>
+                    </MudItem>
+                    <MudItem xs="12" md="4">
+                        <MudText Typo="Typo.subtitle1">Total Expenditure</MudText>
+                        <MudText Typo="Typo.h5" Color="Color.Error">@_totalExpenses.ToString("N2")</MudText>
+                    </MudItem>
+                    <MudItem xs="12" md="4">
+                        <MudText Typo="Typo.subtitle1">Net Profit/Loss</MudText>
+                        <MudText Typo="Typo.h5" Color="@(_netProfitLoss >= 0 ? Color.Success : Color.Error)">
+                            @_netProfitLoss.ToString("N2")
+                        </MudText>
+                    </MudItem>
+                </MudGrid>
+            </MudPaper>
+        }
+        else if (!_isLoading)
+        {
+            <MudAlert Severity="Severity.Info" Class="mt-4">No data found for the selected criteria. Please generate the report.</MudAlert>
+        }
+    </MudPaper>
+</MudContainer>
+
+@code {
+    private DateTime? _fromDate = new DateTime(DateTime.Today.Year, 1, 1);
+    private DateTime? _toDate = DateTime.Today;
+    private long? _selectedBranchId;
+    private bool _isLoading = false;
+    private List<ProfitLossItem> _incomeItems = new();
+    private List<ProfitLossItem> _expenseItems = new();
+    private decimal _totalIncome = 0;
+    private decimal _totalExpenses = 0;
+    private decimal _netProfitLoss = 0;
+    private List<Branch> _branches = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        _branches = await DbContext.Branches.Where(b => b.IsActive).OrderBy(b => b.Name).ToListAsync();
+    }
+
+    private async Task LoadReport()
+    {
+        if (!_fromDate.HasValue || !_toDate.HasValue)
+        {
+            Snackbar.Add("Please select date range", Severity.Warning);
+            return;
+        }
+
+        _isLoading = true;
+        _incomeItems.Clear();
+        _expenseItems.Clear();
+        StateHasChanged();
+
+        try
+        {
+            var fromDateUtc = DateTime.SpecifyKind(_fromDate.Value.Date, DateTimeKind.Utc);
+            var toDateUtc = DateTime.SpecifyKind(_toDate.Value.Date.AddDays(1).AddTicks(-1), DateTimeKind.Utc);
+
+            var accountHeads = await DbContext.AccountHeads
+                .Where(a => a.IsActive && 
+                    (a.Classification == AccountClassification.Income || a.Classification == AccountClassification.Expenditure))
+                .OrderBy(a => a.Code)
+                .ToListAsync();
+
+            var journalsQuery = DbContext.Journals
+                .Include(j => j.Entries)
+                .Where(j => j.VoucherDate >= fromDateUtc && j.VoucherDate <= toDateUtc);
+
+            if (_selectedBranchId.HasValue)
+            {
+                journalsQuery = journalsQuery.Where(j => j.BranchId == _selectedBranchId.Value);
+            }
+
+            var journals = await journalsQuery.ToListAsync();
+            var allEntries = journals.SelectMany(j => j.Entries).ToList();
+
+            foreach (var account in accountHeads)
+            {
+                var accountEntries = allEntries.Where(e => e.AccountHeadId == account.Id).ToList();
+                if (!accountEntries.Any()) continue;
+
+                var debitTotal = accountEntries.Sum(e => e.Debit ?? 0);
+                var creditTotal = accountEntries.Sum(e => e.Credit ?? 0);
+                var amount = account.Classification == AccountClassification.Income 
+                    ? creditTotal - debitTotal 
+                    : debitTotal - creditTotal;
+
+                if (amount == 0) continue;
+
+                var item = new ProfitLossItem
+                {
+                    AccountCode = account.Code,
+                    AccountName = account.Name,
+                    Amount = Math.Abs(amount)
+                };
+
+                if (account.Classification == AccountClassification.Income)
+                    _incomeItems.Add(item);
+                else
+                    _expenseItems.Add(item);
+            }
+
+            _totalIncome = _incomeItems.Sum(x => x.Amount);
+            _totalExpenses = _expenseItems.Sum(x => x.Amount);
+            _netProfitLoss = _totalIncome - _totalExpenses;
+
+            foreach (var item in _incomeItems)
+                item.Percentage = _totalIncome > 0 ? (item.Amount / _totalIncome) * 100 : 0;
+
+            foreach (var item in _expenseItems)
+                item.Percentage = _totalExpenses > 0 ? (item.Amount / _totalExpenses) * 100 : 0;
+
+            _incomeItems = _incomeItems.OrderByDescending(x => x.Amount).ToList();
+            _expenseItems = _expenseItems.OrderByDescending(x => x.Amount).ToList();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error loading report: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _isLoading = false;
+        }
+    }
+
+    private class ProfitLossItem
+    {
+        public string AccountCode { get; set; } = "";
+        public string AccountName { get; set; } = "";
+        public decimal Amount { get; set; }
+        public decimal Percentage { get; set; }
+    }
+}

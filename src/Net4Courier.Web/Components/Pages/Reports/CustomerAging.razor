@@ -1,0 +1,242 @@
+@page "/reports/customer-aging"
+@using Microsoft.EntityFrameworkCore
+@using Net4Courier.Infrastructure.Data
+@using Net4Courier.Finance.Entities
+@using Net4Courier.Masters.Entities
+@inject ApplicationDbContext DbContext
+@inject ISnackbar Snackbar
+
+<PageTitle>Customer Aging Report</PageTitle>
+
+<MudContainer MaxWidth="MaxWidth.ExtraLarge" Class="mt-4">
+    <MudPaper Class="pa-4">
+        <MudText Typo="Typo.h5" Class="mb-4">Customer Aging Report</MudText>
+
+        <MudGrid>
+            <MudItem xs="12" md="3">
+                <MudDatePicker Label="As on Date" @bind-Date="_asOnDate" DateFormat="dd/MM/yyyy" />
+            </MudItem>
+            <MudItem xs="12" md="3">
+                <MudSelect T="long?" Label="Branch" @bind-Value="_selectedBranchId" Clearable>
+                    @foreach (var branch in _branches)
+                    {
+                        <MudSelectItem Value="@((long?)branch.Id)">@branch.Name</MudSelectItem>
+                    }
+                </MudSelect>
+            </MudItem>
+            <MudItem xs="12" md="3">
+                <MudCheckBox @bind-Value="_showZeroBalances" Label="Show Zero Balances" />
+            </MudItem>
+            <MudItem xs="12" md="3" Class="d-flex align-end">
+                <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="LoadReport" Class="mr-2">
+                    <MudIcon Icon="@Icons.Material.Filled.Search" Class="mr-1" /> Generate
+                </MudButton>
+            </MudItem>
+        </MudGrid>
+
+        @if (_isLoading)
+        {
+            <MudProgressLinear Color="Color.Primary" Indeterminate="true" Class="my-4" />
+        }
+        else if (_reportData.Any())
+        {
+            <MudTable Items="@_reportData" Hover="true" Striped="true" Dense="true" Class="mt-4"
+                      FixedHeader="true" Height="calc(100vh - 400px)">
+                <HeaderContent>
+                    <MudTh>Customer Code</MudTh>
+                    <MudTh>Customer Name</MudTh>
+                    <MudTh Style="text-align: right">Current</MudTh>
+                    <MudTh Style="text-align: right">1-30 Days</MudTh>
+                    <MudTh Style="text-align: right">31-60 Days</MudTh>
+                    <MudTh Style="text-align: right">61-90 Days</MudTh>
+                    <MudTh Style="text-align: right">90+ Days</MudTh>
+                    <MudTh Style="text-align: right">Total</MudTh>
+                </HeaderContent>
+                <RowTemplate>
+                    <MudTd>@context.CustomerCode</MudTd>
+                    <MudTd>@context.CustomerName</MudTd>
+                    <MudTd Style="text-align: right">@context.Current.ToString("N2")</MudTd>
+                    <MudTd Style="text-align: right">@context.Days1To30.ToString("N2")</MudTd>
+                    <MudTd Style="text-align: right">@context.Days31To60.ToString("N2")</MudTd>
+                    <MudTd Style="text-align: right">@context.Days61To90.ToString("N2")</MudTd>
+                    <MudTd Style="text-align: right">
+                        <MudText Color="@(context.Days90Plus > 0 ? Color.Error : Color.Default)">
+                            <strong>@context.Days90Plus.ToString("N2")</strong>
+                        </MudText>
+                    </MudTd>
+                    <MudTd Style="text-align: right">
+                        <strong>@context.Total.ToString("N2")</strong>
+                    </MudTd>
+                </RowTemplate>
+                <FooterContent>
+                    <MudTd colspan="2"><strong>Total</strong></MudTd>
+                    <MudTd Style="text-align: right"><strong>@_reportData.Sum(x => x.Current).ToString("N2")</strong></MudTd>
+                    <MudTd Style="text-align: right"><strong>@_reportData.Sum(x => x.Days1To30).ToString("N2")</strong></MudTd>
+                    <MudTd Style="text-align: right"><strong>@_reportData.Sum(x => x.Days31To60).ToString("N2")</strong></MudTd>
+                    <MudTd Style="text-align: right"><strong>@_reportData.Sum(x => x.Days61To90).ToString("N2")</strong></MudTd>
+                    <MudTd Style="text-align: right; color: red;"><strong>@_reportData.Sum(x => x.Days90Plus).ToString("N2")</strong></MudTd>
+                    <MudTd Style="text-align: right"><strong>@_reportData.Sum(x => x.Total).ToString("N2")</strong></MudTd>
+                </FooterContent>
+            </MudTable>
+
+            <MudPaper Class="pa-4 mt-4" Elevation="2">
+                <MudText Typo="Typo.h6" Class="mb-3">Aging Summary</MudText>
+                <MudGrid>
+                    <MudItem xs="12" md="2">
+                        <MudText Color="Color.Success">Current</MudText>
+                        <MudText Typo="Typo.h6">@_reportData.Sum(x => x.Current).ToString("N2")</MudText>
+                    </MudItem>
+                    <MudItem xs="12" md="2">
+                        <MudText Color="Color.Info">1-30 Days</MudText>
+                        <MudText Typo="Typo.h6">@_reportData.Sum(x => x.Days1To30).ToString("N2")</MudText>
+                    </MudItem>
+                    <MudItem xs="12" md="2">
+                        <MudText Color="Color.Warning">31-60 Days</MudText>
+                        <MudText Typo="Typo.h6">@_reportData.Sum(x => x.Days31To60).ToString("N2")</MudText>
+                    </MudItem>
+                    <MudItem xs="12" md="2">
+                        <MudText Color="Color.Warning">61-90 Days</MudText>
+                        <MudText Typo="Typo.h6">@_reportData.Sum(x => x.Days61To90).ToString("N2")</MudText>
+                    </MudItem>
+                    <MudItem xs="12" md="2">
+                        <MudText Color="Color.Error">90+ Days</MudText>
+                        <MudText Typo="Typo.h6">@_reportData.Sum(x => x.Days90Plus).ToString("N2")</MudText>
+                    </MudItem>
+                    <MudItem xs="12" md="2">
+                        <MudText><strong>Grand Total</strong></MudText>
+                        <MudText Typo="Typo.h6"><strong>@_reportData.Sum(x => x.Total).ToString("N2")</strong></MudText>
+                    </MudItem>
+                </MudGrid>
+            </MudPaper>
+        }
+        else if (!_isLoading)
+        {
+            <MudAlert Severity="Severity.Info" Class="mt-4">No data found for the selected criteria. Please generate the report.</MudAlert>
+        }
+    </MudPaper>
+</MudContainer>
+
+@code {
+    private DateTime? _asOnDate = DateTime.Today;
+    private long? _selectedBranchId;
+    private bool _showZeroBalances = false;
+    private bool _isLoading = false;
+    private List<AgingItem> _reportData = new();
+    private List<Branch> _branches = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        _branches = await DbContext.Branches.Where(b => b.IsActive).OrderBy(b => b.Name).ToListAsync();
+    }
+
+    private async Task LoadReport()
+    {
+        if (!_asOnDate.HasValue)
+        {
+            Snackbar.Add("Please select a date", Severity.Warning);
+            return;
+        }
+
+        _isLoading = true;
+        _reportData.Clear();
+        StateHasChanged();
+
+        try
+        {
+            var asOnDateUtc = DateTime.SpecifyKind(_asOnDate.Value.Date.AddDays(1).AddTicks(-1), DateTimeKind.Utc);
+
+            var customers = await DbContext.Parties
+                .Where(p => p.IsActive && p.AccountNature == PartyAccountNature.Receivable)
+                .ToListAsync();
+
+            var journalsQuery = DbContext.Journals
+                .Include(j => j.Entries)
+                .Where(j => j.VoucherDate <= asOnDateUtc);
+
+            if (_selectedBranchId.HasValue)
+            {
+                journalsQuery = journalsQuery.Where(j => j.BranchId == _selectedBranchId.Value);
+            }
+
+            var journals = await journalsQuery.ToListAsync();
+
+            foreach (var customer in customers)
+            {
+                var customerJournals = journals
+                    .Where(j => j.Entries.Any(e => e.PartyId == customer.Id))
+                    .ToList();
+
+                var agingItem = new AgingItem
+                {
+                    CustomerCode = customer.Code ?? "",
+                    CustomerName = customer.Name,
+                    Current = 0,
+                    Days1To30 = 0,
+                    Days31To60 = 0,
+                    Days61To90 = 0,
+                    Days90Plus = 0
+                };
+
+                foreach (var journal in customerJournals)
+                {
+                    var entry = journal.Entries.FirstOrDefault(e => e.PartyId == customer.Id);
+                    if (entry == null || (entry.Debit ?? 0) == 0) continue;
+
+                    var daysDue = (_asOnDate.Value - journal.VoucherDate).Days;
+                    var amount = entry.Debit ?? 0;
+
+                    if (daysDue <= 0)
+                        agingItem.Current += amount;
+                    else if (daysDue <= 30)
+                        agingItem.Days1To30 += amount;
+                    else if (daysDue <= 60)
+                        agingItem.Days31To60 += amount;
+                    else if (daysDue <= 90)
+                        agingItem.Days61To90 += amount;
+                    else
+                        agingItem.Days90Plus += amount;
+                }
+
+                var totalCredits = customerJournals
+                    .SelectMany(j => j.Entries.Where(e => e.PartyId == customer.Id))
+                    .Sum(e => e.Credit ?? 0);
+
+                if (totalCredits > 0)
+                {
+                    var remaining = totalCredits;
+                    if (agingItem.Days90Plus > 0) { var apply = Math.Min(remaining, agingItem.Days90Plus); agingItem.Days90Plus -= apply; remaining -= apply; }
+                    if (agingItem.Days61To90 > 0 && remaining > 0) { var apply = Math.Min(remaining, agingItem.Days61To90); agingItem.Days61To90 -= apply; remaining -= apply; }
+                    if (agingItem.Days31To60 > 0 && remaining > 0) { var apply = Math.Min(remaining, agingItem.Days31To60); agingItem.Days31To60 -= apply; remaining -= apply; }
+                    if (agingItem.Days1To30 > 0 && remaining > 0) { var apply = Math.Min(remaining, agingItem.Days1To30); agingItem.Days1To30 -= apply; remaining -= apply; }
+                    if (agingItem.Current > 0 && remaining > 0) { agingItem.Current -= remaining; }
+                }
+
+                if (!_showZeroBalances && agingItem.Total == 0) continue;
+
+                _reportData.Add(agingItem);
+            }
+
+            _reportData = _reportData.OrderByDescending(x => x.Total).ToList();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error loading report: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _isLoading = false;
+        }
+    }
+
+    private class AgingItem
+    {
+        public string CustomerCode { get; set; } = "";
+        public string CustomerName { get; set; } = "";
+        public decimal Current { get; set; }
+        public decimal Days1To30 { get; set; }
+        public decimal Days31To60 { get; set; }
+        public decimal Days61To90 { get; set; }
+        public decimal Days90Plus { get; set; }
+        public decimal Total => Current + Days1To30 + Days31To60 + Days61To90 + Days90Plus;
+    }
+}

@@ -1,0 +1,347 @@
+@page "/reports/cash-flow-indirect"
+@using Microsoft.EntityFrameworkCore
+@using Net4Courier.Infrastructure.Data
+@using Net4Courier.Finance.Entities
+@using Net4Courier.Masters.Entities
+@inject ApplicationDbContext DbContext
+@inject ISnackbar Snackbar
+
+<PageTitle>Cash Flow Statement - Indirect Method</PageTitle>
+
+<MudContainer MaxWidth="MaxWidth.ExtraLarge" Class="mt-4">
+    <MudPaper Class="pa-4">
+        <MudText Typo="Typo.h5" Class="mb-4">Cash Flow Statement - Indirect Method</MudText>
+
+        <MudGrid>
+            <MudItem xs="12" md="3">
+                <MudDatePicker Label="From Date" @bind-Date="_fromDate" DateFormat="dd/MM/yyyy" />
+            </MudItem>
+            <MudItem xs="12" md="3">
+                <MudDatePicker Label="To Date" @bind-Date="_toDate" DateFormat="dd/MM/yyyy" />
+            </MudItem>
+            <MudItem xs="12" md="3">
+                <MudSelect T="long?" Label="Branch" @bind-Value="_selectedBranchId" Clearable>
+                    @foreach (var branch in _branches)
+                    {
+                        <MudSelectItem Value="@((long?)branch.Id)">@branch.Name</MudSelectItem>
+                    }
+                </MudSelect>
+            </MudItem>
+            <MudItem xs="12" md="3" Class="d-flex align-end">
+                <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="LoadReport" Class="mr-2">
+                    <MudIcon Icon="@Icons.Material.Filled.Search" Class="mr-1" /> Generate
+                </MudButton>
+            </MudItem>
+        </MudGrid>
+
+        @if (_isLoading)
+        {
+            <MudProgressLinear Color="Color.Primary" Indeterminate="true" Class="my-4" />
+        }
+        else if (_reportLoaded)
+        {
+            <div class="mt-4">
+                <MudPaper Class="pa-4 mb-3" Elevation="2">
+                    <MudText Typo="Typo.h6" Color="Color.Primary" Class="mb-3">
+                        <MudIcon Icon="@Icons.Material.Filled.Business" Class="mr-2" />
+                        Cash Flows from Operating Activities
+                    </MudText>
+
+                    <MudGrid>
+                        <MudItem xs="8"><MudText>Net Income (Loss)</MudText></MudItem>
+                        <MudItem xs="4" Style="text-align: right"><MudText>@_netIncome.ToString("N2")</MudText></MudItem>
+                    </MudGrid>
+
+                    <MudText Typo="Typo.subtitle2" Class="mt-3 mb-2">Adjustments to reconcile net income:</MudText>
+
+                    @foreach (var item in _operatingAdjustments)
+                    {
+                        <MudGrid>
+                            <MudItem xs="8"><MudText Typo="Typo.body2" Class="ml-4">@item.Description</MudText></MudItem>
+                            <MudItem xs="4" Style="text-align: right">
+                                <MudText Color="@(item.Amount >= 0 ? Color.Success : Color.Error)">@item.Amount.ToString("N2")</MudText>
+                            </MudItem>
+                        </MudGrid>
+                    }
+
+                    <MudDivider Class="my-2" />
+                    <MudGrid>
+                        <MudItem xs="8"><MudText><strong>Net Cash from Operating Activities</strong></MudText></MudItem>
+                        <MudItem xs="4" Style="text-align: right">
+                            <MudText Typo="Typo.subtitle1" Color="@(_netOperatingCash >= 0 ? Color.Success : Color.Error)">
+                                <strong>@_netOperatingCash.ToString("N2")</strong>
+                            </MudText>
+                        </MudItem>
+                    </MudGrid>
+                </MudPaper>
+
+                <MudPaper Class="pa-4 mb-3" Elevation="2">
+                    <MudText Typo="Typo.h6" Color="Color.Info" Class="mb-3">
+                        <MudIcon Icon="@Icons.Material.Filled.AccountBalance" Class="mr-2" />
+                        Cash Flows from Investing Activities
+                    </MudText>
+
+                    @if (_investingActivities.Any())
+                    {
+                        @foreach (var item in _investingActivities)
+                        {
+                            <MudGrid>
+                                <MudItem xs="8"><MudText Typo="Typo.body2">@item.Description</MudText></MudItem>
+                                <MudItem xs="4" Style="text-align: right">
+                                    <MudText Color="@(item.Amount >= 0 ? Color.Success : Color.Error)">@item.Amount.ToString("N2")</MudText>
+                                </MudItem>
+                            </MudGrid>
+                        }
+                    }
+                    else
+                    {
+                        <MudText Typo="Typo.body2" Color="Color.Secondary">No investing activities in this period</MudText>
+                    }
+
+                    <MudDivider Class="my-2" />
+                    <MudGrid>
+                        <MudItem xs="8"><MudText><strong>Net Cash from Investing Activities</strong></MudText></MudItem>
+                        <MudItem xs="4" Style="text-align: right">
+                            <MudText Typo="Typo.subtitle1" Color="@(_netInvestingCash >= 0 ? Color.Success : Color.Error)">
+                                <strong>@_netInvestingCash.ToString("N2")</strong>
+                            </MudText>
+                        </MudItem>
+                    </MudGrid>
+                </MudPaper>
+
+                <MudPaper Class="pa-4 mb-3" Elevation="2">
+                    <MudText Typo="Typo.h6" Color="Color.Secondary" Class="mb-3">
+                        <MudIcon Icon="@Icons.Material.Filled.CreditCard" Class="mr-2" />
+                        Cash Flows from Financing Activities
+                    </MudText>
+
+                    @if (_financingActivities.Any())
+                    {
+                        @foreach (var item in _financingActivities)
+                        {
+                            <MudGrid>
+                                <MudItem xs="8"><MudText Typo="Typo.body2">@item.Description</MudText></MudItem>
+                                <MudItem xs="4" Style="text-align: right">
+                                    <MudText Color="@(item.Amount >= 0 ? Color.Success : Color.Error)">@item.Amount.ToString("N2")</MudText>
+                                </MudItem>
+                            </MudGrid>
+                        }
+                    }
+                    else
+                    {
+                        <MudText Typo="Typo.body2" Color="Color.Secondary">No financing activities in this period</MudText>
+                    }
+
+                    <MudDivider Class="my-2" />
+                    <MudGrid>
+                        <MudItem xs="8"><MudText><strong>Net Cash from Financing Activities</strong></MudText></MudItem>
+                        <MudItem xs="4" Style="text-align: right">
+                            <MudText Typo="Typo.subtitle1" Color="@(_netFinancingCash >= 0 ? Color.Success : Color.Error)">
+                                <strong>@_netFinancingCash.ToString("N2")</strong>
+                            </MudText>
+                        </MudItem>
+                    </MudGrid>
+                </MudPaper>
+
+                <MudPaper Class="pa-4" Elevation="3" Style="background-color: #e8f5e9;">
+                    <MudGrid>
+                        <MudItem xs="8">
+                            <MudText Typo="Typo.h6">Net Increase (Decrease) in Cash</MudText>
+                        </MudItem>
+                        <MudItem xs="4" Style="text-align: right">
+                            <MudText Typo="Typo.h5" Color="@(_netCashChange >= 0 ? Color.Success : Color.Error)">
+                                @_netCashChange.ToString("N2")
+                            </MudText>
+                        </MudItem>
+                    </MudGrid>
+                    <MudDivider Class="my-2" />
+                    <MudGrid>
+                        <MudItem xs="4">
+                            <MudText>Beginning Cash Balance</MudText>
+                            <MudText Typo="Typo.h6">@_beginningCash.ToString("N2")</MudText>
+                        </MudItem>
+                        <MudItem xs="4" Style="text-align: center">
+                            <MudIcon Icon="@Icons.Material.Filled.ArrowForward" Size="Size.Large" Color="Color.Primary" />
+                        </MudItem>
+                        <MudItem xs="4" Style="text-align: right">
+                            <MudText>Ending Cash Balance</MudText>
+                            <MudText Typo="Typo.h6" Color="Color.Primary">@_endingCash.ToString("N2")</MudText>
+                        </MudItem>
+                    </MudGrid>
+                </MudPaper>
+            </div>
+        }
+        else if (!_isLoading)
+        {
+            <MudAlert Severity="Severity.Info" Class="mt-4">Select a date range and click Generate to view the cash flow statement.</MudAlert>
+        }
+    </MudPaper>
+</MudContainer>
+
+@code {
+    private DateTime? _fromDate = new DateTime(DateTime.Today.Year, 1, 1);
+    private DateTime? _toDate = DateTime.Today;
+    private long? _selectedBranchId;
+    private bool _isLoading = false;
+    private bool _reportLoaded = false;
+    private List<Branch> _branches = new();
+
+    private decimal _netIncome = 0;
+    private List<CashFlowItem> _operatingAdjustments = new();
+    private List<CashFlowItem> _investingActivities = new();
+    private List<CashFlowItem> _financingActivities = new();
+    private decimal _netOperatingCash = 0;
+    private decimal _netInvestingCash = 0;
+    private decimal _netFinancingCash = 0;
+    private decimal _netCashChange = 0;
+    private decimal _beginningCash = 0;
+    private decimal _endingCash = 0;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _branches = await DbContext.Branches.Where(b => b.IsActive).OrderBy(b => b.Name).ToListAsync();
+    }
+
+    private async Task LoadReport()
+    {
+        if (!_fromDate.HasValue || !_toDate.HasValue)
+        {
+            Snackbar.Add("Please select date range", Severity.Warning);
+            return;
+        }
+
+        _isLoading = true;
+        _reportLoaded = false;
+        _operatingAdjustments.Clear();
+        _investingActivities.Clear();
+        _financingActivities.Clear();
+        StateHasChanged();
+
+        try
+        {
+            var fromDateUtc = DateTime.SpecifyKind(_fromDate.Value.Date, DateTimeKind.Utc);
+            var toDateUtc = DateTime.SpecifyKind(_toDate.Value.Date.AddDays(1).AddTicks(-1), DateTimeKind.Utc);
+
+            var accountHeads = await DbContext.AccountHeads.Where(a => a.IsActive).ToListAsync();
+
+            var periodJournalsQuery = DbContext.Journals
+                .Include(j => j.Entries)
+                .Where(j => j.VoucherDate >= fromDateUtc && j.VoucherDate <= toDateUtc);
+
+            var beforePeriodJournalsQuery = DbContext.Journals
+                .Include(j => j.Entries)
+                .Where(j => j.VoucherDate < fromDateUtc);
+
+            if (_selectedBranchId.HasValue)
+            {
+                periodJournalsQuery = periodJournalsQuery.Where(j => j.BranchId == _selectedBranchId.Value);
+                beforePeriodJournalsQuery = beforePeriodJournalsQuery.Where(j => j.BranchId == _selectedBranchId.Value);
+            }
+
+            var periodEntries = (await periodJournalsQuery.ToListAsync()).SelectMany(j => j.Entries).ToList();
+            var beforePeriodEntries = (await beforePeriodJournalsQuery.ToListAsync()).SelectMany(j => j.Entries).ToList();
+
+            var incomeAccountIds = accountHeads.Where(a => a.Classification == AccountClassification.Income).Select(a => a.Id).ToList();
+            var expenseAccountIds = accountHeads.Where(a => a.Classification == AccountClassification.Expenditure).Select(a => a.Id).ToList();
+            var assetAccountIds = accountHeads.Where(a => a.Classification == AccountClassification.Assets).Select(a => a.Id).ToList();
+            var liabilityAccountIds = accountHeads.Where(a => a.Classification == AccountClassification.Liabilities).Select(a => a.Id).ToList();
+            var equityAccountIds = accountHeads.Where(a => a.Classification == AccountClassification.Equity).Select(a => a.Id).ToList();
+
+            var receivableAccountIds = accountHeads.Where(a => a.AccountNature == AccountNature.Receivable).Select(a => a.Id).ToList();
+            var payableAccountIds = accountHeads.Where(a => a.AccountNature == AccountNature.Payable).Select(a => a.Id).ToList();
+            var cashBankAccountIds = accountHeads
+                .Where(a => a.AccountNature == AccountNature.CashAccount || a.AccountNature == AccountNature.BankAccount)
+                .Select(a => a.Id).ToList();
+
+            var totalIncome = periodEntries.Where(e => incomeAccountIds.Contains(e.AccountHeadId))
+                .Sum(e => (e.Credit ?? 0) - (e.Debit ?? 0));
+            var totalExpenses = periodEntries.Where(e => expenseAccountIds.Contains(e.AccountHeadId))
+                .Sum(e => (e.Debit ?? 0) - (e.Credit ?? 0));
+            _netIncome = totalIncome - totalExpenses;
+
+            var receivableChange = periodEntries.Where(e => receivableAccountIds.Contains(e.AccountHeadId))
+                .Sum(e => (e.Debit ?? 0) - (e.Credit ?? 0));
+            var payableChange = periodEntries.Where(e => payableAccountIds.Contains(e.AccountHeadId))
+                .Sum(e => (e.Credit ?? 0) - (e.Debit ?? 0));
+
+            _operatingAdjustments.Add(new CashFlowItem 
+            { 
+                Description = "Increase (Decrease) in Accounts Receivable", 
+                Amount = -receivableChange 
+            });
+            _operatingAdjustments.Add(new CashFlowItem 
+            { 
+                Description = "Increase (Decrease) in Accounts Payable", 
+                Amount = payableChange 
+            });
+
+            _netOperatingCash = _netIncome + _operatingAdjustments.Sum(a => a.Amount);
+
+            var fixedAssetChange = periodEntries.Where(e => 
+                assetAccountIds.Contains(e.AccountHeadId) && 
+                !cashBankAccountIds.Contains(e.AccountHeadId) && 
+                !receivableAccountIds.Contains(e.AccountHeadId))
+                .Sum(e => (e.Debit ?? 0) - (e.Credit ?? 0));
+
+            if (fixedAssetChange != 0)
+            {
+                _investingActivities.Add(new CashFlowItem 
+                { 
+                    Description = "Purchase (Sale) of Assets", 
+                    Amount = -fixedAssetChange 
+                });
+            }
+
+            _netInvestingCash = _investingActivities.Sum(a => a.Amount);
+
+            var liabilityChange = periodEntries.Where(e => 
+                liabilityAccountIds.Contains(e.AccountHeadId) && 
+                !payableAccountIds.Contains(e.AccountHeadId))
+                .Sum(e => (e.Credit ?? 0) - (e.Debit ?? 0));
+            var equityChange = periodEntries.Where(e => equityAccountIds.Contains(e.AccountHeadId))
+                .Sum(e => (e.Credit ?? 0) - (e.Debit ?? 0));
+
+            if (liabilityChange != 0)
+            {
+                _financingActivities.Add(new CashFlowItem 
+                { 
+                    Description = "Proceeds from (Repayment of) Loans", 
+                    Amount = liabilityChange 
+                });
+            }
+            if (equityChange != 0)
+            {
+                _financingActivities.Add(new CashFlowItem 
+                { 
+                    Description = "Capital Contributions (Withdrawals)", 
+                    Amount = equityChange 
+                });
+            }
+
+            _netFinancingCash = _financingActivities.Sum(a => a.Amount);
+
+            _netCashChange = _netOperatingCash + _netInvestingCash + _netFinancingCash;
+
+            _beginningCash = beforePeriodEntries.Where(e => cashBankAccountIds.Contains(e.AccountHeadId))
+                .Sum(e => (e.Debit ?? 0) - (e.Credit ?? 0));
+
+            _endingCash = _beginningCash + _netCashChange;
+
+            _reportLoaded = true;
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error loading report: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _isLoading = false;
+        }
+    }
+
+    private class CashFlowItem
+    {
+        public string Description { get; set; } = "";
+        public decimal Amount { get; set; }
+    }
+}
