@@ -1,6 +1,7 @@
 @page "/pickup-management"
 @page "/pickup-dashboard"
 @inject ApplicationDbContext DbContext
+@inject IDbContextFactory<ApplicationDbContext> DbContextFactory
 @inject NavigationManager NavigationManager
 @inject IDialogService DialogService
 @inject ISnackbar Snackbar
@@ -412,22 +413,63 @@ else
         StartAutoRefresh();
     }
 
+    private CancellationTokenSource _cts = new();
+
     private void StartAutoRefresh()
     {
         _refreshTimer = new System.Timers.Timer(30000);
         _refreshTimer.Elapsed += async (s, e) =>
         {
-            await InvokeAsync(async () =>
+            if (_cts.IsCancellationRequested) return;
+            
+            try
             {
-                await LoadCommitmentData();
-                StateHasChanged();
-            });
+                await InvokeAsync(async () =>
+                {
+                    if (_cts.IsCancellationRequested) return;
+                    await LoadCommitmentDataFromFactory();
+                    StateHasChanged();
+                });
+            }
+            catch (ObjectDisposedException)
+            {
+            }
         };
         _refreshTimer.Start();
     }
 
+    private async Task LoadCommitmentDataFromFactory()
+    {
+        await using var context = await DbContextFactory.CreateDbContextAsync();
+        
+        var pickupIds = _pickups.Select(p => p.Id).ToList();
+        
+        _activeCommitments = await context.PickupCommitments
+            .Where(c => pickupIds.Contains(c.PickupRequestId) && 
+                   (c.Status == PickupCommitmentStatus.Active || c.Status == PickupCommitmentStatus.Confirmed))
+            .ToListAsync();
+
+        _commitmentByPickup = _activeCommitments
+            .GroupBy(c => c.PickupRequestId)
+            .ToDictionary(g => g.Key, g => g.OrderByDescending(c => c.CommittedAt).First());
+
+        var pendingPickupIds = _pickups.Where(p => p.Status == PickupStatus.PickupRequest).Select(p => p.Id).ToList();
+        var committedPickupIds = _activeCommitments.Where(c => c.Status == PickupCommitmentStatus.Active && c.ExpiresAt > DateTime.UtcNow)
+            .Select(c => c.PickupRequestId).ToHashSet();
+
+        _commitmentStats = new CommitmentSummary
+        {
+            ActiveCommitments = _activeCommitments.Count(c => c.Status == PickupCommitmentStatus.Active && c.ExpiresAt > DateTime.UtcNow),
+            ExpiringSoon = _activeCommitments.Count(c => c.Status == PickupCommitmentStatus.Active && 
+                                                         c.ExpiresAt > DateTime.UtcNow && 
+                                                         (c.ExpiresAt - DateTime.UtcNow).TotalMinutes <= 10),
+            AvailablePickups = pendingPickupIds.Count(id => !committedPickupIds.Contains(id))
+        };
+    }
+
     public void Dispose()
     {
+        _cts.Cancel();
         _refreshTimer?.Stop();
         _refreshTimer?.Dispose();
     }
