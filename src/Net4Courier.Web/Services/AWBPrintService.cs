@@ -3,11 +3,26 @@ using QuestPDF.Helpers;
 using QuestPDF.Infrastructure;
 using Net4Courier.Operations.Entities;
 using Net4Courier.Kernel.Enums;
+using Microsoft.AspNetCore.Hosting;
 
 namespace Net4Courier.Web.Services;
 
 public class AWBPrintService
 {
+    private readonly byte[]? _logoData;
+
+    public AWBPrintService(IWebHostEnvironment? env = null)
+    {
+        if (env != null)
+        {
+            var logoPath = Path.Combine(env.WebRootPath, "images", "gatex-logo.png");
+            if (File.Exists(logoPath))
+            {
+                _logoData = File.ReadAllBytes(logoPath);
+            }
+        }
+    }
+
     public byte[] GenerateA5AWB(InscanMaster shipment, string? companyName = null)
     {
         var document = Document.Create(container =>
@@ -41,7 +56,14 @@ public class AWBPrintService
         {
             row.RelativeItem(2).Padding(5).Column(headerCol =>
             {
-                headerCol.Item().Text(companyName).Bold().FontSize(16).FontColor(Colors.Red.Darken2);
+                if (_logoData != null)
+                {
+                    headerCol.Item().Height(35).Image(_logoData).FitHeight();
+                }
+                else
+                {
+                    headerCol.Item().Text(companyName).Bold().FontSize(16).FontColor(Colors.Red.Darken2);
+                }
                 headerCol.Item().Text("AIRWAYBILL").FontSize(10).Bold();
             });
             
@@ -440,7 +462,14 @@ public class AWBPrintService
         {
             row.RelativeItem(1).Padding(3).Column(c =>
             {
-                c.Item().Text(companyName).Bold().FontSize(12).FontColor(Colors.Red.Darken2);
+                if (_logoData != null)
+                {
+                    c.Item().Height(25).Image(_logoData).FitHeight();
+                }
+                else
+                {
+                    c.Item().Text(companyName).Bold().FontSize(12).FontColor(Colors.Red.Darken2);
+                }
             });
             
             row.RelativeItem(2).BorderLeft(1).Padding(3).Column(c =>
