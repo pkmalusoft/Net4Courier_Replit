@@ -1,0 +1,86 @@
+@inject ApplicationDbContext DbContext
+@using Microsoft.EntityFrameworkCore
+@using Net4Courier.Infrastructure.Data
+@using Net4Courier.Masters.Entities
+
+<MudDialog>
+    <TitleContent>
+        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+            <MudIcon Icon="@Icons.Material.Filled.Person" Color="Color.Primary" />
+            <MudText Typo="Typo.h6">Select Customer</MudText>
+        </MudStack>
+    </TitleContent>
+    <DialogContent>
+        <MudStack Spacing="3" Style="min-width: 400px;">
+            <MudAlert Severity="Severity.Info" Dense="true">
+                Select a customer account for the bulk shipment upload. All uploaded shipments will be assigned to this customer.
+            </MudAlert>
+            
+            <MudAutocomplete T="Party" 
+                             Label="Customer Account" 
+                             @bind-Value="_selectedCustomer"
+                             SearchFunc="SearchCustomers"
+                             ToStringFunc="@(p => p?.Name ?? "")"
+                             Variant="Variant.Outlined"
+                             Dense="true"
+                             ShowProgressIndicator="true"
+                             Required="true"
+                             RequiredError="Please select a customer">
+                <ItemTemplate Context="customer">
+                    <MudStack Spacing="0">
+                        <MudText Typo="Typo.body1">@customer.Name</MudText>
+                        @if (!string.IsNullOrEmpty(customer.Code))
+                        {
+                            <MudText Typo="Typo.caption" Color="Color.Secondary">@customer.Code</MudText>
+                        }
+                    </MudStack>
+                </ItemTemplate>
+            </MudAutocomplete>
+        </MudStack>
+    </DialogContent>
+    <DialogActions>
+        <MudButton Variant="Variant.Text" OnClick="Cancel">Cancel</MudButton>
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" 
+                   OnClick="Continue" Disabled="_selectedCustomer == null">
+            Continue
+        </MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] MudDialogInstance MudDialog { get; set; } = default!;
+    
+    private Party? _selectedCustomer;
+    private List<Party> _customers = new();
+    
+    protected override async Task OnInitializedAsync()
+    {
+        _customers = await DbContext.Parties
+            .Where(p => p.PartyType == PartyType.Customer && p.IsActive && !p.IsDeleted)
+            .OrderBy(p => p.Name)
+            .ToListAsync();
+    }
+    
+    private Task<IEnumerable<Party>> SearchCustomers(string? value, CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return Task.FromResult(_customers.AsEnumerable());
+        
+        var results = _customers
+            .Where(p => p.Name.Contains(value, StringComparison.OrdinalIgnoreCase) || 
+                       (p.Code != null && p.Code.Contains(value, StringComparison.OrdinalIgnoreCase)))
+            .AsEnumerable();
+        
+        return Task.FromResult(results);
+    }
+    
+    private void Cancel() => MudDialog.Cancel();
+    
+    private void Continue()
+    {
+        if (_selectedCustomer != null)
+        {
+            MudDialog.Close(DialogResult.Ok(_selectedCustomer));
+        }
+    }
+}
