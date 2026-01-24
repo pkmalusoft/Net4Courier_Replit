@@ -135,6 +135,7 @@ builder.Services.AddScoped<IPermissionService, PermissionService>();
 builder.Services.AddScoped<ImportExcelService>();
 builder.Services.AddScoped<ShipmentExcelService>();
 builder.Services.AddSingleton<BarcodeService>();
+builder.Services.AddScoped<AWBPrintService>();
 builder.Services.AddScoped<PODUpdateService>();
 builder.Services.AddScoped<PODExcelService>();
 builder.Services.AddScoped<ISecureStorageService, SecureStorageService>();
@@ -244,12 +245,20 @@ app.MapGet("/api/diagnostics", (IWebHostEnvironment env) =>
     });
 });
 
-app.MapGet("/api/report/awb/{id:long}", async (long id, ApplicationDbContext db, ReportingService reportService) =>
+app.MapGet("/api/report/awb/{id:long}", async (long id, ApplicationDbContext db, AWBPrintService printService) =>
 {
     var awb = await db.InscanMasters.FindAsync(id);
     if (awb == null) return Results.NotFound();
-    var pdf = reportService.GenerateAWBLabel(awb);
+    var pdf = printService.GenerateA5AWB(awb);
     return Results.File(pdf, "application/pdf", $"AWB-{awb.AWBNo}.pdf");
+});
+
+app.MapGet("/api/report/awb-label/{id:long}", async (long id, ApplicationDbContext db, AWBPrintService printService) =>
+{
+    var awb = await db.InscanMasters.FindAsync(id);
+    if (awb == null) return Results.NotFound();
+    var pdf = printService.GenerateLabel(awb);
+    return Results.File(pdf, "application/pdf", $"Label-{awb.AWBNo}.pdf");
 });
 
 app.MapGet("/api/report/invoice/{id:long}", async (long id, ApplicationDbContext db, ReportingService reportService) =>
