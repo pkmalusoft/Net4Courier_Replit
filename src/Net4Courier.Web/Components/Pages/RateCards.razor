@@ -7,6 +7,8 @@
 @inject IDialogService DialogService
 @inject ISnackbar Snackbar
 @inject NavigationManager Navigation
+@inject IJSRuntime JS
+@inject Net4Courier.Web.Services.RateCardImportService ImportService
 @rendermode InteractiveServer
 
 <PageTitle>Rate Card Management</PageTitle>
@@ -18,6 +20,14 @@
             <MudStack Row="true" Spacing="2">
                 <MudButton Variant="Variant.Outlined" Color="Color.Secondary" StartIcon="@Icons.Material.Filled.Map"
                            OnClick="OpenZoneMatrix">Zone Matrix</MudButton>
+                <MudButton Variant="Variant.Outlined" Color="Color.Success" StartIcon="@Icons.Material.Filled.Download"
+                           OnClick="DownloadTemplate" Disabled="_downloadingTemplate">
+                    @if (_downloadingTemplate)
+                    {
+                        <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-1" />
+                    }
+                    Download Template
+                </MudButton>
                 <MudButton Variant="Variant.Outlined" Color="Color.Info" StartIcon="@Icons.Material.Filled.Upload"
                            OnClick="OpenImportDialog">Import from Excel</MudButton>
                 <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add"
@@ -103,6 +113,7 @@
 @code {
     private List<RateCard> _rateCards = new();
     private bool _loading = true;
+    private bool _downloadingTemplate;
     private string _searchText = "";
     private RateCardStatus? _statusFilter;
     private MovementType? _movementFilter;
@@ -153,6 +164,30 @@
     private async Task ApplyFilters()
     {
         await LoadRateCards();
+    }
+
+    private async Task DownloadTemplate()
+    {
+        _downloadingTemplate = true;
+        StateHasChanged();
+
+        try
+        {
+            var templateBytes = ImportService.GenerateTemplate();
+            var base64 = Convert.ToBase64String(templateBytes);
+            var fileName = "RateCard_Import_Template.xlsx";
+            
+            await JS.InvokeVoidAsync("downloadFileFromBase64", base64, fileName, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+            Snackbar.Add("Template downloaded successfully", Severity.Success);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error downloading template: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _downloadingTemplate = false;
+        }
     }
 
     private void CreateNewRateCard()
