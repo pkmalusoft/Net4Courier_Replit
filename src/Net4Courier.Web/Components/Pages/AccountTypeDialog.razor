@@ -1,0 +1,77 @@
+@inject ApplicationDbContext DbContext
+@inject ISnackbar Snackbar
+@using Net4Courier.Infrastructure.Data
+@using Net4Courier.Masters.Entities
+
+<MudDialog>
+    <TitleContent>
+        <MudText Typo="Typo.h6">@(IsNew ? "New Account Type" : "Edit Account Type")</MudText>
+    </TitleContent>
+    <DialogContent>
+        <MudForm @ref="_form" @bind-IsValid="_formIsValid">
+            <MudGrid Spacing="2">
+                <MudItem xs="12" md="6">
+                    <MudTextField @bind-Value="AccountType.Code" Label="Code" Variant="Variant.Outlined" />
+                </MudItem>
+                <MudItem xs="12" md="6">
+                    <MudNumericField @bind-Value="AccountType.SortOrder" Label="Sort Order" Variant="Variant.Outlined" />
+                </MudItem>
+                <MudItem xs="12">
+                    <MudTextField @bind-Value="AccountType.Name" Label="Name" Required="true" 
+                                  RequiredError="Name is required" Variant="Variant.Outlined" />
+                </MudItem>
+                <MudItem xs="12">
+                    <MudTextField @bind-Value="AccountType.Description" Label="Description" 
+                                  Variant="Variant.Outlined" Lines="2" />
+                </MudItem>
+                <MudItem xs="12">
+                    <MudSwitch @bind-Value="AccountType.IsActive" Label="Active" Color="Color.Primary" />
+                </MudItem>
+            </MudGrid>
+        </MudForm>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Cancel">Cancel</MudButton>
+        <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="Save" Disabled="!_formIsValid">Save</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] private MudDialogInstance MudDialog { get; set; } = null!;
+    [Parameter] public AccountType AccountType { get; set; } = new();
+    [Parameter] public bool IsNew { get; set; }
+
+    private MudForm _form = null!;
+    private bool _formIsValid;
+
+    protected override void OnInitialized()
+    {
+        if (IsNew)
+        {
+            AccountType.IsActive = true;
+        }
+    }
+
+    private async Task Save()
+    {
+        await _form.Validate();
+        if (!_formIsValid) return;
+
+        if (IsNew)
+        {
+            AccountType.CreatedAt = DateTime.UtcNow;
+            DbContext.AccountTypes.Add(AccountType);
+        }
+        else
+        {
+            AccountType.ModifiedAt = DateTime.UtcNow;
+            DbContext.AccountTypes.Update(AccountType);
+        }
+
+        await DbContext.SaveChangesAsync();
+        Snackbar.Add(IsNew ? "Account type created" : "Account type updated", Severity.Success);
+        MudDialog.Close(DialogResult.Ok(AccountType));
+    }
+
+    private void Cancel() => MudDialog.Cancel();
+}

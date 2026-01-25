@@ -10,6 +10,8 @@ public class Party : BaseEntity
     public string? CustomerAccountNo { get; set; }
     public PartyType PartyType { get; set; }
     public PartyAccountNature AccountNature { get; set; }
+    public long? AccountTypeId { get; set; }
+    public string? ClientAddress { get; set; }
     public string? ContactPerson { get; set; }
     public string? Phone { get; set; }
     public string? Mobile { get; set; }
@@ -31,7 +33,9 @@ public class Party : BaseEntity
     public string? CreditApprovalRemarks { get; set; }
     
     public virtual Company Company { get; set; } = null!;
+    public virtual AccountType? AccountType { get; set; }
     public virtual ICollection<PartyAddress> Addresses { get; set; } = new List<PartyAddress>();
+    public virtual ICollection<CustomerBranch> Branches { get; set; } = new List<CustomerBranch>();
 }
 
 public enum CreditApprovalStatus

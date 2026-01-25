@@ -23,6 +23,8 @@ public class ApplicationDbContext : DbContext
     public DbSet<FinancialPeriod> FinancialPeriods => Set<FinancialPeriod>();
     public DbSet<Party> Parties => Set<Party>();
     public DbSet<PartyAddress> PartyAddresses => Set<PartyAddress>();
+    public DbSet<AccountType> AccountTypes => Set<AccountType>();
+    public DbSet<CustomerBranch> CustomerBranches => Set<CustomerBranch>();
     public DbSet<SLAAgreement> SLAAgreements => Set<SLAAgreement>();
     public DbSet<SLATransitRule> SLATransitRules => Set<SLATransitRule>();
     public DbSet<SLADocument> SLADocuments => Set<SLADocument>();
@@ -283,8 +285,43 @@ public class ApplicationDbContext : DbContext
             entity.HasKey(e => e.Id);
             entity.Property(e => e.Name).HasMaxLength(200).IsRequired();
             entity.Property(e => e.Code).HasMaxLength(50);
+            entity.Property(e => e.ClientAddress).HasMaxLength(2000);
             entity.HasIndex(e => new { e.CompanyId, e.Code }).IsUnique();
             entity.HasOne(e => e.Company).WithMany().HasForeignKey(e => e.CompanyId);
+            entity.HasOne(e => e.AccountType)
+                  .WithMany(a => a.Parties)
+                  .HasForeignKey(e => e.AccountTypeId)
+                  .OnDelete(DeleteBehavior.Restrict);
+            entity.HasMany(e => e.Branches)
+                  .WithOne(b => b.Party)
+                  .HasForeignKey(b => b.PartyId)
+                  .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<AccountType>(entity =>
+        {
+            entity.ToTable("AccountTypes");
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Name).HasMaxLength(100).IsRequired();
+            entity.Property(e => e.Code).HasMaxLength(50).IsRequired();
+            entity.Property(e => e.Description).HasMaxLength(500);
+            entity.HasIndex(e => e.Code).IsUnique();
+        });
+
+        modelBuilder.Entity<CustomerBranch>(entity =>
+        {
+            entity.ToTable("CustomerBranches");
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Name).HasMaxLength(200).IsRequired();
+            entity.Property(e => e.Code).HasMaxLength(50);
+            entity.Property(e => e.ContactName).HasMaxLength(200);
+            entity.Property(e => e.Phone).HasMaxLength(50);
+            entity.Property(e => e.Mobile).HasMaxLength(50);
+            entity.Property(e => e.Email).HasMaxLength(200);
+            entity.Property(e => e.Address).HasMaxLength(500);
+            entity.Property(e => e.City).HasMaxLength(100);
+            entity.Property(e => e.Country).HasMaxLength(100);
+            entity.HasIndex(e => new { e.PartyId, e.Code }).IsUnique();
         });
 
         modelBuilder.Entity<PartyAddress>(entity =>
