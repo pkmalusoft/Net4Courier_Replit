@@ -32,6 +32,8 @@ The application is built on .NET 8 Blazor Server, adopting a modular architectur
 - **Operations Workflow**: Covers AWB entry and generation, pickup management (request to inscan), outscan/DRS management, AWB tracking, Proof of Delivery (POD), Return to Shipper (RTS), Master Airwaybill (MAWB) processing, COD Remittance, Pickup Commitment, Pickup Incentive, and Transfer Order management.
 - **Enhanced Pickup Dashboard**: Unified dispatcher view with commitment status integration, showing committed pickups, expiring soon alerts, available pickups, courier performance metrics, countdown timers, and quick actions for commitment confirmation/override with 30-second auto-refresh.
 - **Master Data Management**: Includes configurable Rate Card Management, Service Type Management, Shipment Mode Management, Port Master, Currency Management, and extensive Geographic Master Data.
+- **SLA Management**: Customer-specific Service Level Agreements with transit rules by zone/country/service type, credit terms, liability limits, volumetric settings, and status workflow (Draft→PendingApproval→Active→Expired/Terminated/Suspended) with approval tracking.
+- **Logo Management**: Company and Party logo upload with 2MB file limit, PNG/JPG/SVG/GIF validation, preview, and storage in /wwwroot/uploads/logos/.
 - **Regulatory Compliance**: Empost Regulatory Compliance Module for UAE courier licensing, advance payments, quarterly submissions, and royalty calculations.
 - **API Integration**: Provides configuration and webhook endpoints for third-party booking websites.
 - **Knowledge Base**: Integrated documentation using Markdig for "How To Guides" and operational flows.
