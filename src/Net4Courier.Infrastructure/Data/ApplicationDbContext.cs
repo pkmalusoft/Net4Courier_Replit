@@ -321,6 +321,7 @@ public class ApplicationDbContext : DbContext
             entity.Property(e => e.Address).HasMaxLength(500);
             entity.Property(e => e.City).HasMaxLength(100);
             entity.Property(e => e.Country).HasMaxLength(100);
+            entity.HasOne(e => e.CityNavigation).WithMany().HasForeignKey(e => e.CityId).OnDelete(DeleteBehavior.SetNull);
             entity.HasIndex(e => new { e.PartyId, e.Code }).IsUnique();
         });
 

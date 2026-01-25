@@ -2,6 +2,7 @@
 @inject ISnackbar Snackbar
 @using Net4Courier.Infrastructure.Data
 @using Net4Courier.Masters.Entities
+@using Microsoft.EntityFrameworkCore
 
 <MudDialog>
     <TitleContent>
@@ -43,10 +44,14 @@
                     <MudTextField @bind-Value="Branch.Address" Label="Address" Variant="Variant.Outlined" Lines="2" />
                 </MudItem>
                 <MudItem xs="12" md="6">
-                    <MudTextField @bind-Value="Branch.City" Label="City" Variant="Variant.Outlined" />
+                    <MudAutocomplete T="City" Label="City" Value="_selectedCity"
+                                     SearchFunc="SearchCities" ToStringFunc="@(c => c?.Name ?? "")"
+                                     Variant="Variant.Outlined" ShowProgressIndicator="true"
+                                     ResetValueOnEmptyText="true" CoerceText="false"
+                                     ValueChanged="OnCityChanged" />
                 </MudItem>
                 <MudItem xs="12" md="6">
-                    <MudTextField @bind-Value="Branch.Country" Label="Country" Variant="Variant.Outlined" />
+                    <MudTextField @bind-Value="Branch.Country" Label="Country" Variant="Variant.Outlined" ReadOnly="true" />
                 </MudItem>
                 
                 <MudItem xs="12">
@@ -68,12 +73,62 @@
 
     private MudForm _form = null!;
     private bool _formIsValid;
+    private City? _selectedCity;
+    private List<City> _cities = new();
 
-    protected override void OnInitialized()
+    protected override async Task OnInitializedAsync()
     {
         if (IsNew)
         {
             Branch.IsActive = true;
+        }
+        else if (Branch.CityId.HasValue)
+        {
+            _selectedCity = await DbContext.Cities
+                .Include(c => c.Country)
+                .FirstOrDefaultAsync(c => c.Id == Branch.CityId);
+            
+            if (_selectedCity != null)
+            {
+                Branch.Country = _selectedCity.Country?.Name ?? "";
+            }
+        }
+    }
+
+    private async Task<IEnumerable<City>> SearchCities(string value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return await DbContext.Cities
+                .Include(c => c.Country)
+                .Where(c => c.IsActive && !c.IsDeleted)
+                .OrderBy(c => c.Name)
+                .Take(20)
+                .ToListAsync();
+        }
+
+        return await DbContext.Cities
+            .Include(c => c.Country)
+            .Where(c => c.IsActive && !c.IsDeleted && c.Name.ToLower().Contains(value.ToLower()))
+            .OrderBy(c => c.Name)
+            .Take(20)
+            .ToListAsync();
+    }
+
+    private void OnCityChanged(City? city)
+    {
+        _selectedCity = city;
+        if (city != null)
+        {
+            Branch.CityId = city.Id;
+            Branch.City = city.Name;
+            Branch.Country = city.Country?.Name ?? "";
+        }
+        else
+        {
+            Branch.CityId = null;
+            Branch.City = null;
+            Branch.Country = null;
         }
     }
 
