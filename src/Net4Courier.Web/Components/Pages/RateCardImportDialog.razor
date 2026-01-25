@@ -1,0 +1,315 @@
+@using MudBlazor
+@using Net4Courier.Web.Services
+@using Net4Courier.Kernel.Enums
+@using Net4Courier.Infrastructure.Data
+@inject RateCardImportService ImportService
+@inject ApplicationDbContext DbContext
+@inject ISnackbar Snackbar
+
+<MudDialog>
+    <TitleContent>
+        <MudText Typo="Typo.h6">
+            <MudIcon Icon="@Icons.Material.Filled.Upload" Class="mr-2" />
+            Import Rate Card from Excel
+        </MudText>
+    </TitleContent>
+    <DialogContent>
+        <MudStack Spacing="4">
+            @if (!_parsed)
+            {
+                <MudAlert Severity="Severity.Info" Dense="true">
+                    Upload an Excel file with rate card data. The file should contain zone categories, zones, and weight-based rates.
+                </MudAlert>
+
+                <MudFileUpload T="IBrowserFile" Accept=".xlsx,.xls" FilesChanged="HandleFileSelected" MaximumFileCount="1">
+                    <ActivatorContent>
+                        <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.CloudUpload">
+                            Select Excel File
+                        </MudButton>
+                    </ActivatorContent>
+                </MudFileUpload>
+
+                @if (_selectedFile != null)
+                {
+                    <MudText Typo="Typo.body2" Color="Color.Success">
+                        Selected: @_selectedFile.Name (@FormatSize(_selectedFile.Size))
+                    </MudText>
+                }
+
+                <MudSelect T="MovementType" Label="Movement Type" @bind-Value="_movementType" Margin="Margin.Dense">
+                    <MudSelectItem Value="MovementType.Domestic">Domestic</MudSelectItem>
+                    <MudSelectItem Value="MovementType.InternationalExport">International Export</MudSelectItem>
+                    <MudSelectItem Value="MovementType.InternationalImport">International Import</MudSelectItem>
+                </MudSelect>
+
+                @if (_parsing)
+                {
+                    <MudProgressLinear Indeterminate="true" Color="Color.Primary" />
+                    <MudText Typo="Typo.body2">Parsing Excel file...</MudText>
+                }
+            }
+            else if (_parseResult != null)
+            {
+                <MudTabs Elevation="0" Rounded="true" ApplyEffectsToContainer="true" PanelClass="pa-3">
+                    <MudTabPanel Text="Summary" Icon="@Icons.Material.Filled.Summarize">
+                        <MudStack Spacing="2">
+                            <MudText Typo="Typo.subtitle1">Zone Categories Found: @_parseResult.ZoneCategories.Count</MudText>
+                            @foreach (var category in _parseResult.ZoneCategories)
+                            {
+                                <MudChip T="string" Color="Color.Primary" Size="Size.Small">
+                                    @category.Name (@category.Zones.Count zones)
+                                </MudChip>
+                            }
+
+                            <MudDivider Class="my-2" />
+
+                            <MudText Typo="Typo.subtitle1">Rate Cards Found: @_parseResult.RateCards.Count</MudText>
+                            @foreach (var rateCard in _parseResult.RateCards)
+                            {
+                                <MudPaper Class="pa-2" Elevation="1">
+                                    <MudText Typo="Typo.body1"><strong>@rateCard.Name</strong></MudText>
+                                    <MudText Typo="Typo.body2">
+                                        @rateCard.Zones.Count carrier/zone combinations,
+                                        @(rateCard.Zones.FirstOrDefault()?.WeightRates.Count ?? 0) weight slabs
+                                    </MudText>
+                                </MudPaper>
+                            }
+
+                            @if (_parseResult.Errors.Any())
+                            {
+                                <MudDivider Class="my-2" />
+                                <MudAlert Severity="Severity.Warning">
+                                    @_parseResult.Errors.Count warning(s) found
+                                </MudAlert>
+                            }
+                        </MudStack>
+                    </MudTabPanel>
+
+                    <MudTabPanel Text="Zone Categories" Icon="@Icons.Material.Filled.Category">
+                        <MudSimpleTable Dense="true" Striped="true" Bordered="true">
+                            <thead>
+                                <tr>
+                                    <th>Category</th>
+                                    <th>Zone</th>
+                                    <th>Countries</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var category in _parseResult.ZoneCategories)
+                                {
+                                    @foreach (var zone in category.Zones)
+                                    {
+                                        <tr>
+                                            <td>@category.Name</td>
+                                            <td>@zone.ZoneCode</td>
+                                            <td>@string.Join(", ", zone.Countries)</td>
+                                        </tr>
+                                    }
+                                }
+                            </tbody>
+                        </MudSimpleTable>
+                    </MudTabPanel>
+
+                    <MudTabPanel Text="Rate Preview" Icon="@Icons.Material.Filled.AttachMoney">
+                        @foreach (var rateCard in _parseResult.RateCards)
+                        {
+                            <MudText Typo="Typo.subtitle1" Class="mb-2">@rateCard.Name</MudText>
+                            <MudSimpleTable Dense="true" Striped="true" Bordered="true" Class="mb-4">
+                                <thead>
+                                    <tr>
+                                        <th>Category</th>
+                                        <th>Zone</th>
+                                        @foreach (var w in rateCard.Zones.FirstOrDefault()?.WeightRates.Take(10) ?? Enumerable.Empty<ImportedWeightRate>())
+                                        {
+                                            <th>@w.Weight kg</th>
+                                        }
+                                        @if ((rateCard.Zones.FirstOrDefault()?.WeightRates.Count ?? 0) > 10)
+                                        {
+                                            <th>...</th>
+                                        }
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @foreach (var zone in rateCard.Zones)
+                                    {
+                                        <tr>
+                                            <td>@zone.ZoneCategoryName</td>
+                                            <td>@zone.ZoneCode</td>
+                                            @foreach (var rate in zone.WeightRates.Take(10))
+                                            {
+                                                <td>@rate.Rate.ToString("N2")</td>
+                                            }
+                                            @if (zone.WeightRates.Count > 10)
+                                            {
+                                                <td>...</td>
+                                            }
+                                        </tr>
+                                    }
+                                </tbody>
+                            </MudSimpleTable>
+                        }
+                    </MudTabPanel>
+
+                    @if (_parseResult.Errors.Any())
+                    {
+                        <MudTabPanel Text="Warnings" Icon="@Icons.Material.Filled.Warning" BadgeData="@_parseResult.Errors.Count" BadgeColor="Color.Warning">
+                            <MudList T="string" Dense="true">
+                                @foreach (var error in _parseResult.Errors)
+                                {
+                                    <MudListItem Icon="@(error.IsCritical ? Icons.Material.Filled.Error : Icons.Material.Filled.Warning)"
+                                                 IconColor="@(error.IsCritical ? Color.Error : Color.Warning)">
+                                        @if (error.RowNumber.HasValue)
+                                        {
+                                            <span>Row @error.RowNumber: </span>
+                                        }
+                                        @error.Message
+                                    </MudListItem>
+                                }
+                            </MudList>
+                        </MudTabPanel>
+                    }
+                </MudTabs>
+
+                @if (_importing)
+                {
+                    <MudProgressLinear Indeterminate="true" Color="Color.Primary" />
+                    <MudText Typo="Typo.body2">Importing rate cards...</MudText>
+                }
+            }
+        </MudStack>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Cancel">Cancel</MudButton>
+        @if (!_parsed && _selectedFile != null)
+        {
+            <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="ParseFile" Disabled="_parsing">
+                Parse File
+            </MudButton>
+        }
+        @if (_parsed && _parseResult != null && _parseResult.IsValid)
+        {
+            <MudButton Color="Color.Secondary" Variant="Variant.Outlined" OnClick="ResetDialog">
+                Select Different File
+            </MudButton>
+            <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="Import" Disabled="_importing">
+                Import @_parseResult.RateCards.Count Rate Card(s)
+            </MudButton>
+        }
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] MudDialogInstance MudDialog { get; set; } = null!;
+    [Parameter] public long CompanyId { get; set; }
+
+    private IBrowserFile? _selectedFile;
+    private bool _parsing;
+    private bool _parsed;
+    private bool _importing;
+    private RateCardImportResult? _parseResult;
+    private MovementType _movementType = MovementType.InternationalExport;
+
+    private void HandleFileSelected(IBrowserFile file)
+    {
+        _selectedFile = file;
+        _parsed = false;
+        _parseResult = null;
+    }
+
+    private async Task ParseFile()
+    {
+        if (_selectedFile == null) return;
+
+        _parsing = true;
+        StateHasChanged();
+
+        try
+        {
+            using var stream = new MemoryStream();
+            await _selectedFile.OpenReadStream(maxAllowedSize: 10 * 1024 * 1024).CopyToAsync(stream);
+            stream.Position = 0;
+
+            _parseResult = ImportService.ParseExcel(stream);
+            _parsed = true;
+
+            if (!_parseResult.IsValid)
+            {
+                Snackbar.Add("File contains critical errors", Severity.Error);
+            }
+            else if (_parseResult.RateCards.Count == 0)
+            {
+                Snackbar.Add("No rate cards found in file", Severity.Warning);
+            }
+            else
+            {
+                Snackbar.Add($"Found {_parseResult.RateCards.Count} rate card(s)", Severity.Success);
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error parsing file: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _parsing = false;
+        }
+    }
+
+    private async Task Import()
+    {
+        if (_parseResult == null) return;
+
+        if (CompanyId == 0)
+        {
+            Snackbar.Add("No company configured. Please set up a company first.", Severity.Error);
+            return;
+        }
+
+        _importing = true;
+        StateHasChanged();
+
+        try
+        {
+            var (created, updated, errors) = await ImportService.ImportRateCards(
+                _parseResult,
+                CompanyId,
+                _movementType,
+                DbContext);
+
+            if (errors.Any())
+            {
+                foreach (var error in errors.Take(5))
+                {
+                    Snackbar.Add(error, Severity.Warning);
+                }
+            }
+
+            Snackbar.Add($"Import complete: {created} created, {updated} updated", Severity.Success);
+            MudDialog.Close(DialogResult.Ok(true));
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Import error: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _importing = false;
+        }
+    }
+
+    private void ResetDialog()
+    {
+        _selectedFile = null;
+        _parsed = false;
+        _parseResult = null;
+    }
+
+    private void Cancel() => MudDialog.Cancel();
+
+    private string FormatSize(long bytes)
+    {
+        if (bytes < 1024) return $"{bytes} B";
+        if (bytes < 1024 * 1024) return $"{bytes / 1024.0:N1} KB";
+        return $"{bytes / (1024.0 * 1024.0):N1} MB";
+    }
+}
