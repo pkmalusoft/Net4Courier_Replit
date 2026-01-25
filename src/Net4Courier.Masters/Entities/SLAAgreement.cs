@@ -43,6 +43,7 @@ public class SLAAgreement : BaseEntity
     public virtual Company Company { get; set; } = null!;
     public virtual Party Customer { get; set; } = null!;
     public virtual ICollection<SLATransitRule> TransitRules { get; set; } = new List<SLATransitRule>();
+    public virtual ICollection<SLADocument> Documents { get; set; } = new List<SLADocument>();
 }
 
 public enum SLAAccountType

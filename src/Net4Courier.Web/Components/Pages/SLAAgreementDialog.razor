@@ -1,6 +1,10 @@
 @inject ApplicationDbContext DbContext
 @inject ISnackbar Snackbar
+@inject IWebHostEnvironment WebHostEnvironment
+@inject IJSRuntime JSRuntime
+@inject NavigationManager NavigationManager
 @using Microsoft.EntityFrameworkCore
+@using Microsoft.AspNetCore.Components.Forms
 @using Net4Courier.Infrastructure.Data
 @using Net4Courier.Masters.Entities
 
@@ -103,6 +107,59 @@
 
                 @if (!IsNew)
                 {
+                    <MudItem xs="12">
+                        <MudDivider Class="my-2" />
+                        <MudText Typo="Typo.subtitle1" Class="mb-2">Attached Documents</MudText>
+                    </MudItem>
+                    <MudItem xs="12">
+                        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2" Class="mb-2">
+                            <MudFileUpload T="IBrowserFile" FilesChanged="OnDocumentFileChanged" Accept=".pdf,.doc,.docx,.xls,.xlsx,.png,.jpg,.jpeg">
+                                <ButtonTemplate>
+                                    <MudButton HtmlTag="label"
+                                               Variant="Variant.Outlined" 
+                                               Color="Color.Primary" 
+                                               Size="Size.Small"
+                                               StartIcon="@Icons.Material.Filled.AttachFile"
+                                               for="@context.Id"
+                                               Disabled="_isUploading">
+                                        @if (_isUploading) { <text>Uploading...</text> } else { <text>Attach Document</text> }
+                                    </MudButton>
+                                </ButtonTemplate>
+                            </MudFileUpload>
+                            <MudText Typo="Typo.caption" Color="Color.Secondary">PDF, Word, Excel, Images (Max 10MB)</MudText>
+                        </MudStack>
+                        
+                        @if (_documents.Any())
+                        {
+                            <MudTable Items="@_documents" Dense="true" Hover="true" Elevation="0" Class="mt-2">
+                                <HeaderContent>
+                                    <MudTh>File Name</MudTh>
+                                    <MudTh>Size</MudTh>
+                                    <MudTh>Uploaded</MudTh>
+                                    <MudTh Style="width: 100px;">Actions</MudTh>
+                                </HeaderContent>
+                                <RowTemplate>
+                                    <MudTd DataLabel="File Name">@context.OriginalFileName</MudTd>
+                                    <MudTd DataLabel="Size">@FormatFileSize(context.FileSize)</MudTd>
+                                    <MudTd DataLabel="Uploaded">@context.UploadedAt.ToString("dd-MMM-yyyy HH:mm")</MudTd>
+                                    <MudTd DataLabel="Actions">
+                                        <MudIconButton Icon="@Icons.Material.Filled.Download" Size="Size.Small" Color="Color.Primary" 
+                                                       OnClick="@(() => DownloadDocument(context))" Title="Download" />
+                                        <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" Color="Color.Error" 
+                                                       OnClick="@(() => DeleteDocument(context))" Title="Delete" />
+                                    </MudTd>
+                                </RowTemplate>
+                            </MudTable>
+                        }
+                        else
+                        {
+                            <MudText Typo="Typo.caption" Color="Color.Secondary" Class="mt-2">No documents attached</MudText>
+                        }
+                    </MudItem>
+                }
+
+                @if (!IsNew)
+                {
                     <MudItem xs="12" md="6">
                         <MudSelect T="SLAStatus" @bind-Value="Agreement.Status" Label="Status" Variant="Variant.Outlined">
                             @foreach (var status in Enum.GetValues<SLAStatus>())
@@ -137,6 +194,9 @@
     private long _selectedCustomerId;
     private DateTime? _agreementDate;
     private DateTime? _expiryDate;
+    private List<SLADocument> _documents = new();
+    private bool _isUploading;
+    private const long MaxFileSize = 10 * 1024 * 1024; // 10MB
 
     protected override async Task OnInitializedAsync()
     {
@@ -163,6 +223,18 @@
                 Agreement.CompanyId = _companies.First().Id;
             }
         }
+        else
+        {
+            await LoadDocuments();
+        }
+    }
+
+    private async Task LoadDocuments()
+    {
+        _documents = await DbContext.SLADocuments
+            .Where(d => d.SLAAgreementId == Agreement.Id && d.IsActive)
+            .OrderByDescending(d => d.UploadedAt)
+            .ToListAsync();
     }
 
     private async Task LoadLookups()
@@ -223,4 +295,113 @@
     }
 
     private void Cancel() => MudDialog.Cancel();
+
+    private static readonly string[] AllowedExtensions = { ".pdf", ".doc", ".docx", ".xls", ".xlsx", ".png", ".jpg", ".jpeg" };
+
+    private async Task OnDocumentFileChanged(IBrowserFile file)
+    {
+        if (file == null) return;
+        
+        if (file.Size > MaxFileSize)
+        {
+            Snackbar.Add("File size exceeds 10MB limit", Severity.Error);
+            return;
+        }
+
+        var extension = Path.GetExtension(file.Name).ToLowerInvariant();
+        if (!AllowedExtensions.Contains(extension))
+        {
+            Snackbar.Add("Invalid file type. Allowed: PDF, Word, Excel, Images", Severity.Error);
+            return;
+        }
+
+        _isUploading = true;
+        StateHasChanged();
+
+        try
+        {
+            var uploadsPath = Path.Combine(WebHostEnvironment.WebRootPath, "uploads", "sla-documents");
+            Directory.CreateDirectory(uploadsPath);
+            var uniqueFileName = $"sla_{Agreement.Id}_{Guid.NewGuid()}{extension}";
+            var filePath = Path.Combine(uploadsPath, uniqueFileName);
+
+            await using var stream = new FileStream(filePath, FileMode.Create);
+            await file.OpenReadStream(MaxFileSize).CopyToAsync(stream);
+
+            var document = new SLADocument
+            {
+                SLAAgreementId = Agreement.Id,
+                FileName = uniqueFileName,
+                OriginalFileName = file.Name,
+                FilePath = $"/uploads/sla-documents/{uniqueFileName}",
+                ContentType = file.ContentType,
+                FileSize = file.Size,
+                UploadedAt = DateTime.UtcNow,
+                CreatedAt = DateTime.UtcNow,
+                IsActive = true
+            };
+
+            DbContext.SLADocuments.Add(document);
+            await DbContext.SaveChangesAsync();
+
+            await LoadDocuments();
+            Snackbar.Add("Document uploaded successfully", Severity.Success);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error uploading document: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _isUploading = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task DownloadDocument(SLADocument document)
+    {
+        var fullPath = Path.Combine(WebHostEnvironment.WebRootPath, document.FilePath.TrimStart('/'));
+        if (!File.Exists(fullPath))
+        {
+            Snackbar.Add("File not found", Severity.Error);
+            return;
+        }
+
+        var fileBytes = await File.ReadAllBytesAsync(fullPath);
+        var base64 = Convert.ToBase64String(fileBytes);
+        var mimeType = document.ContentType ?? "application/octet-stream";
+        
+        await JSRuntime.InvokeVoidAsync("downloadFileFromBase64", base64, document.OriginalFileName, mimeType);
+    }
+
+    private async Task DeleteDocument(SLADocument document)
+    {
+        try
+        {
+            var fullPath = Path.Combine(WebHostEnvironment.WebRootPath, document.FilePath.TrimStart('/'));
+            if (File.Exists(fullPath))
+            {
+                File.Delete(fullPath);
+            }
+
+            document.IsActive = false;
+            document.ModifiedAt = DateTime.UtcNow;
+            DbContext.SLADocuments.Update(document);
+            await DbContext.SaveChangesAsync();
+
+            await LoadDocuments();
+            Snackbar.Add("Document deleted", Severity.Success);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error deleting document: {ex.Message}", Severity.Error);
+        }
+    }
+
+    private string FormatFileSize(long bytes)
+    {
+        if (bytes < 1024) return $"{bytes} B";
+        if (bytes < 1024 * 1024) return $"{bytes / 1024.0:N1} KB";
+        return $"{bytes / (1024.0 * 1024.0):N1} MB";
+    }
 }

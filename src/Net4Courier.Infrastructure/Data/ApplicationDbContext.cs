@@ -25,6 +25,7 @@ public class ApplicationDbContext : DbContext
     public DbSet<PartyAddress> PartyAddresses => Set<PartyAddress>();
     public DbSet<SLAAgreement> SLAAgreements => Set<SLAAgreement>();
     public DbSet<SLATransitRule> SLATransitRules => Set<SLATransitRule>();
+    public DbSet<SLADocument> SLADocuments => Set<SLADocument>();
     public DbSet<UserType> UserTypes => Set<UserType>();
     public DbSet<Country> Countries => Set<Country>();
     public DbSet<State> States => Set<State>();
