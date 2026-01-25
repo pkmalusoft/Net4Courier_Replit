@@ -149,6 +149,7 @@ builder.Services.AddScoped<PickupCommitmentService>();
 builder.Services.AddScoped<PickupIncentiveService>();
 builder.Services.AddScoped<TransferOrderService>();
 builder.Services.AddScoped<IPageErrorHandler, PageErrorHandler>();
+builder.Services.AddScoped<ISLAPdfService, SLAPdfService>();
 builder.Services.AddAuthorizationCore();
 builder.Services.AddCascadingAuthenticationState();
 
@@ -319,6 +320,19 @@ app.MapGet("/api/report/domestic-manifest/{id:long}", async (long id, ReportingS
     var pdf = await reportService.GenerateDomesticManifest(id);
     if (pdf.Length == 0) return Results.NotFound();
     return Results.File(pdf, "application/pdf", $"Domestic-Manifest-{id}.pdf");
+});
+
+app.MapGet("/api/report/sla-agreement/{id:long}", async (long id, ISLAPdfService slaPdfService) =>
+{
+    try
+    {
+        var pdf = await slaPdfService.GenerateSLAAgreementPdfAsync(id);
+        return Results.File(pdf, "application/pdf", $"SLA-Agreement-{id}.pdf");
+    }
+    catch (ArgumentException)
+    {
+        return Results.NotFound();
+    }
 });
 
 app.MapPost("/api/bookings/webhook/{integrationId}", async (
