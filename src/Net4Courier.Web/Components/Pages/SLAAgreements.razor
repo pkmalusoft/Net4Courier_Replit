@@ -1,0 +1,293 @@
+@page "/sla-agreements"
+@page "/sla-agreements/customer/{CustomerId:long}"
+@inject ApplicationDbContext DbContext
+@inject IDialogService DialogService
+@inject ISnackbar Snackbar
+@inject NavigationManager Navigation
+@using Microsoft.EntityFrameworkCore
+@using Net4Courier.Infrastructure.Data
+@using Net4Courier.Masters.Entities
+
+<PageTitle>SLA Agreements - Net4Courier</PageTitle>
+
+<MudPaper Class="pa-4 mb-4" Elevation="2">
+    <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
+        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+            <MudIcon Icon="@Icons.Material.Filled.Handshake" Size="Size.Large" Color="Color.Primary" />
+            <MudText Typo="Typo.h5">SLA Agreements</MudText>
+            @if (_customer != null)
+            {
+                <MudChip T="string" Size="Size.Small" Color="Color.Info">@_customer.Name</MudChip>
+            }
+        </MudStack>
+        <MudStack Row="true" Spacing="2">
+            <MudTextField @bind-Value="_searchString" Placeholder="Search agreements..." Adornment="Adornment.Start" 
+                          AdornmentIcon="@Icons.Material.Filled.Search" IconSize="Size.Medium" Class="mt-0" Immediate="true" Style="width:300px" />
+            <MudSelect T="SLAStatus?" @bind-Value="_statusFilter" Label="Status" Variant="Variant.Outlined" Dense="true" Margin="Margin.Dense" Style="width:150px">
+                <MudSelectItem T="SLAStatus?" Value="null">All</MudSelectItem>
+                @foreach (var status in Enum.GetValues<SLAStatus>())
+                {
+                    <MudSelectItem T="SLAStatus?" Value="status">@status.ToString()</MudSelectItem>
+                }
+            </MudSelect>
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add" OnClick="OpenCreateDialog">
+                New Agreement
+            </MudButton>
+        </MudStack>
+    </MudStack>
+    <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mt-2">
+        Manage customer service level agreements including transit commitments, credit terms, and liability limits.
+    </MudText>
+</MudPaper>
+
+<MudPaper Elevation="2">
+    <MudTable Items="@FilteredAgreements" Hover="true" Striped="true" Loading="@_loading" LoadingProgressColor="Color.Primary" Dense="true">
+        <HeaderContent>
+            <MudTh>Agreement No</MudTh>
+            <MudTh>Customer</MudTh>
+            <MudTh>Title</MudTh>
+            <MudTh>Account Type</MudTh>
+            <MudTh Style="text-align:right">Credit Limit</MudTh>
+            <MudTh Style="text-align:center">Payment Terms</MudTh>
+            <MudTh>Agreement Date</MudTh>
+            <MudTh>Expiry Date</MudTh>
+            <MudTh>Status</MudTh>
+            <MudTh Style="width: 150px;">Actions</MudTh>
+        </HeaderContent>
+        <RowTemplate>
+            <MudTd DataLabel="Agreement No">
+                <MudChip T="string" Size="Size.Small" Color="Color.Primary">@context.AgreementNo</MudChip>
+            </MudTd>
+            <MudTd DataLabel="Customer">
+                <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="1">
+                    @if (!string.IsNullOrEmpty(context.Customer?.Logo))
+                    {
+                        <MudImage Src="@context.Customer.Logo" Height="24" ObjectFit="ObjectFit.Contain" />
+                    }
+                    else
+                    {
+                        <MudIcon Icon="@Icons.Material.Filled.Business" Size="Size.Small" Color="Color.Info" />
+                    }
+                    <MudText>@context.Customer?.Name</MudText>
+                </MudStack>
+            </MudTd>
+            <MudTd DataLabel="Title">@(context.Title ?? "-")</MudTd>
+            <MudTd DataLabel="Account Type">
+                <MudChip T="string" Size="Size.Small" Color="@GetAccountTypeColor(context.AccountType)">@context.AccountType</MudChip>
+            </MudTd>
+            <MudTd DataLabel="Credit Limit" Style="text-align:right">@context.CreditLimit.ToString("N0")</MudTd>
+            <MudTd DataLabel="Payment Terms" Style="text-align:center">@context.PaymentTermsDays days</MudTd>
+            <MudTd DataLabel="Agreement Date">@context.AgreementDate.ToString("dd-MMM-yyyy")</MudTd>
+            <MudTd DataLabel="Expiry Date">
+                @if (context.ExpiryDate.HasValue)
+                {
+                    var isExpired = context.ExpiryDate.Value < DateTime.Today;
+                    <MudText Color="@(isExpired ? Color.Error : Color.Default)">@context.ExpiryDate.Value.ToString("dd-MMM-yyyy")</MudText>
+                }
+                else
+                {
+                    <MudText Color="Color.Secondary">No Expiry</MudText>
+                }
+            </MudTd>
+            <MudTd DataLabel="Status">
+                <MudChip T="string" Color="@GetStatusColor(context.Status)" Size="Size.Small">@context.Status</MudChip>
+            </MudTd>
+            <MudTd>
+                <MudIconButton Icon="@Icons.Material.Filled.Edit" Size="Size.Small" Color="Color.Primary" OnClick="@(() => OpenEditDialog(context))" Title="Edit" />
+                <MudIconButton Icon="@Icons.Material.Filled.List" Size="Size.Small" Color="Color.Info" OnClick="@(() => OpenTransitRulesDialog(context))" Title="Transit Rules" />
+                @if (context.Status == SLAStatus.Draft || context.Status == SLAStatus.PendingApproval)
+                {
+                    <MudIconButton Icon="@Icons.Material.Filled.CheckCircle" Size="Size.Small" Color="Color.Success" OnClick="@(() => ActivateAgreement(context))" Title="Activate" />
+                }
+                @if (context.Status == SLAStatus.Active)
+                {
+                    <MudIconButton Icon="@Icons.Material.Filled.Cancel" Size="Size.Small" Color="Color.Warning" OnClick="@(() => TerminateAgreement(context))" Title="Terminate" />
+                }
+                <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" Color="Color.Error" OnClick="@(() => DeleteAgreement(context))" Title="Delete" />
+            </MudTd>
+        </RowTemplate>
+        <NoRecordsContent>
+            <MudText>No SLA agreements found.</MudText>
+        </NoRecordsContent>
+    </MudTable>
+</MudPaper>
+
+@code {
+    [Parameter] public long? CustomerId { get; set; }
+    
+    private List<SLAAgreement> _agreements = new();
+    private Party? _customer;
+    private bool _loading = true;
+    private string _searchString = "";
+    private SLAStatus? _statusFilter;
+
+    private IEnumerable<SLAAgreement> FilteredAgreements => _agreements.Where(FilterFunc);
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadData();
+    }
+
+    private async Task LoadData()
+    {
+        _loading = true;
+        
+        if (CustomerId.HasValue)
+        {
+            _customer = await DbContext.Parties.FirstOrDefaultAsync(p => p.Id == CustomerId && !p.IsDeleted);
+        }
+        
+        var query = DbContext.SLAAgreements
+            .Include(s => s.Customer)
+            .Include(s => s.Company)
+            .Where(s => !s.IsDeleted);
+            
+        if (CustomerId.HasValue)
+        {
+            query = query.Where(s => s.CustomerId == CustomerId);
+        }
+        
+        _agreements = await query.OrderByDescending(s => s.CreatedAt).ToListAsync();
+        _loading = false;
+    }
+
+    private bool FilterFunc(SLAAgreement agreement)
+    {
+        if (_statusFilter.HasValue && agreement.Status != _statusFilter.Value)
+            return false;
+            
+        if (string.IsNullOrWhiteSpace(_searchString))
+            return true;
+            
+        return agreement.AgreementNo.Contains(_searchString, StringComparison.OrdinalIgnoreCase) ||
+               (agreement.Title?.Contains(_searchString, StringComparison.OrdinalIgnoreCase) ?? false) ||
+               (agreement.Customer?.Name?.Contains(_searchString, StringComparison.OrdinalIgnoreCase) ?? false);
+    }
+
+    private Color GetStatusColor(SLAStatus status) => status switch
+    {
+        SLAStatus.Draft => Color.Default,
+        SLAStatus.PendingApproval => Color.Warning,
+        SLAStatus.Active => Color.Success,
+        SLAStatus.Expired => Color.Error,
+        SLAStatus.Terminated => Color.Error,
+        SLAStatus.Suspended => Color.Warning,
+        _ => Color.Default
+    };
+
+    private Color GetAccountTypeColor(SLAAccountType type) => type switch
+    {
+        SLAAccountType.Cash => Color.Success,
+        SLAAccountType.Credit => Color.Info,
+        SLAAccountType.Prepaid => Color.Warning,
+        _ => Color.Default
+    };
+
+    private async Task OpenCreateDialog()
+    {
+        var parameters = new DialogParameters<SLAAgreementDialog>
+        {
+            { x => x.Agreement, new SLAAgreement 
+                { 
+                    CustomerId = CustomerId ?? 0,
+                    AgreementDate = DateTime.Today,
+                    IsActive = true
+                } 
+            },
+            { x => x.IsNew, true },
+            { x => x.PreselectedCustomerId, CustomerId }
+        };
+        
+        var options = new DialogOptions { MaxWidth = MaxWidth.Medium, FullWidth = true, CloseButton = true };
+        var dialog = await DialogService.ShowAsync<SLAAgreementDialog>("New SLA Agreement", parameters, options);
+        var result = await dialog.Result;
+        
+        if (!result.Canceled)
+        {
+            await LoadData();
+        }
+    }
+
+    private async Task OpenEditDialog(SLAAgreement agreement)
+    {
+        var parameters = new DialogParameters<SLAAgreementDialog>
+        {
+            { x => x.Agreement, agreement },
+            { x => x.IsNew, false }
+        };
+        
+        var options = new DialogOptions { MaxWidth = MaxWidth.Medium, FullWidth = true, CloseButton = true };
+        var dialog = await DialogService.ShowAsync<SLAAgreementDialog>("Edit SLA Agreement", parameters, options);
+        var result = await dialog.Result;
+        
+        if (!result.Canceled)
+        {
+            await LoadData();
+        }
+    }
+
+    private async Task OpenTransitRulesDialog(SLAAgreement agreement)
+    {
+        var parameters = new DialogParameters<SLATransitRulesDialog>
+        {
+            { x => x.AgreementId, agreement.Id },
+            { x => x.AgreementNo, agreement.AgreementNo }
+        };
+        
+        var options = new DialogOptions { MaxWidth = MaxWidth.Large, FullWidth = true, CloseButton = true };
+        await DialogService.ShowAsync<SLATransitRulesDialog>("Transit Rules - " + agreement.AgreementNo, parameters, options);
+    }
+
+    private async Task ActivateAgreement(SLAAgreement agreement)
+    {
+        var confirm = await DialogService.ShowMessageBox(
+            "Activate Agreement",
+            $"Are you sure you want to activate agreement {agreement.AgreementNo}?",
+            yesText: "Activate", cancelText: "Cancel");
+            
+        if (confirm == true)
+        {
+            agreement.Status = SLAStatus.Active;
+            agreement.ApprovedAt = DateTime.UtcNow;
+            agreement.ModifiedAt = DateTime.UtcNow;
+            await DbContext.SaveChangesAsync();
+            Snackbar.Add("Agreement activated successfully", Severity.Success);
+            await LoadData();
+        }
+    }
+
+    private async Task TerminateAgreement(SLAAgreement agreement)
+    {
+        var confirm = await DialogService.ShowMessageBox(
+            "Terminate Agreement",
+            $"Are you sure you want to terminate agreement {agreement.AgreementNo}? This action cannot be undone.",
+            yesText: "Terminate", cancelText: "Cancel");
+            
+        if (confirm == true)
+        {
+            agreement.Status = SLAStatus.Terminated;
+            agreement.TerminatedAt = DateTime.UtcNow;
+            agreement.ModifiedAt = DateTime.UtcNow;
+            await DbContext.SaveChangesAsync();
+            Snackbar.Add("Agreement terminated", Severity.Warning);
+            await LoadData();
+        }
+    }
+
+    private async Task DeleteAgreement(SLAAgreement agreement)
+    {
+        var confirm = await DialogService.ShowMessageBox(
+            "Delete Agreement",
+            $"Are you sure you want to delete agreement {agreement.AgreementNo}?",
+            yesText: "Delete", cancelText: "Cancel");
+            
+        if (confirm == true)
+        {
+            agreement.IsDeleted = true;
+            agreement.ModifiedAt = DateTime.UtcNow;
+            await DbContext.SaveChangesAsync();
+            Snackbar.Add("Agreement deleted", Severity.Success);
+            await LoadData();
+        }
+    }
+}

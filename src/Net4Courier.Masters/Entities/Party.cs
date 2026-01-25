@@ -15,6 +15,7 @@ public class Party : BaseEntity
     public string? Mobile { get; set; }
     public string? Email { get; set; }
     public string? TaxNumber { get; set; }
+    public string? Logo { get; set; }
     public decimal CreditLimit { get; set; }
     public int CreditDays { get; set; }
     public bool IsActive { get; set; } = true;

@@ -1,5 +1,8 @@
 @inject ApplicationDbContext DbContext
+@inject IWebHostEnvironment Environment
+@inject ISnackbar Snackbar
 @using Microsoft.EntityFrameworkCore
+@using Microsoft.AspNetCore.Components.Forms
 @using Net4Courier.Infrastructure.Data
 @using Net4Courier.Masters.Entities
 
@@ -122,6 +125,39 @@
                 <MudItem xs="12" md="6">
                     <MudSwitch @bind-Value="Party.IsActive" Label="Active" Color="Color.Primary" />
                 </MudItem>
+
+                @if (Party.PartyType == PartyType.Customer)
+                {
+                    <MudItem xs="12">
+                        <MudDivider Class="my-2" />
+                        <MudText Typo="Typo.subtitle1" Class="mb-2">Customer Logo</MudText>
+                    </MudItem>
+                    <MudItem xs="12" md="6">
+                        <MudFileUpload T="IBrowserFile" FilesChanged="OnLogoFileChanged" Accept=".png,.jpg,.jpeg,.gif,.svg">
+                            <ActivatorContent>
+                                <MudButton Variant="Variant.Outlined" Color="Color.Primary" Size="Size.Small" StartIcon="@Icons.Material.Filled.CloudUpload">
+                                    Upload Logo
+                                </MudButton>
+                            </ActivatorContent>
+                        </MudFileUpload>
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">Max 2MB, PNG/JPG/SVG</MudText>
+                    </MudItem>
+                    <MudItem xs="12" md="6">
+                        @if (!string.IsNullOrEmpty(Party.Logo))
+                        {
+                            <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+                                <MudImage Src="@Party.Logo" Alt="Customer Logo" Height="50" ObjectFit="ObjectFit.Contain" 
+                                          Style="border: 1px solid #ddd; border-radius: 4px; padding: 2px;" />
+                                <MudIconButton Icon="@Icons.Material.Filled.Delete" Color="Color.Error" Size="Size.Small" 
+                                               OnClick="RemoveLogo" Title="Remove Logo" />
+                            </MudStack>
+                        }
+                        else
+                        {
+                            <MudText Typo="Typo.caption" Color="Color.Secondary">No logo</MudText>
+                        }
+                    </MudItem>
+                }
             </MudGrid>
         </MudForm>
     </DialogContent>
@@ -383,4 +419,60 @@
     }
 
     private void Cancel() => MudDialog.Cancel();
+
+    private async Task OnLogoFileChanged(IBrowserFile file)
+    {
+        try
+        {
+            if (file.Size > 2 * 1024 * 1024)
+            {
+                Snackbar.Add("Logo file size must be less than 2MB", Severity.Warning);
+                return;
+            }
+
+            var allowedExtensions = new[] { ".png", ".jpg", ".jpeg", ".gif", ".svg" };
+            var extension = Path.GetExtension(file.Name).ToLowerInvariant();
+            if (!allowedExtensions.Contains(extension))
+            {
+                Snackbar.Add("Invalid file type. Please upload PNG, JPG, GIF, or SVG", Severity.Warning);
+                return;
+            }
+
+            var uploadsFolder = Path.Combine(Environment.WebRootPath, "uploads", "logos");
+            Directory.CreateDirectory(uploadsFolder);
+
+            var fileName = $"customer_{(Party.Id > 0 ? Party.Id : DateTime.UtcNow.Ticks)}_{Guid.NewGuid():N}{extension}";
+            var filePath = Path.Combine(uploadsFolder, fileName);
+
+            await using var stream = new FileStream(filePath, FileMode.Create);
+            await file.OpenReadStream(maxAllowedSize: 2 * 1024 * 1024).CopyToAsync(stream);
+
+            if (!string.IsNullOrEmpty(Party.Logo))
+            {
+                var oldPath = Path.Combine(Environment.WebRootPath, Party.Logo.TrimStart('/'));
+                if (File.Exists(oldPath))
+                    File.Delete(oldPath);
+            }
+
+            Party.Logo = $"/uploads/logos/{fileName}";
+            Snackbar.Add("Logo uploaded successfully", Severity.Success);
+            StateHasChanged();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error uploading logo: {ex.Message}", Severity.Error);
+        }
+    }
+
+    private void RemoveLogo()
+    {
+        if (!string.IsNullOrEmpty(Party.Logo))
+        {
+            var filePath = Path.Combine(Environment.WebRootPath, Party.Logo.TrimStart('/'));
+            if (File.Exists(filePath))
+                File.Delete(filePath);
+        }
+        Party.Logo = null;
+        StateHasChanged();
+    }
 }

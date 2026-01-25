@@ -1,0 +1,223 @@
+@inject ApplicationDbContext DbContext
+@inject ISnackbar Snackbar
+@using Microsoft.EntityFrameworkCore
+@using Net4Courier.Infrastructure.Data
+@using Net4Courier.Masters.Entities
+
+<MudDialog>
+    <TitleContent>
+        <MudText Typo="Typo.h6">
+            @if (IsNew) { <text>New SLA Agreement</text> } else { <text>Edit SLA Agreement: @Agreement.AgreementNo</text> }
+        </MudText>
+    </TitleContent>
+    <DialogContent>
+        <MudForm @ref="_form" @bind-IsValid="_formIsValid">
+            <MudGrid Spacing="2">
+                <MudItem xs="12" md="6">
+                    <MudTextField @bind-Value="Agreement.AgreementNo" Label="Agreement No" Required="true" 
+                                  RequiredError="Agreement number is required" Variant="Variant.Outlined" />
+                </MudItem>
+                <MudItem xs="12" md="6">
+                    <MudAutocomplete T="long" @bind-Value="_selectedCustomerId" Label="Customer" Required="true"
+                                     RequiredError="Customer is required" SearchFunc="SearchCustomers" 
+                                     ToStringFunc="@(id => _customers.FirstOrDefault(c => c.Id == id)?.Name ?? "")"
+                                     Variant="Variant.Outlined" ResetValueOnEmptyText="true" 
+                                     Disabled="@(PreselectedCustomerId.HasValue)" />
+                </MudItem>
+                <MudItem xs="12">
+                    <MudTextField @bind-Value="Agreement.Title" Label="Title / Description" Variant="Variant.Outlined" />
+                </MudItem>
+
+                <MudItem xs="12">
+                    <MudDivider Class="my-2" />
+                    <MudText Typo="Typo.subtitle1" Class="mb-2">Account Terms</MudText>
+                </MudItem>
+                <MudItem xs="12" md="4">
+                    <MudSelect T="SLAAccountType" @bind-Value="Agreement.AccountType" Label="Account Type" Variant="Variant.Outlined">
+                        @foreach (var type in Enum.GetValues<SLAAccountType>())
+                        {
+                            <MudSelectItem T="SLAAccountType" Value="type">@type</MudSelectItem>
+                        }
+                    </MudSelect>
+                </MudItem>
+                <MudItem xs="12" md="4">
+                    <MudNumericField @bind-Value="Agreement.CreditLimit" Label="Credit Limit" Variant="Variant.Outlined" Format="N0" />
+                </MudItem>
+                <MudItem xs="12" md="4">
+                    <MudNumericField @bind-Value="Agreement.PaymentTermsDays" Label="Payment Terms (Days)" Variant="Variant.Outlined" />
+                </MudItem>
+
+                <MudItem xs="12">
+                    <MudDivider Class="my-2" />
+                    <MudText Typo="Typo.subtitle1" Class="mb-2">Agreement Period</MudText>
+                </MudItem>
+                <MudItem xs="12" md="6">
+                    <MudDatePicker @bind-Date="_agreementDate" Label="Agreement Date" Variant="Variant.Outlined" 
+                                   DateFormat="dd-MMM-yyyy" Editable="true"
+                                   AnchorOrigin="Origin.BottomCenter" TransformOrigin="Origin.TopCenter" />
+                </MudItem>
+                <MudItem xs="12" md="6">
+                    <MudDatePicker @bind-Date="_expiryDate" Label="Expiry Date (Optional)" Variant="Variant.Outlined" 
+                                   DateFormat="dd-MMM-yyyy" Editable="true" Clearable="true"
+                                   AnchorOrigin="Origin.BottomCenter" TransformOrigin="Origin.TopCenter" />
+                </MudItem>
+
+                <MudItem xs="12">
+                    <MudDivider Class="my-2" />
+                    <MudText Typo="Typo.subtitle1" Class="mb-2">Weight & Volumetric Settings</MudText>
+                </MudItem>
+                <MudItem xs="12" md="3">
+                    <MudNumericField @bind-Value="Agreement.MaxPackageWeight" Label="Max Package Weight (KG)" Variant="Variant.Outlined" />
+                </MudItem>
+                <MudItem xs="12" md="3">
+                    <MudNumericField @bind-Value="Agreement.VolumetricDivisorAir" Label="Vol. Divisor (Air)" Variant="Variant.Outlined" />
+                </MudItem>
+                <MudItem xs="12" md="3">
+                    <MudNumericField @bind-Value="Agreement.VolumetricDivisorRoad" Label="Vol. Divisor (Road)" Variant="Variant.Outlined" />
+                </MudItem>
+                <MudItem xs="12" md="3">
+                    <MudNumericField @bind-Value="Agreement.VolumetricDivisorDomestic" Label="Vol. Divisor (Domestic)" Variant="Variant.Outlined" />
+                </MudItem>
+
+                <MudItem xs="12">
+                    <MudDivider Class="my-2" />
+                    <MudText Typo="Typo.subtitle1" Class="mb-2">Liability</MudText>
+                </MudItem>
+                <MudItem xs="12" md="6">
+                    <MudNumericField @bind-Value="Agreement.LiabilityLimitUSD" Label="Liability Limit" Variant="Variant.Outlined" Format="N2" />
+                </MudItem>
+                <MudItem xs="12" md="6">
+                    <MudTextField @bind-Value="Agreement.LiabilityLimitCurrency" Label="Currency" Variant="Variant.Outlined" />
+                </MudItem>
+
+                <MudItem xs="12">
+                    <MudDivider Class="my-2" />
+                    <MudText Typo="Typo.subtitle1" Class="mb-2">Additional Terms</MudText>
+                </MudItem>
+                <MudItem xs="12">
+                    <MudTextField @bind-Value="Agreement.SpecialTerms" Label="Special Terms" Variant="Variant.Outlined" Lines="3" />
+                </MudItem>
+                <MudItem xs="12">
+                    <MudTextField @bind-Value="Agreement.Notes" Label="Internal Notes" Variant="Variant.Outlined" Lines="2" />
+                </MudItem>
+
+                @if (!IsNew)
+                {
+                    <MudItem xs="12" md="6">
+                        <MudSelect T="SLAStatus" @bind-Value="Agreement.Status" Label="Status" Variant="Variant.Outlined">
+                            @foreach (var status in Enum.GetValues<SLAStatus>())
+                            {
+                                <MudSelectItem T="SLAStatus" Value="status">@status</MudSelectItem>
+                            }
+                        </MudSelect>
+                    </MudItem>
+                    <MudItem xs="12" md="6">
+                        <MudSwitch @bind-Value="Agreement.IsActive" Label="Active" Color="Color.Primary" />
+                    </MudItem>
+                }
+            </MudGrid>
+        </MudForm>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Cancel">Cancel</MudButton>
+        <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="Save" Disabled="!_formIsValid">Save</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] private MudDialogInstance MudDialog { get; set; } = null!;
+    [Parameter] public SLAAgreement Agreement { get; set; } = new();
+    [Parameter] public bool IsNew { get; set; }
+    [Parameter] public long? PreselectedCustomerId { get; set; }
+
+    private MudForm _form = null!;
+    private bool _formIsValid;
+    private List<Party> _customers = new();
+    private List<Company> _companies = new();
+    private long _selectedCustomerId;
+    private DateTime? _agreementDate;
+    private DateTime? _expiryDate;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadLookups();
+        
+        if (PreselectedCustomerId.HasValue && IsNew)
+        {
+            _selectedCustomerId = PreselectedCustomerId.Value;
+            Agreement.CustomerId = PreselectedCustomerId.Value;
+        }
+        else if (!IsNew)
+        {
+            _selectedCustomerId = Agreement.CustomerId;
+        }
+        
+        _agreementDate = Agreement.AgreementDate == default ? DateTime.Today : Agreement.AgreementDate;
+        _expiryDate = Agreement.ExpiryDate;
+        
+        if (IsNew)
+        {
+            Agreement.AgreementNo = await GenerateAgreementNo();
+            if (_companies.Any())
+            {
+                Agreement.CompanyId = _companies.First().Id;
+            }
+        }
+    }
+
+    private async Task LoadLookups()
+    {
+        _customers = await DbContext.Parties
+            .Where(p => p.PartyType == PartyType.Customer && p.IsActive && !p.IsDeleted)
+            .OrderBy(p => p.Name)
+            .ToListAsync();
+            
+        _companies = await DbContext.Companies
+            .Where(c => c.IsActive && !c.IsDeleted)
+            .OrderBy(c => c.Name)
+            .ToListAsync();
+    }
+
+    private async Task<string> GenerateAgreementNo()
+    {
+        var count = await DbContext.SLAAgreements.CountAsync() + 1;
+        return $"SLA-{DateTime.Today:yyyyMM}-{count:D4}";
+    }
+
+    private Task<IEnumerable<long>> SearchCustomers(string value)
+    {
+        var results = _customers
+            .Where(c => string.IsNullOrEmpty(value) || 
+                       c.Name.Contains(value, StringComparison.OrdinalIgnoreCase) ||
+                       (c.Code?.Contains(value, StringComparison.OrdinalIgnoreCase) ?? false))
+            .Select(c => c.Id);
+        return Task.FromResult(results);
+    }
+
+    private async Task Save()
+    {
+        await _form.Validate();
+        if (!_formIsValid) return;
+
+        Agreement.CustomerId = _selectedCustomerId;
+        Agreement.AgreementDate = _agreementDate ?? DateTime.Today;
+        Agreement.ExpiryDate = _expiryDate;
+        
+        if (IsNew)
+        {
+            Agreement.CreatedAt = DateTime.UtcNow;
+            DbContext.SLAAgreements.Add(Agreement);
+        }
+        else
+        {
+            Agreement.ModifiedAt = DateTime.UtcNow;
+            DbContext.SLAAgreements.Update(Agreement);
+        }
+
+        await DbContext.SaveChangesAsync();
+        Snackbar.Add(IsNew ? "Agreement created successfully" : "Agreement updated successfully", Severity.Success);
+        MudDialog.Close(DialogResult.Ok(Agreement));
+    }
+
+    private void Cancel() => MudDialog.Cancel();
+}

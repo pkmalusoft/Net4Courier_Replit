@@ -23,6 +23,8 @@ public class ApplicationDbContext : DbContext
     public DbSet<FinancialPeriod> FinancialPeriods => Set<FinancialPeriod>();
     public DbSet<Party> Parties => Set<Party>();
     public DbSet<PartyAddress> PartyAddresses => Set<PartyAddress>();
+    public DbSet<SLAAgreement> SLAAgreements => Set<SLAAgreement>();
+    public DbSet<SLATransitRule> SLATransitRules => Set<SLATransitRule>();
     public DbSet<UserType> UserTypes => Set<UserType>();
     public DbSet<Country> Countries => Set<Country>();
     public DbSet<State> States => Set<State>();
@@ -289,6 +291,47 @@ public class ApplicationDbContext : DbContext
             entity.ToTable("PartyAddresses");
             entity.HasKey(e => e.Id);
             entity.HasOne(e => e.Party).WithMany(p => p.Addresses).HasForeignKey(e => e.PartyId);
+        });
+
+        modelBuilder.Entity<SLAAgreement>(entity =>
+        {
+            entity.ToTable("SLAAgreements");
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.AgreementNo).HasMaxLength(50).IsRequired();
+            entity.Property(e => e.Title).HasMaxLength(200);
+            entity.Property(e => e.LiabilityLimitCurrency).HasMaxLength(10);
+            entity.Property(e => e.SpecialTerms).HasMaxLength(2000);
+            entity.Property(e => e.Notes).HasMaxLength(1000);
+            entity.Property(e => e.TerminationReason).HasMaxLength(500);
+            entity.Property(e => e.ApprovedByUserName).HasMaxLength(200);
+            entity.Property(e => e.TerminatedByUserName).HasMaxLength(200);
+            entity.Property(e => e.DocumentPath).HasMaxLength(500);
+            entity.HasIndex(e => new { e.CompanyId, e.AgreementNo }).IsUnique();
+            entity.HasOne(e => e.Company).WithMany().HasForeignKey(e => e.CompanyId)
+                  .OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(e => e.Customer).WithMany().HasForeignKey(e => e.CustomerId)
+                  .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        modelBuilder.Entity<SLATransitRule>(entity =>
+        {
+            entity.ToTable("SLATransitRules");
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.OriginZone).HasMaxLength(100);
+            entity.Property(e => e.DestinationZone).HasMaxLength(100);
+            entity.Property(e => e.Description).HasMaxLength(500);
+            entity.HasOne(e => e.SLAAgreement).WithMany(s => s.TransitRules).HasForeignKey(e => e.SLAAgreementId)
+                  .OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne(e => e.ServiceType).WithMany().HasForeignKey(e => e.ServiceTypeId)
+                  .OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(e => e.OriginCountry).WithMany().HasForeignKey(e => e.OriginCountryId)
+                  .OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(e => e.DestinationCountry).WithMany().HasForeignKey(e => e.DestinationCountryId)
+                  .OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(e => e.OriginCity).WithMany().HasForeignKey(e => e.OriginCityId)
+                  .OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(e => e.DestinationCity).WithMany().HasForeignKey(e => e.DestinationCityId)
+                  .OnDelete(DeleteBehavior.Restrict);
         });
 
         modelBuilder.Entity<Country>(entity =>

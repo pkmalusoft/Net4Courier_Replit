@@ -1,0 +1,145 @@
+@inject ApplicationDbContext DbContext
+@inject ISnackbar Snackbar
+@inject IDialogService DialogService
+@using Microsoft.EntityFrameworkCore
+@using Net4Courier.Infrastructure.Data
+@using Net4Courier.Masters.Entities
+
+<MudDialog>
+    <TitleContent>
+        <MudStack Row="true" AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween">
+            <MudText Typo="Typo.h6">Transit Rules - @AgreementNo</MudText>
+        </MudStack>
+    </TitleContent>
+    <DialogContent>
+        <MudStack>
+            <MudStack Row="true" Justify="Justify.FlexEnd">
+                <MudButton Variant="Variant.Filled" Color="Color.Primary" Size="Size.Small" StartIcon="@Icons.Material.Filled.Add" OnClick="AddRule">
+                    Add Rule
+                </MudButton>
+            </MudStack>
+
+            <MudTable Items="@_rules" Hover="true" Striped="true" Loading="@_loading" Dense="true">
+                <HeaderContent>
+                    <MudTh>Service Type</MudTh>
+                    <MudTh>Origin Zone/Country</MudTh>
+                    <MudTh>Destination Zone/Country</MudTh>
+                    <MudTh Style="text-align:center">Transit Days</MudTh>
+                    <MudTh Style="text-align:center">Pickup SLA (Hrs)</MudTh>
+                    <MudTh Style="text-align:center">Delivery SLA (Hrs)</MudTh>
+                    <MudTh>Default</MudTh>
+                    <MudTh Style="width: 100px;">Actions</MudTh>
+                </HeaderContent>
+                <RowTemplate>
+                    <MudTd DataLabel="Service Type">@(context.ServiceType?.Name ?? "All")</MudTd>
+                    <MudTd DataLabel="Origin">@(context.OriginZone ?? context.OriginCountry?.Name ?? "Any")</MudTd>
+                    <MudTd DataLabel="Destination">@(context.DestinationZone ?? context.DestinationCountry?.Name ?? "Any")</MudTd>
+                    <MudTd DataLabel="Transit Days" Style="text-align:center">@context.TransitDays</MudTd>
+                    <MudTd DataLabel="Pickup SLA" Style="text-align:center">@(context.PickupSLAHours?.ToString() ?? "-")</MudTd>
+                    <MudTd DataLabel="Delivery SLA" Style="text-align:center">@(context.DeliverySLAHours?.ToString() ?? "-")</MudTd>
+                    <MudTd DataLabel="Default">
+                        @if (context.IsDefault)
+                        {
+                            <MudIcon Icon="@Icons.Material.Filled.Check" Color="Color.Success" Size="Size.Small" />
+                        }
+                    </MudTd>
+                    <MudTd>
+                        <MudIconButton Icon="@Icons.Material.Filled.Edit" Size="Size.Small" Color="Color.Primary" OnClick="@(() => EditRule(context))" Title="Edit" />
+                        <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" Color="Color.Error" OnClick="@(() => DeleteRule(context))" Title="Delete" />
+                    </MudTd>
+                </RowTemplate>
+                <NoRecordsContent>
+                    <MudText>No transit rules defined. Click "Add Rule" to create one.</MudText>
+                </NoRecordsContent>
+            </MudTable>
+        </MudStack>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Close">Close</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] private MudDialogInstance MudDialog { get; set; } = null!;
+    [Parameter] public long AgreementId { get; set; }
+    [Parameter] public string AgreementNo { get; set; } = "";
+
+    private List<SLATransitRule> _rules = new();
+    private bool _loading = true;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadRules();
+    }
+
+    private async Task LoadRules()
+    {
+        _loading = true;
+        _rules = await DbContext.SLATransitRules
+            .Include(r => r.ServiceType)
+            .Include(r => r.OriginCountry)
+            .Include(r => r.DestinationCountry)
+            .Include(r => r.OriginCity)
+            .Include(r => r.DestinationCity)
+            .Where(r => r.SLAAgreementId == AgreementId && !r.IsDeleted)
+            .OrderBy(r => r.ServiceType!.Name)
+            .ThenBy(r => r.OriginZone)
+            .ToListAsync();
+        _loading = false;
+    }
+
+    private async Task AddRule()
+    {
+        var parameters = new DialogParameters<SLATransitRuleEditDialog>
+        {
+            { x => x.Rule, new SLATransitRule { SLAAgreementId = AgreementId, IsActive = true } },
+            { x => x.IsNew, true }
+        };
+        
+        var options = new DialogOptions { MaxWidth = MaxWidth.Small, FullWidth = true };
+        var dialog = await DialogService.ShowAsync<SLATransitRuleEditDialog>("Add Transit Rule", parameters, options);
+        var result = await dialog.Result;
+        
+        if (!result.Canceled)
+        {
+            await LoadRules();
+        }
+    }
+
+    private async Task EditRule(SLATransitRule rule)
+    {
+        var parameters = new DialogParameters<SLATransitRuleEditDialog>
+        {
+            { x => x.Rule, rule },
+            { x => x.IsNew, false }
+        };
+        
+        var options = new DialogOptions { MaxWidth = MaxWidth.Small, FullWidth = true };
+        var dialog = await DialogService.ShowAsync<SLATransitRuleEditDialog>("Edit Transit Rule", parameters, options);
+        var result = await dialog.Result;
+        
+        if (!result.Canceled)
+        {
+            await LoadRules();
+        }
+    }
+
+    private async Task DeleteRule(SLATransitRule rule)
+    {
+        var confirm = await DialogService.ShowMessageBox(
+            "Delete Rule",
+            "Are you sure you want to delete this transit rule?",
+            yesText: "Delete", cancelText: "Cancel");
+            
+        if (confirm == true)
+        {
+            rule.IsDeleted = true;
+            rule.ModifiedAt = DateTime.UtcNow;
+            await DbContext.SaveChangesAsync();
+            Snackbar.Add("Rule deleted", Severity.Success);
+            await LoadRules();
+        }
+    }
+
+    private void Close() => MudDialog.Close();
+}

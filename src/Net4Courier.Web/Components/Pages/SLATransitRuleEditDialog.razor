@@ -1,0 +1,133 @@
+@inject ApplicationDbContext DbContext
+@inject ISnackbar Snackbar
+@using Microsoft.EntityFrameworkCore
+@using Net4Courier.Infrastructure.Data
+@using Net4Courier.Masters.Entities
+
+<MudDialog>
+    <TitleContent>
+        <MudText Typo="Typo.h6">@(IsNew ? "Add Transit Rule" : "Edit Transit Rule")</MudText>
+    </TitleContent>
+    <DialogContent>
+        <MudForm @ref="_form" @bind-IsValid="_formIsValid">
+            <MudGrid Spacing="2">
+                <MudItem xs="12">
+                    <MudSelect T="long?" @bind-Value="Rule.ServiceTypeId" Label="Service Type" Variant="Variant.Outlined" Clearable="true">
+                        <MudSelectItem T="long?" Value="null">All Service Types</MudSelectItem>
+                        @foreach (var st in _serviceTypes)
+                        {
+                            <MudSelectItem T="long?" Value="st.Id">@st.Name</MudSelectItem>
+                        }
+                    </MudSelect>
+                </MudItem>
+
+                <MudItem xs="12">
+                    <MudDivider Class="my-2" />
+                    <MudText Typo="Typo.subtitle2" Color="Color.Secondary">Origin (leave empty for "Any")</MudText>
+                </MudItem>
+                <MudItem xs="12" md="6">
+                    <MudTextField @bind-Value="Rule.OriginZone" Label="Origin Zone" Variant="Variant.Outlined" 
+                                  HelperText="e.g., GCC, Europe, Asia" />
+                </MudItem>
+                <MudItem xs="12" md="6">
+                    <MudSelect T="long?" @bind-Value="Rule.OriginCountryId" Label="Origin Country" Variant="Variant.Outlined" Clearable="true">
+                        <MudSelectItem T="long?" Value="null">Any</MudSelectItem>
+                        @foreach (var c in _countries)
+                        {
+                            <MudSelectItem T="long?" Value="c.Id">@c.Name</MudSelectItem>
+                        }
+                    </MudSelect>
+                </MudItem>
+
+                <MudItem xs="12">
+                    <MudText Typo="Typo.subtitle2" Color="Color.Secondary">Destination (leave empty for "Any")</MudText>
+                </MudItem>
+                <MudItem xs="12" md="6">
+                    <MudTextField @bind-Value="Rule.DestinationZone" Label="Destination Zone" Variant="Variant.Outlined" 
+                                  HelperText="e.g., GCC, Europe, Asia" />
+                </MudItem>
+                <MudItem xs="12" md="6">
+                    <MudSelect T="long?" @bind-Value="Rule.DestinationCountryId" Label="Destination Country" Variant="Variant.Outlined" Clearable="true">
+                        <MudSelectItem T="long?" Value="null">Any</MudSelectItem>
+                        @foreach (var c in _countries)
+                        {
+                            <MudSelectItem T="long?" Value="c.Id">@c.Name</MudSelectItem>
+                        }
+                    </MudSelect>
+                </MudItem>
+
+                <MudItem xs="12">
+                    <MudDivider Class="my-2" />
+                    <MudText Typo="Typo.subtitle2" Color="Color.Secondary">SLA Commitments</MudText>
+                </MudItem>
+                <MudItem xs="12" md="4">
+                    <MudNumericField @bind-Value="Rule.TransitDays" Label="Transit Days" Variant="Variant.Outlined" Required="true" Min="1" />
+                </MudItem>
+                <MudItem xs="12" md="4">
+                    <MudNumericField @bind-Value="Rule.PickupSLAHours" Label="Pickup SLA (Hours)" Variant="Variant.Outlined" Min="1" />
+                </MudItem>
+                <MudItem xs="12" md="4">
+                    <MudNumericField @bind-Value="Rule.DeliverySLAHours" Label="Delivery SLA (Hours)" Variant="Variant.Outlined" Min="1" />
+                </MudItem>
+
+                <MudItem xs="12">
+                    <MudTextField @bind-Value="Rule.Description" Label="Description" Variant="Variant.Outlined" />
+                </MudItem>
+                <MudItem xs="12">
+                    <MudSwitch @bind-Value="Rule.IsDefault" Label="Default Rule (used when no specific match)" Color="Color.Primary" />
+                </MudItem>
+            </MudGrid>
+        </MudForm>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Cancel">Cancel</MudButton>
+        <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="Save" Disabled="!_formIsValid">Save</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] private MudDialogInstance MudDialog { get; set; } = null!;
+    [Parameter] public SLATransitRule Rule { get; set; } = new();
+    [Parameter] public bool IsNew { get; set; }
+
+    private MudForm _form = null!;
+    private bool _formIsValid;
+    private List<ServiceType> _serviceTypes = new();
+    private List<Country> _countries = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        _serviceTypes = await DbContext.ServiceTypes
+            .Where(s => s.IsActive && !s.IsDeleted)
+            .OrderBy(s => s.Name)
+            .ToListAsync();
+            
+        _countries = await DbContext.Countries
+            .Where(c => c.IsActive && !c.IsDeleted)
+            .OrderBy(c => c.Name)
+            .ToListAsync();
+    }
+
+    private async Task Save()
+    {
+        await _form.Validate();
+        if (!_formIsValid) return;
+
+        if (IsNew)
+        {
+            Rule.CreatedAt = DateTime.UtcNow;
+            DbContext.SLATransitRules.Add(Rule);
+        }
+        else
+        {
+            Rule.ModifiedAt = DateTime.UtcNow;
+            DbContext.SLATransitRules.Update(Rule);
+        }
+
+        await DbContext.SaveChangesAsync();
+        Snackbar.Add(IsNew ? "Rule created successfully" : "Rule updated successfully", Severity.Success);
+        MudDialog.Close(DialogResult.Ok(Rule));
+    }
+
+    private void Cancel() => MudDialog.Cancel();
+}
