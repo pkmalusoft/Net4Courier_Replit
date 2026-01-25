@@ -553,4 +553,132 @@ public class RateCardImportService
 
         return (created, updated, errors);
     }
+
+    public byte[] GenerateTemplate()
+    {
+        using var workbook = new XLWorkbook();
+        
+        var dataSheet = workbook.Worksheets.Add("Rate Card Data");
+        
+        dataSheet.Cell(1, 1).Value = "ZONE CATEGORY";
+        dataSheet.Cell(1, 2).Value = "DHL";
+        dataSheet.Cell(1, 3).Value = "DHL";
+        dataSheet.Cell(1, 4).Value = "DHL";
+        dataSheet.Cell(1, 5).Value = "FEDEX";
+        dataSheet.Cell(1, 6).Value = "FEDEX";
+        dataSheet.Cell(1, 7).Value = "ARAMEX";
+        dataSheet.Cell(1, 8).Value = "ARAMEX";
+        
+        dataSheet.Cell(2, 1).Value = "ZONE";
+        dataSheet.Cell(2, 2).Value = "A";
+        dataSheet.Cell(2, 3).Value = "B";
+        dataSheet.Cell(2, 4).Value = "C";
+        dataSheet.Cell(2, 5).Value = "A";
+        dataSheet.Cell(2, 6).Value = "B";
+        dataSheet.Cell(2, 7).Value = "A";
+        dataSheet.Cell(2, 8).Value = "B";
+        
+        dataSheet.Cell(3, 1).Value = "COUNTRIES";
+        dataSheet.Cell(3, 2).Value = "USA";
+        dataSheet.Cell(3, 3).Value = "UK";
+        dataSheet.Cell(3, 4).Value = "Australia";
+        dataSheet.Cell(3, 5).Value = "USA";
+        dataSheet.Cell(3, 6).Value = "Canada";
+        dataSheet.Cell(3, 7).Value = "India";
+        dataSheet.Cell(3, 8).Value = "China";
+        
+        dataSheet.Cell(4, 2).Value = "Canada";
+        dataSheet.Cell(4, 3).Value = "Germany";
+        dataSheet.Cell(4, 4).Value = "New Zealand";
+        dataSheet.Cell(4, 5).Value = "Mexico";
+        dataSheet.Cell(4, 6).Value = "UK";
+        dataSheet.Cell(4, 7).Value = "Pakistan";
+        dataSheet.Cell(4, 8).Value = "Japan";
+        
+        dataSheet.Cell(5, 2).Value = "Mexico";
+        dataSheet.Cell(5, 3).Value = "France";
+        
+        var headerRange = dataSheet.Range("A1:H2");
+        headerRange.Style.Font.Bold = true;
+        headerRange.Style.Fill.BackgroundColor = XLColor.LightBlue;
+        
+        int rateCardStartRow = 8;
+        string[] rateCardNames = { "Economy", "Next Day", "Priority" };
+        decimal[] weights = { 0.5m, 1m, 1.5m, 2m, 2.5m, 3m, 4m, 5m, 6m, 7m, 8m, 9m, 10m, 11m };
+        
+        (string Category, string Zone)[] zones = {
+            ("DHL", "A"), ("DHL", "B"), ("DHL", "C"),
+            ("FEDEX", "A"), ("FEDEX", "B"),
+            ("ARAMEX", "A"), ("ARAMEX", "B")
+        };
+        
+        foreach (var cardName in rateCardNames)
+        {
+            dataSheet.Cell(rateCardStartRow, 1).Value = "Rate Card";
+            dataSheet.Cell(rateCardStartRow, 2).Value = cardName;
+            dataSheet.Cell(rateCardStartRow, 1).Style.Font.Bold = true;
+            dataSheet.Cell(rateCardStartRow, 2).Style.Font.Bold = true;
+            dataSheet.Range(rateCardStartRow, 1, rateCardStartRow, 2).Style.Fill.BackgroundColor = XLColor.LightGreen;
+            
+            int headerRow = rateCardStartRow + 1;
+            dataSheet.Cell(headerRow, 1).Value = "Category";
+            dataSheet.Cell(headerRow, 2).Value = "Zone";
+            dataSheet.Cell(headerRow, 3).Value = "Rate";
+            for (int i = 0; i < weights.Length; i++)
+            {
+                dataSheet.Cell(headerRow, i + 4).Value = weights[i];
+            }
+            dataSheet.Range(headerRow, 1, headerRow, weights.Length + 3).Style.Font.Bold = true;
+            dataSheet.Range(headerRow, 1, headerRow, weights.Length + 3).Style.Fill.BackgroundColor = XLColor.LightGray;
+            
+            for (int z = 0; z < zones.Length; z++)
+            {
+                int row = headerRow + 1 + z;
+                dataSheet.Cell(row, 1).Value = zones[z].Category;
+                dataSheet.Cell(row, 2).Value = zones[z].Zone;
+                dataSheet.Cell(row, 3).Value = "Rate";
+                
+                var random = new Random(cardName.GetHashCode() + z);
+                for (int w = 0; w < weights.Length; w++)
+                {
+                    decimal baseRate = 10 + (z * 5) + (weights[w] * 2);
+                    dataSheet.Cell(row, w + 4).Value = Math.Round(baseRate + (decimal)(random.NextDouble() * 5), 2);
+                }
+            }
+            
+            rateCardStartRow += zones.Length + 4;
+        }
+        
+        dataSheet.Columns().AdjustToContents();
+        
+        var instructionsSheet = workbook.Worksheets.Add("Instructions");
+        instructionsSheet.Cell(1, 1).Value = "Rate Card Import Template Instructions";
+        instructionsSheet.Cell(1, 1).Style.Font.Bold = true;
+        instructionsSheet.Cell(1, 1).Style.Font.FontSize = 14;
+        
+        instructionsSheet.Cell(3, 1).Value = "ZONE DEFINITIONS (Rows 1-5+):";
+        instructionsSheet.Cell(3, 1).Style.Font.Bold = true;
+        instructionsSheet.Cell(4, 1).Value = "- Row 1: 'ZONE CATEGORY' in column A, then carrier names (DHL, FEDEX, etc.) in columns B onwards";
+        instructionsSheet.Cell(5, 1).Value = "- Row 2: Zone codes (A, B, C, etc.) under each carrier";
+        instructionsSheet.Cell(6, 1).Value = "- Rows 3+: Country names under each zone column (one country per row)";
+        
+        instructionsSheet.Cell(8, 1).Value = "RATE CARDS:";
+        instructionsSheet.Cell(8, 1).Style.Font.Bold = true;
+        instructionsSheet.Cell(9, 1).Value = "- Start with 'Rate Card' in column A and the rate card name in column B";
+        instructionsSheet.Cell(10, 1).Value = "- Header row: Category, Zone, Rate, then weight values (0.5, 1, 1.5, etc.)";
+        instructionsSheet.Cell(11, 1).Value = "- Data rows: Carrier name in column A, Zone code in column B, 'Rate' in column C, then rate values";
+        
+        instructionsSheet.Cell(13, 1).Value = "NOTES:";
+        instructionsSheet.Cell(13, 1).Style.Font.Bold = true;
+        instructionsSheet.Cell(14, 1).Value = "- Carrier names in data rows must match zone category names exactly";
+        instructionsSheet.Cell(15, 1).Value = "- Zone codes in data rows must match zone codes in zone definitions";
+        instructionsSheet.Cell(16, 1).Value = "- Multiple rate cards can be defined in the same sheet";
+        instructionsSheet.Cell(17, 1).Value = "- Leave blank rows between rate card sections";
+        
+        instructionsSheet.Column(1).Width = 80;
+        
+        using var stream = new MemoryStream();
+        workbook.SaveAs(stream);
+        return stream.ToArray();
+    }
 }

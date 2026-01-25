@@ -5,6 +5,7 @@
 @inject RateCardImportService ImportService
 @inject ApplicationDbContext DbContext
 @inject ISnackbar Snackbar
+@inject IJSRuntime JS
 
 <MudDialog>
     <TitleContent>
@@ -21,13 +22,23 @@
                     Upload an Excel file with rate card data. The file should contain zone categories, zones, and weight-based rates.
                 </MudAlert>
 
-                <MudFileUpload T="IBrowserFile" Accept=".xlsx,.xls" FilesChanged="HandleFileSelected" MaximumFileCount="1">
-                    <ActivatorContent>
-                        <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.CloudUpload">
-                            Select Excel File
-                        </MudButton>
-                    </ActivatorContent>
-                </MudFileUpload>
+                <MudStack Row="true" Spacing="2" AlignItems="AlignItems.Center">
+                    <MudFileUpload T="IBrowserFile" Accept=".xlsx,.xls" FilesChanged="HandleFileSelected" MaximumFileCount="1">
+                        <ActivatorContent>
+                            <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.CloudUpload">
+                                Select Excel File
+                            </MudButton>
+                        </ActivatorContent>
+                    </MudFileUpload>
+                    
+                    <MudButton Variant="Variant.Outlined" Color="Color.Secondary" StartIcon="@Icons.Material.Filled.Download" OnClick="DownloadTemplate" Disabled="_downloadingTemplate">
+                        @if (_downloadingTemplate)
+                        {
+                            <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" />
+                        }
+                        Download Template
+                    </MudButton>
+                </MudStack>
 
                 @if (_selectedFile != null)
                 {
@@ -206,6 +217,7 @@
     private bool _parsing;
     private bool _parsed;
     private bool _importing;
+    private bool _downloadingTemplate;
     private RateCardImportResult? _parseResult;
     private MovementType _movementType = MovementType.InternationalExport;
 
@@ -214,6 +226,30 @@
         _selectedFile = file;
         _parsed = false;
         _parseResult = null;
+    }
+
+    private async Task DownloadTemplate()
+    {
+        _downloadingTemplate = true;
+        StateHasChanged();
+
+        try
+        {
+            var templateBytes = ImportService.GenerateTemplate();
+            var base64 = Convert.ToBase64String(templateBytes);
+            var fileName = "RateCard_Import_Template.xlsx";
+            
+            await JS.InvokeVoidAsync("downloadFileFromBase64", base64, fileName, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+            Snackbar.Add("Template downloaded successfully", Severity.Success);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error downloading template: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _downloadingTemplate = false;
+        }
     }
 
     private async Task ParseFile()
