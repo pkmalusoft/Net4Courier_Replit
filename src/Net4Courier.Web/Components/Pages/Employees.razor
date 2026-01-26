@@ -46,8 +46,8 @@
             <RowTemplate>
                 <MudTd DataLabel="Code">@context.Code</MudTd>
                 <MudTd DataLabel="Name">@context.Name</MudTd>
-                <MudTd DataLabel="Designation">@context.Designation</MudTd>
-                <MudTd DataLabel="Department">@context.Department</MudTd>
+                <MudTd DataLabel="Designation">@(context.Designation?.Name ?? "-")</MudTd>
+                <MudTd DataLabel="Department">@(context.Department?.Name ?? "-")</MudTd>
                 <MudTd DataLabel="Mobile">@context.Mobile</MudTd>
                 <MudTd DataLabel="Branch">@context.Branch?.Name</MudTd>
                 <MudTd DataLabel="User Account">
@@ -82,6 +82,8 @@
     private List<Employee> _filteredEmployees = new();
     private List<Branch> _branches = new();
     private List<User> _users = new();
+    private List<Designation> _designations = new();
+    private List<Department> _departments = new();
     private long? _selectedBranchId;
     private string _searchText = string.Empty;
     private bool _loading = true;
@@ -96,9 +98,13 @@
         _loading = true;
         _branches = await DbContext.Branches.Where(b => !b.IsDeleted && b.IsActive).OrderBy(b => b.Name).ToListAsync();
         _users = await DbContext.Users.Where(u => u.IsActive && !u.IsDeleted).OrderBy(u => u.Username).ToListAsync();
+        _designations = await DbContext.Designations.Where(d => !d.IsDeleted && d.IsActive).OrderBy(d => d.SortOrder).ThenBy(d => d.Name).ToListAsync();
+        _departments = await DbContext.Departments.Where(d => !d.IsDeleted && d.IsActive).OrderBy(d => d.SortOrder).ThenBy(d => d.Name).ToListAsync();
         _employees = await DbContext.Employees
             .Include(e => e.User)
             .Include(e => e.Branch)
+            .Include(e => e.Designation)
+            .Include(e => e.Department)
             .Where(e => !e.IsDeleted)
             .OrderBy(e => e.Name)
             .ToListAsync();
@@ -132,8 +138,8 @@
             filtered = filtered.Where(e =>
                 e.Code.Contains(_searchText, StringComparison.OrdinalIgnoreCase) ||
                 e.Name.Contains(_searchText, StringComparison.OrdinalIgnoreCase) ||
-                (e.Designation?.Contains(_searchText, StringComparison.OrdinalIgnoreCase) ?? false) ||
-                (e.Department?.Contains(_searchText, StringComparison.OrdinalIgnoreCase) ?? false) ||
+                (e.Designation?.Name?.Contains(_searchText, StringComparison.OrdinalIgnoreCase) ?? false) ||
+                (e.Department?.Name?.Contains(_searchText, StringComparison.OrdinalIgnoreCase) ?? false) ||
                 (e.Mobile?.Contains(_searchText, StringComparison.OrdinalIgnoreCase) ?? false));
         }
 
@@ -148,9 +154,11 @@
             { x => x.Employee, employee },
             { x => x.IsNew, true },
             { x => x.Branches, _branches },
-            { x => x.Users, _users }
+            { x => x.Users, _users },
+            { x => x.Designations, _designations },
+            { x => x.Departments, _departments }
         };
-        var options = new DialogOptions { MaxWidth = MaxWidth.Medium, FullWidth = true };
+        var options = new DialogOptions { MaxWidth = MaxWidth.Large, FullWidth = true };
         var dialog = await DialogService.ShowAsync<EmployeeDialog>("New Employee", parameters, options);
         var result = await dialog.Result;
         if (!result.Canceled)
@@ -167,9 +175,11 @@
             { x => x.Employee, employee },
             { x => x.IsNew, false },
             { x => x.Branches, _branches },
-            { x => x.Users, _users }
+            { x => x.Users, _users },
+            { x => x.Designations, _designations },
+            { x => x.Departments, _departments }
         };
-        var options = new DialogOptions { MaxWidth = MaxWidth.Medium, FullWidth = true };
+        var options = new DialogOptions { MaxWidth = MaxWidth.Large, FullWidth = true };
         var dialog = await DialogService.ShowAsync<EmployeeDialog>("Edit Employee", parameters, options);
         var result = await dialog.Result;
         if (!result.Canceled)

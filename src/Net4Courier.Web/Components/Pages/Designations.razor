@@ -1,0 +1,197 @@
+@page "/designations"
+@inject ApplicationDbContext DbContext
+@inject ISnackbar Snackbar
+@inject IDialogService DialogService
+@using Microsoft.EntityFrameworkCore
+@using Net4Courier.Infrastructure.Data
+@using Net4Courier.Masters.Entities
+
+<PageTitle>Designations - Net4Courier</PageTitle>
+
+<MudPaper Class="pa-4" Elevation="0">
+    <MudToolBar Dense="true" Class="pl-0">
+        <MudText Typo="Typo.h6">Designations</MudText>
+        <MudSpacer />
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add" OnClick="OpenAddDialog">
+            Add Designation
+        </MudButton>
+    </MudToolBar>
+
+    <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-3">
+        Manage employee designations and job titles
+    </MudText>
+
+    <MudTable Items="_designations" Hover="true" Dense="true" Loading="_loading">
+        <HeaderContent>
+            <MudTh>Code</MudTh>
+            <MudTh>Name</MudTh>
+            <MudTh>Description</MudTh>
+            <MudTh>Sort Order</MudTh>
+            <MudTh>Status</MudTh>
+            <MudTh Style="width: 120px;">Actions</MudTh>
+        </HeaderContent>
+        <RowTemplate>
+            <MudTd>@context.Code</MudTd>
+            <MudTd>@context.Name</MudTd>
+            <MudTd>@(context.Description ?? "-")</MudTd>
+            <MudTd>@context.SortOrder</MudTd>
+            <MudTd>
+                <MudChip T="string" Size="Size.Small" Color="@(context.IsActive ? Color.Success : Color.Default)">
+                    @(context.IsActive ? "Active" : "Inactive")
+                </MudChip>
+            </MudTd>
+            <MudTd>
+                <MudIconButton Icon="@Icons.Material.Filled.Edit" Size="Size.Small" OnClick="@(() => OpenEditDialog(context))" />
+                <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" Color="Color.Error" OnClick="@(() => DeleteDesignation(context))" />
+            </MudTd>
+        </RowTemplate>
+        <NoRecordsContent>
+            <MudText>No designations found. Click "Add Designation" to create one.</MudText>
+        </NoRecordsContent>
+    </MudTable>
+</MudPaper>
+
+<MudDialog @bind-Visible="_dialogVisible" Options="new DialogOptions { MaxWidth = MaxWidth.Small, FullWidth = true }">
+    <TitleContent>
+        <MudText Typo="Typo.h6">@(_editingDesignation.Id == 0 ? "Add Designation" : "Edit Designation")</MudText>
+    </TitleContent>
+    <DialogContent>
+        <MudGrid Spacing="2">
+            <MudItem xs="4">
+                <MudTextField @bind-Value="_editingDesignation.Code" Label="Code*" Variant="Variant.Outlined" Required="true" />
+            </MudItem>
+            <MudItem xs="8">
+                <MudTextField @bind-Value="_editingDesignation.Name" Label="Name*" Variant="Variant.Outlined" Required="true" />
+            </MudItem>
+            <MudItem xs="12">
+                <MudTextField @bind-Value="_editingDesignation.Description" Label="Description" Variant="Variant.Outlined" Lines="2" />
+            </MudItem>
+            <MudItem xs="4">
+                <MudNumericField @bind-Value="_editingDesignation.SortOrder" Label="Sort Order" Variant="Variant.Outlined" Min="0" />
+            </MudItem>
+            <MudItem xs="4">
+                <MudCheckBox @bind-Value="_editingDesignation.IsActive" Label="Active" Color="Color.Success" />
+            </MudItem>
+        </MudGrid>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="CloseDialog">Cancel</MudButton>
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="SaveDesignation">Save</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    private List<Designation> _designations = new();
+    private bool _loading = true;
+    private bool _dialogVisible;
+    private Designation _editingDesignation = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadData();
+    }
+
+    private async Task LoadData()
+    {
+        _loading = true;
+        _designations = await DbContext.Designations
+            .Where(d => !d.IsDeleted)
+            .OrderBy(d => d.SortOrder)
+            .ThenBy(d => d.Name)
+            .ToListAsync();
+        _loading = false;
+    }
+
+    private void OpenAddDialog()
+    {
+        _editingDesignation = new Designation { IsActive = true, SortOrder = _designations.Count + 1 };
+        _dialogVisible = true;
+    }
+
+    private void OpenEditDialog(Designation designation)
+    {
+        _editingDesignation = new Designation
+        {
+            Id = designation.Id,
+            Code = designation.Code,
+            Name = designation.Name,
+            Description = designation.Description,
+            SortOrder = designation.SortOrder,
+            IsActive = designation.IsActive
+        };
+        _dialogVisible = true;
+    }
+
+    private void CloseDialog()
+    {
+        _dialogVisible = false;
+    }
+
+    private async Task SaveDesignation()
+    {
+        if (string.IsNullOrWhiteSpace(_editingDesignation.Code) || string.IsNullOrWhiteSpace(_editingDesignation.Name))
+        {
+            Snackbar.Add("Code and Name are required", Severity.Warning);
+            return;
+        }
+
+        try
+        {
+            if (_editingDesignation.Id == 0)
+            {
+                _editingDesignation.CreatedAt = DateTime.UtcNow;
+                DbContext.Designations.Add(_editingDesignation);
+            }
+            else
+            {
+                var existing = await DbContext.Designations.FindAsync(_editingDesignation.Id);
+                if (existing != null)
+                {
+                    existing.Code = _editingDesignation.Code;
+                    existing.Name = _editingDesignation.Name;
+                    existing.Description = _editingDesignation.Description;
+                    existing.SortOrder = _editingDesignation.SortOrder;
+                    existing.IsActive = _editingDesignation.IsActive;
+                    existing.ModifiedAt = DateTime.SpecifyKind(DateTime.UtcNow, DateTimeKind.Utc);
+                }
+            }
+
+            await DbContext.SaveChangesAsync();
+            Snackbar.Add("Designation saved successfully", Severity.Success);
+            _dialogVisible = false;
+            await LoadData();
+        }
+        catch (DbUpdateException ex) when (ex.InnerException?.Message.Contains("duplicate") == true || ex.InnerException?.Message.Contains("unique") == true)
+        {
+            Snackbar.Add("A designation with this code already exists", Severity.Error);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error: {ex.Message}", Severity.Error);
+        }
+    }
+
+    private async Task DeleteDesignation(Designation designation)
+    {
+        var confirmed = await DialogService.ShowMessageBox(
+            "Confirm Delete",
+            $"Are you sure you want to delete '{designation.Name}'?",
+            yesText: "Delete", cancelText: "Cancel");
+
+        if (confirmed == true)
+        {
+            try
+            {
+                designation.IsDeleted = true;
+                designation.ModifiedAt = DateTime.SpecifyKind(DateTime.UtcNow, DateTimeKind.Utc);
+                await DbContext.SaveChangesAsync();
+                Snackbar.Add("Designation deleted", Severity.Success);
+                await LoadData();
+            }
+            catch (Exception ex)
+            {
+                Snackbar.Add($"Error: {ex.Message}", Severity.Error);
+            }
+        }
+    }
+}
