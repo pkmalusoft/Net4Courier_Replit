@@ -35,6 +35,8 @@ public class ApplicationDbContext : DbContext
     public DbSet<Location> Locations => Set<Location>();
     public DbSet<Currency> Currencies => Set<Currency>();
     public DbSet<Employee> Employees => Set<Employee>();
+    public DbSet<Designation> Designations => Set<Designation>();
+    public DbSet<Department> Departments => Set<Department>();
     
     public DbSet<InscanMaster> InscanMasters => Set<InscanMaster>();
     public DbSet<InscanMasterItem> InscanMasterItems => Set<InscanMasterItem>();
@@ -429,6 +431,67 @@ public class ApplicationDbContext : DbContext
             entity.Property(e => e.Name).HasMaxLength(100).IsRequired();
             entity.Property(e => e.Symbol).HasMaxLength(10);
             entity.HasIndex(e => e.Code).IsUnique();
+        });
+
+        modelBuilder.Entity<Designation>(entity =>
+        {
+            entity.ToTable("Designations");
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Code).HasMaxLength(50).IsRequired();
+            entity.Property(e => e.Name).HasMaxLength(200).IsRequired();
+            entity.Property(e => e.Description).HasMaxLength(500);
+            entity.Property(e => e.DeactivationReason).HasMaxLength(500);
+            entity.HasIndex(e => e.Code).IsUnique();
+        });
+
+        modelBuilder.Entity<Department>(entity =>
+        {
+            entity.ToTable("Departments");
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Code).HasMaxLength(50).IsRequired();
+            entity.Property(e => e.Name).HasMaxLength(200).IsRequired();
+            entity.Property(e => e.Description).HasMaxLength(500);
+            entity.Property(e => e.DeactivationReason).HasMaxLength(500);
+            entity.HasIndex(e => e.Code).IsUnique();
+            entity.HasOne(e => e.Branch).WithMany().HasForeignKey(e => e.BranchId)
+                  .OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(e => e.ParentDepartment).WithMany(d => d.ChildDepartments).HasForeignKey(e => e.ParentDepartmentId)
+                  .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        modelBuilder.Entity<Employee>(entity =>
+        {
+            entity.ToTable("Employees");
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Code).HasMaxLength(50).IsRequired();
+            entity.Property(e => e.Name).HasMaxLength(200).IsRequired();
+            entity.Property(e => e.FirstName).HasMaxLength(200);
+            entity.Property(e => e.LastName).HasMaxLength(200);
+            entity.Property(e => e.Phone).HasMaxLength(20);
+            entity.Property(e => e.Mobile).HasMaxLength(20);
+            entity.Property(e => e.Email).HasMaxLength(100);
+            entity.Property(e => e.Address).HasMaxLength(500);
+            entity.Property(e => e.Country).HasMaxLength(100);
+            entity.Property(e => e.State).HasMaxLength(100);
+            entity.Property(e => e.TaxIdNumber).HasMaxLength(50);
+            entity.Property(e => e.EmergencyContact).HasMaxLength(200);
+            entity.Property(e => e.EmergencyPhone).HasMaxLength(20);
+            entity.Property(e => e.Notes).HasMaxLength(500);
+            entity.Property(e => e.BankAccountNumber).HasMaxLength(50);
+            entity.Property(e => e.BankName).HasMaxLength(100);
+            entity.Property(e => e.BankIFSC).HasMaxLength(20);
+            entity.Property(e => e.BaseSalary).HasPrecision(18, 2);
+            entity.Property(e => e.DeactivationReason).HasMaxLength(500);
+            entity.HasIndex(e => e.Code).IsUnique();
+            entity.HasIndex(e => new { e.BranchId, e.DepartmentId });
+            entity.HasOne(e => e.Branch).WithMany().HasForeignKey(e => e.BranchId)
+                  .OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(e => e.User).WithMany().HasForeignKey(e => e.UserId)
+                  .OnDelete(DeleteBehavior.SetNull);
+            entity.HasOne(e => e.Designation).WithMany(d => d.Employees).HasForeignKey(e => e.DesignationId)
+                  .OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(e => e.Department).WithMany(d => d.Employees).HasForeignKey(e => e.DepartmentId)
+                  .OnDelete(DeleteBehavior.Restrict);
         });
 
         modelBuilder.Entity<ApiSetting>(entity =>
