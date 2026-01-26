@@ -74,7 +74,7 @@ public class MAWBService
         var mawb = new MasterAirwaybill
         {
             MAWBNo = mawbNo,
-            TransactionDate = DateTime.Now,
+            TransactionDate = DateTime.UtcNow,
             CompanyId = companyId,
             BranchId = branchId,
             FinancialYearId = financialYearId,
@@ -91,8 +91,8 @@ public class MAWBService
             CarrierCode = carrierCode,
             CarrierName = carrierName,
             FlightNo = flightNo,
-            DepartureDate = departureDate,
-            ArrivalDate = arrivalDate,
+            DepartureDate = departureDate.HasValue ? DateTime.SpecifyKind(departureDate.Value, DateTimeKind.Utc) : null,
+            ArrivalDate = arrivalDate.HasValue ? DateTime.SpecifyKind(arrivalDate.Value, DateTimeKind.Utc) : null,
             DepartureTime = departureTime,
             ArrivalTime = arrivalTime,
             CoLoaderId = coLoaderId,
@@ -592,8 +592,8 @@ public class MAWBService
         existing.CarrierCode = mawb.CarrierCode;
         existing.CarrierName = mawb.CarrierName;
         existing.FlightNo = mawb.FlightNo;
-        existing.DepartureDate = mawb.DepartureDate;
-        existing.ArrivalDate = mawb.ArrivalDate;
+        existing.DepartureDate = mawb.DepartureDate.HasValue ? DateTime.SpecifyKind(mawb.DepartureDate.Value, DateTimeKind.Utc) : null;
+        existing.ArrivalDate = mawb.ArrivalDate.HasValue ? DateTime.SpecifyKind(mawb.ArrivalDate.Value, DateTimeKind.Utc) : null;
         existing.DepartureTime = mawb.DepartureTime;
         existing.ArrivalTime = mawb.ArrivalTime;
         existing.CoLoaderId = mawb.CoLoaderId;
