@@ -257,6 +257,70 @@ else
                         </MudGrid>
                     </MudExpansionPanel>
                 </MudExpansionPanels>
+                
+                @* Shipments Detail Section *@
+                <MudPaper Class="pa-4 mt-4" Elevation="2">
+                    <div class="d-flex justify-space-between align-center mb-4">
+                        <MudText Typo="Typo.h6">
+                            <MudIcon Icon="@Icons.Material.Filled.LocalShipping" Class="mr-2" />
+                            Shipments (@_shipments.Count)
+                        </MudText>
+                        <MudButton Variant="Variant.Filled" Color="Color.Primary" Size="Size.Small"
+                                   OnClick="AddNewShipment" StartIcon="@Icons.Material.Filled.Add">
+                            Add Shipment
+                        </MudButton>
+                    </div>
+                    
+                    @if (_shipments.Any())
+                    {
+                        <MudTable Items="_shipments" Dense="true" Hover="true" Striped="true" Bordered="true"
+                                  Style="overflow-x: auto;">
+                            <HeaderContent>
+                                <MudTh>AWB No</MudTh>
+                                <MudTh>Consignee Name</MudTh>
+                                <MudTh>Consignee City</MudTh>
+                                <MudTh>Consignee Country</MudTh>
+                                <MudTh>Shipper Name</MudTh>
+                                <MudTh Style="text-align: right;">Pcs</MudTh>
+                                <MudTh Style="text-align: right;">Wt(Kg)</MudTh>
+                                <MudTh>Contents</MudTh>
+                                <MudTh Style="text-align: right;">Value</MudTh>
+                                <MudTh>Payment</MudTh>
+                                <MudTh Style="width: 100px;">Actions</MudTh>
+                            </HeaderContent>
+                            <RowTemplate>
+                                <MudTd DataLabel="AWB No">@context.AWBNo</MudTd>
+                                <MudTd DataLabel="Consignee Name">@context.ConsigneeName</MudTd>
+                                <MudTd DataLabel="Consignee City">@context.ConsigneeCity</MudTd>
+                                <MudTd DataLabel="Consignee Country">@context.ConsigneeCountry</MudTd>
+                                <MudTd DataLabel="Shipper Name">@context.ShipperName</MudTd>
+                                <MudTd DataLabel="Pieces" Style="text-align: right;">@context.Pieces</MudTd>
+                                <MudTd DataLabel="Weight" Style="text-align: right;">@context.Weight.ToString("N2")</MudTd>
+                                <MudTd DataLabel="Contents">@(context.ContentsDescription?.Length > 20 ? context.ContentsDescription[..20] + "..." : context.ContentsDescription)</MudTd>
+                                <MudTd DataLabel="Value" Style="text-align: right;">@(context.DeclaredValue?.ToString("N2") ?? "-") @context.Currency</MudTd>
+                                <MudTd DataLabel="Payment">@context.PaymentMode.ToString()</MudTd>
+                                <MudTd>
+                                    <MudIconButton Icon="@Icons.Material.Filled.Edit" Size="Size.Small" Color="Color.Primary"
+                                                   OnClick="@(() => EditShipment(context))" Title="Edit" />
+                                    <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" Color="Color.Error"
+                                                   OnClick="@(() => DeleteShipment(context))" Title="Delete" />
+                                </MudTd>
+                            </RowTemplate>
+                        </MudTable>
+                        
+                        <MudStack Row="true" Class="mt-3" Justify="Justify.SpaceBetween">
+                            <MudText Typo="Typo.body2" Color="Color.Secondary">
+                                Total: @_shipments.Count shipments, @_shipments.Sum(s => s.Pieces) pieces, @_shipments.Sum(s => s.Weight).ToString("N2") Kg
+                            </MudText>
+                        </MudStack>
+                    }
+                    else
+                    {
+                        <MudAlert Severity="Severity.Info" Variant="Variant.Outlined" Dense="true">
+                            No shipments added. Click "Add Shipment" to add line items.
+                        </MudAlert>
+                    }
+                </MudPaper>
             </MudItem>
             
             <MudItem xs="12" md="4">
@@ -386,6 +450,8 @@ else
     private string _referenceLabel = "Reference Number *";
     private List<Party> _coLoaders = new();
     private Party? _selectedCoLoader;
+    private List<ImportShipment> _shipments = new();
+    private List<Country> _allCountries = new();
     
     private List<BreadcrumbItem> _breadcrumbs = new()
     {
@@ -444,6 +510,12 @@ else
             _documents = await dbContext.ImportDocuments
                 .Where(d => d.ImportMasterId == Id.Value && !d.IsDeleted)
                 .OrderByDescending(d => d.UploadedAt)
+                .ToListAsync();
+            
+            // Load shipments
+            _shipments = await dbContext.ImportShipments
+                .Where(s => s.ImportMasterId == Id.Value && !s.IsDeleted)
+                .OrderBy(s => s.AWBNo)
                 .ToListAsync();
         }
         else
@@ -689,5 +761,188 @@ else
         {
             Snackbar.Add($"Delete failed: {ex.Message}", Severity.Error);
         }
+    }
+    
+    private async Task AddNewShipment()
+    {
+        // Must save import first if new
+        if (IsNew)
+        {
+            Snackbar.Add("Please save the import first before adding shipments.", Severity.Warning);
+            return;
+        }
+        
+        var parameters = new DialogParameters<ImportShipmentDialog>
+        {
+            { x => x.Shipment, new ImportShipment { ImportMasterId = _import.Id } },
+            { x => x.IsNew, true },
+            { x => x.Countries, _countries }
+        };
+        
+        var dialog = await DialogService.ShowAsync<ImportShipmentDialog>("Add Shipment", parameters,
+            new DialogOptions { MaxWidth = MaxWidth.Large, FullWidth = true });
+        var result = await dialog.Result;
+        
+        if (!result!.Canceled && result.Data is ImportShipment shipment)
+        {
+            await SaveShipment(shipment, true);
+        }
+    }
+    
+    private async Task EditShipment(ImportShipment shipment)
+    {
+        var editShipment = new ImportShipment
+        {
+            Id = shipment.Id,
+            ImportMasterId = shipment.ImportMasterId,
+            AWBNo = shipment.AWBNo,
+            ConsigneeName = shipment.ConsigneeName,
+            ConsigneeAddress = shipment.ConsigneeAddress,
+            ConsigneeCity = shipment.ConsigneeCity,
+            ConsigneeState = shipment.ConsigneeState,
+            ConsigneeCountry = shipment.ConsigneeCountry,
+            ConsigneePostalCode = shipment.ConsigneePostalCode,
+            ConsigneePhone = shipment.ConsigneePhone,
+            ShipperName = shipment.ShipperName,
+            ShipperCountry = shipment.ShipperCountry,
+            Pieces = shipment.Pieces,
+            Weight = shipment.Weight,
+            ContentsDescription = shipment.ContentsDescription,
+            HSCode = shipment.HSCode,
+            DeclaredValue = shipment.DeclaredValue,
+            Currency = shipment.Currency,
+            PaymentMode = shipment.PaymentMode,
+            SpecialInstructions = shipment.SpecialInstructions,
+            Status = shipment.Status,
+            CreatedAt = shipment.CreatedAt
+        };
+        
+        var parameters = new DialogParameters<ImportShipmentDialog>
+        {
+            { x => x.Shipment, editShipment },
+            { x => x.IsNew, false },
+            { x => x.Countries, _countries }
+        };
+        
+        var dialog = await DialogService.ShowAsync<ImportShipmentDialog>("Edit Shipment", parameters,
+            new DialogOptions { MaxWidth = MaxWidth.Large, FullWidth = true });
+        var result = await dialog.Result;
+        
+        if (!result!.Canceled && result.Data is ImportShipment updatedShipment)
+        {
+            await SaveShipment(updatedShipment, false);
+        }
+    }
+    
+    private async Task SaveShipment(ImportShipment shipment, bool isNew)
+    {
+        try
+        {
+            await using var dbContext = await DbFactory.CreateDbContextAsync();
+            
+            if (isNew)
+            {
+                shipment.CreatedAt = DateTime.UtcNow;
+                dbContext.ImportShipments.Add(shipment);
+                await dbContext.SaveChangesAsync();
+                _shipments.Add(shipment);
+                Snackbar.Add("Shipment added successfully", Severity.Success);
+            }
+            else
+            {
+                var existing = await dbContext.ImportShipments.FindAsync(shipment.Id);
+                if (existing != null)
+                {
+                    existing.AWBNo = shipment.AWBNo;
+                    existing.ConsigneeName = shipment.ConsigneeName;
+                    existing.ConsigneeAddress = shipment.ConsigneeAddress;
+                    existing.ConsigneeCity = shipment.ConsigneeCity;
+                    existing.ConsigneeState = shipment.ConsigneeState;
+                    existing.ConsigneeCountry = shipment.ConsigneeCountry;
+                    existing.ConsigneePostalCode = shipment.ConsigneePostalCode;
+                    existing.ConsigneePhone = shipment.ConsigneePhone;
+                    existing.ShipperName = shipment.ShipperName;
+                    existing.ShipperCountry = shipment.ShipperCountry;
+                    existing.Pieces = shipment.Pieces;
+                    existing.Weight = shipment.Weight;
+                    existing.ContentsDescription = shipment.ContentsDescription;
+                    existing.HSCode = shipment.HSCode;
+                    existing.DeclaredValue = shipment.DeclaredValue;
+                    existing.Currency = shipment.Currency;
+                    existing.PaymentMode = shipment.PaymentMode;
+                    existing.SpecialInstructions = shipment.SpecialInstructions;
+                    existing.ModifiedAt = DateTime.UtcNow;
+                    await dbContext.SaveChangesAsync();
+                    
+                    // Update in local list
+                    var idx = _shipments.FindIndex(s => s.Id == shipment.Id);
+                    if (idx >= 0)
+                    {
+                        _shipments[idx] = existing;
+                    }
+                    Snackbar.Add("Shipment updated successfully", Severity.Success);
+                }
+            }
+            
+            // Update totals on import master
+            await UpdateImportTotals();
+        }
+        catch (Exception ex)
+        {
+            var innerMessage = ex.InnerException?.Message ?? ex.Message;
+            Snackbar.Add($"Error saving shipment: {innerMessage}", Severity.Error);
+        }
+    }
+    
+    private async Task DeleteShipment(ImportShipment shipment)
+    {
+        var confirm = await DialogService.ShowMessageBox(
+            "Delete Shipment",
+            $"Are you sure you want to delete shipment '{shipment.AWBNo}'?",
+            yesText: "Delete", cancelText: "Cancel");
+        
+        if (confirm != true) return;
+        
+        try
+        {
+            await using var dbContext = await DbFactory.CreateDbContextAsync();
+            var existing = await dbContext.ImportShipments.FindAsync(shipment.Id);
+            if (existing != null)
+            {
+                existing.IsDeleted = true;
+                existing.ModifiedAt = DateTime.UtcNow;
+                await dbContext.SaveChangesAsync();
+            }
+            
+            _shipments.Remove(shipment);
+            await UpdateImportTotals();
+            Snackbar.Add("Shipment deleted", Severity.Success);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Delete failed: {ex.Message}", Severity.Error);
+        }
+    }
+    
+    private async Task UpdateImportTotals()
+    {
+        try
+        {
+            await using var dbContext = await DbFactory.CreateDbContextAsync();
+            var import = await dbContext.ImportMasters.FindAsync(_import.Id);
+            if (import != null)
+            {
+                import.TotalShipments = _shipments.Count;
+                import.TotalPieces = _shipments.Sum(s => s.Pieces);
+                import.TotalGrossWeight = _shipments.Sum(s => s.Weight);
+                import.ModifiedAt = DateTime.UtcNow;
+                await dbContext.SaveChangesAsync();
+                
+                _import.TotalShipments = import.TotalShipments;
+                _import.TotalPieces = import.TotalPieces;
+                _import.TotalGrossWeight = import.TotalGrossWeight;
+            }
+        }
+        catch { /* Ignore update totals error */ }
     }
 }
