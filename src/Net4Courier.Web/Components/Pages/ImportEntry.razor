@@ -89,6 +89,18 @@ else
                                 }
                             </MudSelect>
                         </MudItem>
+                        
+                        <MudItem xs="12" sm="6" md="4">
+                            <MudSelect T="Party" Label="Co-Loader" @bind-Value="_selectedCoLoader"
+                                       Variant="Variant.Outlined" Dense="true"
+                                       ToStringFunc="@(p => p != null ? $"{p.Code} - {p.Name}" : "")">
+                                <MudSelectItem T="Party" Value="@((Party?)null)">-- Select --</MudSelectItem>
+                                @foreach (var coloader in _coLoaders)
+                                {
+                                    <MudSelectItem T="Party" Value="@coloader">@coloader.Code - @coloader.Name</MudSelectItem>
+                                }
+                            </MudSelect>
+                        </MudItem>
                     </MudGrid>
 
                     <MudDivider Class="my-4" />
@@ -356,6 +368,8 @@ else
     private Port? _destinationPort;
     private List<ImportDocument> _documents = new();
     private string _referenceLabel = "Reference Number *";
+    private List<Party> _coLoaders = new();
+    private Party? _selectedCoLoader;
     
     private List<BreadcrumbItem> _breadcrumbs = new()
     {
@@ -380,6 +394,12 @@ else
             .OrderBy(p => p.Name)
             .ToListAsync();
         
+        // Load co-loaders
+        _coLoaders = await dbContext.Parties
+            .Where(p => p.PartyType == PartyType.CoLoader && p.IsActive && !p.IsDeleted)
+            .OrderBy(p => p.Code)
+            .ToListAsync();
+        
         if (!IsNew && Id.HasValue)
         {
             _import = await dbContext.ImportMasters.FirstOrDefaultAsync(i => i.Id == Id.Value && !i.IsDeleted) 
@@ -400,6 +420,10 @@ else
                 _originPort = _ports.FirstOrDefault(p => p.IATACode == _import.OriginPortCode || p.Code == _import.OriginPortCode);
             if (!string.IsNullOrEmpty(_import.DestinationPortCode))
                 _destinationPort = _ports.FirstOrDefault(p => p.IATACode == _import.DestinationPortCode || p.Code == _import.DestinationPortCode);
+            
+            // Load selected co-loader
+            if (_import.CoLoaderId.HasValue)
+                _selectedCoLoader = _coLoaders.FirstOrDefault(c => c.Id == _import.CoLoaderId);
             
             _documents = await dbContext.ImportDocuments
                 .Where(d => d.ImportMasterId == Id.Value && !d.IsDeleted)
@@ -503,6 +527,10 @@ else
             // Set port codes from selected ports
             _import.OriginPortCode = _originPort?.IATACode ?? _originPort?.Code;
             _import.DestinationPortCode = _destinationPort?.IATACode ?? _destinationPort?.Code;
+            
+            // Set co-loader info
+            _import.CoLoaderId = _selectedCoLoader?.Id;
+            _import.CoLoaderName = _selectedCoLoader?.Name;
             
             if (IsNew)
             {

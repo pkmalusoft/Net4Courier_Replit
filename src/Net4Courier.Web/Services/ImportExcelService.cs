@@ -1,5 +1,6 @@
 using ClosedXML.Excel;
 using Net4Courier.Kernel.Enums;
+using Net4Courier.Masters.Entities;
 using Net4Courier.Operations.Entities;
 
 namespace Net4Courier.Web.Services;
@@ -16,6 +17,8 @@ public class ImportHeaderDto
 {
     public ImportMode ImportMode { get; set; } = ImportMode.Air;
     public string MasterReferenceNumber { get; set; } = string.Empty;
+    public string? ColoaderNumber { get; set; }
+    public string? ColoaderName { get; set; }
     public string? OriginCountry { get; set; }
     public string? OriginCity { get; set; }
     public string? OriginPort { get; set; }
@@ -73,6 +76,15 @@ public class ImportExcelService
 {
     public byte[] GenerateTemplate(ImportMode mode)
     {
+        return GenerateTemplateWithMasterData(mode, null, null, null, null);
+    }
+    
+    public byte[] GenerateTemplateWithMasterData(ImportMode mode, 
+        List<Country>? countries, 
+        List<State>? states, 
+        List<City>? cities, 
+        List<Port>? ports)
+    {
         using var workbook = new XLWorkbook();
         
         var headerSheet = workbook.Worksheets.Add("Header");
@@ -80,6 +92,31 @@ public class ImportExcelService
         
         var shipmentsSheet = workbook.Worksheets.Add("Shipments");
         CreateShipmentsSheet(shipmentsSheet);
+        
+        // Add master data tabs if data is provided
+        if (countries?.Any() == true)
+        {
+            var countrySheet = workbook.Worksheets.Add("Countries");
+            CreateCountrySheet(countrySheet, countries);
+        }
+        
+        if (states?.Any() == true)
+        {
+            var stateSheet = workbook.Worksheets.Add("States");
+            CreateStateSheet(stateSheet, states, countries);
+        }
+        
+        if (cities?.Any() == true)
+        {
+            var citySheet = workbook.Worksheets.Add("Cities");
+            CreateCitySheet(citySheet, cities);
+        }
+        
+        if (ports?.Any() == true)
+        {
+            var portSheet = workbook.Worksheets.Add("Ports");
+            CreatePortSheet(portSheet, ports, mode);
+        }
         
         using var stream = new MemoryStream();
         workbook.SaveAs(stream);
@@ -105,12 +142,14 @@ public class ImportExcelService
         
         AddHeaderRow(sheet, ref row, "Transport Mode", mode.ToString(), "Yes", "Air, Sea, or Land");
         AddHeaderRow(sheet, ref row, "Master Reference", "", "Yes", mode == ImportMode.Air ? "MAWB Number" : mode == ImportMode.Sea ? "Bill of Lading Number" : "Truck/Vehicle Number");
-        AddHeaderRow(sheet, ref row, "Origin Country", "", "Yes", "Country of origin");
-        AddHeaderRow(sheet, ref row, "Origin City", "", "No", "City of origin");
-        AddHeaderRow(sheet, ref row, "Origin Port/Airport", "", "No", mode == ImportMode.Air ? "Origin Airport Code (e.g., DXB)" : "Origin Port Code");
-        AddHeaderRow(sheet, ref row, "Destination Country", "", "Yes", "Destination country");
-        AddHeaderRow(sheet, ref row, "Destination City", "", "No", "Destination city");
-        AddHeaderRow(sheet, ref row, "Destination Port/Airport", "", "No", mode == ImportMode.Air ? "Destination Airport Code" : "Destination Port Code");
+        AddHeaderRow(sheet, ref row, "Coloader Number", "", "No", "Co-loader party code from the system");
+        AddHeaderRow(sheet, ref row, "Coloader Name", "", "No", "Co-loader party name from the system");
+        AddHeaderRow(sheet, ref row, "Origin Country", "", "Yes", "Country of origin (must match system values - see Countries tab)");
+        AddHeaderRow(sheet, ref row, "Origin City", "", "No", "City of origin (must match system values - see Cities tab)");
+        AddHeaderRow(sheet, ref row, "Origin Port/Airport", "", "No", mode == ImportMode.Air ? "Origin Airport Code (must match system values - see Ports tab)" : "Origin Port Code (must match system values - see Ports tab)");
+        AddHeaderRow(sheet, ref row, "Destination Country", "", "Yes", "Destination country (must match system values - see Countries tab)");
+        AddHeaderRow(sheet, ref row, "Destination City", "", "No", "Destination city (must match system values - see Cities tab)");
+        AddHeaderRow(sheet, ref row, "Destination Port/Airport", "", "No", mode == ImportMode.Air ? "Destination Airport Code (must match system values - see Ports tab)" : "Destination Port Code (must match system values - see Ports tab)");
         AddHeaderRow(sheet, ref row, "ETD", "", "No", "Estimated Time of Departure (DD/MM/YYYY)");
         AddHeaderRow(sheet, ref row, "ETA", "", "No", "Estimated Time of Arrival (DD/MM/YYYY)");
         AddHeaderRow(sheet, ref row, "Carrier Name", "", "No", "Carrier/Airline/Shipping Line name");
@@ -136,9 +175,28 @@ public class ImportExcelService
         AddHeaderRow(sheet, ref row, "Manifest Number", "", "No", "Manifest/Cargo number");
         AddHeaderRow(sheet, ref row, "Remarks", "", "No", "Additional remarks");
         
+        // Add remarks section
+        row += 2;
+        sheet.Cell(row, 1).Value = "IMPORTANT NOTES:";
+        sheet.Cell(row, 1).Style.Font.Bold = true;
+        sheet.Cell(row, 1).Style.Font.FontColor = XLColor.Red;
+        sheet.Range(row, 1, row, 4).Merge();
+        row++;
+        
+        sheet.Cell(row, 1).Value = "- Origin Country, Origin City, and Origin Airport/Port values must exactly match the system's master data.";
+        sheet.Range(row, 1, row, 4).Merge();
+        row++;
+        
+        sheet.Cell(row, 1).Value = "- Destination Country, Destination City, and Destination Airport/Port values must exactly match the system's master data.";
+        sheet.Range(row, 1, row, 4).Merge();
+        row++;
+        
+        sheet.Cell(row, 1).Value = "- Refer to the Countries, States, Cities, and Ports tabs for valid system values.";
+        sheet.Range(row, 1, row, 4).Merge();
+        
         sheet.Columns().AdjustToContents();
         sheet.Column(2).Width = 30;
-        sheet.Column(4).Width = 40;
+        sheet.Column(4).Width = 50;
     }
 
     private void AddHeaderRow(IXLWorksheet sheet, ref int row, string field, string value, string required, string description)
@@ -193,6 +251,116 @@ public class ImportExcelService
         
         sheet.Range(3, 1, 3, headers.Length).Style.Border.OutsideBorder = XLBorderStyleValues.Thin;
         sheet.Range(3, 1, 3, headers.Length).Style.Border.InsideBorder = XLBorderStyleValues.Thin;
+        
+        sheet.Columns().AdjustToContents();
+    }
+    
+    private void CreateCountrySheet(IXLWorksheet sheet, List<Country> countries)
+    {
+        sheet.Cell(1, 1).Value = "Countries - Master Data (Reference Only)";
+        sheet.Cell(1, 1).Style.Font.Bold = true;
+        sheet.Cell(1, 1).Style.Font.FontSize = 14;
+        sheet.Range(1, 1, 1, 3).Merge();
+        
+        int row = 3;
+        sheet.Cell(row, 1).Value = "Code";
+        sheet.Cell(row, 2).Value = "Name";
+        sheet.Cell(row, 3).Value = "IATA Code";
+        sheet.Range(row, 1, row, 3).Style.Font.Bold = true;
+        sheet.Range(row, 1, row, 3).Style.Fill.BackgroundColor = XLColor.LightGray;
+        row++;
+        
+        foreach (var country in countries.OrderBy(c => c.Name))
+        {
+            sheet.Cell(row, 1).Value = country.Code ?? "";
+            sheet.Cell(row, 2).Value = country.Name;
+            sheet.Cell(row, 3).Value = country.IATACode ?? "";
+            row++;
+        }
+        
+        sheet.Columns().AdjustToContents();
+    }
+    
+    private void CreateStateSheet(IXLWorksheet sheet, List<State> states, List<Country>? countries)
+    {
+        sheet.Cell(1, 1).Value = "States - Master Data (Reference Only)";
+        sheet.Cell(1, 1).Style.Font.Bold = true;
+        sheet.Cell(1, 1).Style.Font.FontSize = 14;
+        sheet.Range(1, 1, 1, 3).Merge();
+        
+        int row = 3;
+        sheet.Cell(row, 1).Value = "Code";
+        sheet.Cell(row, 2).Value = "Name";
+        sheet.Cell(row, 3).Value = "Country";
+        sheet.Range(row, 1, row, 3).Style.Font.Bold = true;
+        sheet.Range(row, 1, row, 3).Style.Fill.BackgroundColor = XLColor.LightGray;
+        row++;
+        
+        var countryDict = countries?.ToDictionary(c => c.Id, c => c.Name) ?? new Dictionary<long, string>();
+        
+        foreach (var state in states.OrderBy(s => s.Name))
+        {
+            sheet.Cell(row, 1).Value = state.Code ?? "";
+            sheet.Cell(row, 2).Value = state.Name;
+            sheet.Cell(row, 3).Value = countryDict.ContainsKey(state.CountryId) 
+                ? countryDict[state.CountryId] : "";
+            row++;
+        }
+        
+        sheet.Columns().AdjustToContents();
+    }
+    
+    private void CreateCitySheet(IXLWorksheet sheet, List<City> cities)
+    {
+        sheet.Cell(1, 1).Value = "Cities - Master Data (Reference Only)";
+        sheet.Cell(1, 1).Style.Font.Bold = true;
+        sheet.Cell(1, 1).Style.Font.FontSize = 14;
+        sheet.Range(1, 1, 1, 3).Merge();
+        
+        int row = 3;
+        sheet.Cell(row, 1).Value = "Code";
+        sheet.Cell(row, 2).Value = "Name";
+        sheet.Cell(row, 3).Value = "Is Hub";
+        sheet.Range(row, 1, row, 3).Style.Font.Bold = true;
+        sheet.Range(row, 1, row, 3).Style.Fill.BackgroundColor = XLColor.LightGray;
+        row++;
+        
+        foreach (var city in cities.OrderBy(c => c.Name))
+        {
+            sheet.Cell(row, 1).Value = city.Code;
+            sheet.Cell(row, 2).Value = city.Name;
+            sheet.Cell(row, 3).Value = city.IsHub ? "Yes" : "No";
+            row++;
+        }
+        
+        sheet.Columns().AdjustToContents();
+    }
+    
+    private void CreatePortSheet(IXLWorksheet sheet, List<Port> ports, ImportMode mode)
+    {
+        var portType = mode == ImportMode.Air ? "Airports" : "Ports";
+        sheet.Cell(1, 1).Value = $"{portType} - Master Data (Reference Only)";
+        sheet.Cell(1, 1).Style.Font.Bold = true;
+        sheet.Cell(1, 1).Style.Font.FontSize = 14;
+        sheet.Range(1, 1, 1, 4).Merge();
+        
+        int row = 3;
+        sheet.Cell(row, 1).Value = "Code";
+        sheet.Cell(row, 2).Value = "IATA Code";
+        sheet.Cell(row, 3).Value = "Name";
+        sheet.Cell(row, 4).Value = "Type";
+        sheet.Range(row, 1, row, 4).Style.Font.Bold = true;
+        sheet.Range(row, 1, row, 4).Style.Fill.BackgroundColor = XLColor.LightGray;
+        row++;
+        
+        foreach (var port in ports.OrderBy(p => p.Name))
+        {
+            sheet.Cell(row, 1).Value = port.Code;
+            sheet.Cell(row, 2).Value = port.IATACode ?? "";
+            sheet.Cell(row, 3).Value = port.Name;
+            sheet.Cell(row, 4).Value = port.PortType.ToString();
+            row++;
+        }
         
         sheet.Columns().AdjustToContents();
     }
@@ -277,6 +445,11 @@ public class ImportExcelService
                 });
             }
         }
+        
+        if (fieldValues.TryGetValue("Coloader Number", out var coloaderNumber))
+            header.ColoaderNumber = coloaderNumber;
+        if (fieldValues.TryGetValue("Coloader Name", out var coloaderName))
+            header.ColoaderName = coloaderName;
         
         if (fieldValues.TryGetValue("Origin Country", out var originCountry))
         {
@@ -520,6 +693,8 @@ public class ImportExcelService
             MasterReferenceType = header.ImportMode == ImportMode.Air ? MasterReferenceType.MAWB : 
                                   header.ImportMode == ImportMode.Sea ? MasterReferenceType.BL : MasterReferenceType.TruckWaybill,
             MasterReferenceNumber = header.MasterReferenceNumber,
+            CoLoaderRefNo = header.ColoaderNumber,
+            CoLoaderName = header.ColoaderName,
             OriginCountryName = header.OriginCountry,
             OriginCityName = header.OriginCity,
             OriginPortCode = header.OriginPort,
