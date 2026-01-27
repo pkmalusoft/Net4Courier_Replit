@@ -8,6 +8,7 @@ Net4Courier is a comprehensive logistics management system designed to streamlin
 - Modular architecture like TrueBookserp pattern
 - PostgreSQL partitioning by TransactionDate for performance
 - Party/PartyAddress normalization for storage efficiency
+- Navigation menu organized into 9 main sections: Dashboards, Shipments & Operations, Import/Export, Customers & CRM, Pricing & Billing, Finance & Accounting, Compliance & Audit, Masters & Settings, Knowledge & Tools
 
 ## System Architecture
 The application is built on .NET 8 Blazor Server, adopting a modular architecture for maintainability, scalability, and independent feature development.
