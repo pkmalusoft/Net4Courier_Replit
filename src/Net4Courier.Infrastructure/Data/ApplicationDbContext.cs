@@ -60,6 +60,10 @@ public class ApplicationDbContext : DbContext
     public DbSet<ShipmentNote> ShipmentNotes => Set<ShipmentNote>();
     public DbSet<ShipmentNoteMention> ShipmentNoteMentions => Set<ShipmentNoteMention>();
     
+    public DbSet<AWBStock> AWBStocks => Set<AWBStock>();
+    public DbSet<PrepaidDocument> PrepaidDocuments => Set<PrepaidDocument>();
+    public DbSet<PrepaidAWB> PrepaidAWBs => Set<PrepaidAWB>();
+    
     public DbSet<Invoice> Invoices => Set<Invoice>();
     public DbSet<InvoiceDetail> InvoiceDetails => Set<InvoiceDetail>();
     public DbSet<SpecialCharge> SpecialCharges => Set<SpecialCharge>();
