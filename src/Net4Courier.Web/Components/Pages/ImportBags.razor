@@ -142,57 +142,15 @@ else
     </MudGrid>
 }
 
-<MudDialog @bind-Visible="_bagDialogVisible" Options="new DialogOptions { CloseOnEscapeKey = true, MaxWidth = MaxWidth.Small, FullWidth = true }">
-    <TitleContent>
-        <MudText Typo="Typo.h6">@(_editingBag.Id == 0 ? "Add Bag" : "Edit Bag")</MudText>
-    </TitleContent>
-    <DialogContent>
-        <MudGrid>
-            <MudItem xs="12">
-                <MudTextField @bind-Value="_editingBag.BagNumber" Label="Bag Number *" Variant="Variant.Outlined" Required="true" />
-            </MudItem>
-            <MudItem xs="12" sm="6">
-                <MudSelect T="BagType" Label="Bag Type" @bind-Value="_editingBag.BagType" Variant="Variant.Outlined">
-                    <MudSelectItem Value="BagType.CourierBag">Courier Bag</MudSelectItem>
-                    <MudSelectItem Value="BagType.Pallet">Pallet</MudSelectItem>
-                    <MudSelectItem Value="BagType.Container">Container</MudSelectItem>
-                    <MudSelectItem Value="BagType.Loose">Loose</MudSelectItem>
-                </MudSelect>
-            </MudItem>
-            <MudItem xs="12" sm="6">
-                <MudNumericField @bind-Value="_editingBag.GrossWeight" Label="Gross Weight (kg)" Variant="Variant.Outlined" Format="N3" />
-            </MudItem>
-            <MudItem xs="12">
-                <MudTextField @bind-Value="_editingBag.SealNumber" Label="Seal Number" Variant="Variant.Outlined" />
-            </MudItem>
-            <MudItem xs="12">
-                <MudTextField @bind-Value="_editingBag.Remarks" Label="Remarks" Variant="Variant.Outlined" Lines="2" />
-            </MudItem>
-        </MudGrid>
-    </DialogContent>
-    <DialogActions>
-        <MudButton OnClick="@(() => _bagDialogVisible = false)">Cancel</MudButton>
-        <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="SaveBag" Disabled="@_saving">
-            @if (_saving)
-            {
-                <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" />
-            }
-            Save
-        </MudButton>
-    </DialogActions>
-</MudDialog>
 
 @code {
     [Parameter] public long ImportId { get; set; }
     
     private bool _loading = true;
     private bool _tableLoading = false;
-    private bool _saving = false;
-    private bool _bagDialogVisible = false;
     
     private ImportMaster? _import;
     private List<ImportBag> _bags = new();
-    private ImportBag _editingBag = new();
     
     private List<BreadcrumbItem> _breadcrumbs = new()
     {
@@ -222,20 +180,29 @@ else
         }
     }
 
-    private void AddBag()
+    private async Task AddBag()
     {
-        _editingBag = new ImportBag
+        var newBag = new ImportBag
         {
             ImportMasterId = ImportId,
             BagType = BagType.CourierBag,
             Status = ImportBagStatus.Expected
         };
-        _bagDialogVisible = true;
+        
+        var parameters = new DialogParameters<ImportBagDialog> { { x => x.Bag, newBag } };
+        var options = new DialogOptions { CloseOnEscapeKey = true, MaxWidth = MaxWidth.Small, FullWidth = true };
+        var dialog = await DialogService.ShowAsync<ImportBagDialog>("Add Bag", parameters, options);
+        var result = await dialog.Result;
+        
+        if (result != null && !result.Canceled && result.Data is ImportBag savedBag)
+        {
+            await SaveBag(savedBag, isNew: true);
+        }
     }
 
-    private void EditBag(ImportBag bag)
+    private async Task EditBag(ImportBag bag)
     {
-        _editingBag = new ImportBag
+        var editBag = new ImportBag
         {
             Id = bag.Id,
             ImportMasterId = bag.ImportMasterId,
@@ -246,26 +213,34 @@ else
             Remarks = bag.Remarks,
             Status = bag.Status
         };
-        _bagDialogVisible = true;
+        
+        var parameters = new DialogParameters<ImportBagDialog> { { x => x.Bag, editBag } };
+        var options = new DialogOptions { CloseOnEscapeKey = true, MaxWidth = MaxWidth.Small, FullWidth = true };
+        var dialog = await DialogService.ShowAsync<ImportBagDialog>("Edit Bag", parameters, options);
+        var result = await dialog.Result;
+        
+        if (result != null && !result.Canceled && result.Data is ImportBag savedBag)
+        {
+            await SaveBag(savedBag, isNew: false);
+        }
     }
 
-    private async Task SaveBag()
+    private async Task SaveBag(ImportBag bagData, bool isNew)
     {
-        if (string.IsNullOrWhiteSpace(_editingBag.BagNumber))
+        if (string.IsNullOrWhiteSpace(bagData.BagNumber))
         {
             Snackbar.Add("Bag number is required", Severity.Warning);
             return;
         }
 
-        _saving = true;
         try
         {
             await using var dbContext = await DbFactory.CreateDbContextAsync();
             
             var existing = await dbContext.ImportBags
                 .FirstOrDefaultAsync(b => b.ImportMasterId == ImportId && 
-                    b.BagNumber == _editingBag.BagNumber && 
-                    b.Id != _editingBag.Id && !b.IsDeleted);
+                    b.BagNumber == bagData.BagNumber && 
+                    b.Id != bagData.Id && !b.IsDeleted);
             
             if (existing != null)
             {
@@ -273,37 +248,32 @@ else
                 return;
             }
 
-            if (_editingBag.Id == 0)
+            if (isNew)
             {
-                _editingBag.CreatedAt = DateTime.UtcNow;
-                dbContext.ImportBags.Add(_editingBag);
+                bagData.CreatedAt = DateTime.UtcNow;
+                dbContext.ImportBags.Add(bagData);
             }
             else
             {
-                var bag = await dbContext.ImportBags.FindAsync(_editingBag.Id);
+                var bag = await dbContext.ImportBags.FindAsync(bagData.Id);
                 if (bag != null)
                 {
-                    bag.BagNumber = _editingBag.BagNumber;
-                    bag.BagType = _editingBag.BagType;
-                    bag.GrossWeight = _editingBag.GrossWeight;
-                    bag.SealNumber = _editingBag.SealNumber;
-                    bag.Remarks = _editingBag.Remarks;
+                    bag.BagNumber = bagData.BagNumber;
+                    bag.BagType = bagData.BagType;
+                    bag.GrossWeight = bagData.GrossWeight;
+                    bag.SealNumber = bagData.SealNumber;
+                    bag.Remarks = bagData.Remarks;
                     bag.ModifiedAt = DateTime.UtcNow;
                 }
             }
             
             await dbContext.SaveChangesAsync();
             Snackbar.Add("Bag saved successfully", Severity.Success);
-            _bagDialogVisible = false;
             await LoadData();
         }
         catch (Exception ex)
         {
             Snackbar.Add($"Error saving bag: {ex.Message}", Severity.Error);
-        }
-        finally
-        {
-            _saving = false;
         }
     }
 
