@@ -265,10 +265,13 @@ else
                             <MudIcon Icon="@Icons.Material.Filled.LocalShipping" Class="mr-2" />
                             Shipments (@_shipments.Count)
                         </MudText>
-                        <MudButton Variant="Variant.Filled" Color="Color.Primary" Size="Size.Small"
-                                   OnClick="AddNewShipment" StartIcon="@Icons.Material.Filled.Add">
-                            Add Shipment
-                        </MudButton>
+                        <MudTooltip Text="@(IsNew ? "Save the import first to add shipments" : "Add a new shipment")">
+                            <MudButton Variant="Variant.Filled" Color="Color.Primary" Size="Size.Small"
+                                       OnClick="AddNewShipment" StartIcon="@Icons.Material.Filled.Add"
+                                       Disabled="@IsNew">
+                                Add Shipment
+                            </MudButton>
+                        </MudTooltip>
                     </div>
                     
                     @if (_shipments.Any())
@@ -763,135 +766,16 @@ else
         }
     }
     
-    private async Task AddNewShipment()
+    private void AddNewShipment()
     {
-        // Must save import first if new
-        if (IsNew)
-        {
-            Snackbar.Add("Please save the import first before adding shipments.", Severity.Warning);
-            return;
-        }
-        
-        var parameters = new DialogParameters<ImportShipmentDialog>
-        {
-            { x => x.Shipment, new ImportShipment { ImportMasterId = _import.Id } },
-            { x => x.IsNew, true },
-            { x => x.Countries, _countries }
-        };
-        
-        var dialog = await DialogService.ShowAsync<ImportShipmentDialog>("Add Shipment", parameters,
-            new DialogOptions { MaxWidth = MaxWidth.Large, FullWidth = true });
-        var result = await dialog.Result;
-        
-        if (!result!.Canceled && result.Data is ImportShipment shipment)
-        {
-            await SaveShipment(shipment, true);
-        }
+        // Navigate to new shipment entry page
+        NavigationManager.NavigateTo($"/import-shipment-entry/{_import.Id}/new");
     }
     
-    private async Task EditShipment(ImportShipment shipment)
+    private void EditShipment(ImportShipment shipment)
     {
-        var editShipment = new ImportShipment
-        {
-            Id = shipment.Id,
-            ImportMasterId = shipment.ImportMasterId,
-            AWBNo = shipment.AWBNo,
-            ConsigneeName = shipment.ConsigneeName,
-            ConsigneeAddress = shipment.ConsigneeAddress,
-            ConsigneeCity = shipment.ConsigneeCity,
-            ConsigneeState = shipment.ConsigneeState,
-            ConsigneeCountry = shipment.ConsigneeCountry,
-            ConsigneePostalCode = shipment.ConsigneePostalCode,
-            ConsigneePhone = shipment.ConsigneePhone,
-            ShipperName = shipment.ShipperName,
-            ShipperCountry = shipment.ShipperCountry,
-            Pieces = shipment.Pieces,
-            Weight = shipment.Weight,
-            ContentsDescription = shipment.ContentsDescription,
-            HSCode = shipment.HSCode,
-            DeclaredValue = shipment.DeclaredValue,
-            Currency = shipment.Currency,
-            PaymentMode = shipment.PaymentMode,
-            SpecialInstructions = shipment.SpecialInstructions,
-            Status = shipment.Status,
-            CreatedAt = shipment.CreatedAt
-        };
-        
-        var parameters = new DialogParameters<ImportShipmentDialog>
-        {
-            { x => x.Shipment, editShipment },
-            { x => x.IsNew, false },
-            { x => x.Countries, _countries }
-        };
-        
-        var dialog = await DialogService.ShowAsync<ImportShipmentDialog>("Edit Shipment", parameters,
-            new DialogOptions { MaxWidth = MaxWidth.Large, FullWidth = true });
-        var result = await dialog.Result;
-        
-        if (!result!.Canceled && result.Data is ImportShipment updatedShipment)
-        {
-            await SaveShipment(updatedShipment, false);
-        }
-    }
-    
-    private async Task SaveShipment(ImportShipment shipment, bool isNew)
-    {
-        try
-        {
-            await using var dbContext = await DbFactory.CreateDbContextAsync();
-            
-            if (isNew)
-            {
-                shipment.CreatedAt = DateTime.UtcNow;
-                dbContext.ImportShipments.Add(shipment);
-                await dbContext.SaveChangesAsync();
-                _shipments.Add(shipment);
-                Snackbar.Add("Shipment added successfully", Severity.Success);
-            }
-            else
-            {
-                var existing = await dbContext.ImportShipments.FindAsync(shipment.Id);
-                if (existing != null)
-                {
-                    existing.AWBNo = shipment.AWBNo;
-                    existing.ConsigneeName = shipment.ConsigneeName;
-                    existing.ConsigneeAddress = shipment.ConsigneeAddress;
-                    existing.ConsigneeCity = shipment.ConsigneeCity;
-                    existing.ConsigneeState = shipment.ConsigneeState;
-                    existing.ConsigneeCountry = shipment.ConsigneeCountry;
-                    existing.ConsigneePostalCode = shipment.ConsigneePostalCode;
-                    existing.ConsigneePhone = shipment.ConsigneePhone;
-                    existing.ShipperName = shipment.ShipperName;
-                    existing.ShipperCountry = shipment.ShipperCountry;
-                    existing.Pieces = shipment.Pieces;
-                    existing.Weight = shipment.Weight;
-                    existing.ContentsDescription = shipment.ContentsDescription;
-                    existing.HSCode = shipment.HSCode;
-                    existing.DeclaredValue = shipment.DeclaredValue;
-                    existing.Currency = shipment.Currency;
-                    existing.PaymentMode = shipment.PaymentMode;
-                    existing.SpecialInstructions = shipment.SpecialInstructions;
-                    existing.ModifiedAt = DateTime.UtcNow;
-                    await dbContext.SaveChangesAsync();
-                    
-                    // Update in local list
-                    var idx = _shipments.FindIndex(s => s.Id == shipment.Id);
-                    if (idx >= 0)
-                    {
-                        _shipments[idx] = existing;
-                    }
-                    Snackbar.Add("Shipment updated successfully", Severity.Success);
-                }
-            }
-            
-            // Update totals on import master
-            await UpdateImportTotals();
-        }
-        catch (Exception ex)
-        {
-            var innerMessage = ex.InnerException?.Message ?? ex.Message;
-            Snackbar.Add($"Error saving shipment: {innerMessage}", Severity.Error);
-        }
+        // Navigate to edit shipment entry page
+        NavigationManager.NavigateTo($"/import-shipment-entry/{_import.Id}/{shipment.Id}");
     }
     
     private async Task DeleteShipment(ImportShipment shipment)

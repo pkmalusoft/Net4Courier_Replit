@@ -1,0 +1,409 @@
+@page "/import-shipment-entry/{ImportId:long}/{ShipmentId}"
+@using MudBlazor
+@using Microsoft.EntityFrameworkCore
+@using Net4Courier.Infrastructure.Data
+@using Net4Courier.Operations.Entities
+@using Net4Courier.Masters.Entities
+@using Net4Courier.Kernel.Enums
+@inject IDbContextFactory<ApplicationDbContext> DbFactory
+@inject NavigationManager NavigationManager
+@inject ISnackbar Snackbar
+
+<PageTitle>@(_isNew ? "Add Shipment" : "Edit Shipment") - Import Entry</PageTitle>
+
+<MudContainer MaxWidth="MaxWidth.Large" Class="py-4">
+    @if (_loading)
+    {
+        <MudProgressLinear Color="Color.Primary" Indeterminate="true" />
+    }
+    else if (_importMaster == null)
+    {
+        <MudAlert Severity="Severity.Error">Import record not found.</MudAlert>
+    }
+    else
+    {
+        <MudPaper Class="pa-4 mb-4" Elevation="2">
+            <div class="d-flex justify-space-between align-center mb-2">
+                <MudText Typo="Typo.h6">
+                    <MudIcon Icon="@Icons.Material.Filled.Flight" Class="mr-2" />
+                    @(_importMaster.ShipmentDirection == ShipmentDirection.Import ? "Import" : "Export") Details
+                </MudText>
+                <MudChip T="string" Size="Size.Small" Color="Color.Primary" Variant="Variant.Outlined">
+                    @_importMaster.ReferenceNo
+                </MudChip>
+            </div>
+            <MudDivider Class="mb-3" />
+            <MudGrid>
+                <MudItem xs="6" sm="3">
+                    <MudText Typo="Typo.caption" Color="Color.Secondary">Date</MudText>
+                    <MudText Typo="Typo.body2">@_importMaster.TransactionDate.ToString("dd-MMM-yyyy")</MudText>
+                </MudItem>
+                <MudItem xs="6" sm="3">
+                    <MudText Typo="Typo.caption" Color="Color.Secondary">Mode</MudText>
+                    <MudText Typo="Typo.body2">@_importMaster.Mode.ToString()</MudText>
+                </MudItem>
+                <MudItem xs="6" sm="3">
+                    <MudText Typo="Typo.caption" Color="Color.Secondary">Origin</MudText>
+                    <MudText Typo="Typo.body2">@(_importMaster.OriginPort?.Name ?? "-")</MudText>
+                </MudItem>
+                <MudItem xs="6" sm="3">
+                    <MudText Typo="Typo.caption" Color="Color.Secondary">Destination</MudText>
+                    <MudText Typo="Typo.body2">@(_importMaster.DestinationPort?.Name ?? "-")</MudText>
+                </MudItem>
+                <MudItem xs="6" sm="3">
+                    <MudText Typo="Typo.caption" Color="Color.Secondary">Co-Loader</MudText>
+                    <MudText Typo="Typo.body2">@(_importMaster.CoLoader?.Name ?? "-")</MudText>
+                </MudItem>
+                <MudItem xs="6" sm="3">
+                    <MudText Typo="Typo.caption" Color="Color.Secondary">MAWB/Manifest No</MudText>
+                    <MudText Typo="Typo.body2">@(_importMaster.MAWBNo ?? "-")</MudText>
+                </MudItem>
+                <MudItem xs="6" sm="3">
+                    <MudText Typo="Typo.caption" Color="Color.Secondary">Total Shipments</MudText>
+                    <MudText Typo="Typo.body2">@_importMaster.TotalShipments</MudText>
+                </MudItem>
+                <MudItem xs="6" sm="3">
+                    <MudText Typo="Typo.caption" Color="Color.Secondary">Total Weight</MudText>
+                    <MudText Typo="Typo.body2">@_importMaster.TotalGrossWeight.ToString("N2") Kg</MudText>
+                </MudItem>
+            </MudGrid>
+        </MudPaper>
+
+        <MudPaper Class="pa-4" Elevation="2">
+            <MudText Typo="Typo.h6" Class="mb-4">
+                <MudIcon Icon="@Icons.Material.Filled.LocalShipping" Class="mr-2" />
+                @(_isNew ? "Add New Shipment" : "Edit Shipment")
+            </MudText>
+            
+            <MudForm @ref="_form" @bind-IsValid="_formValid">
+                <MudGrid>
+                    <MudItem xs="12">
+                        <MudText Typo="Typo.subtitle2" Color="Color.Primary" Class="mb-2">AWB Information</MudText>
+                    </MudItem>
+                    <MudItem xs="12" sm="6" md="4">
+                        <MudTextField @bind-Value="_shipment.AWBNo" Label="AWB No *" Variant="Variant.Outlined" Required="true" />
+                    </MudItem>
+                    <MudItem xs="12" sm="6" md="4">
+                        <MudSelect T="PaymentMode" Label="Payment Mode" @bind-Value="_shipment.PaymentMode" Variant="Variant.Outlined">
+                            @foreach (PaymentMode mode in Enum.GetValues(typeof(PaymentMode)))
+                            {
+                                <MudSelectItem Value="mode">@mode.ToString()</MudSelectItem>
+                            }
+                        </MudSelect>
+                    </MudItem>
+                    <MudItem xs="12" sm="6" md="4">
+                        <MudTextField @bind-Value="_shipment.ReferenceNo" Label="Reference No" Variant="Variant.Outlined" />
+                    </MudItem>
+                    
+                    <MudItem xs="12">
+                        <MudDivider Class="my-2" />
+                        <MudText Typo="Typo.subtitle2" Color="Color.Primary" Class="mb-2">Consignee (Receiver) Details</MudText>
+                    </MudItem>
+                    <MudItem xs="12" sm="6">
+                        <MudTextField @bind-Value="_shipment.ConsigneeName" Label="Consignee Name *" Variant="Variant.Outlined" Required="true" />
+                    </MudItem>
+                    <MudItem xs="12" sm="6">
+                        <MudTextField @bind-Value="_shipment.ConsigneePhone" Label="Consignee Phone" Variant="Variant.Outlined" />
+                    </MudItem>
+                    <MudItem xs="12">
+                        <MudTextField @bind-Value="_shipment.ConsigneeAddress" Label="Consignee Address" Variant="Variant.Outlined" />
+                    </MudItem>
+                    <MudItem xs="12" sm="6" md="3">
+                        <MudTextField @bind-Value="_shipment.ConsigneeCity" Label="City" Variant="Variant.Outlined" />
+                    </MudItem>
+                    <MudItem xs="12" sm="6" md="3">
+                        <MudTextField @bind-Value="_shipment.ConsigneeState" Label="State" Variant="Variant.Outlined" />
+                    </MudItem>
+                    <MudItem xs="12" sm="6" md="3">
+                        <MudAutocomplete T="Country" Label="Country *" Value="_consigneeCountry"
+                                         SearchFunc="SearchCountries" ToStringFunc="@(c => c?.Name ?? "")"
+                                         Variant="Variant.Outlined" Required="true" ValueChanged="OnConsigneeCountryChanged" />
+                    </MudItem>
+                    <MudItem xs="12" sm="6" md="3">
+                        <MudTextField @bind-Value="_shipment.ConsigneePostalCode" Label="Postal Code" Variant="Variant.Outlined" />
+                    </MudItem>
+                    
+                    <MudItem xs="12">
+                        <MudDivider Class="my-2" />
+                        <MudText Typo="Typo.subtitle2" Color="Color.Primary" Class="mb-2">Shipper Details</MudText>
+                    </MudItem>
+                    <MudItem xs="12" sm="6">
+                        <MudTextField @bind-Value="_shipment.ShipperName" Label="Shipper Name" Variant="Variant.Outlined" />
+                    </MudItem>
+                    <MudItem xs="12" sm="6">
+                        <MudAutocomplete T="Country" Label="Shipper Country" Value="_shipperCountry"
+                                         SearchFunc="SearchCountries" ToStringFunc="@(c => c?.Name ?? "")"
+                                         Variant="Variant.Outlined" ValueChanged="OnShipperCountryChanged" />
+                    </MudItem>
+                    
+                    <MudItem xs="12">
+                        <MudDivider Class="my-2" />
+                        <MudText Typo="Typo.subtitle2" Color="Color.Primary" Class="mb-2">Package Details</MudText>
+                    </MudItem>
+                    <MudItem xs="12" sm="6" md="3">
+                        <MudNumericField @bind-Value="_shipment.Pieces" Label="Pieces *" Variant="Variant.Outlined" Min="1" Required="true" />
+                    </MudItem>
+                    <MudItem xs="12" sm="6" md="3">
+                        <MudNumericField @bind-Value="_shipment.Weight" Label="Weight (Kg) *" Variant="Variant.Outlined" Min="0.01M" Step="0.01M" Required="true" />
+                    </MudItem>
+                    <MudItem xs="12" sm="6" md="3">
+                        <MudNumericField @bind-Value="_shipment.DeclaredValue" Label="Declared Value" Variant="Variant.Outlined" Min="0M" Step="0.01M" />
+                    </MudItem>
+                    <MudItem xs="12" sm="6" md="3">
+                        <MudTextField @bind-Value="_shipment.Currency" Label="Currency" Variant="Variant.Outlined" Placeholder="USD" />
+                    </MudItem>
+                    <MudItem xs="12" sm="6">
+                        <MudTextField @bind-Value="_shipment.ContentsDescription" Label="Contents Description" Variant="Variant.Outlined" />
+                    </MudItem>
+                    <MudItem xs="12" sm="6">
+                        <MudTextField @bind-Value="_shipment.HSCode" Label="HS Code" Variant="Variant.Outlined" />
+                    </MudItem>
+                    <MudItem xs="12">
+                        <MudTextField @bind-Value="_shipment.SpecialInstructions" Label="Special Instructions" Variant="Variant.Outlined" Lines="2" />
+                    </MudItem>
+                </MudGrid>
+            </MudForm>
+            
+            <div class="d-flex justify-space-between mt-4">
+                <MudButton Variant="Variant.Outlined" Color="Color.Default" OnClick="GoBack" StartIcon="@Icons.Material.Filled.ArrowBack">
+                    Cancel
+                </MudButton>
+                <div class="d-flex gap-2">
+                    <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="SaveAndClose" 
+                               Disabled="@(!_formValid || _saving)" StartIcon="@Icons.Material.Filled.Save">
+                        @(_saving ? "Saving..." : "Save & Close")
+                    </MudButton>
+                    @if (_isNew)
+                    {
+                        <MudButton Variant="Variant.Filled" Color="Color.Secondary" OnClick="SaveAndAddAnother" 
+                                   Disabled="@(!_formValid || _saving)" StartIcon="@Icons.Material.Filled.Add">
+                            Save & Add Another
+                        </MudButton>
+                    }
+                </div>
+            </div>
+        </MudPaper>
+    }
+</MudContainer>
+
+@code {
+    [Parameter] public long ImportId { get; set; }
+    [Parameter] public string ShipmentId { get; set; } = "";
+    
+    private bool _isNew => ShipmentId == "new";
+    private bool _loading = true;
+    private bool _saving = false;
+    private bool _formValid = false;
+    private MudForm? _form;
+    
+    private ImportMaster? _importMaster;
+    private ImportShipment _shipment = new();
+    private List<Country> _countries = new();
+    private Country? _consigneeCountry;
+    private Country? _shipperCountry;
+    
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadData();
+    }
+    
+    private async Task LoadData()
+    {
+        _loading = true;
+        try
+        {
+            await using var dbContext = await DbFactory.CreateDbContextAsync();
+            
+            _importMaster = await dbContext.ImportMasters
+                .Include(m => m.OriginPort)
+                .Include(m => m.DestinationPort)
+                .Include(m => m.CoLoader)
+                .FirstOrDefaultAsync(m => m.Id == ImportId && !m.IsDeleted);
+            
+            if (_importMaster == null)
+            {
+                Snackbar.Add("Import record not found", Severity.Error);
+                return;
+            }
+            
+            _countries = await dbContext.Countries.Where(c => c.IsActive && !c.IsDeleted).OrderBy(c => c.Name).ToListAsync();
+            
+            if (!_isNew)
+            {
+                if (long.TryParse(ShipmentId, out var shipmentId))
+                {
+                    var existingShipment = await dbContext.ImportShipments.FirstOrDefaultAsync(s => s.Id == shipmentId && !s.IsDeleted);
+                    if (existingShipment != null)
+                    {
+                        _shipment = existingShipment;
+                        
+                        if (!string.IsNullOrEmpty(_shipment.ConsigneeCountry))
+                            _consigneeCountry = _countries.FirstOrDefault(c => c.Name == _shipment.ConsigneeCountry);
+                        if (!string.IsNullOrEmpty(_shipment.ShipperCountry))
+                            _shipperCountry = _countries.FirstOrDefault(c => c.Name == _shipment.ShipperCountry);
+                    }
+                    else
+                    {
+                        Snackbar.Add("Shipment not found", Severity.Error);
+                        NavigationManager.NavigateTo($"/import-entry/{ImportId}");
+                        return;
+                    }
+                }
+            }
+            else
+            {
+                _shipment = new ImportShipment
+                {
+                    ImportMasterId = ImportId,
+                    Pieces = 1,
+                    Weight = 0.5m,
+                    Currency = "USD",
+                    PaymentMode = PaymentMode.Prepaid
+                };
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error loading data: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+    
+    private Task<IEnumerable<Country>> SearchCountries(string value)
+    {
+        if (string.IsNullOrEmpty(value))
+            return Task.FromResult(_countries.Take(20));
+        
+        return Task.FromResult(_countries.Where(c => c.Name.Contains(value, StringComparison.OrdinalIgnoreCase)).Take(20));
+    }
+    
+    private void OnConsigneeCountryChanged(Country? country)
+    {
+        _consigneeCountry = country;
+        _shipment.ConsigneeCountry = country?.Name ?? string.Empty;
+    }
+    
+    private void OnShipperCountryChanged(Country? country)
+    {
+        _shipperCountry = country;
+        _shipment.ShipperCountry = country?.Name;
+    }
+    
+    private void GoBack()
+    {
+        NavigationManager.NavigateTo($"/import-entry/{ImportId}");
+    }
+    
+    private async Task SaveAndClose()
+    {
+        if (await SaveShipment())
+        {
+            NavigationManager.NavigateTo($"/import-entry/{ImportId}");
+        }
+    }
+    
+    private async Task SaveAndAddAnother()
+    {
+        if (await SaveShipment())
+        {
+            _shipment = new ImportShipment
+            {
+                ImportMasterId = ImportId,
+                Pieces = 1,
+                Weight = 0.5m,
+                Currency = "USD",
+                PaymentMode = PaymentMode.Prepaid
+            };
+            _consigneeCountry = null;
+            _shipperCountry = null;
+            Snackbar.Add("Shipment saved. Ready to add another.", Severity.Success);
+            StateHasChanged();
+        }
+    }
+    
+    private async Task<bool> SaveShipment()
+    {
+        _saving = true;
+        try
+        {
+            await using var dbContext = await DbFactory.CreateDbContextAsync();
+            
+            if (_isNew)
+            {
+                _shipment.CreatedAt = DateTime.UtcNow;
+                dbContext.ImportShipments.Add(_shipment);
+            }
+            else
+            {
+                var existing = await dbContext.ImportShipments.FindAsync(_shipment.Id);
+                if (existing == null)
+                {
+                    Snackbar.Add("Shipment not found", Severity.Error);
+                    return false;
+                }
+                
+                existing.AWBNo = _shipment.AWBNo;
+                existing.ConsigneeName = _shipment.ConsigneeName;
+                existing.ConsigneeAddress = _shipment.ConsigneeAddress;
+                existing.ConsigneeCity = _shipment.ConsigneeCity;
+                existing.ConsigneeState = _shipment.ConsigneeState;
+                existing.ConsigneeCountry = _shipment.ConsigneeCountry;
+                existing.ConsigneePostalCode = _shipment.ConsigneePostalCode;
+                existing.ConsigneePhone = _shipment.ConsigneePhone;
+                existing.ShipperName = _shipment.ShipperName;
+                existing.ShipperCountry = _shipment.ShipperCountry;
+                existing.Pieces = _shipment.Pieces;
+                existing.Weight = _shipment.Weight;
+                existing.ContentsDescription = _shipment.ContentsDescription;
+                existing.HSCode = _shipment.HSCode;
+                existing.DeclaredValue = _shipment.DeclaredValue;
+                existing.Currency = _shipment.Currency;
+                existing.PaymentMode = _shipment.PaymentMode;
+                existing.SpecialInstructions = _shipment.SpecialInstructions;
+                existing.ReferenceNo = _shipment.ReferenceNo;
+                existing.ModifiedAt = DateTime.UtcNow;
+            }
+            
+            await dbContext.SaveChangesAsync();
+            
+            await UpdateImportTotals(dbContext);
+            
+            Snackbar.Add(_isNew ? "Shipment added successfully" : "Shipment updated successfully", Severity.Success);
+            return true;
+        }
+        catch (Exception ex)
+        {
+            var innerMessage = ex.InnerException?.Message ?? ex.Message;
+            Snackbar.Add($"Error saving shipment: {innerMessage}", Severity.Error);
+            return false;
+        }
+        finally
+        {
+            _saving = false;
+        }
+    }
+    
+    private async Task UpdateImportTotals(ApplicationDbContext dbContext)
+    {
+        try
+        {
+            var shipments = await dbContext.ImportShipments
+                .Where(s => s.ImportMasterId == ImportId && !s.IsDeleted)
+                .ToListAsync();
+            
+            var import = await dbContext.ImportMasters.FindAsync(ImportId);
+            if (import != null)
+            {
+                import.TotalShipments = shipments.Count;
+                import.TotalPieces = shipments.Sum(s => s.Pieces);
+                import.TotalGrossWeight = shipments.Sum(s => s.Weight);
+                import.ModifiedAt = DateTime.UtcNow;
+                await dbContext.SaveChangesAsync();
+            }
+        }
+        catch { }
+    }
+}
