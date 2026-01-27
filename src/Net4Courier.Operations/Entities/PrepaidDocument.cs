@@ -23,7 +23,7 @@ public class PrepaidDocument : AuditableEntity
     public string AWBNoFrom { get; set; } = string.Empty;
     public string AWBNoTo { get; set; } = string.Empty;
     
-    public PaymentMode PaymentMode { get; set; }
+    public PrepaidPaymentMode PaymentMode { get; set; }
     public long? BankAccountId { get; set; }
     public string? BankAccountName { get; set; }
     public long? CashAccountId { get; set; }
@@ -44,7 +44,7 @@ public class PrepaidDocument : AuditableEntity
     public virtual ICollection<PrepaidAWB> PrepaidAWBs { get; set; } = new List<PrepaidAWB>();
 }
 
-public enum PaymentMode
+public enum PrepaidPaymentMode
 {
     Cash = 0,
     Bank = 1,

@@ -151,6 +151,8 @@ builder.Services.AddScoped<TransferOrderService>();
 builder.Services.AddScoped<IPageErrorHandler, PageErrorHandler>();
 builder.Services.AddScoped<ISLAPdfService, SLAPdfService>();
 builder.Services.AddScoped<RateCardImportService>();
+builder.Services.AddScoped<AWBStockService>();
+builder.Services.AddScoped<PrepaidService>();
 builder.Services.AddAuthorizationCore();
 builder.Services.AddCascadingAuthenticationState();
 

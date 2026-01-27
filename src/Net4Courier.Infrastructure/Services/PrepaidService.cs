@@ -136,13 +136,13 @@ public class PrepaidService
             .FirstOrDefaultAsync(a => a.Code == "PREPAID_CONTROL" && !a.IsDeleted);
 
         long? cashBankAccountId = null;
-        if (document.PaymentMode == PaymentMode.Cash)
+        if (document.PaymentMode == PrepaidPaymentMode.Cash)
         {
             var cashAccount = await _context.AccountHeads
                 .FirstOrDefaultAsync(a => a.Code == "CASH" && !a.IsDeleted);
             cashBankAccountId = cashAccount?.Id ?? document.CashAccountId;
         }
-        else if (document.PaymentMode == PaymentMode.Bank || document.PaymentMode == PaymentMode.Cheque)
+        else if (document.PaymentMode == PrepaidPaymentMode.Bank || document.PaymentMode == PrepaidPaymentMode.Cheque)
         {
             if (document.BankAccountId.HasValue)
             {
