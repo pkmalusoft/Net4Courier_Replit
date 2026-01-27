@@ -1,0 +1,271 @@
+@page "/reports/account-ledger-detailed"
+@inject ApplicationDbContext DbContext
+@inject ISnackbar Snackbar
+@using Microsoft.EntityFrameworkCore
+@using Net4Courier.Infrastructure.Data
+@using Net4Courier.Finance.Entities
+
+<PageTitle>Account Ledger (Detailed) - Net4Courier</PageTitle>
+
+<MudContainer MaxWidth="MaxWidth.ExtraLarge" Class="mt-4">
+    <MudText Typo="Typo.h5" Class="mb-4">Account Ledger - Detailed</MudText>
+    
+    <MudPaper Class="pa-4 mb-4" Elevation="2">
+        <MudGrid>
+            <MudItem xs="12" sm="4">
+                <MudSelect @bind-Value="_selectedAccountId" 
+                           Label="Select Account" 
+                           T="long?"
+                           Variant="Variant.Outlined"
+                           Dense="true"
+                           AnchorOrigin="Origin.BottomCenter">
+                    @foreach (var account in _accounts)
+                    {
+                        <MudSelectItem Value="@((long?)account.Id)">
+                            @account.Code - @account.Name
+                        </MudSelectItem>
+                    }
+                </MudSelect>
+            </MudItem>
+            <MudItem xs="12" sm="2">
+                <MudDatePicker @bind-Date="_fromDate" Label="From Date" DateFormat="dd-MMM-yyyy" Variant="Variant.Outlined" Dense="true" />
+            </MudItem>
+            <MudItem xs="12" sm="2">
+                <MudDatePicker @bind-Date="_toDate" Label="To Date" DateFormat="dd-MMM-yyyy" Variant="Variant.Outlined" Dense="true" />
+            </MudItem>
+            <MudItem xs="12" sm="2">
+                <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="LoadReport" 
+                           FullWidth="true" Class="mt-1" Disabled="@(_isLoading || !_selectedAccountId.HasValue)">
+                    @if (_isLoading)
+                    {
+                        <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" />
+                    }
+                    Generate
+                </MudButton>
+            </MudItem>
+            <MudItem xs="12" sm="2">
+                <MudButton Variant="Variant.Outlined" OnClick="ClearFilters" FullWidth="true" Class="mt-1">
+                    Clear
+                </MudButton>
+            </MudItem>
+        </MudGrid>
+    </MudPaper>
+
+    @if (_hasData)
+    {
+        <MudPaper Class="pa-4 mb-4" Elevation="2">
+            <MudGrid>
+                <MudItem xs="12" sm="6">
+                    <MudText Typo="Typo.h6">@_selectedAccount?.Code - @_selectedAccount?.Name</MudText>
+                    <MudText Typo="Typo.caption">
+                        Period: @_fromDate?.ToString("dd MMM yyyy") - @_toDate?.ToString("dd MMM yyyy")
+                    </MudText>
+                </MudItem>
+                <MudItem xs="12" sm="6">
+                    <MudStack Row="true" Justify="Justify.FlexEnd" Spacing="4">
+                        <MudStack Spacing="0" AlignItems="AlignItems.End">
+                            <MudText Typo="Typo.caption">Opening Balance</MudText>
+                            <MudText Typo="Typo.h6" Style="@(_openingBalance >= 0 ? "color: var(--mud-palette-info);" : "color: var(--mud-palette-warning);")">
+                                @_openingBalance.ToString("N2")
+                            </MudText>
+                        </MudStack>
+                        <MudStack Spacing="0" AlignItems="AlignItems.End">
+                            <MudText Typo="Typo.caption" Color="Color.Error">Total Debit</MudText>
+                            <MudText Typo="Typo.h6" Color="Color.Error">@_totalDebit.ToString("N2")</MudText>
+                        </MudStack>
+                        <MudStack Spacing="0" AlignItems="AlignItems.End">
+                            <MudText Typo="Typo.caption" Color="Color.Success">Total Credit</MudText>
+                            <MudText Typo="Typo.h6" Color="Color.Success">@_totalCredit.ToString("N2")</MudText>
+                        </MudStack>
+                        <MudStack Spacing="0" AlignItems="AlignItems.End">
+                            <MudText Typo="Typo.caption">Closing Balance</MudText>
+                            <MudText Typo="Typo.h6" Style="@(_closingBalance >= 0 ? "color: var(--mud-palette-info);" : "color: var(--mud-palette-warning);")">
+                                @_closingBalance.ToString("N2")
+                            </MudText>
+                        </MudStack>
+                    </MudStack>
+                </MudItem>
+            </MudGrid>
+        </MudPaper>
+
+        <MudPaper Class="pa-4" Elevation="2">
+            @if (_transactions.Any())
+            {
+                <MudTable Items="@_transactions" Dense="true" Hover="true" Striped="true" FixedHeader="true" Height="500px">
+                    <HeaderContent>
+                        <MudTh>Date</MudTh>
+                        <MudTh>Voucher No</MudTh>
+                        <MudTh>Narration</MudTh>
+                        <MudTh Style="text-align: right;">Debit</MudTh>
+                        <MudTh Style="text-align: right;">Credit</MudTh>
+                        <MudTh Style="text-align: right;">Balance</MudTh>
+                    </HeaderContent>
+                    <RowTemplate>
+                        <MudTd DataLabel="Date">@context.Date.ToString("dd MMM yyyy")</MudTd>
+                        <MudTd DataLabel="Voucher No">@context.VoucherNo</MudTd>
+                        <MudTd DataLabel="Narration">
+                            <MudTooltip Text="@context.Narration">
+                                <MudText Typo="Typo.body2" Style="max-width: 300px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+                                    @context.Narration
+                                </MudText>
+                            </MudTooltip>
+                        </MudTd>
+                        <MudTd DataLabel="Debit" Style="text-align: right;">
+                            @if (context.Debit > 0)
+                            {
+                                <span style="color: var(--mud-palette-error);">@context.Debit.ToString("N2")</span>
+                            }
+                        </MudTd>
+                        <MudTd DataLabel="Credit" Style="text-align: right;">
+                            @if (context.Credit > 0)
+                            {
+                                <span style="color: var(--mud-palette-success);">@context.Credit.ToString("N2")</span>
+                            }
+                        </MudTd>
+                        <MudTd DataLabel="Balance" Style="text-align: right; font-weight: bold;">
+                            <span style="@(context.Balance >= 0 ? "color: var(--mud-palette-info);" : "color: var(--mud-palette-warning);")">
+                                @context.Balance.ToString("N2")
+                            </span>
+                        </MudTd>
+                    </RowTemplate>
+                </MudTable>
+            }
+            else
+            {
+                <MudAlert Severity="Severity.Info">No transactions found for the selected period.</MudAlert>
+            }
+        </MudPaper>
+    }
+    else if (!_isLoading)
+    {
+        <MudPaper Class="pa-4">
+            <MudAlert Severity="Severity.Info">
+                Select an account and date range, then click Generate to view the detailed ledger.
+            </MudAlert>
+        </MudPaper>
+    }
+</MudContainer>
+
+@code {
+    private List<AccountHead> _accounts = new();
+    private long? _selectedAccountId;
+    private AccountHead? _selectedAccount;
+    private DateTime? _fromDate = DateTime.SpecifyKind(new DateTime(DateTime.Today.Year, DateTime.Today.Month, 1), DateTimeKind.Utc);
+    private DateTime? _toDate = DateTime.SpecifyKind(DateTime.Today, DateTimeKind.Utc);
+    private bool _isLoading;
+    private bool _hasData;
+
+    private List<LedgerTransaction> _transactions = new();
+    private decimal _openingBalance;
+    private decimal _totalDebit;
+    private decimal _totalCredit;
+    private decimal _closingBalance;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadAccounts();
+    }
+
+    private async Task LoadAccounts()
+    {
+        try
+        {
+            _accounts = await DbContext.AccountHeads
+                .Where(a => a.IsActive && !a.IsGroup)
+                .OrderBy(a => a.Code)
+                .ToListAsync();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error loading accounts: {ex.Message}", Severity.Error);
+        }
+    }
+
+    private async Task LoadReport()
+    {
+        if (!_selectedAccountId.HasValue) return;
+
+        _isLoading = true;
+        _transactions.Clear();
+
+        try
+        {
+            _selectedAccount = _accounts.FirstOrDefault(a => a.Id == _selectedAccountId);
+            if (_selectedAccount == null) return;
+
+            var fromUtc = _fromDate.HasValue 
+                ? DateTime.SpecifyKind(_fromDate.Value.Date, DateTimeKind.Utc) 
+                : DateTime.SpecifyKind(new DateTime(DateTime.Today.Year, 1, 1), DateTimeKind.Utc);
+            var toUtc = _toDate.HasValue 
+                ? DateTime.SpecifyKind(_toDate.Value.Date.AddDays(1).AddTicks(-1), DateTimeKind.Utc) 
+                : DateTime.UtcNow;
+
+            _openingBalance = _selectedAccount.OpeningBalance ?? 0;
+            var priorEntries = await DbContext.JournalEntries
+                .Include(e => e.Journal)
+                .Where(e => !e.IsDeleted && e.Journal.IsPosted && 
+                       e.AccountHeadId == _selectedAccountId.Value && 
+                       e.Journal.VoucherDate < fromUtc)
+                .ToListAsync();
+
+            _openingBalance += priorEntries.Sum(e => (e.Debit ?? 0) - (e.Credit ?? 0));
+
+            var periodEntries = await DbContext.JournalEntries
+                .Include(e => e.Journal)
+                .Where(e => !e.IsDeleted && e.Journal.IsPosted && 
+                       e.AccountHeadId == _selectedAccountId.Value && 
+                       e.Journal.VoucherDate >= fromUtc && e.Journal.VoucherDate <= toUtc)
+                .OrderBy(e => e.Journal.VoucherDate)
+                .ThenBy(e => e.Journal.VoucherNo)
+                .ToListAsync();
+
+            decimal runningBalance = _openingBalance;
+            foreach (var entry in periodEntries)
+            {
+                var debit = entry.Debit ?? 0;
+                var credit = entry.Credit ?? 0;
+                runningBalance += debit - credit;
+
+                _transactions.Add(new LedgerTransaction
+                {
+                    Date = entry.Journal.VoucherDate,
+                    VoucherNo = entry.Journal.VoucherNo,
+                    Narration = entry.Narration ?? entry.Journal.Narration ?? "",
+                    Debit = debit,
+                    Credit = credit,
+                    Balance = runningBalance
+                });
+            }
+
+            _totalDebit = _transactions.Sum(t => t.Debit);
+            _totalCredit = _transactions.Sum(t => t.Credit);
+            _closingBalance = runningBalance;
+            _hasData = true;
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error loading report: {ex.Message}", Severity.Error);
+        }
+
+        _isLoading = false;
+    }
+
+    private void ClearFilters()
+    {
+        _selectedAccountId = null;
+        _fromDate = DateTime.SpecifyKind(new DateTime(DateTime.Today.Year, DateTime.Today.Month, 1), DateTimeKind.Utc);
+        _toDate = DateTime.SpecifyKind(DateTime.Today, DateTimeKind.Utc);
+        _hasData = false;
+        _transactions.Clear();
+    }
+
+    private class LedgerTransaction
+    {
+        public DateTime Date { get; set; }
+        public string VoucherNo { get; set; } = "";
+        public string Narration { get; set; } = "";
+        public decimal Debit { get; set; }
+        public decimal Credit { get; set; }
+        public decimal Balance { get; set; }
+    }
+}
