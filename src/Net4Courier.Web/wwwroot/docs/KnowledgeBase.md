@@ -43,6 +43,13 @@ This comprehensive knowledge base covers all aspects of Net4Courier - from picku
    - [Create Import (Air/Sea/Land)](#how-to-create-a-new-import-airsealand)
    - [Process Import Customs Clearance](#how-to-process-import-customs-clearance)
    - [Create Import via Excel Upload](#how-to-create-import-via-excel-upload)
+   - [Import Shipment Fields (Shipper, Duty/VAT, COD)](#import-shipment-data-fields)
+   
+   **Prepaid AWB Guides**
+   - [Manage AWB Stock](#how-to-manage-awb-stock)
+   - [Sell Prepaid AWBs to Customers](#how-to-sell-prepaid-awbs)
+   - [Use Prepaid AWB in Shipment Entry](#how-to-use-prepaid-awb-in-shipment)
+   - [View Prepaid AWB Register](#how-to-view-prepaid-awb-register)
    
    **Dashboard & Reporting Guides**
    - [Use Customer Dashboard](#how-to-use-customer-dashboard)
@@ -57,6 +64,8 @@ This comprehensive knowledge base covers all aspects of Net4Courier - from picku
    - [Use Rate Simulator](#how-to-use-rate-simulator)
    - [Generate Reports](#how-to-generate-reports)
    - [Use Public Tracking Page](#how-to-use-public-tracking-page)
+   - [Use General Ledger Module](#how-to-use-general-ledger)
+   - [Email Reports to Customers/Suppliers](#how-to-email-reports)
    
    **Help & Feedback**
    - [Suggest a New Topic](#suggest-a-new-how-to-topic)
@@ -1521,6 +1530,175 @@ Requested → Assigned → In Transit → Collected → At Hub
 
 ---
 
+## Import Shipment Data Fields
+
+The Import Inscan page displays shipment details in a comprehensive table with the following columns:
+
+| Column | Description | Source |
+|--------|-------------|--------|
+| AWB | House Airwaybill number | Manual entry or Excel import |
+| Shipper | Sender/shipper name | Manual entry or Excel import |
+| Consignee | Receiver/consignee name | Manual entry or Excel import |
+| Weight | Shipment weight in kg | Manual entry or Excel import |
+| Pieces | Number of packages | Manual entry or Excel import |
+| Bag | Assigned bag number | Bag management |
+| Duty/VAT | Customs duty and VAT amount | Manual entry or Excel import |
+| COD/Coll | Cash on Delivery or Collection amount | Manual entry or Excel import |
+| Status | Current shipment status | System-managed |
+| Inscanned | Time of inscan | Automatic |
+
+**Excel Import Mapping:**
+- Column "Duty/VAT Amount" → `DutyAmount` field
+- Column "COD/Collection Amount" → `CODAmount` field
+- Column "Shipper Name" → `ShipperName` field
+- When COD amount is entered, `IsCOD` flag is automatically set to true
+
+---
+
+# Prepaid AWB Guides
+
+## How to Manage AWB Stock
+
+**Navigation:** Masters & Settings → Operations Masters → AWB Stock Management
+
+**When to Use:** When receiving and tracking physical AWB inventory (books, stickers, rolls).
+
+**Detailed Steps:**
+
+1. **Access AWB Stock Management**
+   - Go to **Masters & Settings → Operations Masters → AWB Stock Management**
+   - View current stock summary
+
+2. **Add New Stock**
+   - Click **"+ Add Stock"**
+   - Enter stock details:
+   
+   | Field | Description | Example |
+   |-------|-------------|---------|
+   | Stock Type | Book / Sticker Roll / Sheet | "Book" |
+   | AWB Prefix | Prefix for AWB numbers | "DXB" |
+   | Start Number | First AWB in range | 100001 |
+   | End Number | Last AWB in range | 100100 |
+   | Quantity | Total AWBs in stock | 100 |
+   | Rate per AWB | Cost per AWB | 5.00 |
+   | Received Date | Date stock received | 2026-01-15 |
+   | Supplier | AWB supplier name | "Emirates Post" |
+
+3. **Track Usage**
+   - View allocated vs available AWBs
+   - Monitor stock levels by type
+   - Generate reorder alerts
+
+---
+
+## How to Sell Prepaid AWBs
+
+**Navigation:** Customers & CRM → Prepaid AWB Sales
+
+**When to Use:** When selling prepaid AWBs to customers in advance.
+
+**Detailed Steps:**
+
+1. **Access Prepaid Management**
+   - Go to **Customers & CRM → Prepaid AWB Sales**
+
+2. **Create New Prepaid Sale**
+   - Click **"+ New Prepaid Sale"**
+   - Select customer from dropdown
+   - Enter prepaid details:
+   
+   | Field | Description | Example |
+   |-------|-------------|---------|
+   | Customer | Customer account | "ABC Trading LLC" |
+   | Quantity | Number of AWBs to sell | 50 |
+   | Rate per AWB | Price charged per AWB | 15.00 |
+   | Total Amount | Auto-calculated | 750.00 |
+   | Payment Mode | Cash / Bank / Cheque | "Cash" |
+
+3. **AWB Allocation**
+   - System automatically allocates AWBs from stock
+   - AWB range assigned to customer
+   - Stock updated immediately
+
+4. **Accounting Entry (Automatic)**
+   - Dr: Cash/Bank Account
+   - Cr: Prepaid AWB Control Account
+
+5. **When Customer Uses AWB**
+   - AWB validated during shipment entry
+   - Prepaid balance decremented
+   - Accounting: Dr Prepaid Control, Cr Revenue
+
+---
+
+## How to Use Prepaid AWB in Shipment
+
+**Navigation:** Shipments & Operations → Shipments → New AWB
+
+**When to Use:** When creating a shipment using a prepaid AWB number.
+
+**Detailed Steps:**
+
+1. **Start New Shipment**
+   - Go to **Shipments & Operations → Shipments**
+   - Click **"+ New AWB"**
+
+2. **Select Prepaid Customer**
+   - Choose customer with prepaid AWBs
+   - System shows available prepaid balance
+
+3. **Enter Prepaid AWB Number**
+   - Enter the prepaid AWB number from customer's allocated range
+   - System validates:
+     - AWB belongs to selected customer
+     - AWB not already used
+     - AWB within valid range
+
+4. **Complete Shipment Entry**
+   - Fill remaining shipment details
+   - Save shipment
+   - Prepaid balance updated automatically
+
+**Validation Errors:**
+| Error | Meaning | Solution |
+|-------|---------|----------|
+| "AWB not in prepaid range" | AWB number not allocated to customer | Check customer's prepaid AWB range |
+| "AWB already used" | AWB was used in another shipment | Use different AWB number |
+| "No prepaid balance" | Customer has no prepaid AWBs remaining | Sell more prepaid AWBs |
+
+---
+
+## How to View Prepaid AWB Register
+
+**Navigation:** Customers & CRM → Prepaid AWB Register
+
+**When to Use:** To view prepaid AWB usage and balance by customer.
+
+**Detailed Steps:**
+
+1. **Access Prepaid Register**
+   - Go to **Customers & CRM → Prepaid AWB Register**
+
+2. **Filter Options**
+   - Select customer (required)
+   - Date range (optional)
+   - Status filter (All / Used / Available)
+
+3. **Report Columns**
+   | Column | Description |
+   |--------|-------------|
+   | Customer Name | Customer account |
+   | Total Prepaid | Total AWBs purchased |
+   | Used | AWBs consumed in shipments |
+   | Available | Remaining balance |
+   | Prepaid Amount | Total prepaid value |
+
+4. **Export Options**
+   - Export to Excel
+   - Print report
+
+---
+
 # Dashboard & Reporting Guides
 
 ## How to Use Customer Dashboard
@@ -2073,6 +2251,123 @@ Draft → Issued → Partially Paid → Fully Paid
 - Share tracking URL with customers
 - Format: `/tracking?awb=AWB123456`
 - Embed in emails or SMS notifications
+
+---
+
+## How to Use General Ledger
+
+**Navigation:** Finance & Accounting → General Ledger
+
+The General Ledger module provides comprehensive financial management with the following components:
+
+### Masters Setup
+
+**1. Chart of Accounts**
+- **Navigation:** Finance & Accounting → General Ledger → Masters → Chart of Accounts
+- Create and manage account hierarchy (Assets, Liabilities, Income, Expenses, Equity)
+- Self-referential structure for unlimited nesting levels
+- Define account types and nature (Debit/Credit)
+
+**2. Control Accounts**
+- **Navigation:** Finance & Accounting → General Ledger → Masters → Control Accounts
+- Link operational modules to GL accounts
+- Map: AR Control, AP Control, Cash, Bank, Revenue, COD Payable
+
+**3. Financial Years**
+- **Navigation:** Finance & Accounting → General Ledger → Masters → Financial Years
+- Define fiscal periods with auto-generated monthly periods
+- Open/Close periods for transaction control
+
+**4. Tax Setup**
+- **Navigation:** Finance & Accounting → General Ledger → Masters → Tax Setup
+- Configure GST, VAT, Service Tax rates
+
+### Transactions
+
+**Cash & Bank Vouchers**
+- **Navigation:** Finance & Accounting → General Ledger → Transactions → Cash & Bank → Cash & Bank Vouchers
+- Record cash receipts, cash payments, bank deposits, bank payments, bank transfers
+
+**Bank Accounts**
+- **Navigation:** Finance & Accounting → General Ledger → Transactions → Cash & Bank → Bank Accounts
+- Manage bank account details
+
+**Bank Reconciliation**
+- **Navigation:** Finance & Accounting → General Ledger → Transactions → Cash & Bank → Bank Reconciliation
+- Match bank statement with system records
+
+**Journal Voucher**
+- **Navigation:** Finance & Accounting → General Ledger → Transactions → Journal Voucher
+- Create general journal entries with multi-line debits and credits
+
+### Financial Reports
+
+| Report | Navigation | Purpose |
+|--------|------------|---------|
+| Account Ledger | Financial Reports → Account Ledger | View account transactions (Standard/Detailed/Summary) |
+| Day Book | Financial Reports → Day Book | Daily transaction listing |
+| Cash & Bank Book | Financial Reports → Cash & Bank Book | Cash and bank movement summary |
+| Trial Balance | Financial Reports → Trial Balance | Account balances (Summary/Standard/Grouped/Monthly/Detailed) |
+| Profit & Loss | Financial Reports → Profit & Loss | Income vs expenses (Summary/Item Wise/Period Comparison) |
+| Balance Sheet | Financial Reports → Balance Sheet | Assets vs liabilities (Standard/Group-wise/Horizontal/Vertical) |
+| Cash Flow | Financial Reports → Cash Flow | Cash movement (Indirect/Direct Method) |
+
+---
+
+## How to Email Reports
+
+**Navigation:** Various report pages (Customer Ledger, Customer Statement, Supplier Ledger, Supplier Statement)
+
+**When to Use:** To send PDF reports directly to customers or suppliers via email.
+
+**Prerequisites:** 
+- Google Gmail integration configured
+- Customer/Supplier must have valid email address on file
+- Branch must have email address configured
+
+**Detailed Steps:**
+
+1. **Generate the Report**
+   - Navigate to the desired report:
+     - **Customer Ledger:** Finance & Accounting → Accounts Receivable → AR Reports → Customer Ledger
+     - **Customer Statement:** Finance & Accounting → Accounts Receivable → AR Reports → Customer Statement
+     - **Supplier Ledger:** Finance & Accounting → Accounts Payable → AP Reports → Supplier Ledger
+     - **Supplier Statement:** Finance & Accounting → Accounts Payable → AP Reports → Supplier Statement
+
+2. **Select Party and Filters**
+   - Choose customer or supplier
+   - Set date range
+   - Apply any additional filters
+   - Click **"Generate Report"**
+
+3. **Click Email Button**
+   - Find the **"Email"** button in the toolbar
+   - Click to open email dialog
+
+4. **Confirm Email Details**
+   | Field | Auto-populated |
+   |-------|----------------|
+   | To | Party's email address |
+   | From | Branch email address |
+   | Subject | Report name and date range |
+   | Attachment | PDF report |
+
+5. **Send Email**
+   - Click **"Send"**
+   - Email sent via Gmail API
+   - Success message confirms delivery
+
+**Email Content:**
+- Professional HTML email body with report summary
+- PDF attachment with full report details
+- Includes: Party name, date range, opening/closing balances
+
+**Troubleshooting:**
+| Issue | Solution |
+|-------|----------|
+| Email button disabled | Ensure party has email address |
+| Send failed | Check Gmail integration status |
+| No "From" address | Configure branch email in Branch Settings |
 
 ---
 
