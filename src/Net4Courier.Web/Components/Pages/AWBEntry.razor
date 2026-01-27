@@ -55,10 +55,10 @@
     <MudPaper Class="pa-3 mb-3" Elevation="2">
         <MudGrid Spacing="2">
             <MudItem xs="12" md="2">
-                <MudTextField @bind-Value="_inscan.AWBNo" Label="AWB Number" Required="true" RequiredError="Required"
+                <MudTextField @bind-Value="_inscan.AWBNo" @bind-Value:after="OnAWBNoChanged" Label="AWB Number" Required="true" RequiredError="Required"
                               Variant="Variant.Outlined" Margin="Margin.Dense" 
                               Disabled="@(_autoGenerateAWB && Id == 0)" 
-                              HelperText="@(_autoGenerateAWB && Id == 0 ? "Auto-generated" : "")" />
+                              HelperText="@(_autoGenerateAWB && Id == 0 ? "Auto-generated" : (_isPrepaidAWB ? $"Prepaid - {_prepaidCustomerName}" : ""))" />
             </MudItem>
             <MudItem xs="6" md="2">
                 <MudDatePicker @bind-Date="_transactionDate" Label="Booking Date" Required="true" 
@@ -70,7 +70,8 @@
             </MudItem>
             <MudItem xs="6" md="2">
                 <MudSelect T="PaymentMode" @bind-Value="_inscan.PaymentModeId" @bind-Value:after="OnPaymentModeChanged"
-                           Label="Payment Mode" Variant="Variant.Outlined" Margin="Margin.Dense" AnchorOrigin="Origin.BottomCenter">
+                           Label="Payment Mode" Variant="Variant.Outlined" Margin="Margin.Dense" AnchorOrigin="Origin.BottomCenter"
+                           Disabled="@_paymentModeDisabled">
                     <MudSelectItem T="PaymentMode" Value="@PaymentMode.PickupCash">Pickup Cash</MudSelectItem>
                     <MudSelectItem T="PaymentMode" Value="@PaymentMode.COD">COD</MudSelectItem>
                     <MudSelectItem T="PaymentMode" Value="@PaymentMode.Account">Account</MudSelectItem>
@@ -79,7 +80,13 @@
                 </MudSelect>
             </MudItem>
             <MudItem xs="6" md="2">
-                @if (_inscan.PaymentModeId == PaymentMode.Account)
+                @if (_isPrepaidAWB)
+                {
+                    <MudTextField Value="@_controlAccountName" Label="Control Account" ReadOnly="true"
+                                  Variant="Variant.Outlined" Margin="Margin.Dense" 
+                                  HelperText="@($"Customer: {_prepaidCustomerName}")" />
+                }
+                else if (_inscan.PaymentModeId == PaymentMode.Account)
                 {
                     <MudSelect T="long?" @bind-Value="_inscan.CustomerId" @bind-Value:after="OnCustomerChanged"
                                Label="Customer Account *" Variant="Variant.Outlined" Margin="Margin.Dense" 
@@ -563,6 +570,13 @@
     private PickupRequest? _sourcePickupRequest;
     private PickupRequestShipment? _sourceShipment;
     private List<OtherChargeSelection> _selectedOtherCharges = new();
+    
+    private bool _isPrepaidAWB = false;
+    private bool _paymentModeDisabled = false;
+    private string _prepaidCustomerName = "";
+    private long? _prepaidCustomerId;
+    private PaymentMode _previousPaymentMode = default;
+    private long? _previousCustomerId = null;
 
     private decimal VolumetricWeight => (_inscan.Length ?? 0) * (_inscan.Width ?? 0) * (_inscan.Height ?? 0) / 5000;
     private decimal ChargeableWeight => Math.Max(_inscan.Weight ?? 0, VolumetricWeight);
@@ -607,6 +621,68 @@
             _showProceedWarning = true;
             StateHasChanged();
         }
+    }
+    
+    private async Task OnAWBNoChanged()
+    {
+        if (string.IsNullOrWhiteSpace(_inscan.AWBNo))
+        {
+            await ResetPrepaidState();
+            return;
+        }
+        
+        var prepaidAwb = await DbContext.PrepaidAWBs
+            .Include(p => p.PrepaidDocument)
+            .FirstOrDefaultAsync(p => p.AWBNo == _inscan.AWBNo && !p.IsUsed && !p.IsDeleted);
+        
+        if (prepaidAwb != null)
+        {
+            if (!_isPrepaidAWB)
+            {
+                _previousPaymentMode = _inscan.PaymentModeId;
+                _previousCustomerId = _inscan.CustomerId;
+            }
+            
+            _isPrepaidAWB = true;
+            _paymentModeDisabled = true;
+            _prepaidCustomerId = prepaidAwb.PrepaidDocument.CustomerId;
+            _prepaidCustomerName = prepaidAwb.PrepaidDocument.CustomerName ?? "";
+            
+            _inscan.PaymentModeId = PaymentMode.Prepaid;
+            _inscan.CustomerId = _prepaidCustomerId;
+            
+            await LoadPaymentModeAccount(PaymentMode.Prepaid);
+            
+            Snackbar.Add($"Prepaid AWB detected - Customer: {_prepaidCustomerName}", Severity.Info);
+        }
+        else
+        {
+            await ResetPrepaidState();
+        }
+        
+        StateHasChanged();
+    }
+    
+    private async Task ResetPrepaidState()
+    {
+        if (_isPrepaidAWB)
+        {
+            _inscan.PaymentModeId = _previousPaymentMode;
+            _inscan.CustomerId = _previousCustomerId;
+            _controlAccountId = null;
+            _controlAccountName = "";
+            
+            if (_previousPaymentMode != default)
+            {
+                await LoadPaymentModeAccount(_previousPaymentMode);
+            }
+        }
+        _isPrepaidAWB = false;
+        _paymentModeDisabled = false;
+        _prepaidCustomerName = "";
+        _prepaidCustomerId = null;
+        _previousPaymentMode = default;
+        _previousCustomerId = null;
     }
     
     private async Task OnPaymentModeChanged()
