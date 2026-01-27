@@ -1,0 +1,180 @@
+@page "/reports/ap/supplier-list"
+@using Microsoft.EntityFrameworkCore
+@using Net4Courier.Infrastructure.Data
+@using Net4Courier.Masters.Entities
+@using Net4Courier.Web.Services
+@using Microsoft.JSInterop
+@inject ApplicationDbContext DbContext
+@inject ReportExportService ExportService
+@inject IJSRuntime JS
+@inject ISnackbar Snackbar
+
+<PageTitle>Supplier List - Net4Courier</PageTitle>
+
+<MudContainer MaxWidth="MaxWidth.ExtraLarge" Class="mt-4">
+    <MudPaper Class="pa-4" Elevation="2">
+        <MudGrid>
+            <MudItem xs="12" sm="6">
+                <MudText Typo="Typo.h5">Supplier List</MudText>
+            </MudItem>
+            <MudItem xs="12" sm="6" Class="d-flex justify-end gap-2">
+                <MudButton Variant="Variant.Outlined" Color="Color.Success" StartIcon="@Icons.Material.Filled.TableChart" 
+                           OnClick="ExportExcel" Disabled="@(!_data.Any())">Excel</MudButton>
+                <MudButton Variant="Variant.Outlined" Color="Color.Error" StartIcon="@Icons.Material.Filled.PictureAsPdf" 
+                           OnClick="ExportPdf" Disabled="@(!_data.Any())">PDF</MudButton>
+            </MudItem>
+        </MudGrid>
+
+        <MudGrid Class="mt-4">
+            <MudItem xs="12" sm="3">
+                <MudSelect T="string" Label="Supplier Type" @bind-Value="_supplierType" Clearable Variant="Variant.Outlined" Dense="true">
+                    <MudSelectItem Value="@("Agent")">Agent</MudSelectItem>
+                    <MudSelectItem Value="@("Vendor")">Vendor</MudSelectItem>
+                    <MudSelectItem Value="@("Courier Partner")">Courier Partner</MudSelectItem>
+                </MudSelect>
+            </MudItem>
+            <MudItem xs="12" sm="2">
+                <MudCheckBox @bind-Value="_activeOnly" Label="Active Only" Dense="true" Class="mt-2" />
+            </MudItem>
+            <MudItem xs="12" sm="2">
+                <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="LoadData" FullWidth="true">
+                    Generate
+                </MudButton>
+            </MudItem>
+        </MudGrid>
+
+        @if (_isLoading)
+        {
+            <MudProgressLinear Indeterminate="true" Class="mt-4" />
+        }
+        else if (_data.Any())
+        {
+            <MudTable Items="@_data" Dense="true" Hover="true" Striped="true" Class="mt-4" FixedHeader="true" Height="500px">
+                <HeaderContent>
+                    <MudTh>Code</MudTh>
+                    <MudTh>Name</MudTh>
+                    <MudTh>Type</MudTh>
+                    <MudTh>Contact Person</MudTh>
+                    <MudTh>Phone</MudTh>
+                    <MudTh>Email</MudTh>
+                    <MudTh>City</MudTh>
+                    <MudTh>Status</MudTh>
+                </HeaderContent>
+                <RowTemplate>
+                    <MudTd>@context.Code</MudTd>
+                    <MudTd>@context.Name</MudTd>
+                    <MudTd>@context.SupplierType</MudTd>
+                    <MudTd>@context.ContactPerson</MudTd>
+                    <MudTd>@context.Phone</MudTd>
+                    <MudTd>@context.Email</MudTd>
+                    <MudTd>@context.City</MudTd>
+                    <MudTd>
+                        <MudChip T="string" Size="Size.Small" Color="@(context.IsActive ? Color.Success : Color.Default)">
+                            @(context.IsActive ? "Active" : "Inactive")
+                        </MudChip>
+                    </MudTd>
+                </RowTemplate>
+            </MudTable>
+            <MudText Typo="Typo.caption" Class="mt-2">Total: @_data.Count suppliers</MudText>
+        }
+        else
+        {
+            <MudAlert Severity="Severity.Info" Class="mt-4">Click Generate to load supplier list.</MudAlert>
+        }
+    </MudPaper>
+</MudContainer>
+
+@code {
+    private List<SupplierDto> _data = new();
+    private string? _supplierType;
+    private bool _activeOnly = true;
+    private bool _isLoading;
+
+    private async Task LoadData()
+    {
+        _isLoading = true;
+        _data.Clear();
+
+        try
+        {
+            var query = DbContext.Parties
+                .Where(p => p.AccountNature == PartyAccountNature.Payable);
+
+            if (_activeOnly)
+                query = query.Where(p => p.IsActive);
+
+            var suppliers = await query.OrderBy(p => p.Name).ToListAsync();
+
+            _data = suppliers.Select(s => new SupplierDto
+            {
+                Code = s.Code ?? "",
+                Name = s.Name,
+                SupplierType = s.PartyType.ToString(),
+                ContactPerson = s.ContactPerson ?? "",
+                Phone = s.Phone ?? s.Mobile ?? "",
+                Email = s.Email ?? "",
+                City = s.ClientAddress ?? "",
+                IsActive = s.IsActive
+            }).ToList();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error: {ex.Message}", Severity.Error);
+        }
+
+        _isLoading = false;
+    }
+
+    private async Task ExportExcel()
+    {
+        var columns = new Dictionary<string, Func<SupplierDto, object?>>
+        {
+            { "Code", x => x.Code },
+            { "Name", x => x.Name },
+            { "Type", x => x.SupplierType },
+            { "Contact Person", x => x.ContactPerson },
+            { "Phone", x => x.Phone },
+            { "Email", x => x.Email },
+            { "City", x => x.City },
+            { "Status", x => x.IsActive ? "Active" : "Inactive" }
+        };
+
+        var bytes = ExportService.ExportToExcel("Supplier List", _data, columns);
+        await DownloadFile(bytes, "SupplierList.xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+    }
+
+    private async Task ExportPdf()
+    {
+        var columns = new Dictionary<string, Func<SupplierDto, object?>>
+        {
+            { "Code", x => x.Code },
+            { "Name", x => x.Name },
+            { "Type", x => x.SupplierType },
+            { "Contact Person", x => x.ContactPerson },
+            { "Phone", x => x.Phone },
+            { "City", x => x.City },
+            { "Status", x => x.IsActive ? "Active" : "Inactive" }
+        };
+
+        var bytes = ExportService.ExportToPdf("Supplier List", $"Generated: {DateTime.Now:dd-MMM-yyyy}", _data, columns);
+        await DownloadFile(bytes, "SupplierList.pdf", "application/pdf");
+    }
+
+    private async Task DownloadFile(byte[] bytes, string filename, string contentType)
+    {
+        var base64 = Convert.ToBase64String(bytes);
+        await JS.InvokeVoidAsync("downloadFile", filename, base64, contentType);
+    }
+
+    private class SupplierDto
+    {
+        public string Code { get; set; } = "";
+        public string Name { get; set; } = "";
+        public string SupplierType { get; set; } = "";
+        public string ContactPerson { get; set; } = "";
+        public string Phone { get; set; } = "";
+        public string Email { get; set; } = "";
+        public string City { get; set; } = "";
+        public bool IsActive { get; set; }
+    }
+}

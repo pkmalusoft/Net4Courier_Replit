@@ -1,0 +1,253 @@
+@page "/reports/ap/supplier-aging"
+@using Microsoft.EntityFrameworkCore
+@using Net4Courier.Infrastructure.Data
+@using Net4Courier.Finance.Entities
+@using Net4Courier.Masters.Entities
+@using Net4Courier.Web.Services
+@using Microsoft.JSInterop
+@inject ApplicationDbContext DbContext
+@inject ReportExportService ExportService
+@inject IJSRuntime JS
+@inject ISnackbar Snackbar
+
+<PageTitle>Supplier Aging Report - Net4Courier</PageTitle>
+
+<MudContainer MaxWidth="MaxWidth.ExtraLarge" Class="mt-4">
+    <MudPaper Class="pa-4" Elevation="2">
+        <MudGrid>
+            <MudItem xs="12" sm="6">
+                <MudText Typo="Typo.h5">Supplier Aging Report</MudText>
+            </MudItem>
+            <MudItem xs="12" sm="6" Class="d-flex justify-end gap-2">
+                <MudButton Variant="Variant.Outlined" Color="Color.Success" StartIcon="@Icons.Material.Filled.TableChart" 
+                           OnClick="ExportExcel" Disabled="@(!_data.Any())">Excel</MudButton>
+                <MudButton Variant="Variant.Outlined" Color="Color.Error" StartIcon="@Icons.Material.Filled.PictureAsPdf" 
+                           OnClick="ExportPdf" Disabled="@(!_data.Any())">PDF</MudButton>
+            </MudItem>
+        </MudGrid>
+
+        <MudGrid Class="mt-4">
+            <MudItem xs="12" sm="3">
+                <MudDatePicker @bind-Date="_asOnDate" Label="As On Date" DateFormat="dd-MMM-yyyy" Variant="Variant.Outlined" Dense="true" />
+            </MudItem>
+            <MudItem xs="12" sm="2">
+                <MudCheckBox @bind-Value="_showZeroBalances" Label="Show Zero" Dense="true" Class="mt-2" />
+            </MudItem>
+            <MudItem xs="12" sm="2">
+                <MudCheckBox @bind-Value="_showDetails" Label="Show Details" Dense="true" Class="mt-2" />
+            </MudItem>
+            <MudItem xs="12" sm="2">
+                <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="LoadData" FullWidth="true">
+                    Generate
+                </MudButton>
+            </MudItem>
+        </MudGrid>
+
+        @if (_isLoading)
+        {
+            <MudProgressLinear Indeterminate="true" Class="mt-4" />
+        }
+        else if (_data.Any())
+        {
+            <MudPaper Class="pa-4 mt-4" Elevation="1" Style="background: var(--mud-palette-grey-lighten-4);">
+                <MudGrid>
+                    <MudItem xs="6" sm="2">
+                        <MudText Typo="Typo.caption" Color="Color.Success">Current</MudText>
+                        <MudText Typo="Typo.h6">@_data.Sum(x => x.Current).ToString("N2")</MudText>
+                    </MudItem>
+                    <MudItem xs="6" sm="2">
+                        <MudText Typo="Typo.caption" Color="Color.Info">1-30 Days</MudText>
+                        <MudText Typo="Typo.h6">@_data.Sum(x => x.Days1To30).ToString("N2")</MudText>
+                    </MudItem>
+                    <MudItem xs="6" sm="2">
+                        <MudText Typo="Typo.caption" Color="Color.Warning">31-60 Days</MudText>
+                        <MudText Typo="Typo.h6">@_data.Sum(x => x.Days31To60).ToString("N2")</MudText>
+                    </MudItem>
+                    <MudItem xs="6" sm="2">
+                        <MudText Typo="Typo.caption" Color="Color.Warning">61-90 Days</MudText>
+                        <MudText Typo="Typo.h6">@_data.Sum(x => x.Days61To90).ToString("N2")</MudText>
+                    </MudItem>
+                    <MudItem xs="6" sm="2">
+                        <MudText Typo="Typo.caption" Color="Color.Error">90+ Days</MudText>
+                        <MudText Typo="Typo.h6" Color="Color.Error">@_data.Sum(x => x.Days90Plus).ToString("N2")</MudText>
+                    </MudItem>
+                    <MudItem xs="6" sm="2">
+                        <MudText Typo="Typo.caption"><strong>Total</strong></MudText>
+                        <MudText Typo="Typo.h6"><strong>@_data.Sum(x => x.Total).ToString("N2")</strong></MudText>
+                    </MudItem>
+                </MudGrid>
+            </MudPaper>
+
+            <MudTable Items="@_data" Dense="true" Hover="true" Striped="true" Class="mt-4" FixedHeader="true" Height="450px">
+                <HeaderContent>
+                    <MudTh>Code</MudTh>
+                    <MudTh>Supplier Name</MudTh>
+                    <MudTh Style="text-align: right">Current</MudTh>
+                    <MudTh Style="text-align: right">1-30 Days</MudTh>
+                    <MudTh Style="text-align: right">31-60 Days</MudTh>
+                    <MudTh Style="text-align: right">61-90 Days</MudTh>
+                    <MudTh Style="text-align: right">90+ Days</MudTh>
+                    <MudTh Style="text-align: right">Total</MudTh>
+                </HeaderContent>
+                <RowTemplate>
+                    <MudTd>@context.Code</MudTd>
+                    <MudTd>@context.Name</MudTd>
+                    <MudTd Style="text-align: right">@context.Current.ToString("N2")</MudTd>
+                    <MudTd Style="text-align: right">@context.Days1To30.ToString("N2")</MudTd>
+                    <MudTd Style="text-align: right">@context.Days31To60.ToString("N2")</MudTd>
+                    <MudTd Style="text-align: right">@context.Days61To90.ToString("N2")</MudTd>
+                    <MudTd Style="text-align: right; color: red;">@context.Days90Plus.ToString("N2")</MudTd>
+                    <MudTd Style="text-align: right; font-weight: bold;">@context.Total.ToString("N2")</MudTd>
+                </RowTemplate>
+                <FooterContent>
+                    <MudTd colspan="2"><strong>Grand Total</strong></MudTd>
+                    <MudTd Style="text-align: right"><strong>@_data.Sum(x => x.Current).ToString("N2")</strong></MudTd>
+                    <MudTd Style="text-align: right"><strong>@_data.Sum(x => x.Days1To30).ToString("N2")</strong></MudTd>
+                    <MudTd Style="text-align: right"><strong>@_data.Sum(x => x.Days31To60).ToString("N2")</strong></MudTd>
+                    <MudTd Style="text-align: right"><strong>@_data.Sum(x => x.Days61To90).ToString("N2")</strong></MudTd>
+                    <MudTd Style="text-align: right; color: red;"><strong>@_data.Sum(x => x.Days90Plus).ToString("N2")</strong></MudTd>
+                    <MudTd Style="text-align: right"><strong>@_data.Sum(x => x.Total).ToString("N2")</strong></MudTd>
+                </FooterContent>
+            </MudTable>
+        }
+        else
+        {
+            <MudAlert Severity="Severity.Info" Class="mt-4">Click Generate to load aging report.</MudAlert>
+        }
+    </MudPaper>
+</MudContainer>
+
+@code {
+    private List<AgingItem> _data = new();
+    private DateTime? _asOnDate = DateTime.SpecifyKind(DateTime.Today, DateTimeKind.Utc);
+    private bool _showZeroBalances;
+    private bool _showDetails;
+    private bool _isLoading;
+
+    private async Task LoadData()
+    {
+        _isLoading = true;
+        _data.Clear();
+
+        try
+        {
+            var asOnUtc = _asOnDate.HasValue 
+                ? DateTime.SpecifyKind(_asOnDate.Value.Date.AddDays(1).AddTicks(-1), DateTimeKind.Utc) 
+                : DateTime.UtcNow;
+
+            var suppliers = await DbContext.Parties
+                .Where(p => p.IsActive && p.AccountNature == PartyAccountNature.Payable)
+                .ToListAsync();
+
+            var journalEntries = await DbContext.JournalEntries
+                .Include(e => e.Journal)
+                .Where(e => e.PartyId.HasValue && e.Journal.VoucherDate <= asOnUtc)
+                .ToListAsync();
+
+            foreach (var supplier in suppliers)
+            {
+                var supplierEntries = journalEntries.Where(e => e.PartyId == supplier.Id).ToList();
+                if (!supplierEntries.Any() && !_showZeroBalances) continue;
+
+                var agingItem = new AgingItem
+                {
+                    Code = supplier.Code ?? "",
+                    Name = supplier.Name
+                };
+
+                foreach (var entry in supplierEntries.Where(e => (e.Credit ?? 0) > 0))
+                {
+                    var daysDue = (_asOnDate!.Value - entry.Journal.VoucherDate).Days;
+                    var amount = entry.Credit ?? 0;
+
+                    if (daysDue <= 0)
+                        agingItem.Current += amount;
+                    else if (daysDue <= 30)
+                        agingItem.Days1To30 += amount;
+                    else if (daysDue <= 60)
+                        agingItem.Days31To60 += amount;
+                    else if (daysDue <= 90)
+                        agingItem.Days61To90 += amount;
+                    else
+                        agingItem.Days90Plus += amount;
+                }
+
+                if (!_showZeroBalances && agingItem.Total == 0) continue;
+
+                _data.Add(agingItem);
+            }
+
+            _data = _data.OrderByDescending(x => x.Total).ToList();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error: {ex.Message}", Severity.Error);
+        }
+
+        _isLoading = false;
+    }
+
+    private async Task ExportExcel()
+    {
+        var columns = new Dictionary<string, Func<AgingItem, object?>>
+        {
+            { "Code", x => x.Code },
+            { "Supplier Name", x => x.Name },
+            { "Current", x => x.Current },
+            { "1-30 Days", x => x.Days1To30 },
+            { "31-60 Days", x => x.Days31To60 },
+            { "61-90 Days", x => x.Days61To90 },
+            { "90+ Days", x => x.Days90Plus },
+            { "Total", x => x.Total }
+        };
+
+        var bytes = ExportService.ExportToExcel("Supplier Aging", _data, columns);
+        await DownloadFile(bytes, "SupplierAging.xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+    }
+
+    private async Task ExportPdf()
+    {
+        var columns = new Dictionary<string, Func<AgingItem, object?>>
+        {
+            { "Code", x => x.Code },
+            { "Supplier Name", x => x.Name },
+            { "Current", x => x.Current },
+            { "1-30", x => x.Days1To30 },
+            { "31-60", x => x.Days31To60 },
+            { "61-90", x => x.Days61To90 },
+            { "90+", x => x.Days90Plus },
+            { "Total", x => x.Total }
+        };
+
+        var totals = new Dictionary<string, decimal>
+        {
+            { "Current", _data.Sum(x => x.Current) },
+            { "1-30", _data.Sum(x => x.Days1To30) },
+            { "31-60", _data.Sum(x => x.Days31To60) },
+            { "61-90", _data.Sum(x => x.Days61To90) },
+            { "90+", _data.Sum(x => x.Days90Plus) },
+            { "Total", _data.Sum(x => x.Total) }
+        };
+
+        var bytes = ExportService.ExportToPdf("Supplier Aging Report", $"As on: {_asOnDate:dd-MMM-yyyy}", _data, columns, totals);
+        await DownloadFile(bytes, "SupplierAging.pdf", "application/pdf");
+    }
+
+    private async Task DownloadFile(byte[] bytes, string filename, string contentType)
+    {
+        var base64 = Convert.ToBase64String(bytes);
+        await JS.InvokeVoidAsync("downloadFile", filename, base64, contentType);
+    }
+
+    private class AgingItem
+    {
+        public string Code { get; set; } = "";
+        public string Name { get; set; } = "";
+        public decimal Current { get; set; }
+        public decimal Days1To30 { get; set; }
+        public decimal Days31To60 { get; set; }
+        public decimal Days61To90 { get; set; }
+        public decimal Days90Plus { get; set; }
+        public decimal Total => Current + Days1To30 + Days31To60 + Days61To90 + Days90Plus;
+    }
+}

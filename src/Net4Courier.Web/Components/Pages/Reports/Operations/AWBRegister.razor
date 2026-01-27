@@ -1,0 +1,257 @@
+@page "/reports/ops/awb-register"
+@using Microsoft.EntityFrameworkCore
+@using Net4Courier.Infrastructure.Data
+@using Net4Courier.Operations.Entities
+@using Net4Courier.Masters.Entities
+@using Net4Courier.Web.Services
+@using Microsoft.JSInterop
+@inject ApplicationDbContext DbContext
+@inject ReportExportService ExportService
+@inject IJSRuntime JS
+@inject ISnackbar Snackbar
+
+<PageTitle>AWB Register - Net4Courier</PageTitle>
+
+<MudContainer MaxWidth="MaxWidth.ExtraLarge" Class="mt-4">
+    <MudPaper Class="pa-4" Elevation="2">
+        <MudGrid>
+            <MudItem xs="12" sm="6">
+                <MudText Typo="Typo.h5">AWB Register</MudText>
+            </MudItem>
+            <MudItem xs="12" sm="6" Class="d-flex justify-end gap-2">
+                <MudButton Variant="Variant.Outlined" Color="Color.Success" StartIcon="@Icons.Material.Filled.TableChart" 
+                           OnClick="ExportExcel" Disabled="@(!_data.Any())">Excel</MudButton>
+                <MudButton Variant="Variant.Outlined" Color="Color.Error" StartIcon="@Icons.Material.Filled.PictureAsPdf" 
+                           OnClick="ExportPdf" Disabled="@(!_data.Any())">PDF</MudButton>
+            </MudItem>
+        </MudGrid>
+
+        <MudGrid Class="mt-4">
+            <MudItem xs="12" sm="2">
+                <MudDatePicker @bind-Date="_fromDate" Label="From Date" DateFormat="dd-MMM-yyyy" Variant="Variant.Outlined" Dense="true" />
+            </MudItem>
+            <MudItem xs="12" sm="2">
+                <MudDatePicker @bind-Date="_toDate" Label="To Date" DateFormat="dd-MMM-yyyy" Variant="Variant.Outlined" Dense="true" />
+            </MudItem>
+            <MudItem xs="12" sm="2">
+                <MudSelect T="long?" Label="Branch" @bind-Value="_branchId" Clearable Variant="Variant.Outlined" Dense="true">
+                    @foreach (var branch in _branches)
+                    {
+                        <MudSelectItem Value="@((long?)branch.Id)">@branch.Name</MudSelectItem>
+                    }
+                </MudSelect>
+            </MudItem>
+            <MudItem xs="12" sm="2">
+                <MudSelect T="long?" Label="Customer" @bind-Value="_customerId" Clearable Variant="Variant.Outlined" Dense="true">
+                    @foreach (var customer in _customers)
+                    {
+                        <MudSelectItem Value="@((long?)customer.Id)">@customer.Name</MudSelectItem>
+                    }
+                </MudSelect>
+            </MudItem>
+            <MudItem xs="12" sm="2">
+                <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="LoadData" FullWidth="true">
+                    Generate
+                </MudButton>
+            </MudItem>
+        </MudGrid>
+
+        @if (_isLoading)
+        {
+            <MudProgressLinear Indeterminate="true" Class="mt-4" />
+        }
+        else if (_data.Any())
+        {
+            <MudPaper Class="pa-4 mt-4" Elevation="1" Style="background: var(--mud-palette-grey-lighten-4);">
+                <MudGrid>
+                    <MudItem xs="6" sm="2">
+                        <MudText Typo="Typo.caption">Total AWBs</MudText>
+                        <MudText Typo="Typo.h6">@_data.Count</MudText>
+                    </MudItem>
+                    <MudItem xs="6" sm="2">
+                        <MudText Typo="Typo.caption">Total Pieces</MudText>
+                        <MudText Typo="Typo.h6">@_data.Sum(x => x.Pieces)</MudText>
+                    </MudItem>
+                    <MudItem xs="6" sm="2">
+                        <MudText Typo="Typo.caption">Total Weight</MudText>
+                        <MudText Typo="Typo.h6">@_data.Sum(x => x.Weight).ToString("N2") Kg</MudText>
+                    </MudItem>
+                    <MudItem xs="6" sm="2">
+                        <MudText Typo="Typo.caption">Total Amount</MudText>
+                        <MudText Typo="Typo.h6">@_data.Sum(x => x.Amount).ToString("N2")</MudText>
+                    </MudItem>
+                </MudGrid>
+            </MudPaper>
+
+            <MudTable Items="@_data" Dense="true" Hover="true" Striped="true" Class="mt-4" FixedHeader="true" Height="450px">
+                <HeaderContent>
+                    <MudTh>AWB No</MudTh>
+                    <MudTh>Date</MudTh>
+                    <MudTh>Customer</MudTh>
+                    <MudTh>Consignee</MudTh>
+                    <MudTh>Origin</MudTh>
+                    <MudTh>Destination</MudTh>
+                    <MudTh Style="text-align: center">Pcs</MudTh>
+                    <MudTh Style="text-align: right">Weight</MudTh>
+                    <MudTh Style="text-align: right">Amount</MudTh>
+                    <MudTh>Status</MudTh>
+                </HeaderContent>
+                <RowTemplate>
+                    <MudTd>@context.AWBNo</MudTd>
+                    <MudTd>@context.Date.ToString("dd-MMM-yyyy")</MudTd>
+                    <MudTd>@context.Customer</MudTd>
+                    <MudTd>@context.Consignee</MudTd>
+                    <MudTd>@context.Origin</MudTd>
+                    <MudTd>@context.Destination</MudTd>
+                    <MudTd Style="text-align: center">@context.Pieces</MudTd>
+                    <MudTd Style="text-align: right">@context.Weight.ToString("N2")</MudTd>
+                    <MudTd Style="text-align: right">@context.Amount.ToString("N2")</MudTd>
+                    <MudTd>
+                        <MudChip T="string" Size="Size.Small" Color="@GetStatusColor(context.Status)">@context.Status</MudChip>
+                    </MudTd>
+                </RowTemplate>
+            </MudTable>
+        }
+        else
+        {
+            <MudAlert Severity="Severity.Info" Class="mt-4">Click Generate to load AWB register.</MudAlert>
+        }
+    </MudPaper>
+</MudContainer>
+
+@code {
+    private List<AWBDto> _data = new();
+    private List<Branch> _branches = new();
+    private List<Party> _customers = new();
+    private DateTime? _fromDate = DateTime.SpecifyKind(DateTime.Today.AddDays(-30), DateTimeKind.Utc);
+    private DateTime? _toDate = DateTime.SpecifyKind(DateTime.Today, DateTimeKind.Utc);
+    private long? _branchId;
+    private long? _customerId;
+    private bool _isLoading;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _branches = await DbContext.Branches.Where(b => b.IsActive).OrderBy(b => b.Name).ToListAsync();
+        _customers = await DbContext.Parties.Where(p => p.IsActive && p.AccountNature == PartyAccountNature.Receivable).OrderBy(p => p.Name).ToListAsync();
+    }
+
+    private async Task LoadData()
+    {
+        _isLoading = true;
+        _data.Clear();
+
+        try
+        {
+            var fromUtc = _fromDate.HasValue ? DateTime.SpecifyKind(_fromDate.Value.Date, DateTimeKind.Utc) : DateTime.MinValue;
+            var toUtc = _toDate.HasValue ? DateTime.SpecifyKind(_toDate.Value.Date.AddDays(1).AddTicks(-1), DateTimeKind.Utc) : DateTime.MaxValue;
+
+            var query = DbContext.InscanMasters
+                .Where(a => a.TransactionDate >= fromUtc && a.TransactionDate <= toUtc);
+
+            if (_branchId.HasValue)
+                query = query.Where(a => a.BranchId == _branchId);
+
+            if (_customerId.HasValue)
+                query = query.Where(a => a.CustomerId == _customerId);
+
+            var awbs = await query.OrderByDescending(a => a.TransactionDate).ThenByDescending(a => a.AWBNo).ToListAsync();
+
+            _data = awbs.Select(a => new AWBDto
+            {
+                AWBNo = a.AWBNo ?? "",
+                Date = a.TransactionDate,
+                Customer = a.Consignor ?? "",
+                Consignee = a.Consignee ?? "",
+                Origin = a.ConsignorCity ?? "",
+                Destination = a.ConsigneeCity ?? "",
+                Pieces = a.Pieces ?? 0,
+                Weight = a.Weight ?? 0,
+                Amount = a.NetTotal ?? 0,
+                Status = a.CourierStatusId.ToString()
+            }).ToList();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error: {ex.Message}", Severity.Error);
+        }
+
+        _isLoading = false;
+    }
+
+    private async Task ExportExcel()
+    {
+        var columns = new Dictionary<string, Func<AWBDto, object?>>
+        {
+            { "AWB No", x => x.AWBNo },
+            { "Date", x => x.Date },
+            { "Customer", x => x.Customer },
+            { "Consignee", x => x.Consignee },
+            { "Origin", x => x.Origin },
+            { "Destination", x => x.Destination },
+            { "Pieces", x => x.Pieces },
+            { "Weight", x => x.Weight },
+            { "Amount", x => x.Amount },
+            { "Status", x => x.Status }
+        };
+
+        var bytes = ExportService.ExportToExcel("AWB Register", _data, columns);
+        await DownloadFile(bytes, "AWBRegister.xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+    }
+
+    private async Task ExportPdf()
+    {
+        var columns = new Dictionary<string, Func<AWBDto, object?>>
+        {
+            { "AWB No", x => x.AWBNo },
+            { "Date", x => x.Date },
+            { "Customer", x => x.Customer },
+            { "Consignee", x => x.Consignee },
+            { "Origin", x => x.Origin },
+            { "Dest", x => x.Destination },
+            { "Pcs", x => x.Pieces },
+            { "Weight", x => x.Weight },
+            { "Amount", x => x.Amount },
+            { "Status", x => x.Status }
+        };
+
+        var totals = new Dictionary<string, decimal>
+        {
+            { "Pcs", _data.Sum(x => x.Pieces) },
+            { "Weight", _data.Sum(x => x.Weight) },
+            { "Amount", _data.Sum(x => x.Amount) }
+        };
+
+        var subtitle = $"Period: {_fromDate:dd-MMM-yyyy} to {_toDate:dd-MMM-yyyy}";
+        var bytes = ExportService.ExportToPdf("AWB Register", subtitle, _data, columns, totals);
+        await DownloadFile(bytes, "AWBRegister.pdf", "application/pdf");
+    }
+
+    private async Task DownloadFile(byte[] bytes, string filename, string contentType)
+    {
+        var base64 = Convert.ToBase64String(bytes);
+        await JS.InvokeVoidAsync("downloadFile", filename, base64, contentType);
+    }
+
+    private Color GetStatusColor(string status) => status?.ToLower() switch
+    {
+        "delivered" => Color.Success,
+        "intransit" or "in transit" => Color.Info,
+        "rts" => Color.Warning,
+        "cancelled" => Color.Error,
+        _ => Color.Default
+    };
+
+    private class AWBDto
+    {
+        public string AWBNo { get; set; } = "";
+        public DateTime Date { get; set; }
+        public string Customer { get; set; } = "";
+        public string Consignee { get; set; } = "";
+        public string Origin { get; set; } = "";
+        public string Destination { get; set; } = "";
+        public int Pieces { get; set; }
+        public decimal Weight { get; set; }
+        public decimal Amount { get; set; }
+        public string Status { get; set; } = "";
+    }
+}

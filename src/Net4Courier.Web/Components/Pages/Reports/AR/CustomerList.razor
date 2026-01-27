@@ -1,0 +1,204 @@
+@page "/reports/ar/customer-list"
+@using Microsoft.EntityFrameworkCore
+@using Net4Courier.Infrastructure.Data
+@using Net4Courier.Masters.Entities
+@using Net4Courier.Web.Services
+@using Microsoft.JSInterop
+@inject ApplicationDbContext DbContext
+@inject ReportExportService ExportService
+@inject IJSRuntime JS
+@inject ISnackbar Snackbar
+
+<PageTitle>Customer List - Net4Courier</PageTitle>
+
+<MudContainer MaxWidth="MaxWidth.ExtraLarge" Class="mt-4">
+    <MudPaper Class="pa-4" Elevation="2">
+        <MudGrid>
+            <MudItem xs="12" sm="6">
+                <MudText Typo="Typo.h5">Customer List</MudText>
+            </MudItem>
+            <MudItem xs="12" sm="6" Class="d-flex justify-end gap-2">
+                <MudButton Variant="Variant.Outlined" Color="Color.Success" StartIcon="@Icons.Material.Filled.TableChart" 
+                           OnClick="ExportExcel" Disabled="@(!_data.Any())">Excel</MudButton>
+                <MudButton Variant="Variant.Outlined" Color="Color.Error" StartIcon="@Icons.Material.Filled.PictureAsPdf" 
+                           OnClick="ExportPdf" Disabled="@(!_data.Any())">PDF</MudButton>
+            </MudItem>
+        </MudGrid>
+
+        <MudGrid Class="mt-4">
+            <MudItem xs="12" sm="3">
+                <MudSelect T="string" Label="Account Type" @bind-Value="_accountType" Clearable Variant="Variant.Outlined" Dense="true">
+                    <MudSelectItem Value="@("Cash")">Cash</MudSelectItem>
+                    <MudSelectItem Value="@("Credit")">Credit</MudSelectItem>
+                    <MudSelectItem Value="@("Prepaid")">Prepaid</MudSelectItem>
+                </MudSelect>
+            </MudItem>
+            <MudItem xs="12" sm="3">
+                <MudSelect T="long?" Label="Branch" @bind-Value="_branchId" Clearable Variant="Variant.Outlined" Dense="true">
+                    @foreach (var branch in _branches)
+                    {
+                        <MudSelectItem Value="@((long?)branch.Id)">@branch.Name</MudSelectItem>
+                    }
+                </MudSelect>
+            </MudItem>
+            <MudItem xs="12" sm="2">
+                <MudCheckBox @bind-Value="_activeOnly" Label="Active Only" Dense="true" Class="mt-2" />
+            </MudItem>
+            <MudItem xs="12" sm="2">
+                <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="LoadData" FullWidth="true">
+                    Generate
+                </MudButton>
+            </MudItem>
+        </MudGrid>
+
+        @if (_isLoading)
+        {
+            <MudProgressLinear Indeterminate="true" Class="mt-4" />
+        }
+        else if (_data.Any())
+        {
+            <MudTable Items="@_data" Dense="true" Hover="true" Striped="true" Class="mt-4" FixedHeader="true" Height="500px">
+                <HeaderContent>
+                    <MudTh>Code</MudTh>
+                    <MudTh>Name</MudTh>
+                    <MudTh>Account Type</MudTh>
+                    <MudTh>Contact Person</MudTh>
+                    <MudTh>Phone</MudTh>
+                    <MudTh>Email</MudTh>
+                    <MudTh>City</MudTh>
+                    <MudTh>Status</MudTh>
+                </HeaderContent>
+                <RowTemplate>
+                    <MudTd>@context.Code</MudTd>
+                    <MudTd>@context.Name</MudTd>
+                    <MudTd>
+                        <MudChip T="string" Size="Size.Small" Color="@GetAccountTypeColor(context.AccountType)">@context.AccountType</MudChip>
+                    </MudTd>
+                    <MudTd>@context.ContactPerson</MudTd>
+                    <MudTd>@context.Phone</MudTd>
+                    <MudTd>@context.Email</MudTd>
+                    <MudTd>@context.City</MudTd>
+                    <MudTd>
+                        <MudChip T="string" Size="Size.Small" Color="@(context.IsActive ? Color.Success : Color.Default)">
+                            @(context.IsActive ? "Active" : "Inactive")
+                        </MudChip>
+                    </MudTd>
+                </RowTemplate>
+            </MudTable>
+            <MudText Typo="Typo.caption" Class="mt-2">Total: @_data.Count customers</MudText>
+        }
+        else
+        {
+            <MudAlert Severity="Severity.Info" Class="mt-4">Click Generate to load customer list.</MudAlert>
+        }
+    </MudPaper>
+</MudContainer>
+
+@code {
+    private List<CustomerDto> _data = new();
+    private List<Branch> _branches = new();
+    private string? _accountType;
+    private long? _branchId;
+    private bool _activeOnly = true;
+    private bool _isLoading;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _branches = await DbContext.Branches.Where(b => b.IsActive).OrderBy(b => b.Name).ToListAsync();
+    }
+
+    private async Task LoadData()
+    {
+        _isLoading = true;
+        _data.Clear();
+
+        try
+        {
+            var query = DbContext.Parties
+                .Where(p => p.AccountNature == PartyAccountNature.Receivable);
+
+            if (_activeOnly)
+                query = query.Where(p => p.IsActive);
+
+            var customers = await query.Include(p => p.AccountType).OrderBy(p => p.Name).ToListAsync();
+
+            _data = customers.Select(c => new CustomerDto
+            {
+                Code = c.Code ?? "",
+                Name = c.Name,
+                AccountType = c.AccountType?.Name ?? "Cash",
+                ContactPerson = c.ContactPerson ?? "",
+                Phone = c.Phone ?? c.Mobile ?? "",
+                Email = c.Email ?? "",
+                City = c.ClientAddress ?? "",
+                IsActive = c.IsActive
+            }).ToList();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error: {ex.Message}", Severity.Error);
+        }
+
+        _isLoading = false;
+    }
+
+    private async Task ExportExcel()
+    {
+        var columns = new Dictionary<string, Func<CustomerDto, object?>>
+        {
+            { "Code", x => x.Code },
+            { "Name", x => x.Name },
+            { "Account Type", x => x.AccountType },
+            { "Contact Person", x => x.ContactPerson },
+            { "Phone", x => x.Phone },
+            { "Email", x => x.Email },
+            { "City", x => x.City },
+            { "Status", x => x.IsActive ? "Active" : "Inactive" }
+        };
+
+        var bytes = ExportService.ExportToExcel("Customer List", _data, columns);
+        await DownloadFile(bytes, "CustomerList.xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+    }
+
+    private async Task ExportPdf()
+    {
+        var columns = new Dictionary<string, Func<CustomerDto, object?>>
+        {
+            { "Code", x => x.Code },
+            { "Name", x => x.Name },
+            { "Account Type", x => x.AccountType },
+            { "Contact Person", x => x.ContactPerson },
+            { "Phone", x => x.Phone },
+            { "City", x => x.City },
+            { "Status", x => x.IsActive ? "Active" : "Inactive" }
+        };
+
+        var bytes = ExportService.ExportToPdf("Customer List", $"Generated: {DateTime.Now:dd-MMM-yyyy}", _data, columns);
+        await DownloadFile(bytes, "CustomerList.pdf", "application/pdf");
+    }
+
+    private async Task DownloadFile(byte[] bytes, string filename, string contentType)
+    {
+        var base64 = Convert.ToBase64String(bytes);
+        await JS.InvokeVoidAsync("downloadFile", filename, base64, contentType);
+    }
+
+    private Color GetAccountTypeColor(string type) => type switch
+    {
+        "Credit" => Color.Info,
+        "Prepaid" => Color.Warning,
+        _ => Color.Success
+    };
+
+    private class CustomerDto
+    {
+        public string Code { get; set; } = "";
+        public string Name { get; set; } = "";
+        public string AccountType { get; set; } = "";
+        public string ContactPerson { get; set; } = "";
+        public string Phone { get; set; } = "";
+        public string Email { get; set; } = "";
+        public string City { get; set; } = "";
+        public bool IsActive { get; set; }
+    }
+}

@@ -1,0 +1,248 @@
+@page "/reports/ap/supplier-ledger"
+@using Microsoft.EntityFrameworkCore
+@using Net4Courier.Infrastructure.Data
+@using Net4Courier.Finance.Entities
+@using Net4Courier.Masters.Entities
+@using Net4Courier.Web.Services
+@using Microsoft.JSInterop
+@inject ApplicationDbContext DbContext
+@inject ReportExportService ExportService
+@inject IJSRuntime JS
+@inject ISnackbar Snackbar
+
+<PageTitle>Supplier Ledger - Net4Courier</PageTitle>
+
+<MudContainer MaxWidth="MaxWidth.ExtraLarge" Class="mt-4">
+    <MudPaper Class="pa-4" Elevation="2">
+        <MudGrid>
+            <MudItem xs="12" sm="6">
+                <MudText Typo="Typo.h5">Supplier Ledger</MudText>
+            </MudItem>
+            <MudItem xs="12" sm="6" Class="d-flex justify-end gap-2">
+                <MudButton Variant="Variant.Outlined" Color="Color.Success" StartIcon="@Icons.Material.Filled.TableChart" 
+                           OnClick="ExportExcel" Disabled="@(!_data.Any())">Excel</MudButton>
+                <MudButton Variant="Variant.Outlined" Color="Color.Error" StartIcon="@Icons.Material.Filled.PictureAsPdf" 
+                           OnClick="ExportPdf" Disabled="@(!_data.Any())">PDF</MudButton>
+            </MudItem>
+        </MudGrid>
+
+        <MudGrid Class="mt-4">
+            <MudItem xs="12" sm="3">
+                <MudSelect T="long?" Label="Supplier" @bind-Value="_supplierId" Variant="Variant.Outlined" Dense="true">
+                    @foreach (var supplier in _suppliers)
+                    {
+                        <MudSelectItem Value="@((long?)supplier.Id)">@supplier.Name</MudSelectItem>
+                    }
+                </MudSelect>
+            </MudItem>
+            <MudItem xs="12" sm="2">
+                <MudDatePicker @bind-Date="_fromDate" Label="From Date" DateFormat="dd-MMM-yyyy" Variant="Variant.Outlined" Dense="true" />
+            </MudItem>
+            <MudItem xs="12" sm="2">
+                <MudDatePicker @bind-Date="_toDate" Label="To Date" DateFormat="dd-MMM-yyyy" Variant="Variant.Outlined" Dense="true" />
+            </MudItem>
+            <MudItem xs="12" sm="2">
+                <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="LoadData" FullWidth="true">
+                    Generate
+                </MudButton>
+            </MudItem>
+        </MudGrid>
+
+        @if (_isLoading)
+        {
+            <MudProgressLinear Indeterminate="true" Class="mt-4" />
+        }
+        else if (_data.Any())
+        {
+            <MudPaper Class="pa-4 mt-4" Elevation="1" Style="background: var(--mud-palette-grey-lighten-4);">
+                <MudGrid>
+                    <MudItem xs="6" sm="3">
+                        <MudText Typo="Typo.caption">Opening Balance</MudText>
+                        <MudText Typo="Typo.h6">@_openingBalance.ToString("N2")</MudText>
+                    </MudItem>
+                    <MudItem xs="6" sm="3">
+                        <MudText Typo="Typo.caption">Total Debit</MudText>
+                        <MudText Typo="Typo.h6">@_data.Sum(x => x.Debit).ToString("N2")</MudText>
+                    </MudItem>
+                    <MudItem xs="6" sm="3">
+                        <MudText Typo="Typo.caption">Total Credit</MudText>
+                        <MudText Typo="Typo.h6">@_data.Sum(x => x.Credit).ToString("N2")</MudText>
+                    </MudItem>
+                    <MudItem xs="6" sm="3">
+                        <MudText Typo="Typo.caption">Closing Balance</MudText>
+                        <MudText Typo="Typo.h6" Color="@(_closingBalance >= 0 ? Color.Default : Color.Error)">
+                            @_closingBalance.ToString("N2")
+                        </MudText>
+                    </MudItem>
+                </MudGrid>
+            </MudPaper>
+
+            <MudTable Items="@_data" Dense="true" Hover="true" Striped="true" Class="mt-4" FixedHeader="true" Height="450px">
+                <HeaderContent>
+                    <MudTh>Date</MudTh>
+                    <MudTh>Voucher No</MudTh>
+                    <MudTh>Type</MudTh>
+                    <MudTh>Particulars</MudTh>
+                    <MudTh Style="text-align: right">Debit</MudTh>
+                    <MudTh Style="text-align: right">Credit</MudTh>
+                    <MudTh Style="text-align: right">Balance</MudTh>
+                </HeaderContent>
+                <RowTemplate>
+                    <MudTd>@context.Date.ToString("dd-MMM-yyyy")</MudTd>
+                    <MudTd>@context.VoucherNo</MudTd>
+                    <MudTd>@context.VoucherType</MudTd>
+                    <MudTd>@context.Particulars</MudTd>
+                    <MudTd Style="text-align: right">@(context.Debit > 0 ? context.Debit.ToString("N2") : "")</MudTd>
+                    <MudTd Style="text-align: right">@(context.Credit > 0 ? context.Credit.ToString("N2") : "")</MudTd>
+                    <MudTd Style="text-align: right; font-weight: bold;">@context.Balance.ToString("N2")</MudTd>
+                </RowTemplate>
+            </MudTable>
+        }
+        else if (!_isLoading && _supplierId.HasValue)
+        {
+            <MudAlert Severity="Severity.Info" Class="mt-4">No transactions found for the selected period.</MudAlert>
+        }
+        else
+        {
+            <MudAlert Severity="Severity.Info" Class="mt-4">Select a supplier and click Generate to load ledger.</MudAlert>
+        }
+    </MudPaper>
+</MudContainer>
+
+@code {
+    private List<LedgerEntry> _data = new();
+    private List<Party> _suppliers = new();
+    private long? _supplierId;
+    private DateTime? _fromDate = DateTime.SpecifyKind(new DateTime(DateTime.Today.Year, 4, 1), DateTimeKind.Utc);
+    private DateTime? _toDate = DateTime.SpecifyKind(DateTime.Today, DateTimeKind.Utc);
+    private decimal _openingBalance;
+    private decimal _closingBalance;
+    private bool _isLoading;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _suppliers = await DbContext.Parties
+            .Where(p => p.IsActive && p.AccountNature == PartyAccountNature.Payable)
+            .OrderBy(p => p.Name)
+            .ToListAsync();
+    }
+
+    private async Task LoadData()
+    {
+        if (!_supplierId.HasValue)
+        {
+            Snackbar.Add("Please select a supplier", Severity.Warning);
+            return;
+        }
+
+        _isLoading = true;
+        _data.Clear();
+
+        try
+        {
+            var fromUtc = _fromDate.HasValue ? DateTime.SpecifyKind(_fromDate.Value.Date, DateTimeKind.Utc) : DateTime.MinValue;
+            var toUtc = _toDate.HasValue ? DateTime.SpecifyKind(_toDate.Value.Date.AddDays(1).AddTicks(-1), DateTimeKind.Utc) : DateTime.MaxValue;
+
+            var supplier = await DbContext.Parties.FindAsync(_supplierId.Value);
+            _openingBalance = 0; // Opening balance calculated from prior period
+
+            var entries = await DbContext.Journals
+                .Include(j => j.Entries)
+                .Where(j => j.VoucherDate >= fromUtc && j.VoucherDate <= toUtc)
+                .Where(j => j.Entries.Any(e => e.PartyId == _supplierId))
+                .OrderBy(j => j.VoucherDate)
+                .ThenBy(j => j.Id)
+                .ToListAsync();
+
+            decimal runningBalance = _openingBalance;
+
+            foreach (var journal in entries)
+            {
+                var entry = journal.Entries.FirstOrDefault(e => e.PartyId == _supplierId);
+                if (entry == null) continue;
+
+                var debit = entry.Debit ?? 0;
+                var credit = entry.Credit ?? 0;
+                runningBalance = runningBalance + debit - credit;
+
+                _data.Add(new LedgerEntry
+                {
+                    Date = journal.VoucherDate,
+                    VoucherNo = journal.VoucherNo ?? "",
+                    VoucherType = journal.VoucherType ?? "",
+                    Particulars = journal.Narration ?? "",
+                    Debit = debit,
+                    Credit = credit,
+                    Balance = runningBalance
+                });
+            }
+
+            _closingBalance = runningBalance;
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error: {ex.Message}", Severity.Error);
+        }
+
+        _isLoading = false;
+    }
+
+    private async Task ExportExcel()
+    {
+        var columns = new Dictionary<string, Func<LedgerEntry, object?>>
+        {
+            { "Date", x => x.Date },
+            { "Voucher No", x => x.VoucherNo },
+            { "Type", x => x.VoucherType },
+            { "Particulars", x => x.Particulars },
+            { "Debit", x => x.Debit },
+            { "Credit", x => x.Credit },
+            { "Balance", x => x.Balance }
+        };
+
+        var bytes = ExportService.ExportToExcel("Supplier Ledger", _data, columns);
+        await DownloadFile(bytes, "SupplierLedger.xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+    }
+
+    private async Task ExportPdf()
+    {
+        var columns = new Dictionary<string, Func<LedgerEntry, object?>>
+        {
+            { "Date", x => x.Date },
+            { "Voucher No", x => x.VoucherNo },
+            { "Type", x => x.VoucherType },
+            { "Particulars", x => x.Particulars },
+            { "Debit", x => x.Debit },
+            { "Credit", x => x.Credit },
+            { "Balance", x => x.Balance }
+        };
+
+        var totals = new Dictionary<string, decimal>
+        {
+            { "Debit", _data.Sum(x => x.Debit) },
+            { "Credit", _data.Sum(x => x.Credit) }
+        };
+
+        var supplierName = _suppliers.FirstOrDefault(s => s.Id == _supplierId)?.Name ?? "";
+        var subtitle = $"Supplier: {supplierName} | Period: {_fromDate:dd-MMM-yyyy} to {_toDate:dd-MMM-yyyy}";
+        var bytes = ExportService.ExportToPdf("Supplier Ledger", subtitle, _data, columns, totals);
+        await DownloadFile(bytes, "SupplierLedger.pdf", "application/pdf");
+    }
+
+    private async Task DownloadFile(byte[] bytes, string filename, string contentType)
+    {
+        var base64 = Convert.ToBase64String(bytes);
+        await JS.InvokeVoidAsync("downloadFile", filename, base64, contentType);
+    }
+
+    private class LedgerEntry
+    {
+        public DateTime Date { get; set; }
+        public string VoucherNo { get; set; } = "";
+        public string VoucherType { get; set; } = "";
+        public string Particulars { get; set; } = "";
+        public decimal Debit { get; set; }
+        public decimal Credit { get; set; }
+        public decimal Balance { get; set; }
+    }
+}

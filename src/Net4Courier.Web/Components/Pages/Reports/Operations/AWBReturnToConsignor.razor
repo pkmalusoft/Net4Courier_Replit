@@ -1,0 +1,241 @@
+@page "/reports/ops/rts-register"
+@using Microsoft.EntityFrameworkCore
+@using Net4Courier.Infrastructure.Data
+@using Net4Courier.Operations.Entities
+@using Net4Courier.Masters.Entities
+@using Net4Courier.Kernel.Enums
+@using Net4Courier.Web.Services
+@using Microsoft.JSInterop
+@inject ApplicationDbContext DbContext
+@inject ReportExportService ExportService
+@inject IJSRuntime JS
+@inject ISnackbar Snackbar
+
+<PageTitle>AWB Return to Consignor - Net4Courier</PageTitle>
+
+<MudContainer MaxWidth="MaxWidth.ExtraLarge" Class="mt-4">
+    <MudPaper Class="pa-4" Elevation="2">
+        <MudGrid>
+            <MudItem xs="12" sm="6">
+                <MudText Typo="Typo.h5">AWB Return to Consignor (RTS)</MudText>
+            </MudItem>
+            <MudItem xs="12" sm="6" Class="d-flex justify-end gap-2">
+                <MudButton Variant="Variant.Outlined" Color="Color.Success" StartIcon="@Icons.Material.Filled.TableChart" 
+                           OnClick="ExportExcel" Disabled="@(!_data.Any())">Excel</MudButton>
+                <MudButton Variant="Variant.Outlined" Color="Color.Error" StartIcon="@Icons.Material.Filled.PictureAsPdf" 
+                           OnClick="ExportPdf" Disabled="@(!_data.Any())">PDF</MudButton>
+            </MudItem>
+        </MudGrid>
+
+        <MudGrid Class="mt-4">
+            <MudItem xs="12" sm="2">
+                <MudDatePicker @bind-Date="_fromDate" Label="From Date" DateFormat="dd-MMM-yyyy" Variant="Variant.Outlined" Dense="true" />
+            </MudItem>
+            <MudItem xs="12" sm="2">
+                <MudDatePicker @bind-Date="_toDate" Label="To Date" DateFormat="dd-MMM-yyyy" Variant="Variant.Outlined" Dense="true" />
+            </MudItem>
+            <MudItem xs="12" sm="2">
+                <MudSelect T="long?" Label="Branch" @bind-Value="_branchId" Clearable Variant="Variant.Outlined" Dense="true">
+                    @foreach (var branch in _branches)
+                    {
+                        <MudSelectItem Value="@((long?)branch.Id)">@branch.Name</MudSelectItem>
+                    }
+                </MudSelect>
+            </MudItem>
+            <MudItem xs="12" sm="2">
+                <MudSelect T="string" Label="RTS Status" @bind-Value="_rtsStatus" Clearable Variant="Variant.Outlined" Dense="true">
+                    <MudSelectItem Value="@("Pending")">Pending</MudSelectItem>
+                    <MudSelectItem Value="@("InTransit")">In Transit</MudSelectItem>
+                    <MudSelectItem Value="@("Returned")">Returned</MudSelectItem>
+                </MudSelect>
+            </MudItem>
+            <MudItem xs="12" sm="2">
+                <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="LoadData" FullWidth="true">
+                    Generate
+                </MudButton>
+            </MudItem>
+        </MudGrid>
+
+        @if (_isLoading)
+        {
+            <MudProgressLinear Indeterminate="true" Class="mt-4" />
+        }
+        else if (_data.Any())
+        {
+            <MudPaper Class="pa-4 mt-4" Elevation="1" Style="background: var(--mud-palette-warning-lighten);">
+                <MudGrid>
+                    <MudItem xs="6" sm="3">
+                        <MudText Typo="Typo.caption">Total RTS</MudText>
+                        <MudText Typo="Typo.h6" Color="Color.Warning">@_data.Count</MudText>
+                    </MudItem>
+                    <MudItem xs="6" sm="3">
+                        <MudText Typo="Typo.caption">Pending Return</MudText>
+                        <MudText Typo="Typo.h6" Color="Color.Error">@_data.Count(x => x.RTSStatus == "Pending")</MudText>
+                    </MudItem>
+                    <MudItem xs="6" sm="3">
+                        <MudText Typo="Typo.caption">In Transit</MudText>
+                        <MudText Typo="Typo.h6" Color="Color.Info">@_data.Count(x => x.RTSStatus == "InTransit")</MudText>
+                    </MudItem>
+                    <MudItem xs="6" sm="3">
+                        <MudText Typo="Typo.caption">Returned</MudText>
+                        <MudText Typo="Typo.h6" Color="Color.Success">@_data.Count(x => x.RTSStatus == "Returned")</MudText>
+                    </MudItem>
+                </MudGrid>
+            </MudPaper>
+
+            <MudTable Items="@_data" Dense="true" Hover="true" Striped="true" Class="mt-4" FixedHeader="true" Height="450px">
+                <HeaderContent>
+                    <MudTh>AWB No</MudTh>
+                    <MudTh>Booking Date</MudTh>
+                    <MudTh>Customer</MudTh>
+                    <MudTh>Consignee</MudTh>
+                    <MudTh>Destination</MudTh>
+                    <MudTh>RTS Reason</MudTh>
+                    <MudTh>RTS Date</MudTh>
+                    <MudTh>Days</MudTh>
+                    <MudTh>Status</MudTh>
+                </HeaderContent>
+                <RowTemplate>
+                    <MudTd>@context.AWBNo</MudTd>
+                    <MudTd>@context.BookingDate.ToString("dd-MMM-yyyy")</MudTd>
+                    <MudTd>@context.Customer</MudTd>
+                    <MudTd>@context.Consignee</MudTd>
+                    <MudTd>@context.Destination</MudTd>
+                    <MudTd>@context.RTSReason</MudTd>
+                    <MudTd>@context.RTSDate?.ToString("dd-MMM-yyyy")</MudTd>
+                    <MudTd>
+                        <MudChip T="string" Size="Size.Small" Color="@(context.DaysSinceRTS > 7 ? Color.Error : Color.Warning)">
+                            @context.DaysSinceRTS
+                        </MudChip>
+                    </MudTd>
+                    <MudTd>
+                        <MudChip T="string" Size="Size.Small" Color="@GetStatusColor(context.RTSStatus)">@context.RTSStatus</MudChip>
+                    </MudTd>
+                </RowTemplate>
+            </MudTable>
+        }
+        else
+        {
+            <MudAlert Severity="Severity.Info" Class="mt-4">Click Generate to load RTS register.</MudAlert>
+        }
+    </MudPaper>
+</MudContainer>
+
+@code {
+    private List<RTSDto> _data = new();
+    private List<Branch> _branches = new();
+    private DateTime? _fromDate = DateTime.SpecifyKind(DateTime.Today.AddDays(-30), DateTimeKind.Utc);
+    private DateTime? _toDate = DateTime.SpecifyKind(DateTime.Today, DateTimeKind.Utc);
+    private long? _branchId;
+    private string? _rtsStatus;
+    private bool _isLoading;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _branches = await DbContext.Branches.Where(b => b.IsActive).OrderBy(b => b.Name).ToListAsync();
+    }
+
+    private async Task LoadData()
+    {
+        _isLoading = true;
+        _data.Clear();
+
+        try
+        {
+            var fromUtc = _fromDate.HasValue ? DateTime.SpecifyKind(_fromDate.Value.Date, DateTimeKind.Utc) : DateTime.MinValue;
+            var toUtc = _toDate.HasValue ? DateTime.SpecifyKind(_toDate.Value.Date.AddDays(1).AddTicks(-1), DateTimeKind.Utc) : DateTime.MaxValue;
+
+            var query = DbContext.InscanMasters
+                .Where(a => a.TransactionDate >= fromUtc && a.TransactionDate <= toUtc)
+                .Where(a => a.CourierStatusId == CourierStatus.Returned || a.CourierStatusId == CourierStatus.ReturnToOrigin || a.IsRTS == true || a.IsReturnedToConsignor == true);
+
+            if (_branchId.HasValue)
+                query = query.Where(a => a.BranchId == _branchId);
+
+            var awbs = await query.OrderByDescending(a => a.TransactionDate).ToListAsync();
+
+            _data = awbs.Select(a => new RTSDto
+            {
+                AWBNo = a.AWBNo ?? "",
+                BookingDate = a.TransactionDate,
+                Customer = a.Consignor ?? "",
+                Consignee = a.Consignee ?? "",
+                Destination = a.ConsigneeCity ?? "",
+                RTSReason = a.RTSReason ?? "",
+                RTSDate = a.RTSCreatedAt,
+                DaysSinceRTS = a.RTSCreatedAt.HasValue ? (int)(DateTime.Today - a.RTSCreatedAt.Value).TotalDays : 0,
+                RTSStatus = a.IsReturnedToConsignor ? "Returned" : "Pending"
+            }).ToList();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error: {ex.Message}", Severity.Error);
+        }
+
+        _isLoading = false;
+    }
+
+    private async Task ExportExcel()
+    {
+        var columns = new Dictionary<string, Func<RTSDto, object?>>
+        {
+            { "AWB No", x => x.AWBNo },
+            { "Booking Date", x => x.BookingDate },
+            { "Customer", x => x.Customer },
+            { "Consignee", x => x.Consignee },
+            { "Destination", x => x.Destination },
+            { "RTS Reason", x => x.RTSReason },
+            { "RTS Date", x => x.RTSDate },
+            { "Days Since RTS", x => x.DaysSinceRTS },
+            { "Status", x => x.RTSStatus }
+        };
+
+        var bytes = ExportService.ExportToExcel("RTS Register", _data, columns);
+        await DownloadFile(bytes, "RTSRegister.xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+    }
+
+    private async Task ExportPdf()
+    {
+        var columns = new Dictionary<string, Func<RTSDto, object?>>
+        {
+            { "AWB No", x => x.AWBNo },
+            { "Booking", x => x.BookingDate },
+            { "Customer", x => x.Customer },
+            { "Consignee", x => x.Consignee },
+            { "Dest", x => x.Destination },
+            { "Reason", x => x.RTSReason },
+            { "RTS Date", x => x.RTSDate },
+            { "Status", x => x.RTSStatus }
+        };
+
+        var subtitle = $"Period: {_fromDate:dd-MMM-yyyy} to {_toDate:dd-MMM-yyyy} | Total: {_data.Count} RTS";
+        var bytes = ExportService.ExportToPdf("AWB Return to Consignor (RTS)", subtitle, _data, columns);
+        await DownloadFile(bytes, "RTSRegister.pdf", "application/pdf");
+    }
+
+    private async Task DownloadFile(byte[] bytes, string filename, string contentType)
+    {
+        var base64 = Convert.ToBase64String(bytes);
+        await JS.InvokeVoidAsync("downloadFile", filename, base64, contentType);
+    }
+
+    private Color GetStatusColor(string status) => status switch
+    {
+        "Returned" => Color.Success,
+        "InTransit" => Color.Info,
+        _ => Color.Warning
+    };
+
+    private class RTSDto
+    {
+        public string AWBNo { get; set; } = "";
+        public DateTime BookingDate { get; set; }
+        public string Customer { get; set; } = "";
+        public string Consignee { get; set; } = "";
+        public string Destination { get; set; } = "";
+        public string RTSReason { get; set; } = "";
+        public DateTime? RTSDate { get; set; }
+        public int DaysSinceRTS { get; set; }
+        public string RTSStatus { get; set; } = "";
+    }
+}

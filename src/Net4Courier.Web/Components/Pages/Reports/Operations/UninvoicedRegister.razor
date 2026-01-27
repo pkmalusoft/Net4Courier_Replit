@@ -1,0 +1,234 @@
+@page "/reports/ops/uninvoiced"
+@using Microsoft.EntityFrameworkCore
+@using Net4Courier.Infrastructure.Data
+@using Net4Courier.Operations.Entities
+@using Net4Courier.Masters.Entities
+@using Net4Courier.Kernel.Enums
+@using Net4Courier.Web.Services
+@using Microsoft.JSInterop
+@inject ApplicationDbContext DbContext
+@inject ReportExportService ExportService
+@inject IJSRuntime JS
+@inject ISnackbar Snackbar
+
+<PageTitle>Uninvoiced AWB Register - Net4Courier</PageTitle>
+
+<MudContainer MaxWidth="MaxWidth.ExtraLarge" Class="mt-4">
+    <MudPaper Class="pa-4" Elevation="2">
+        <MudGrid>
+            <MudItem xs="12" sm="6">
+                <MudText Typo="Typo.h5">Uninvoiced AWB Register</MudText>
+            </MudItem>
+            <MudItem xs="12" sm="6" Class="d-flex justify-end gap-2">
+                <MudButton Variant="Variant.Outlined" Color="Color.Success" StartIcon="@Icons.Material.Filled.TableChart" 
+                           OnClick="ExportExcel" Disabled="@(!_data.Any())">Excel</MudButton>
+                <MudButton Variant="Variant.Outlined" Color="Color.Error" StartIcon="@Icons.Material.Filled.PictureAsPdf" 
+                           OnClick="ExportPdf" Disabled="@(!_data.Any())">PDF</MudButton>
+            </MudItem>
+        </MudGrid>
+
+        <MudGrid Class="mt-4">
+            <MudItem xs="12" sm="2">
+                <MudDatePicker @bind-Date="_fromDate" Label="From Date" DateFormat="dd-MMM-yyyy" Variant="Variant.Outlined" Dense="true" />
+            </MudItem>
+            <MudItem xs="12" sm="2">
+                <MudDatePicker @bind-Date="_toDate" Label="To Date" DateFormat="dd-MMM-yyyy" Variant="Variant.Outlined" Dense="true" />
+            </MudItem>
+            <MudItem xs="12" sm="3">
+                <MudSelect T="long?" Label="Customer" @bind-Value="_customerId" Clearable Variant="Variant.Outlined" Dense="true">
+                    @foreach (var customer in _customers)
+                    {
+                        <MudSelectItem Value="@((long?)customer.Id)">@customer.Name</MudSelectItem>
+                    }
+                </MudSelect>
+            </MudItem>
+            <MudItem xs="12" sm="2">
+                <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="LoadData" FullWidth="true">
+                    Generate
+                </MudButton>
+            </MudItem>
+        </MudGrid>
+
+        @if (_isLoading)
+        {
+            <MudProgressLinear Indeterminate="true" Class="mt-4" />
+        }
+        else if (_data.Any())
+        {
+            <MudPaper Class="pa-4 mt-4" Elevation="1" Style="background: var(--mud-palette-warning-lighten);">
+                <MudGrid>
+                    <MudItem xs="6" sm="3">
+                        <MudText Typo="Typo.caption">Uninvoiced AWBs</MudText>
+                        <MudText Typo="Typo.h6" Color="Color.Warning">@_data.Count</MudText>
+                    </MudItem>
+                    <MudItem xs="6" sm="3">
+                        <MudText Typo="Typo.caption">Total Pieces</MudText>
+                        <MudText Typo="Typo.h6">@_data.Sum(x => x.Pieces)</MudText>
+                    </MudItem>
+                    <MudItem xs="6" sm="3">
+                        <MudText Typo="Typo.caption">Total Weight</MudText>
+                        <MudText Typo="Typo.h6">@_data.Sum(x => x.Weight).ToString("N2") Kg</MudText>
+                    </MudItem>
+                    <MudItem xs="6" sm="3">
+                        <MudText Typo="Typo.caption">Total Amount</MudText>
+                        <MudText Typo="Typo.h6" Color="Color.Error">@_data.Sum(x => x.Amount).ToString("N2")</MudText>
+                    </MudItem>
+                </MudGrid>
+            </MudPaper>
+
+            <MudTable Items="@_data" Dense="true" Hover="true" Striped="true" Class="mt-4" FixedHeader="true" Height="450px">
+                <HeaderContent>
+                    <MudTh>AWB No</MudTh>
+                    <MudTh>Date</MudTh>
+                    <MudTh>Customer</MudTh>
+                    <MudTh>Destination</MudTh>
+                    <MudTh Style="text-align: center">Pcs</MudTh>
+                    <MudTh Style="text-align: right">Weight</MudTh>
+                    <MudTh Style="text-align: right">Amount</MudTh>
+                    <MudTh>Days Old</MudTh>
+                    <MudTh>Status</MudTh>
+                </HeaderContent>
+                <RowTemplate>
+                    <MudTd>@context.AWBNo</MudTd>
+                    <MudTd>@context.Date.ToString("dd-MMM-yyyy")</MudTd>
+                    <MudTd>@context.Customer</MudTd>
+                    <MudTd>@context.Destination</MudTd>
+                    <MudTd Style="text-align: center">@context.Pieces</MudTd>
+                    <MudTd Style="text-align: right">@context.Weight.ToString("N2")</MudTd>
+                    <MudTd Style="text-align: right; font-weight: bold;">@context.Amount.ToString("N2")</MudTd>
+                    <MudTd>
+                        <MudChip T="string" Size="Size.Small" Color="@(context.DaysOld > 30 ? Color.Error : context.DaysOld > 7 ? Color.Warning : Color.Default)">
+                            @context.DaysOld
+                        </MudChip>
+                    </MudTd>
+                    <MudTd>@context.Status</MudTd>
+                </RowTemplate>
+            </MudTable>
+        }
+        else
+        {
+            <MudAlert Severity="Severity.Info" Class="mt-4">Click Generate to load uninvoiced AWBs.</MudAlert>
+        }
+    </MudPaper>
+</MudContainer>
+
+@code {
+    private List<UninvoicedDto> _data = new();
+    private List<Party> _customers = new();
+    private DateTime? _fromDate = DateTime.SpecifyKind(new DateTime(DateTime.Today.Year, DateTime.Today.Month, 1).AddMonths(-1), DateTimeKind.Utc);
+    private DateTime? _toDate = DateTime.SpecifyKind(DateTime.Today, DateTimeKind.Utc);
+    private long? _customerId;
+    private bool _isLoading;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _customers = await DbContext.Parties
+            .Where(p => p.IsActive && p.AccountNature == PartyAccountNature.Receivable)
+            .OrderBy(p => p.Name)
+            .ToListAsync();
+    }
+
+    private async Task LoadData()
+    {
+        _isLoading = true;
+        _data.Clear();
+
+        try
+        {
+            var fromUtc = _fromDate.HasValue ? DateTime.SpecifyKind(_fromDate.Value.Date, DateTimeKind.Utc) : DateTime.MinValue;
+            var toUtc = _toDate.HasValue ? DateTime.SpecifyKind(_toDate.Value.Date.AddDays(1).AddTicks(-1), DateTimeKind.Utc) : DateTime.MaxValue;
+
+            var query = DbContext.InscanMasters
+                .Where(a => a.TransactionDate >= fromUtc && a.TransactionDate <= toUtc)
+                .Where(a => a.InvoiceId == null || a.InvoiceId == 0);
+
+            if (_customerId.HasValue)
+                query = query.Where(a => a.CustomerId == _customerId);
+
+            var awbs = await query.OrderBy(a => a.TransactionDate).ToListAsync();
+
+            _data = awbs.Select(a => new UninvoicedDto
+            {
+                AWBNo = a.AWBNo ?? "",
+                Date = a.TransactionDate,
+                Customer = a.Consignor ?? "",
+                Destination = a.ConsigneeCity ?? "",
+                Pieces = a.Pieces ?? 0,
+                Weight = a.Weight ?? 0,
+                Amount = a.NetTotal ?? 0,
+                DaysOld = (int)(DateTime.Today - a.TransactionDate).TotalDays,
+                Status = a.CourierStatusId.ToString()
+            }).ToList();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error: {ex.Message}", Severity.Error);
+        }
+
+        _isLoading = false;
+    }
+
+    private async Task ExportExcel()
+    {
+        var columns = new Dictionary<string, Func<UninvoicedDto, object?>>
+        {
+            { "AWB No", x => x.AWBNo },
+            { "Date", x => x.Date },
+            { "Customer", x => x.Customer },
+            { "Destination", x => x.Destination },
+            { "Pieces", x => x.Pieces },
+            { "Weight", x => x.Weight },
+            { "Amount", x => x.Amount },
+            { "Days Old", x => x.DaysOld },
+            { "Status", x => x.Status }
+        };
+
+        var bytes = ExportService.ExportToExcel("Uninvoiced AWBs", _data, columns);
+        await DownloadFile(bytes, "UninvoicedAWBs.xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+    }
+
+    private async Task ExportPdf()
+    {
+        var columns = new Dictionary<string, Func<UninvoicedDto, object?>>
+        {
+            { "AWB No", x => x.AWBNo },
+            { "Date", x => x.Date },
+            { "Customer", x => x.Customer },
+            { "Destination", x => x.Destination },
+            { "Pcs", x => x.Pieces },
+            { "Weight", x => x.Weight },
+            { "Amount", x => x.Amount },
+            { "Days", x => x.DaysOld }
+        };
+
+        var totals = new Dictionary<string, decimal>
+        {
+            { "Pcs", _data.Sum(x => x.Pieces) },
+            { "Weight", _data.Sum(x => x.Weight) },
+            { "Amount", _data.Sum(x => x.Amount) }
+        };
+
+        var subtitle = $"Period: {_fromDate:dd-MMM-yyyy} to {_toDate:dd-MMM-yyyy}";
+        var bytes = ExportService.ExportToPdf("Uninvoiced AWB Register", subtitle, _data, columns, totals);
+        await DownloadFile(bytes, "UninvoicedAWBs.pdf", "application/pdf");
+    }
+
+    private async Task DownloadFile(byte[] bytes, string filename, string contentType)
+    {
+        var base64 = Convert.ToBase64String(bytes);
+        await JS.InvokeVoidAsync("downloadFile", filename, base64, contentType);
+    }
+
+    private class UninvoicedDto
+    {
+        public string AWBNo { get; set; } = "";
+        public DateTime Date { get; set; }
+        public string Customer { get; set; } = "";
+        public string Destination { get; set; } = "";
+        public int Pieces { get; set; }
+        public decimal Weight { get; set; }
+        public decimal Amount { get; set; }
+        public int DaysOld { get; set; }
+        public string Status { get; set; } = "";
+    }
+}

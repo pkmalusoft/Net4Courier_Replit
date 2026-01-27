@@ -1,0 +1,226 @@
+@page "/reports/ops/pdc-register"
+@using Microsoft.EntityFrameworkCore
+@using Net4Courier.Infrastructure.Data
+@using Net4Courier.Finance.Entities
+@using Net4Courier.Masters.Entities
+@using Net4Courier.Web.Services
+@using Microsoft.JSInterop
+@inject ApplicationDbContext DbContext
+@inject ReportExportService ExportService
+@inject IJSRuntime JS
+@inject ISnackbar Snackbar
+
+<PageTitle>PDC Register - Net4Courier</PageTitle>
+
+<MudContainer MaxWidth="MaxWidth.ExtraLarge" Class="mt-4">
+    <MudPaper Class="pa-4" Elevation="2">
+        <MudGrid>
+            <MudItem xs="12" sm="6">
+                <MudText Typo="Typo.h5">Post Dated Cheque Register</MudText>
+            </MudItem>
+            <MudItem xs="12" sm="6" Class="d-flex justify-end gap-2">
+                <MudButton Variant="Variant.Outlined" Color="Color.Success" StartIcon="@Icons.Material.Filled.TableChart" 
+                           OnClick="ExportExcel" Disabled="@(!_data.Any())">Excel</MudButton>
+                <MudButton Variant="Variant.Outlined" Color="Color.Error" StartIcon="@Icons.Material.Filled.PictureAsPdf" 
+                           OnClick="ExportPdf" Disabled="@(!_data.Any())">PDF</MudButton>
+            </MudItem>
+        </MudGrid>
+
+        <MudGrid Class="mt-4">
+            <MudItem xs="12" sm="2">
+                <MudDatePicker @bind-Date="_fromDate" Label="Cheque Date From" DateFormat="dd-MMM-yyyy" Variant="Variant.Outlined" Dense="true" />
+            </MudItem>
+            <MudItem xs="12" sm="2">
+                <MudDatePicker @bind-Date="_toDate" Label="Cheque Date To" DateFormat="dd-MMM-yyyy" Variant="Variant.Outlined" Dense="true" />
+            </MudItem>
+            <MudItem xs="12" sm="2">
+                <MudSelect T="string" Label="Status" @bind-Value="_status" Clearable Variant="Variant.Outlined" Dense="true">
+                    <MudSelectItem Value="@("Pending")">Pending</MudSelectItem>
+                    <MudSelectItem Value="@("Deposited")">Deposited</MudSelectItem>
+                    <MudSelectItem Value="@("Cleared")">Cleared</MudSelectItem>
+                    <MudSelectItem Value="@("Bounced")">Bounced</MudSelectItem>
+                </MudSelect>
+            </MudItem>
+            <MudItem xs="12" sm="2">
+                <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="LoadData" FullWidth="true">
+                    Generate
+                </MudButton>
+            </MudItem>
+        </MudGrid>
+
+        @if (_isLoading)
+        {
+            <MudProgressLinear Indeterminate="true" Class="mt-4" />
+        }
+        else if (_data.Any())
+        {
+            <MudPaper Class="pa-4 mt-4" Elevation="1" Style="background: var(--mud-palette-grey-lighten-4);">
+                <MudGrid>
+                    <MudItem xs="6" sm="3">
+                        <MudText Typo="Typo.caption">Total PDCs</MudText>
+                        <MudText Typo="Typo.h6">@_data.Count</MudText>
+                    </MudItem>
+                    <MudItem xs="6" sm="3">
+                        <MudText Typo="Typo.caption">Total Amount</MudText>
+                        <MudText Typo="Typo.h6">@_data.Sum(x => x.Amount).ToString("N2")</MudText>
+                    </MudItem>
+                    <MudItem xs="6" sm="3">
+                        <MudText Typo="Typo.caption">Pending</MudText>
+                        <MudText Typo="Typo.h6" Color="Color.Warning">@_data.Where(x => x.Status == "Pending").Sum(x => x.Amount).ToString("N2")</MudText>
+                    </MudItem>
+                    <MudItem xs="6" sm="3">
+                        <MudText Typo="Typo.caption">Cleared</MudText>
+                        <MudText Typo="Typo.h6" Color="Color.Success">@_data.Where(x => x.Status == "Cleared").Sum(x => x.Amount).ToString("N2")</MudText>
+                    </MudItem>
+                </MudGrid>
+            </MudPaper>
+
+            <MudTable Items="@_data" Dense="true" Hover="true" Striped="true" Class="mt-4" FixedHeader="true" Height="450px">
+                <HeaderContent>
+                    <MudTh>Receipt No</MudTh>
+                    <MudTh>Customer</MudTh>
+                    <MudTh>Bank</MudTh>
+                    <MudTh>Cheque No</MudTh>
+                    <MudTh>Cheque Date</MudTh>
+                    <MudTh Style="text-align: right">Amount</MudTh>
+                    <MudTh>Days to Mature</MudTh>
+                    <MudTh>Status</MudTh>
+                </HeaderContent>
+                <RowTemplate>
+                    <MudTd>@context.ReceiptNo</MudTd>
+                    <MudTd>@context.CustomerName</MudTd>
+                    <MudTd>@context.BankName</MudTd>
+                    <MudTd>@context.ChequeNo</MudTd>
+                    <MudTd>@context.ChequeDate?.ToString("dd-MMM-yyyy")</MudTd>
+                    <MudTd Style="text-align: right; font-weight: bold;">@context.Amount.ToString("N2")</MudTd>
+                    <MudTd>
+                        @if (context.DaysToMature.HasValue)
+                        {
+                            <MudChip T="string" Size="Size.Small" Color="@(context.DaysToMature <= 0 ? Color.Error : context.DaysToMature <= 7 ? Color.Warning : Color.Default)">
+                                @context.DaysToMature days
+                            </MudChip>
+                        }
+                    </MudTd>
+                    <MudTd>
+                        <MudChip T="string" Size="Size.Small" Color="@GetStatusColor(context.Status)">@context.Status</MudChip>
+                    </MudTd>
+                </RowTemplate>
+            </MudTable>
+        }
+        else
+        {
+            <MudAlert Severity="Severity.Info" Class="mt-4">Click Generate to load PDC register.</MudAlert>
+        }
+    </MudPaper>
+</MudContainer>
+
+@code {
+    private List<PDCDto> _data = new();
+    private DateTime? _fromDate = DateTime.SpecifyKind(DateTime.Today, DateTimeKind.Utc);
+    private DateTime? _toDate = DateTime.SpecifyKind(DateTime.Today.AddMonths(3), DateTimeKind.Utc);
+    private string? _status;
+    private bool _isLoading;
+
+    private async Task LoadData()
+    {
+        _isLoading = true;
+        _data.Clear();
+
+        try
+        {
+            var fromUtc = _fromDate.HasValue ? DateTime.SpecifyKind(_fromDate.Value.Date, DateTimeKind.Utc) : DateTime.MinValue;
+            var toUtc = _toDate.HasValue ? DateTime.SpecifyKind(_toDate.Value.Date.AddDays(1).AddTicks(-1), DateTimeKind.Utc) : DateTime.MaxValue;
+
+            var query = DbContext.Receipts
+                .Where(r => r.PaymentMode == "PDC" || r.PaymentMode == "Cheque")
+                .Where(r => r.ChequeDate >= fromUtc && r.ChequeDate <= toUtc);
+
+            var receipts = await query.OrderBy(r => r.ChequeDate).ToListAsync();
+
+            _data = receipts.Select(r => new PDCDto
+            {
+                ReceiptNo = r.ReceiptNo ?? "",
+                CustomerName = r.CustomerName ?? "",
+                BankName = r.BankName ?? "",
+                ChequeNo = r.ChequeNo ?? "",
+                ChequeDate = r.ChequeDate,
+                Amount = r.Amount ?? 0,
+                DaysToMature = r.ChequeDate.HasValue ? (int?)(r.ChequeDate.Value - DateTime.Today).TotalDays : null,
+                Status = r.IsAllocated ? "Allocated" : "Pending"
+            }).ToList();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error: {ex.Message}", Severity.Error);
+        }
+
+        _isLoading = false;
+    }
+
+    private async Task ExportExcel()
+    {
+        var columns = new Dictionary<string, Func<PDCDto, object?>>
+        {
+            { "Receipt No", x => x.ReceiptNo },
+            { "Customer", x => x.CustomerName },
+            { "Bank", x => x.BankName },
+            { "Cheque No", x => x.ChequeNo },
+            { "Cheque Date", x => x.ChequeDate },
+            { "Amount", x => x.Amount },
+            { "Days to Mature", x => x.DaysToMature },
+            { "Status", x => x.Status }
+        };
+
+        var bytes = ExportService.ExportToExcel("PDC Register", _data, columns);
+        await DownloadFile(bytes, "PDCRegister.xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+    }
+
+    private async Task ExportPdf()
+    {
+        var columns = new Dictionary<string, Func<PDCDto, object?>>
+        {
+            { "Receipt No", x => x.ReceiptNo },
+            { "Customer", x => x.CustomerName },
+            { "Bank", x => x.BankName },
+            { "Cheque No", x => x.ChequeNo },
+            { "Cheque Date", x => x.ChequeDate },
+            { "Amount", x => x.Amount },
+            { "Status", x => x.Status }
+        };
+
+        var totals = new Dictionary<string, decimal>
+        {
+            { "Amount", _data.Sum(x => x.Amount) }
+        };
+
+        var subtitle = $"Cheque Date: {_fromDate:dd-MMM-yyyy} to {_toDate:dd-MMM-yyyy}";
+        var bytes = ExportService.ExportToPdf("PDC Register", subtitle, _data, columns, totals);
+        await DownloadFile(bytes, "PDCRegister.pdf", "application/pdf");
+    }
+
+    private async Task DownloadFile(byte[] bytes, string filename, string contentType)
+    {
+        var base64 = Convert.ToBase64String(bytes);
+        await JS.InvokeVoidAsync("downloadFile", filename, base64, contentType);
+    }
+
+    private Color GetStatusColor(string status) => status switch
+    {
+        "Cleared" => Color.Success,
+        "Deposited" => Color.Info,
+        "Bounced" => Color.Error,
+        _ => Color.Warning
+    };
+
+    private class PDCDto
+    {
+        public string ReceiptNo { get; set; } = "";
+        public string CustomerName { get; set; } = "";
+        public string BankName { get; set; } = "";
+        public string ChequeNo { get; set; } = "";
+        public DateTime? ChequeDate { get; set; }
+        public decimal Amount { get; set; }
+        public int? DaysToMature { get; set; }
+        public string Status { get; set; } = "";
+    }
+}

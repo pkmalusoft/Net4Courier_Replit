@@ -1,0 +1,193 @@
+@page "/reports/ar/customer-opening-balance"
+@using Microsoft.EntityFrameworkCore
+@using Net4Courier.Infrastructure.Data
+@using Net4Courier.Masters.Entities
+@using Net4Courier.Finance.Entities
+@using Net4Courier.Web.Services
+@using Microsoft.JSInterop
+@inject ApplicationDbContext DbContext
+@inject ReportExportService ExportService
+@inject IJSRuntime JS
+@inject ISnackbar Snackbar
+
+<PageTitle>Customer Opening Balance Register - Net4Courier</PageTitle>
+
+<MudContainer MaxWidth="MaxWidth.ExtraLarge" Class="mt-4">
+    <MudPaper Class="pa-4" Elevation="2">
+        <MudGrid>
+            <MudItem xs="12" sm="6">
+                <MudText Typo="Typo.h5">Customer Opening Balance Register</MudText>
+            </MudItem>
+            <MudItem xs="12" sm="6" Class="d-flex justify-end gap-2">
+                <MudButton Variant="Variant.Outlined" Color="Color.Success" StartIcon="@Icons.Material.Filled.TableChart" 
+                           OnClick="ExportExcel" Disabled="@(!_data.Any())">Excel</MudButton>
+                <MudButton Variant="Variant.Outlined" Color="Color.Error" StartIcon="@Icons.Material.Filled.PictureAsPdf" 
+                           OnClick="ExportPdf" Disabled="@(!_data.Any())">PDF</MudButton>
+            </MudItem>
+        </MudGrid>
+
+        <MudGrid Class="mt-4">
+            <MudItem xs="12" sm="3">
+                <MudSelect T="long?" Label="Financial Year" @bind-Value="_financialYearId" Variant="Variant.Outlined" Dense="true">
+                    @foreach (var fy in _financialYears)
+                    {
+                        <MudSelectItem Value="@((long?)fy.Id)">@fy.Name</MudSelectItem>
+                    }
+                </MudSelect>
+            </MudItem>
+            <MudItem xs="12" sm="2">
+                <MudCheckBox @bind-Value="_showZeroBalances" Label="Show Zero" Dense="true" Class="mt-2" />
+            </MudItem>
+            <MudItem xs="12" sm="2">
+                <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="LoadData" FullWidth="true">
+                    Generate
+                </MudButton>
+            </MudItem>
+        </MudGrid>
+
+        @if (_isLoading)
+        {
+            <MudProgressLinear Indeterminate="true" Class="mt-4" />
+        }
+        else if (_data.Any())
+        {
+            <MudTable Items="@_data" Dense="true" Hover="true" Striped="true" Class="mt-4" FixedHeader="true" Height="500px">
+                <HeaderContent>
+                    <MudTh>Code</MudTh>
+                    <MudTh>Customer Name</MudTh>
+                    <MudTh>Account Type</MudTh>
+                    <MudTh Style="text-align: right">Opening Debit</MudTh>
+                    <MudTh Style="text-align: right">Opening Credit</MudTh>
+                    <MudTh Style="text-align: right">Net Balance</MudTh>
+                </HeaderContent>
+                <RowTemplate>
+                    <MudTd>@context.Code</MudTd>
+                    <MudTd>@context.Name</MudTd>
+                    <MudTd>@context.AccountType</MudTd>
+                    <MudTd Style="text-align: right">@context.OpeningDebit.ToString("N2")</MudTd>
+                    <MudTd Style="text-align: right">@context.OpeningCredit.ToString("N2")</MudTd>
+                    <MudTd Style="@($"text-align: right; font-weight: bold; {(context.NetBalance >= 0 ? "color: green;" : "color: red;")}")">
+                        @context.NetBalance.ToString("N2")
+                    </MudTd>
+                </RowTemplate>
+                <FooterContent>
+                    <MudTd colspan="3"><strong>Total</strong></MudTd>
+                    <MudTd Style="text-align: right"><strong>@_data.Sum(x => x.OpeningDebit).ToString("N2")</strong></MudTd>
+                    <MudTd Style="text-align: right"><strong>@_data.Sum(x => x.OpeningCredit).ToString("N2")</strong></MudTd>
+                    <MudTd Style="text-align: right"><strong>@_data.Sum(x => x.NetBalance).ToString("N2")</strong></MudTd>
+                </FooterContent>
+            </MudTable>
+        }
+        else
+        {
+            <MudAlert Severity="Severity.Info" Class="mt-4">Click Generate to load opening balance register.</MudAlert>
+        }
+    </MudPaper>
+</MudContainer>
+
+@code {
+    private List<OpeningBalanceDto> _data = new();
+    private List<FinancialYear> _financialYears = new();
+    private long? _financialYearId;
+    private bool _showZeroBalances;
+    private bool _isLoading;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _financialYears = await DbContext.FinancialYears.OrderByDescending(f => f.StartDate).ToListAsync();
+        _financialYearId = _financialYears.FirstOrDefault()?.Id;
+    }
+
+    private async Task LoadData()
+    {
+        _isLoading = true;
+        _data.Clear();
+
+        try
+        {
+            var customersWithAccType = await DbContext.Parties
+                .Where(p => p.IsActive && p.AccountNature == PartyAccountNature.Receivable)
+                .Include(p => p.AccountType)
+                .OrderBy(p => p.Name)
+                .ToListAsync();
+
+            foreach (var customer in customersWithAccType)
+            {
+                decimal netBalance = customer.CreditLimit; // Using CreditLimit as proxy for balance
+
+                if (!_showZeroBalances && netBalance == 0) continue;
+
+                _data.Add(new OpeningBalanceDto
+                {
+                    Code = customer.Code ?? "",
+                    Name = customer.Name,
+                    AccountType = customer.AccountType?.Name ?? "Cash",
+                    OpeningDebit = netBalance > 0 ? netBalance : 0,
+                    OpeningCredit = netBalance < 0 ? Math.Abs(netBalance) : 0,
+                    NetBalance = netBalance
+                });
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error: {ex.Message}", Severity.Error);
+        }
+
+        _isLoading = false;
+    }
+
+    private async Task ExportExcel()
+    {
+        var columns = new Dictionary<string, Func<OpeningBalanceDto, object?>>
+        {
+            { "Code", x => x.Code },
+            { "Customer Name", x => x.Name },
+            { "Account Type", x => x.AccountType },
+            { "Opening Debit", x => x.OpeningDebit },
+            { "Opening Credit", x => x.OpeningCredit },
+            { "Net Balance", x => x.NetBalance }
+        };
+
+        var bytes = ExportService.ExportToExcel("Customer O.Bal Register", _data, columns);
+        await DownloadFile(bytes, "CustomerOpeningBalance.xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+    }
+
+    private async Task ExportPdf()
+    {
+        var columns = new Dictionary<string, Func<OpeningBalanceDto, object?>>
+        {
+            { "Code", x => x.Code },
+            { "Customer Name", x => x.Name },
+            { "Account Type", x => x.AccountType },
+            { "Opening Debit", x => x.OpeningDebit },
+            { "Opening Credit", x => x.OpeningCredit },
+            { "Net Balance", x => x.NetBalance }
+        };
+
+        var totals = new Dictionary<string, decimal>
+        {
+            { "Opening Debit", _data.Sum(x => x.OpeningDebit) },
+            { "Opening Credit", _data.Sum(x => x.OpeningCredit) },
+            { "Net Balance", _data.Sum(x => x.NetBalance) }
+        };
+
+        var bytes = ExportService.ExportToPdf("Customer Opening Balance Register", $"Generated: {DateTime.Now:dd-MMM-yyyy}", _data, columns, totals);
+        await DownloadFile(bytes, "CustomerOpeningBalance.pdf", "application/pdf");
+    }
+
+    private async Task DownloadFile(byte[] bytes, string filename, string contentType)
+    {
+        var base64 = Convert.ToBase64String(bytes);
+        await JS.InvokeVoidAsync("downloadFile", filename, base64, contentType);
+    }
+
+    private class OpeningBalanceDto
+    {
+        public string Code { get; set; } = "";
+        public string Name { get; set; } = "";
+        public string AccountType { get; set; } = "";
+        public decimal OpeningDebit { get; set; }
+        public decimal OpeningCredit { get; set; }
+        public decimal NetBalance { get; set; }
+    }
+}

@@ -1,0 +1,240 @@
+@page "/reports/ops/drs-cashflow"
+@using Microsoft.EntityFrameworkCore
+@using Net4Courier.Infrastructure.Data
+@using Net4Courier.Operations.Entities
+@using Net4Courier.Masters.Entities
+@using Net4Courier.Web.Services
+@using Microsoft.JSInterop
+@inject ApplicationDbContext DbContext
+@inject ReportExportService ExportService
+@inject IJSRuntime JS
+@inject ISnackbar Snackbar
+
+<PageTitle>DRS Cash Flow - Net4Courier</PageTitle>
+
+<MudContainer MaxWidth="MaxWidth.ExtraLarge" Class="mt-4">
+    <MudPaper Class="pa-4" Elevation="2">
+        <MudGrid>
+            <MudItem xs="12" sm="6">
+                <MudText Typo="Typo.h5">DRS Cash Flow Report</MudText>
+            </MudItem>
+            <MudItem xs="12" sm="6" Class="d-flex justify-end gap-2">
+                <MudButton Variant="Variant.Outlined" Color="Color.Success" StartIcon="@Icons.Material.Filled.TableChart" 
+                           OnClick="ExportExcel" Disabled="@(!_data.Any())">Excel</MudButton>
+                <MudButton Variant="Variant.Outlined" Color="Color.Error" StartIcon="@Icons.Material.Filled.PictureAsPdf" 
+                           OnClick="ExportPdf" Disabled="@(!_data.Any())">PDF</MudButton>
+            </MudItem>
+        </MudGrid>
+
+        <MudGrid Class="mt-4">
+            <MudItem xs="12" sm="2">
+                <MudDatePicker @bind-Date="_fromDate" Label="From Date" DateFormat="dd-MMM-yyyy" Variant="Variant.Outlined" Dense="true" />
+            </MudItem>
+            <MudItem xs="12" sm="2">
+                <MudDatePicker @bind-Date="_toDate" Label="To Date" DateFormat="dd-MMM-yyyy" Variant="Variant.Outlined" Dense="true" />
+            </MudItem>
+            <MudItem xs="12" sm="2">
+                <MudSelect T="long?" Label="Branch" @bind-Value="_branchId" Clearable Variant="Variant.Outlined" Dense="true">
+                    @foreach (var branch in _branches)
+                    {
+                        <MudSelectItem Value="@((long?)branch.Id)">@branch.Name</MudSelectItem>
+                    }
+                </MudSelect>
+            </MudItem>
+            <MudItem xs="12" sm="2">
+                <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="LoadData" FullWidth="true">
+                    Generate
+                </MudButton>
+            </MudItem>
+        </MudGrid>
+
+        @if (_isLoading)
+        {
+            <MudProgressLinear Indeterminate="true" Class="mt-4" />
+        }
+        else if (_data.Any())
+        {
+            <MudPaper Class="pa-4 mt-4" Elevation="1" Style="background: var(--mud-palette-grey-lighten-4);">
+                <MudGrid>
+                    <MudItem xs="6" sm="3">
+                        <MudText Typo="Typo.caption">Total DRS</MudText>
+                        <MudText Typo="Typo.h6">@_data.Count</MudText>
+                    </MudItem>
+                    <MudItem xs="6" sm="3">
+                        <MudText Typo="Typo.caption">COD Collected</MudText>
+                        <MudText Typo="Typo.h6" Color="Color.Success">@_data.Sum(x => x.CODCollected).ToString("N2")</MudText>
+                    </MudItem>
+                    <MudItem xs="6" sm="3">
+                        <MudText Typo="Typo.caption">Cash Collected</MudText>
+                        <MudText Typo="Typo.h6" Color="Color.Success">@_data.Sum(x => x.CashCollected).ToString("N2")</MudText>
+                    </MudItem>
+                    <MudItem xs="6" sm="3">
+                        <MudText Typo="Typo.caption">Total Collection</MudText>
+                        <MudText Typo="Typo.h6" Color="Color.Primary">@_data.Sum(x => x.TotalCollection).ToString("N2")</MudText>
+                    </MudItem>
+                </MudGrid>
+            </MudPaper>
+
+            <MudTable Items="@_data" Dense="true" Hover="true" Striped="true" Class="mt-4" FixedHeader="true" Height="450px">
+                <HeaderContent>
+                    <MudTh>DRS No</MudTh>
+                    <MudTh>Date</MudTh>
+                    <MudTh>Courier</MudTh>
+                    <MudTh Style="text-align: center">AWBs</MudTh>
+                    <MudTh Style="text-align: center">Delivered</MudTh>
+                    <MudTh Style="text-align: right">COD Collected</MudTh>
+                    <MudTh Style="text-align: right">Cash Collected</MudTh>
+                    <MudTh Style="text-align: right">Total</MudTh>
+                    <MudTh>Status</MudTh>
+                </HeaderContent>
+                <RowTemplate>
+                    <MudTd>@context.DRSNo</MudTd>
+                    <MudTd>@context.Date.ToString("dd-MMM-yyyy")</MudTd>
+                    <MudTd>@context.CourierName</MudTd>
+                    <MudTd Style="text-align: center">@context.TotalAWBs</MudTd>
+                    <MudTd Style="text-align: center">@context.DeliveredAWBs</MudTd>
+                    <MudTd Style="text-align: right; color: green;">@context.CODCollected.ToString("N2")</MudTd>
+                    <MudTd Style="text-align: right; color: green;">@context.CashCollected.ToString("N2")</MudTd>
+                    <MudTd Style="text-align: right; font-weight: bold;">@context.TotalCollection.ToString("N2")</MudTd>
+                    <MudTd>
+                        <MudChip T="string" Size="Size.Small" Color="@(context.Status == "Closed" ? Color.Success : Color.Warning)">
+                            @context.Status
+                        </MudChip>
+                    </MudTd>
+                </RowTemplate>
+                <FooterContent>
+                    <MudTd colspan="3"><strong>Total</strong></MudTd>
+                    <MudTd Style="text-align: center"><strong>@_data.Sum(x => x.TotalAWBs)</strong></MudTd>
+                    <MudTd Style="text-align: center"><strong>@_data.Sum(x => x.DeliveredAWBs)</strong></MudTd>
+                    <MudTd Style="text-align: right"><strong>@_data.Sum(x => x.CODCollected).ToString("N2")</strong></MudTd>
+                    <MudTd Style="text-align: right"><strong>@_data.Sum(x => x.CashCollected).ToString("N2")</strong></MudTd>
+                    <MudTd Style="text-align: right"><strong>@_data.Sum(x => x.TotalCollection).ToString("N2")</strong></MudTd>
+                    <MudTd></MudTd>
+                </FooterContent>
+            </MudTable>
+        }
+        else
+        {
+            <MudAlert Severity="Severity.Info" Class="mt-4">Click Generate to load DRS cash flow report.</MudAlert>
+        }
+    </MudPaper>
+</MudContainer>
+
+@code {
+    private List<DRSCashFlowDto> _data = new();
+    private List<Branch> _branches = new();
+    private DateTime? _fromDate = DateTime.SpecifyKind(new DateTime(DateTime.Today.Year, DateTime.Today.Month, 1), DateTimeKind.Utc);
+    private DateTime? _toDate = DateTime.SpecifyKind(DateTime.Today, DateTimeKind.Utc);
+    private long? _branchId;
+    private bool _isLoading;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _branches = await DbContext.Branches.Where(b => b.IsActive).OrderBy(b => b.Name).ToListAsync();
+    }
+
+    private async Task LoadData()
+    {
+        _isLoading = true;
+        _data.Clear();
+
+        try
+        {
+            var fromUtc = _fromDate.HasValue ? DateTime.SpecifyKind(_fromDate.Value.Date, DateTimeKind.Utc) : DateTime.MinValue;
+            var toUtc = _toDate.HasValue ? DateTime.SpecifyKind(_toDate.Value.Date.AddDays(1).AddTicks(-1), DateTimeKind.Utc) : DateTime.MaxValue;
+
+            var query = DbContext.DRSs
+                .Where(d => d.DRSDate >= fromUtc && d.DRSDate <= toUtc);
+
+            if (_branchId.HasValue)
+                query = query.Where(d => d.BranchId == _branchId);
+
+            var drsList = await query.Include(d => d.Details).OrderByDescending(d => d.DRSDate).ToListAsync();
+
+            _data = drsList.Select(d => new DRSCashFlowDto
+            {
+                DRSNo = d.DRSNo ?? "",
+                Date = d.DRSDate,
+                CourierName = d.DeliveryEmployeeName ?? "",
+                TotalAWBs = d.TotalAWBs ?? d.Details?.Count ?? 0,
+                DeliveredAWBs = d.DeliveredCount ?? 0,
+                CODCollected = d.CollectedCOD ?? 0,
+                CashCollected = 0,
+                TotalCollection = d.CollectedCOD ?? 0,
+                Status = d.Status.ToString()
+            }).ToList();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error: {ex.Message}", Severity.Error);
+        }
+
+        _isLoading = false;
+    }
+
+    private async Task ExportExcel()
+    {
+        var columns = new Dictionary<string, Func<DRSCashFlowDto, object?>>
+        {
+            { "DRS No", x => x.DRSNo },
+            { "Date", x => x.Date },
+            { "Courier", x => x.CourierName },
+            { "Total AWBs", x => x.TotalAWBs },
+            { "Delivered", x => x.DeliveredAWBs },
+            { "COD Collected", x => x.CODCollected },
+            { "Cash Collected", x => x.CashCollected },
+            { "Total Collection", x => x.TotalCollection },
+            { "Status", x => x.Status }
+        };
+
+        var bytes = ExportService.ExportToExcel("DRS Cash Flow", _data, columns);
+        await DownloadFile(bytes, "DRSCashFlow.xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+    }
+
+    private async Task ExportPdf()
+    {
+        var columns = new Dictionary<string, Func<DRSCashFlowDto, object?>>
+        {
+            { "DRS No", x => x.DRSNo },
+            { "Date", x => x.Date },
+            { "Courier", x => x.CourierName },
+            { "AWBs", x => x.TotalAWBs },
+            { "Delivered", x => x.DeliveredAWBs },
+            { "COD", x => x.CODCollected },
+            { "Cash", x => x.CashCollected },
+            { "Total", x => x.TotalCollection }
+        };
+
+        var totals = new Dictionary<string, decimal>
+        {
+            { "AWBs", _data.Sum(x => x.TotalAWBs) },
+            { "Delivered", _data.Sum(x => x.DeliveredAWBs) },
+            { "COD", _data.Sum(x => x.CODCollected) },
+            { "Cash", _data.Sum(x => x.CashCollected) },
+            { "Total", _data.Sum(x => x.TotalCollection) }
+        };
+
+        var subtitle = $"Period: {_fromDate:dd-MMM-yyyy} to {_toDate:dd-MMM-yyyy}";
+        var bytes = ExportService.ExportToPdf("DRS Cash Flow Report", subtitle, _data, columns, totals);
+        await DownloadFile(bytes, "DRSCashFlow.pdf", "application/pdf");
+    }
+
+    private async Task DownloadFile(byte[] bytes, string filename, string contentType)
+    {
+        var base64 = Convert.ToBase64String(bytes);
+        await JS.InvokeVoidAsync("downloadFile", filename, base64, contentType);
+    }
+
+    private class DRSCashFlowDto
+    {
+        public string DRSNo { get; set; } = "";
+        public DateTime Date { get; set; }
+        public string CourierName { get; set; } = "";
+        public int TotalAWBs { get; set; }
+        public int DeliveredAWBs { get; set; }
+        public decimal CODCollected { get; set; }
+        public decimal CashCollected { get; set; }
+        public decimal TotalCollection { get; set; }
+        public string Status { get; set; } = "";
+    }
+}

@@ -1,0 +1,235 @@
+@page "/reports/ops/cod-pending"
+@using Microsoft.EntityFrameworkCore
+@using Net4Courier.Infrastructure.Data
+@using Net4Courier.Operations.Entities
+@using Net4Courier.Masters.Entities
+@using Net4Courier.Web.Services
+@using Microsoft.JSInterop
+@inject ApplicationDbContext DbContext
+@inject ReportExportService ExportService
+@inject IJSRuntime JS
+@inject ISnackbar Snackbar
+
+<PageTitle>COD Pending Register - Net4Courier</PageTitle>
+
+<MudContainer MaxWidth="MaxWidth.ExtraLarge" Class="mt-4">
+    <MudPaper Class="pa-4" Elevation="2">
+        <MudGrid>
+            <MudItem xs="12" sm="6">
+                <MudText Typo="Typo.h5">COD Pending Register</MudText>
+            </MudItem>
+            <MudItem xs="12" sm="6" Class="d-flex justify-end gap-2">
+                <MudButton Variant="Variant.Outlined" Color="Color.Success" StartIcon="@Icons.Material.Filled.TableChart" 
+                           OnClick="ExportExcel" Disabled="@(!_data.Any())">Excel</MudButton>
+                <MudButton Variant="Variant.Outlined" Color="Color.Error" StartIcon="@Icons.Material.Filled.PictureAsPdf" 
+                           OnClick="ExportPdf" Disabled="@(!_data.Any())">PDF</MudButton>
+            </MudItem>
+        </MudGrid>
+
+        <MudGrid Class="mt-4">
+            <MudItem xs="12" sm="2">
+                <MudDatePicker @bind-Date="_fromDate" Label="From Date" DateFormat="dd-MMM-yyyy" Variant="Variant.Outlined" Dense="true" />
+            </MudItem>
+            <MudItem xs="12" sm="2">
+                <MudDatePicker @bind-Date="_toDate" Label="To Date" DateFormat="dd-MMM-yyyy" Variant="Variant.Outlined" Dense="true" />
+            </MudItem>
+            <MudItem xs="12" sm="2">
+                <MudSelect T="long?" Label="Branch" @bind-Value="_branchId" Clearable Variant="Variant.Outlined" Dense="true">
+                    @foreach (var branch in _branches)
+                    {
+                        <MudSelectItem Value="@((long?)branch.Id)">@branch.Name</MudSelectItem>
+                    }
+                </MudSelect>
+            </MudItem>
+            <MudItem xs="12" sm="2">
+                <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="LoadData" FullWidth="true">
+                    Generate
+                </MudButton>
+            </MudItem>
+        </MudGrid>
+
+        @if (_isLoading)
+        {
+            <MudProgressLinear Indeterminate="true" Class="mt-4" />
+        }
+        else if (_data.Any())
+        {
+            <MudPaper Class="pa-4 mt-4" Elevation="1" Style="background: var(--mud-palette-warning-lighten);">
+                <MudGrid>
+                    <MudItem xs="6" sm="3">
+                        <MudText Typo="Typo.caption">Total AWBs</MudText>
+                        <MudText Typo="Typo.h6">@_data.Count</MudText>
+                    </MudItem>
+                    <MudItem xs="6" sm="3">
+                        <MudText Typo="Typo.caption">Total COD Amount</MudText>
+                        <MudText Typo="Typo.h6" Color="Color.Error">@_data.Sum(x => x.CODAmount).ToString("N2")</MudText>
+                    </MudItem>
+                    <MudItem xs="6" sm="3">
+                        <MudText Typo="Typo.caption">Collected</MudText>
+                        <MudText Typo="Typo.h6" Color="Color.Success">@_data.Sum(x => x.CollectedAmount).ToString("N2")</MudText>
+                    </MudItem>
+                    <MudItem xs="6" sm="3">
+                        <MudText Typo="Typo.caption">Pending</MudText>
+                        <MudText Typo="Typo.h6" Color="Color.Warning">@_data.Sum(x => x.PendingAmount).ToString("N2")</MudText>
+                    </MudItem>
+                </MudGrid>
+            </MudPaper>
+
+            <MudTable Items="@_data" Dense="true" Hover="true" Striped="true" Class="mt-4" FixedHeader="true" Height="450px">
+                <HeaderContent>
+                    <MudTh>AWB No</MudTh>
+                    <MudTh>Date</MudTh>
+                    <MudTh>Customer</MudTh>
+                    <MudTh>Consignee</MudTh>
+                    <MudTh>Destination</MudTh>
+                    <MudTh Style="text-align: right">COD Amount</MudTh>
+                    <MudTh Style="text-align: right">Collected</MudTh>
+                    <MudTh Style="text-align: right">Pending</MudTh>
+                    <MudTh>Days</MudTh>
+                    <MudTh>Status</MudTh>
+                </HeaderContent>
+                <RowTemplate>
+                    <MudTd>@context.AWBNo</MudTd>
+                    <MudTd>@context.Date.ToString("dd-MMM-yyyy")</MudTd>
+                    <MudTd>@context.Customer</MudTd>
+                    <MudTd>@context.Consignee</MudTd>
+                    <MudTd>@context.Destination</MudTd>
+                    <MudTd Style="text-align: right">@context.CODAmount.ToString("N2")</MudTd>
+                    <MudTd Style="text-align: right; color: green;">@context.CollectedAmount.ToString("N2")</MudTd>
+                    <MudTd Style="text-align: right; color: red; font-weight: bold;">@context.PendingAmount.ToString("N2")</MudTd>
+                    <MudTd>
+                        <MudChip T="string" Size="Size.Small" Color="@(context.DaysPending > 7 ? Color.Error : Color.Warning)">
+                            @context.DaysPending
+                        </MudChip>
+                    </MudTd>
+                    <MudTd>@context.Status</MudTd>
+                </RowTemplate>
+            </MudTable>
+        }
+        else
+        {
+            <MudAlert Severity="Severity.Info" Class="mt-4">Click Generate to load COD pending register.</MudAlert>
+        }
+    </MudPaper>
+</MudContainer>
+
+@code {
+    private List<CODDto> _data = new();
+    private List<Branch> _branches = new();
+    private DateTime? _fromDate = DateTime.SpecifyKind(DateTime.Today.AddDays(-30), DateTimeKind.Utc);
+    private DateTime? _toDate = DateTime.SpecifyKind(DateTime.Today, DateTimeKind.Utc);
+    private long? _branchId;
+    private bool _isLoading;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _branches = await DbContext.Branches.Where(b => b.IsActive).OrderBy(b => b.Name).ToListAsync();
+    }
+
+    private async Task LoadData()
+    {
+        _isLoading = true;
+        _data.Clear();
+
+        try
+        {
+            var fromUtc = _fromDate.HasValue ? DateTime.SpecifyKind(_fromDate.Value.Date, DateTimeKind.Utc) : DateTime.MinValue;
+            var toUtc = _toDate.HasValue ? DateTime.SpecifyKind(_toDate.Value.Date.AddDays(1).AddTicks(-1), DateTimeKind.Utc) : DateTime.MaxValue;
+
+            var query = DbContext.InscanMasters
+                .Where(a => a.TransactionDate >= fromUtc && a.TransactionDate <= toUtc)
+                .Where(a => a.CODAmount > 0);
+
+            if (_branchId.HasValue)
+                query = query.Where(a => a.BranchId == _branchId);
+
+            var awbs = await query.OrderByDescending(a => a.TransactionDate).ToListAsync();
+
+            _data = awbs.Select(a => new CODDto
+            {
+                AWBNo = a.AWBNo ?? "",
+                Date = a.TransactionDate,
+                Customer = a.Consignor ?? "",
+                Consignee = a.Consignee ?? "",
+                Destination = a.ConsigneeCity ?? "",
+                CODAmount = a.CODAmount ?? 0,
+                CollectedAmount = a.CODCollected ? (a.CODAmount ?? 0) : 0,
+                PendingAmount = a.CODCollected ? 0 : (a.CODAmount ?? 0),
+                DaysPending = (int)(DateTime.Today - a.TransactionDate).TotalDays,
+                Status = a.CourierStatusId.ToString()
+            }).Where(x => x.PendingAmount > 0).ToList();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error: {ex.Message}", Severity.Error);
+        }
+
+        _isLoading = false;
+    }
+
+    private async Task ExportExcel()
+    {
+        var columns = new Dictionary<string, Func<CODDto, object?>>
+        {
+            { "AWB No", x => x.AWBNo },
+            { "Date", x => x.Date },
+            { "Customer", x => x.Customer },
+            { "Consignee", x => x.Consignee },
+            { "Destination", x => x.Destination },
+            { "COD Amount", x => x.CODAmount },
+            { "Collected", x => x.CollectedAmount },
+            { "Pending", x => x.PendingAmount },
+            { "Days Pending", x => x.DaysPending },
+            { "Status", x => x.Status }
+        };
+
+        var bytes = ExportService.ExportToExcel("COD Pending", _data, columns);
+        await DownloadFile(bytes, "CODPending.xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+    }
+
+    private async Task ExportPdf()
+    {
+        var columns = new Dictionary<string, Func<CODDto, object?>>
+        {
+            { "AWB No", x => x.AWBNo },
+            { "Date", x => x.Date },
+            { "Customer", x => x.Customer },
+            { "Consignee", x => x.Consignee },
+            { "COD Amount", x => x.CODAmount },
+            { "Collected", x => x.CollectedAmount },
+            { "Pending", x => x.PendingAmount },
+            { "Days", x => x.DaysPending }
+        };
+
+        var totals = new Dictionary<string, decimal>
+        {
+            { "COD Amount", _data.Sum(x => x.CODAmount) },
+            { "Collected", _data.Sum(x => x.CollectedAmount) },
+            { "Pending", _data.Sum(x => x.PendingAmount) }
+        };
+
+        var subtitle = $"Period: {_fromDate:dd-MMM-yyyy} to {_toDate:dd-MMM-yyyy}";
+        var bytes = ExportService.ExportToPdf("COD Pending Register", subtitle, _data, columns, totals);
+        await DownloadFile(bytes, "CODPending.pdf", "application/pdf");
+    }
+
+    private async Task DownloadFile(byte[] bytes, string filename, string contentType)
+    {
+        var base64 = Convert.ToBase64String(bytes);
+        await JS.InvokeVoidAsync("downloadFile", filename, base64, contentType);
+    }
+
+    private class CODDto
+    {
+        public string AWBNo { get; set; } = "";
+        public DateTime Date { get; set; }
+        public string Customer { get; set; } = "";
+        public string Consignee { get; set; } = "";
+        public string Destination { get; set; } = "";
+        public decimal CODAmount { get; set; }
+        public decimal CollectedAmount { get; set; }
+        public decimal PendingAmount { get; set; }
+        public int DaysPending { get; set; }
+        public string Status { get; set; } = "";
+    }
+}
