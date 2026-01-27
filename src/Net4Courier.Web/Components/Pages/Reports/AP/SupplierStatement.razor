@@ -7,6 +7,7 @@
 @using Microsoft.JSInterop
 @inject ApplicationDbContext DbContext
 @inject ReportExportService ExportService
+@inject IGmailEmailService EmailService
 @inject IJSRuntime JS
 @inject ISnackbar Snackbar
 
@@ -23,6 +24,11 @@
                            OnClick="ExportExcel" Disabled="@(!_data.Any())">Excel</MudButton>
                 <MudButton Variant="Variant.Outlined" Color="Color.Error" StartIcon="@Icons.Material.Filled.PictureAsPdf" 
                            OnClick="ExportPdf" Disabled="@(!_data.Any())">PDF</MudButton>
+                <MudButton Variant="Variant.Outlined" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Email" 
+                           OnClick="SendEmail" Disabled="@(!_data.Any() || _isSendingEmail)">
+                    @if (_isSendingEmail) { <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" /> }
+                    Email
+                </MudButton>
             </MudItem>
         </MudGrid>
 
@@ -113,6 +119,8 @@
     private string _supplierAddress = "";
     private decimal _closingBalance;
     private bool _isLoading;
+    private bool _isSendingEmail;
+    private Net4Courier.Masters.Entities.Branch? _currentBranch;
 
     protected override async Task OnInitializedAsync()
     {
@@ -120,6 +128,8 @@
             .Where(p => p.IsActive && p.AccountNature == PartyAccountNature.Payable)
             .OrderBy(p => p.Name)
             .ToListAsync();
+        
+        _currentBranch = await DbContext.Branches.FirstOrDefaultAsync(b => b.IsActive && !b.IsDeleted);
     }
 
     private async Task LoadData()
@@ -229,6 +239,104 @@
     {
         var base64 = Convert.ToBase64String(bytes);
         await JS.InvokeVoidAsync("downloadFile", filename, base64, contentType);
+    }
+
+    private async Task SendEmail()
+    {
+        if (!_supplierId.HasValue || !_data.Any())
+        {
+            Snackbar.Add("Please generate the report first", Severity.Warning);
+            return;
+        }
+
+        var supplier = _suppliers.FirstOrDefault(s => s.Id == _supplierId);
+        if (supplier == null)
+        {
+            Snackbar.Add("Supplier not found", Severity.Error);
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(supplier.Email))
+        {
+            Snackbar.Add("Supplier does not have an email address configured", Severity.Warning);
+            return;
+        }
+
+        _isSendingEmail = true;
+        StateHasChanged();
+
+        try
+        {
+            var columns = new Dictionary<string, Func<StatementEntry, object?>>
+            {
+                { "Date", x => x.Date },
+                { "Reference", x => x.Reference },
+                { "Description", x => x.Description },
+                { "Invoice", x => x.Invoice },
+                { "Payment", x => x.Payment },
+                { "Balance", x => x.Balance }
+            };
+
+            var totals = new Dictionary<string, decimal>
+            {
+                { "Invoice", _data.Sum(x => x.Invoice) },
+                { "Payment", _data.Sum(x => x.Payment) },
+                { "Balance", _closingBalance }
+            };
+
+            var subtitle = $"Supplier: {_supplierName} | Period: {_fromDate:dd-MMM-yyyy} to {_toDate:dd-MMM-yyyy}";
+            var pdfBytes = ExportService.ExportToPdf("Supplier Statement", subtitle, _data, columns, totals);
+
+            var fromEmail = _currentBranch?.Email ?? "noreply@net4courier.com";
+            var fromName = _currentBranch?.Name ?? "Net4Courier";
+            var subject = $"Supplier Statement - {_supplierName} ({_fromDate:dd-MMM-yyyy} to {_toDate:dd-MMM-yyyy})";
+
+            var htmlBody = $@"
+                <html>
+                <body style='font-family: Arial, sans-serif;'>
+                    <h2>Supplier Statement</h2>
+                    <p>Dear {_supplierName},</p>
+                    <p>Please find attached your Supplier Statement for the period {_fromDate:dd-MMM-yyyy} to {_toDate:dd-MMM-yyyy}.</p>
+                    <table style='border-collapse: collapse; margin: 20px 0;'>
+                        <tr><td style='padding: 5px 10px;'><strong>Total Invoice:</strong></td><td style='padding: 5px 10px;'>{_data.Sum(x => x.Invoice):N2}</td></tr>
+                        <tr><td style='padding: 5px 10px;'><strong>Total Payment:</strong></td><td style='padding: 5px 10px;'>{_data.Sum(x => x.Payment):N2}</td></tr>
+                        <tr><td style='padding: 5px 10px;'><strong>Closing Balance:</strong></td><td style='padding: 5px 10px;'>{_closingBalance:N2}</td></tr>
+                    </table>
+                    <p>Best Regards,<br/>{fromName}</p>
+                </body>
+                </html>";
+
+            var fileName = $"SupplierStatement_{supplier.Code}_{_fromDate:yyyyMMdd}_{_toDate:yyyyMMdd}.pdf";
+            var success = await EmailService.SendEmailWithAttachmentAsync(
+                supplier.Email,
+                _supplierName,
+                subject,
+                htmlBody,
+                pdfBytes,
+                fileName,
+                "application/pdf",
+                fromEmail,
+                fromName
+            );
+
+            if (success)
+            {
+                Snackbar.Add($"Email sent successfully to {supplier.Email}", Severity.Success);
+            }
+            else
+            {
+                Snackbar.Add("Failed to send email. Please try again.", Severity.Error);
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error sending email: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _isSendingEmail = false;
+            StateHasChanged();
+        }
     }
 
     private class StatementEntry

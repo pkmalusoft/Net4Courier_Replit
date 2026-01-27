@@ -154,6 +154,8 @@ builder.Services.AddScoped<ISLAPdfService, SLAPdfService>();
 builder.Services.AddScoped<RateCardImportService>();
 builder.Services.AddScoped<AWBStockService>();
 builder.Services.AddScoped<PrepaidService>();
+builder.Services.AddHttpClient();
+builder.Services.AddScoped<IGmailEmailService, GmailEmailService>();
 builder.Services.AddAuthorizationCore();
 builder.Services.AddCascadingAuthenticationState();
 
