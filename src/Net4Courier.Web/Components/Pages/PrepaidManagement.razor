@@ -1,0 +1,422 @@
+@page "/prepaid-management"
+@using Net4Courier.Infrastructure.Data
+@using Net4Courier.Infrastructure.Services
+@using Net4Courier.Operations.Entities
+@using Net4Courier.Masters.Entities
+@using Net4Courier.Finance.Entities
+@using Microsoft.EntityFrameworkCore
+@using Microsoft.AspNetCore.Components.Authorization
+@inject ApplicationDbContext Context
+@inject AWBStockService StockService
+@inject PrepaidService PrepaidService
+@inject ISnackbar Snackbar
+@inject IDialogService DialogService
+@inject AuthenticationStateProvider AuthStateProvider
+@rendermode InteractiveServer
+
+<PageTitle>Prepaid AWB Management</PageTitle>
+
+<MudContainer MaxWidth="MaxWidth.ExtraLarge" Class="py-4">
+    <MudText Typo="Typo.h5" Class="mb-4">Prepaid AWB Management</MudText>
+
+    <MudGrid>
+        <MudItem xs="12" md="5">
+            <MudPaper Class="pa-4" Elevation="2">
+                <MudForm @ref="_form">
+                    <MudGrid>
+                        <MudItem xs="8">
+                            <MudTextField @bind-Value="_model.DocumentNo" Label="Document No."
+                                          Variant="Variant.Outlined" ReadOnly="true" />
+                        </MudItem>
+                        <MudItem xs="4">
+                            <MudCheckBox @bind-Value="_isPrepaidAWB" Label="Prepaid AWB" Color="Color.Primary" />
+                        </MudItem>
+                        <MudItem xs="12">
+                            <MudDatePicker @bind-Date="_documentDate" Label="Document Date"
+                                           Variant="Variant.Outlined" DateFormat="dd-MM-yyyy" />
+                        </MudItem>
+                        <MudItem xs="12">
+                            <MudAutocomplete T="Party" Label="Customer" @bind-Value="_selectedCustomer"
+                                             SearchFunc="SearchCustomers" ToStringFunc="@(p => p?.Name ?? "")"
+                                             Variant="Variant.Outlined" Required="true"
+                                             RequiredError="Customer is required" />
+                        </MudItem>
+                        <MudItem xs="6">
+                            <MudTextField @bind-Value="_model.Origin" Label="Origin"
+                                          Variant="Variant.Outlined" />
+                        </MudItem>
+                        <MudItem xs="6">
+                            <MudTextField @bind-Value="_model.Destination" Label="Destination"
+                                          Variant="Variant.Outlined" />
+                        </MudItem>
+                        <MudItem xs="4">
+                            <MudNumericField @bind-Value="_model.NoOfAWBs" Label="No. of AWBs" Min="1"
+                                             Variant="Variant.Outlined" />
+                        </MudItem>
+                        <MudItem xs="4">
+                            <MudNumericField @bind-Value="_model.CourierCharge" Label="Courier Charge" Format="N2"
+                                             Variant="Variant.Outlined" />
+                        </MudItem>
+                        <MudItem xs="4">
+                            <MudSelect T="long?" Label="AWB Stock" @bind-Value="_selectedStockId"
+                                       Variant="Variant.Outlined">
+                                <MudSelectItem T="long?" Value="@((long?)null)">Select Stock</MudSelectItem>
+                                @foreach (var stock in _availableStocks)
+                                {
+                                    <MudSelectItem T="long?" Value="@stock.Id">
+                                        @stock.ItemName (@stock.AvailableCount available)
+                                    </MudSelectItem>
+                                }
+                            </MudSelect>
+                        </MudItem>
+                        <MudItem xs="6">
+                            <MudTextField @bind-Value="_model.AWBNoFrom" Label="Start AWB Number"
+                                          Variant="Variant.Outlined" ReadOnly="true" />
+                        </MudItem>
+                        <MudItem xs="6">
+                            <MudTextField @bind-Value="_model.AWBNoTo" Label="End AWB Number"
+                                          Variant="Variant.Outlined" ReadOnly="true" />
+                        </MudItem>
+                        <MudItem xs="4">
+                            <MudSelect T="PaymentMode" Label="Payment Mode" @bind-Value="_model.PaymentMode"
+                                       Variant="Variant.Outlined">
+                                <MudSelectItem Value="PaymentMode.Bank">Bank</MudSelectItem>
+                                <MudSelectItem Value="PaymentMode.Cash">Cash</MudSelectItem>
+                                <MudSelectItem Value="PaymentMode.Cheque">Cheque</MudSelectItem>
+                            </MudSelect>
+                        </MudItem>
+                        <MudItem xs="8">
+                            @if (_model.PaymentMode == PaymentMode.Bank || _model.PaymentMode == PaymentMode.Cheque)
+                            {
+                                <MudSelect T="long?" Label="Cash/Bank Acc" @bind-Value="_model.BankAccountId"
+                                           Variant="Variant.Outlined">
+                                    <MudSelectItem T="long?" Value="@((long?)null)">Select</MudSelectItem>
+                                    @foreach (var bank in _bankAccounts)
+                                    {
+                                        <MudSelectItem T="long?" Value="@bank.Id">@bank.AccountName - @bank.BankName</MudSelectItem>
+                                    }
+                                </MudSelect>
+                            }
+                        </MudItem>
+                        @if (_model.PaymentMode == PaymentMode.Cheque)
+                        {
+                            <MudItem xs="6">
+                                <MudTextField @bind-Value="_model.ChequeNo" Label="Cheque Number"
+                                              Variant="Variant.Outlined" />
+                            </MudItem>
+                            <MudItem xs="6">
+                                <MudDatePicker @bind-Date="_chequeDate" Label="Cheque Date"
+                                               Variant="Variant.Outlined" DateFormat="dd-MM-yyyy" />
+                            </MudItem>
+                        }
+                        <MudItem xs="4">
+                            <MudNumericField @bind-Value="_model.TotalPrepaidAmount" Label="Total Prepaid Amt" Format="N2"
+                                             Variant="Variant.Outlined" />
+                        </MudItem>
+                        <MudItem xs="8">
+                            <MudTextField @bind-Value="_model.Remarks" Label="Remarks"
+                                          Variant="Variant.Outlined" />
+                        </MudItem>
+                        <MudItem xs="12">
+                            <MudStack Row="true" Justify="Justify.Center" Spacing="2">
+                                <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="SavePrepaid">
+                                    Save
+                                </MudButton>
+                                <MudButton Variant="Variant.Outlined" Color="Color.Default" OnClick="ClearForm">
+                                    Cancel
+                                </MudButton>
+                            </MudStack>
+                        </MudItem>
+                    </MudGrid>
+                </MudForm>
+            </MudPaper>
+        </MudItem>
+
+        <MudItem xs="12" md="7">
+            <MudPaper Class="pa-4" Elevation="2">
+                <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center" Class="mb-3">
+                    <MudText Typo="Typo.h6">Prepaid AWBs</MudText>
+                    <MudStack Row="true" Spacing="2">
+                        <MudSelect T="int" Label="Show" @bind-Value="_pageSize" Dense="true" Style="width:80px">
+                            <MudSelectItem Value="10">10</MudSelectItem>
+                            <MudSelectItem Value="25">25</MudSelectItem>
+                            <MudSelectItem Value="50">50</MudSelectItem>
+                        </MudSelect>
+                        <MudTextField @bind-Value="_searchText" Label="Search" Variant="Variant.Outlined"
+                                      Adornment="Adornment.End" AdornmentIcon="@Icons.Material.Filled.Search"
+                                      Dense="true" Immediate="true" />
+                    </MudStack>
+                </MudStack>
+
+                @if (_loadingAWBs)
+                {
+                    <MudProgressLinear Indeterminate="true" />
+                }
+                else
+                {
+                    <MudTable Items="@_filteredPrepaidAWBs" Dense="true" Hover="true" Striped="true" Bordered="true">
+                        <HeaderContent>
+                            <MudTh>S.No</MudTh>
+                            <MudTh>AWB No.</MudTh>
+                            <MudTh>Consignor</MudTh>
+                            <MudTh>Status</MudTh>
+                        </HeaderContent>
+                        <RowTemplate>
+                            <MudTd>@(_prepaidAWBs.IndexOf(context) + 1)</MudTd>
+                            <MudTd>@context.AWBNo</MudTd>
+                            <MudTd>@context.Consignor</MudTd>
+                            <MudTd>
+                                <MudChip T="string" Size="Size.Small" Color="@(context.IsUsed ? Color.Success : Color.Warning)">
+                                    @(context.IsUsed ? "Used" : "Available")
+                                </MudChip>
+                            </MudTd>
+                        </RowTemplate>
+                        <NoRecordsContent>
+                            <MudText Class="pa-4">No data available in table</MudText>
+                        </NoRecordsContent>
+                        <PagerContent>
+                            <MudTablePager />
+                        </PagerContent>
+                    </MudTable>
+                }
+            </MudPaper>
+
+            <MudPaper Class="pa-4 mt-4" Elevation="2">
+                <MudText Typo="Typo.h6" Class="mb-3">Recent Prepaid Documents</MudText>
+
+                @if (_loadingDocs)
+                {
+                    <MudProgressLinear Indeterminate="true" />
+                }
+                else
+                {
+                    <MudTable Items="@_documents" Dense="true" Hover="true" Striped="true" Bordered="true"
+                              OnRowClick="@((TableRowClickEventArgs<PrepaidDocument> args) => SelectDocument(args.Item))">
+                        <HeaderContent>
+                            <MudTh>Doc No.</MudTh>
+                            <MudTh>Date</MudTh>
+                            <MudTh>Customer</MudTh>
+                            <MudTh Style="text-align:right">Amount</MudTh>
+                            <MudTh Style="text-align:right">Balance</MudTh>
+                            <MudTh>Status</MudTh>
+                        </HeaderContent>
+                        <RowTemplate>
+                            <MudTd>@context.DocumentNo</MudTd>
+                            <MudTd>@context.DocumentDate.ToString("dd-MMM-yyyy")</MudTd>
+                            <MudTd>@context.CustomerName</MudTd>
+                            <MudTd Style="text-align:right">@context.TotalPrepaidAmount.ToString("N2")</MudTd>
+                            <MudTd Style="text-align:right">@context.BalanceAmount.ToString("N2")</MudTd>
+                            <MudTd>
+                                <MudChip T="string" Size="Size.Small" Color="@GetDocStatusColor(context.Status)">
+                                    @context.Status
+                                </MudChip>
+                            </MudTd>
+                        </RowTemplate>
+                        <NoRecordsContent>
+                            <MudText Class="pa-4">No prepaid documents found</MudText>
+                        </NoRecordsContent>
+                    </MudTable>
+                }
+            </MudPaper>
+        </MudItem>
+    </MudGrid>
+</MudContainer>
+
+@code {
+    private PrepaidDocument _model = new();
+    private List<PrepaidDocument> _documents = new();
+    private List<PrepaidAWB> _prepaidAWBs = new();
+    private List<AWBStock> _availableStocks = new();
+    private List<BankAccount> _bankAccounts = new();
+    private List<Party> _customers = new();
+
+    private Party? _selectedCustomer;
+    private long? _selectedStockId;
+    private DateTime? _documentDate = DateTime.Today;
+    private DateTime? _chequeDate;
+    private bool _isPrepaidAWB = true;
+
+    private bool _loadingDocs = true;
+    private bool _loadingAWBs = false;
+    private MudForm? _form;
+
+    private int _pageSize = 10;
+    private string _searchText = "";
+
+    private long _companyId;
+    private long _branchId;
+    private long? _financialYearId;
+    private int _userId;
+    private string _userName = "";
+
+    private IEnumerable<PrepaidAWB> _filteredPrepaidAWBs => string.IsNullOrEmpty(_searchText)
+        ? _prepaidAWBs
+        : _prepaidAWBs.Where(p => p.AWBNo.Contains(_searchText, StringComparison.OrdinalIgnoreCase) ||
+                                  (p.Consignor?.Contains(_searchText, StringComparison.OrdinalIgnoreCase) ?? false));
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadUserContext();
+        await LoadData();
+        await GenerateNewDocumentNo();
+    }
+
+    private async Task LoadUserContext()
+    {
+        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+        var user = authState.User;
+
+        if (user.Identity?.IsAuthenticated == true)
+        {
+            var userIdClaim = user.FindFirst("UserId")?.Value;
+            var branchIdClaim = user.FindFirst("BranchId")?.Value;
+            var companyIdClaim = user.FindFirst("CompanyId")?.Value;
+            var fyIdClaim = user.FindFirst("FinancialYearId")?.Value;
+
+            if (int.TryParse(userIdClaim, out var uid)) _userId = uid;
+            if (long.TryParse(branchIdClaim, out var bid)) _branchId = bid;
+            if (long.TryParse(companyIdClaim, out var cid)) _companyId = cid;
+            if (long.TryParse(fyIdClaim, out var fyid)) _financialYearId = fyid;
+            _userName = user.Identity.Name ?? "";
+        }
+    }
+
+    private async Task LoadData()
+    {
+        _loadingDocs = true;
+        try
+        {
+            _documents = await PrepaidService.GetAllDocumentsAsync(_companyId, _branchId);
+            _availableStocks = await StockService.GetAvailableStockAsync(_companyId, _branchId);
+            _bankAccounts = await Context.BankAccounts
+                .Where(b => b.CompanyId == _companyId && b.IsActive && !b.IsDeleted)
+                .ToListAsync();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error loading data: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _loadingDocs = false;
+        }
+    }
+
+    private async Task GenerateNewDocumentNo()
+    {
+        _model.DocumentNo = await PrepaidService.GenerateDocumentNoAsync(_companyId, _branchId);
+    }
+
+    private async Task<IEnumerable<Party>> SearchCustomers(string value, CancellationToken token)
+    {
+        if (string.IsNullOrEmpty(value))
+            return await Context.Parties
+                .Where(p => p.PartyType == PartyType.Customer && p.IsActive && !p.IsDeleted && p.CompanyId == _companyId)
+                .Take(20)
+                .ToListAsync(token);
+
+        return await Context.Parties
+            .Where(p => p.PartyType == PartyType.Customer && p.IsActive && !p.IsDeleted && p.CompanyId == _companyId
+                && (p.Name.Contains(value) || (p.Code != null && p.Code.Contains(value))))
+            .Take(20)
+            .ToListAsync(token);
+    }
+
+    private async Task SavePrepaid()
+    {
+        if (_form != null)
+        {
+            await _form.Validate();
+            if (!_form.IsValid) return;
+        }
+
+        if (_selectedCustomer == null)
+        {
+            Snackbar.Add("Please select a customer", Severity.Warning);
+            return;
+        }
+
+        if (_model.NoOfAWBs <= 0)
+        {
+            Snackbar.Add("Number of AWBs must be greater than 0", Severity.Warning);
+            return;
+        }
+
+        if (_selectedStockId == null)
+        {
+            Snackbar.Add("Please select an AWB stock", Severity.Warning);
+            return;
+        }
+
+        var selectedStock = _availableStocks.FirstOrDefault(s => s.Id == _selectedStockId);
+        if (selectedStock == null || selectedStock.AvailableCount < _model.NoOfAWBs)
+        {
+            Snackbar.Add("Not enough AWBs available in selected stock", Severity.Warning);
+            return;
+        }
+
+        try
+        {
+            _model.CompanyId = _companyId;
+            _model.BranchId = _branchId;
+            _model.FinancialYearId = _financialYearId;
+            _model.CustomerId = _selectedCustomer.Id;
+            _model.CustomerName = _selectedCustomer.Name;
+            _model.DocumentDate = DateTime.SpecifyKind(_documentDate?.Date ?? DateTime.Today, DateTimeKind.Utc);
+
+            if (_model.PaymentMode == PaymentMode.Cheque && _chequeDate.HasValue)
+                _model.ChequeDate = DateTime.SpecifyKind(_chequeDate.Value.Date, DateTimeKind.Utc);
+
+            await PrepaidService.CreatePrepaidDocumentAsync(_model, _selectedStockId, _userId, _userName);
+
+            Snackbar.Add("Prepaid document created successfully", Severity.Success);
+            await ClearForm();
+            await LoadData();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error saving prepaid document: {ex.Message}", Severity.Error);
+        }
+    }
+
+    private async Task ClearForm()
+    {
+        _model = new PrepaidDocument
+        {
+            PaymentMode = PaymentMode.Bank,
+            NoOfAWBs = 1
+        };
+        _selectedCustomer = null;
+        _selectedStockId = null;
+        _documentDate = DateTime.Today;
+        _chequeDate = null;
+        _prepaidAWBs.Clear();
+        await GenerateNewDocumentNo();
+    }
+
+    private async Task SelectDocument(PrepaidDocument doc)
+    {
+        _loadingAWBs = true;
+        try
+        {
+            _prepaidAWBs = await PrepaidService.GetPrepaidAWBsByDocumentAsync(doc.Id);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error loading AWBs: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _loadingAWBs = false;
+        }
+    }
+
+    private Color GetDocStatusColor(PrepaidDocumentStatus status) => status switch
+    {
+        PrepaidDocumentStatus.Active => Color.Success,
+        PrepaidDocumentStatus.PartiallyUsed => Color.Warning,
+        PrepaidDocumentStatus.FullyUsed => Color.Info,
+        PrepaidDocumentStatus.Cancelled => Color.Error,
+        _ => Color.Default
+    };
+}

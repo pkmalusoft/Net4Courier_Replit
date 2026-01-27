@@ -1,0 +1,338 @@
+@page "/awb-stock"
+@using Net4Courier.Infrastructure.Data
+@using Net4Courier.Infrastructure.Services
+@using Net4Courier.Operations.Entities
+@using Net4Courier.Masters.Entities
+@using Microsoft.EntityFrameworkCore
+@using Microsoft.AspNetCore.Components.Authorization
+@inject ApplicationDbContext Context
+@inject AWBStockService StockService
+@inject ISnackbar Snackbar
+@inject IDialogService DialogService
+@inject AuthenticationStateProvider AuthStateProvider
+@rendermode InteractiveServer
+
+<PageTitle>AWB Stock Management</PageTitle>
+
+<MudContainer MaxWidth="MaxWidth.ExtraLarge" Class="py-4">
+    <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center" Class="mb-4">
+        <MudText Typo="Typo.h5">AWB Stock Management</MudText>
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add"
+                   OnClick="OpenAddDialog">
+            Add Stock
+        </MudButton>
+    </MudStack>
+
+    @if (_loading)
+    {
+        <MudProgressLinear Indeterminate="true" />
+    }
+    else
+    {
+        <MudTable Items="@_stocks" Dense="true" Hover="true" Striped="true" Bordered="true">
+            <HeaderContent>
+                <MudTh>Ref No.</MudTh>
+                <MudTh>Date</MudTh>
+                <MudTh>Item Name</MudTh>
+                <MudTh>Item Type</MudTh>
+                <MudTh Style="text-align:right">Qty</MudTh>
+                <MudTh Style="text-align:right">Rate</MudTh>
+                <MudTh Style="text-align:right">Amount</MudTh>
+                <MudTh Style="text-align:right">AWB Count</MudTh>
+                <MudTh>AWB From</MudTh>
+                <MudTh>AWB To</MudTh>
+                <MudTh Style="text-align:right">Available</MudTh>
+                <MudTh>Status</MudTh>
+                <MudTh Style="width:100px">Actions</MudTh>
+            </HeaderContent>
+            <RowTemplate>
+                <MudTd>@context.ReferenceNo</MudTd>
+                <MudTd>@context.StockDate.ToString("dd-MMM-yyyy")</MudTd>
+                <MudTd>@context.ItemName</MudTd>
+                <MudTd>@context.ItemType</MudTd>
+                <MudTd Style="text-align:right">@context.Qty</MudTd>
+                <MudTd Style="text-align:right">@context.Rate.ToString("N2")</MudTd>
+                <MudTd Style="text-align:right">@context.Amount.ToString("N2")</MudTd>
+                <MudTd Style="text-align:right">@context.AWBCount</MudTd>
+                <MudTd>@context.AWBNoFrom</MudTd>
+                <MudTd>@context.AWBNoTo</MudTd>
+                <MudTd Style="text-align:right">@context.AvailableCount</MudTd>
+                <MudTd>
+                    <MudChip T="string" Size="Size.Small" Color="@GetStatusColor(context.Status)">
+                        @context.Status
+                    </MudChip>
+                </MudTd>
+                <MudTd>
+                    <MudStack Row="true" Spacing="1">
+                        <MudIconButton Icon="@Icons.Material.Filled.Edit" Size="Size.Small"
+                                       Color="Color.Primary" OnClick="@(() => OpenEditDialog(context))"
+                                       Disabled="@(context.AllocatedCount > 0)" />
+                        <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small"
+                                       Color="Color.Error" OnClick="@(() => DeleteStock(context))"
+                                       Disabled="@(context.AllocatedCount > 0)" />
+                    </MudStack>
+                </MudTd>
+            </RowTemplate>
+            <NoRecordsContent>
+                <MudText Class="pa-4">No AWB stock entries found</MudText>
+            </NoRecordsContent>
+        </MudTable>
+    }
+</MudContainer>
+
+<MudDialog @bind-Visible="_dialogVisible" Options="@(new DialogOptions { MaxWidth = MaxWidth.Medium, FullWidth = true })">
+    <TitleContent>
+        <MudText Typo="Typo.h6">@(_isEdit ? "Edit AWB Stock" : "Add AWB Stock")</MudText>
+    </TitleContent>
+    <DialogContent>
+        <MudForm @ref="_form">
+            <MudGrid>
+                <MudItem xs="12" md="6">
+                    <MudSelect T="string" Label="Item Name" @bind-Value="_model.ItemName"
+                               Variant="Variant.Outlined" Required="true" RequiredError="Item name is required">
+                        <MudSelectItem Value="@("AWB Book")">AWB Book</MudSelectItem>
+                        <MudSelectItem Value="@("AWB Sticker")">AWB Sticker</MudSelectItem>
+                        <MudSelectItem Value="@("AWB Roll")">AWB Roll</MudSelectItem>
+                        <MudSelectItem Value="@("Other")">Other</MudSelectItem>
+                    </MudSelect>
+                </MudItem>
+                <MudItem xs="12" md="6">
+                    <MudSelect T="string" Label="Item Type" @bind-Value="_model.ItemType"
+                               Variant="Variant.Outlined">
+                        <MudSelectItem Value="@("")">None</MudSelectItem>
+                        <MudSelectItem Value="@("Domestic")">Domestic</MudSelectItem>
+                        <MudSelectItem Value="@("International")">International</MudSelectItem>
+                        <MudSelectItem Value="@("Express")">Express</MudSelectItem>
+                    </MudSelect>
+                </MudItem>
+                <MudItem xs="12">
+                    <MudTextField @bind-Value="_model.ReferenceNo" Label="Reference No."
+                                  Variant="Variant.Outlined" />
+                </MudItem>
+                <MudItem xs="12" md="4">
+                    <MudNumericField @bind-Value="_model.Qty" Label="Qty" Min="1"
+                                     Variant="Variant.Outlined" Required="true" />
+                </MudItem>
+                <MudItem xs="12" md="4">
+                    <MudNumericField @bind-Value="_model.Rate" Label="Rate" Format="N2"
+                                     Variant="Variant.Outlined" />
+                </MudItem>
+                <MudItem xs="12" md="4">
+                    <MudNumericField Value="@(_model.Qty * _model.Rate)" Label="Amount" Format="N2"
+                                     Variant="Variant.Outlined" ReadOnly="true" />
+                </MudItem>
+                <MudItem xs="12" md="4">
+                    <MudNumericField @bind-Value="_model.AWBCount" Label="AWB Count" Min="1"
+                                     Variant="Variant.Outlined" Required="true" />
+                </MudItem>
+                <MudItem xs="12" md="4">
+                    <MudTextField @bind-Value="_model.AWBNoFrom" Label="AWB NO. From"
+                                  Variant="Variant.Outlined" Required="true" RequiredError="AWB From is required" />
+                </MudItem>
+                <MudItem xs="12" md="4">
+                    <MudTextField @bind-Value="_model.AWBNoTo" Label="AWB NO. To"
+                                  Variant="Variant.Outlined" Required="true" RequiredError="AWB To is required" />
+                </MudItem>
+                <MudItem xs="12">
+                    <MudTextField @bind-Value="_model.Remarks" Label="Remarks" Lines="2"
+                                  Variant="Variant.Outlined" />
+                </MudItem>
+            </MudGrid>
+        </MudForm>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="CloseDialog">Cancel</MudButton>
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="SaveStock">Save</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    private List<AWBStock> _stocks = new();
+    private bool _loading = true;
+    private bool _dialogVisible = false;
+    private bool _isEdit = false;
+    private AWBStock _model = new();
+    private MudForm? _form;
+    private long _companyId;
+    private long _branchId;
+    private int _userId;
+    private string _userName = "";
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadUserContext();
+        await LoadStocks();
+    }
+
+    private async Task LoadUserContext()
+    {
+        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+        var user = authState.User;
+
+        if (user.Identity?.IsAuthenticated == true)
+        {
+            var userIdClaim = user.FindFirst("UserId")?.Value;
+            var branchIdClaim = user.FindFirst("BranchId")?.Value;
+            var companyIdClaim = user.FindFirst("CompanyId")?.Value;
+
+            if (int.TryParse(userIdClaim, out var uid)) _userId = uid;
+            if (long.TryParse(branchIdClaim, out var bid)) _branchId = bid;
+            if (long.TryParse(companyIdClaim, out var cid)) _companyId = cid;
+            _userName = user.Identity.Name ?? "";
+        }
+    }
+
+    private async Task LoadStocks()
+    {
+        _loading = true;
+        try
+        {
+            _stocks = await StockService.GetAllStockAsync(_companyId, _branchId);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error loading stocks: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private void OpenAddDialog()
+    {
+        _isEdit = false;
+        _model = new AWBStock
+        {
+            StockDate = DateTime.UtcNow,
+            CompanyId = _companyId,
+            BranchId = _branchId,
+            Qty = 1,
+            AWBCount = 1
+        };
+        _dialogVisible = true;
+    }
+
+    private void OpenEditDialog(AWBStock stock)
+    {
+        _isEdit = true;
+        _model = new AWBStock
+        {
+            Id = stock.Id,
+            CompanyId = stock.CompanyId,
+            BranchId = stock.BranchId,
+            StockDate = stock.StockDate,
+            ReferenceNo = stock.ReferenceNo,
+            ItemName = stock.ItemName,
+            ItemType = stock.ItemType,
+            Qty = stock.Qty,
+            Rate = stock.Rate,
+            Amount = stock.Amount,
+            AWBCount = stock.AWBCount,
+            AWBNoFrom = stock.AWBNoFrom,
+            AWBNoTo = stock.AWBNoTo,
+            Remarks = stock.Remarks
+        };
+        _dialogVisible = true;
+    }
+
+    private void CloseDialog()
+    {
+        _dialogVisible = false;
+    }
+
+    private async Task SaveStock()
+    {
+        if (_form != null)
+        {
+            await _form.Validate();
+            if (!_form.IsValid) return;
+        }
+
+        try
+        {
+            if (string.IsNullOrEmpty(_model.ItemName))
+            {
+                Snackbar.Add("Please select an item name", Severity.Warning);
+                return;
+            }
+
+            if (string.IsNullOrEmpty(_model.AWBNoFrom) || string.IsNullOrEmpty(_model.AWBNoTo))
+            {
+                Snackbar.Add("Please enter AWB range", Severity.Warning);
+                return;
+            }
+
+            _model.StockDate = DateTime.SpecifyKind(_model.StockDate, DateTimeKind.Utc);
+
+            if (_isEdit)
+            {
+                var existing = await StockService.GetByIdAsync(_model.Id);
+                if (existing != null)
+                {
+                    existing.ItemName = _model.ItemName;
+                    existing.ItemType = _model.ItemType;
+                    existing.ReferenceNo = _model.ReferenceNo;
+                    existing.Qty = _model.Qty;
+                    existing.Rate = _model.Rate;
+                    existing.AWBCount = _model.AWBCount;
+                    existing.AWBNoFrom = _model.AWBNoFrom;
+                    existing.AWBNoTo = _model.AWBNoTo;
+                    existing.Remarks = _model.Remarks;
+                    existing.ModifiedBy = _userId;
+                    existing.ModifiedByName = _userName;
+                    await StockService.UpdateStockAsync(existing);
+                    Snackbar.Add("Stock updated successfully", Severity.Success);
+                }
+            }
+            else
+            {
+                if (string.IsNullOrEmpty(_model.ReferenceNo))
+                    _model.ReferenceNo = await StockService.GenerateNextReferenceNoAsync(_companyId, _branchId);
+
+                _model.CreatedBy = _userId;
+                _model.CreatedByName = _userName;
+                await StockService.CreateStockAsync(_model);
+                Snackbar.Add("Stock added successfully", Severity.Success);
+            }
+
+            _dialogVisible = false;
+            await LoadStocks();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error saving stock: {ex.Message}", Severity.Error);
+        }
+    }
+
+    private async Task DeleteStock(AWBStock stock)
+    {
+        var result = await DialogService.ShowMessageBox(
+            "Delete Stock",
+            $"Are you sure you want to delete this stock entry ({stock.ReferenceNo})?",
+            yesText: "Delete", cancelText: "Cancel");
+
+        if (result == true)
+        {
+            try
+            {
+                await StockService.DeleteStockAsync(stock.Id, _userId);
+                Snackbar.Add("Stock deleted successfully", Severity.Success);
+                await LoadStocks();
+            }
+            catch (Exception ex)
+            {
+                Snackbar.Add($"Error deleting stock: {ex.Message}", Severity.Error);
+            }
+        }
+    }
+
+    private Color GetStatusColor(StockStatus status) => status switch
+    {
+        StockStatus.Available => Color.Success,
+        StockStatus.PartiallyAllocated => Color.Warning,
+        StockStatus.FullyAllocated => Color.Info,
+        StockStatus.Cancelled => Color.Error,
+        _ => Color.Default
+    };
+}
