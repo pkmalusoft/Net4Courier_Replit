@@ -80,79 +80,10 @@
     }
 </MudContainer>
 
-<MudDialog @bind-Visible="_dialogVisible" Options="new DialogOptions { MaxWidth = MaxWidth.Medium, FullWidth = true }">
-    <TitleContent>
-        <MudText Typo="Typo.h6">@(_isEdit ? "Edit AWB Stock" : "Add AWB Stock")</MudText>
-    </TitleContent>
-    <DialogContent>
-        <MudForm @ref="_form">
-            <MudGrid>
-                <MudItem xs="12" md="6">
-                    <MudSelect T="string" Label="Item Name" @bind-Value="_model.ItemName"
-                               Variant="Variant.Outlined" Required="true" RequiredError="Item name is required">
-                        <MudSelectItem Value="@("AWB Book")">AWB Book</MudSelectItem>
-                        <MudSelectItem Value="@("AWB Sticker")">AWB Sticker</MudSelectItem>
-                        <MudSelectItem Value="@("AWB Roll")">AWB Roll</MudSelectItem>
-                        <MudSelectItem Value="@("Other")">Other</MudSelectItem>
-                    </MudSelect>
-                </MudItem>
-                <MudItem xs="12" md="6">
-                    <MudSelect T="string" Label="Item Type" @bind-Value="_model.ItemType"
-                               Variant="Variant.Outlined">
-                        <MudSelectItem Value="@("")">None</MudSelectItem>
-                        <MudSelectItem Value="@("Domestic")">Domestic</MudSelectItem>
-                        <MudSelectItem Value="@("International")">International</MudSelectItem>
-                        <MudSelectItem Value="@("Express")">Express</MudSelectItem>
-                    </MudSelect>
-                </MudItem>
-                <MudItem xs="12">
-                    <MudTextField @bind-Value="_model.ReferenceNo" Label="Reference No."
-                                  Variant="Variant.Outlined" />
-                </MudItem>
-                <MudItem xs="12" md="4">
-                    <MudNumericField @bind-Value="_model.Qty" Label="Qty" Min="1"
-                                     Variant="Variant.Outlined" Required="true" />
-                </MudItem>
-                <MudItem xs="12" md="4">
-                    <MudNumericField @bind-Value="_model.Rate" Label="Rate" Format="N2"
-                                     Variant="Variant.Outlined" />
-                </MudItem>
-                <MudItem xs="12" md="4">
-                    <MudNumericField Value="@(_model.Qty * _model.Rate)" Label="Amount" Format="N2"
-                                     Variant="Variant.Outlined" ReadOnly="true" />
-                </MudItem>
-                <MudItem xs="12" md="4">
-                    <MudNumericField @bind-Value="_model.AWBCount" Label="AWB Count" Min="1"
-                                     Variant="Variant.Outlined" Required="true" />
-                </MudItem>
-                <MudItem xs="12" md="4">
-                    <MudTextField @bind-Value="_model.AWBNoFrom" Label="AWB NO. From"
-                                  Variant="Variant.Outlined" Required="true" RequiredError="AWB From is required" />
-                </MudItem>
-                <MudItem xs="12" md="4">
-                    <MudTextField @bind-Value="_model.AWBNoTo" Label="AWB NO. To"
-                                  Variant="Variant.Outlined" Required="true" RequiredError="AWB To is required" />
-                </MudItem>
-                <MudItem xs="12">
-                    <MudTextField @bind-Value="_model.Remarks" Label="Remarks" Lines="2"
-                                  Variant="Variant.Outlined" />
-                </MudItem>
-            </MudGrid>
-        </MudForm>
-    </DialogContent>
-    <DialogActions>
-        <MudButton OnClick="CloseDialog">Cancel</MudButton>
-        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="SaveStock">Save</MudButton>
-    </DialogActions>
-</MudDialog>
 
 @code {
     private List<AWBStock> _stocks = new();
     private bool _loading = true;
-    private bool _dialogVisible = false;
-    private bool _isEdit = false;
-    private AWBStock _model = new();
-    private MudForm? _form;
     private long _companyId;
     private long _branchId;
     private int _userId;
@@ -199,10 +130,9 @@
         }
     }
 
-    private void OpenAddDialog()
+    private async Task OpenAddDialog()
     {
-        _isEdit = false;
-        _model = new AWBStock
+        var model = new AWBStock
         {
             StockDate = DateTime.UtcNow,
             CompanyId = _companyId,
@@ -210,14 +140,26 @@
             Qty = 1,
             AWBCount = 1
         };
-        _dialogVisible = true;
-        StateHasChanged();
+        
+        var parameters = new DialogParameters<AWBStockDialog>
+        {
+            { x => x.Stock, model },
+            { x => x.IsEdit, false }
+        };
+        
+        var dialog = await DialogService.ShowAsync<AWBStockDialog>("Add AWB Stock", parameters,
+            new DialogOptions { MaxWidth = MaxWidth.Medium, FullWidth = true });
+        var result = await dialog.Result;
+        
+        if (!result!.Canceled && result.Data is AWBStock stock)
+        {
+            await SaveStock(stock, false);
+        }
     }
 
-    private void OpenEditDialog(AWBStock stock)
+    private async Task OpenEditDialog(AWBStock stock)
     {
-        _isEdit = true;
-        _model = new AWBStock
+        var model = new AWBStock
         {
             Id = stock.Id,
             CompanyId = stock.CompanyId,
@@ -234,52 +176,55 @@
             AWBNoTo = stock.AWBNoTo,
             Remarks = stock.Remarks
         };
-        _dialogVisible = true;
-    }
-
-    private void CloseDialog()
-    {
-        _dialogVisible = false;
-    }
-
-    private async Task SaveStock()
-    {
-        if (_form != null)
+        
+        var parameters = new DialogParameters<AWBStockDialog>
         {
-            await _form.Validate();
-            if (!_form.IsValid) return;
+            { x => x.Stock, model },
+            { x => x.IsEdit, true }
+        };
+        
+        var dialog = await DialogService.ShowAsync<AWBStockDialog>("Edit AWB Stock", parameters,
+            new DialogOptions { MaxWidth = MaxWidth.Medium, FullWidth = true });
+        var result = await dialog.Result;
+        
+        if (!result!.Canceled && result.Data is AWBStock updatedStock)
+        {
+            await SaveStock(updatedStock, true);
         }
+    }
 
+    private async Task SaveStock(AWBStock stockModel, bool isEdit)
+    {
         try
         {
-            if (string.IsNullOrEmpty(_model.ItemName))
+            if (string.IsNullOrEmpty(stockModel.ItemName))
             {
                 Snackbar.Add("Please select an item name", Severity.Warning);
                 return;
             }
 
-            if (string.IsNullOrEmpty(_model.AWBNoFrom) || string.IsNullOrEmpty(_model.AWBNoTo))
+            if (string.IsNullOrEmpty(stockModel.AWBNoFrom) || string.IsNullOrEmpty(stockModel.AWBNoTo))
             {
                 Snackbar.Add("Please enter AWB range", Severity.Warning);
                 return;
             }
 
-            _model.StockDate = DateTime.SpecifyKind(_model.StockDate, DateTimeKind.Utc);
+            stockModel.StockDate = DateTime.SpecifyKind(stockModel.StockDate, DateTimeKind.Utc);
 
-            if (_isEdit)
+            if (isEdit)
             {
-                var existing = await StockService.GetByIdAsync(_model.Id);
+                var existing = await StockService.GetByIdAsync(stockModel.Id);
                 if (existing != null)
                 {
-                    existing.ItemName = _model.ItemName;
-                    existing.ItemType = _model.ItemType;
-                    existing.ReferenceNo = _model.ReferenceNo;
-                    existing.Qty = _model.Qty;
-                    existing.Rate = _model.Rate;
-                    existing.AWBCount = _model.AWBCount;
-                    existing.AWBNoFrom = _model.AWBNoFrom;
-                    existing.AWBNoTo = _model.AWBNoTo;
-                    existing.Remarks = _model.Remarks;
+                    existing.ItemName = stockModel.ItemName;
+                    existing.ItemType = stockModel.ItemType;
+                    existing.ReferenceNo = stockModel.ReferenceNo;
+                    existing.Qty = stockModel.Qty;
+                    existing.Rate = stockModel.Rate;
+                    existing.AWBCount = stockModel.AWBCount;
+                    existing.AWBNoFrom = stockModel.AWBNoFrom;
+                    existing.AWBNoTo = stockModel.AWBNoTo;
+                    existing.Remarks = stockModel.Remarks;
                     existing.ModifiedBy = _userId;
                     existing.ModifiedByName = _userName;
                     await StockService.UpdateStockAsync(existing);
@@ -288,16 +233,15 @@
             }
             else
             {
-                if (string.IsNullOrEmpty(_model.ReferenceNo))
-                    _model.ReferenceNo = await StockService.GenerateNextReferenceNoAsync(_companyId, _branchId);
+                if (string.IsNullOrEmpty(stockModel.ReferenceNo))
+                    stockModel.ReferenceNo = await StockService.GenerateNextReferenceNoAsync(_companyId, _branchId);
 
-                _model.CreatedBy = _userId;
-                _model.CreatedByName = _userName;
-                await StockService.CreateStockAsync(_model);
+                stockModel.CreatedBy = _userId;
+                stockModel.CreatedByName = _userName;
+                await StockService.CreateStockAsync(stockModel);
                 Snackbar.Add("Stock added successfully", Severity.Success);
             }
 
-            _dialogVisible = false;
             await LoadStocks();
         }
         catch (Exception ex)
