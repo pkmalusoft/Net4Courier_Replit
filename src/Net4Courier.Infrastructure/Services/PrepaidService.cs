@@ -209,7 +209,7 @@ public class PrepaidService
         document.PrepaidControlAccountId = prepaidControlAccount.Id;
     }
 
-    public async Task<bool> UsePrepaidAWBAsync(long prepaidAWBId, long inscanMasterId, int userId, string userName)
+    public async Task<bool> UsePrepaidAWBAsync(long prepaidAWBId, long inscanMasterId, int userId, string userName, string? consignor = null, string? consignee = null)
     {
         using var transaction = await _context.Database.BeginTransactionAsync();
         try
@@ -224,6 +224,8 @@ public class PrepaidService
             prepaidAWB.IsUsed = true;
             prepaidAWB.UsedDate = DateTime.UtcNow;
             prepaidAWB.InscanMasterId = inscanMasterId;
+            prepaidAWB.Consignor = consignor;
+            prepaidAWB.Consignee = consignee;
             prepaidAWB.ModifiedAt = DateTime.UtcNow;
             prepaidAWB.ModifiedBy = userId;
 
