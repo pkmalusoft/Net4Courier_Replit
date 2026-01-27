@@ -59,6 +59,8 @@ public class ImportShipmentDto
     public string? HSCode { get; set; }
     public decimal? DeclaredValue { get; set; }
     public string? Currency { get; set; }
+    public decimal? DutyVatAmount { get; set; }
+    public decimal? CodCollectionAmount { get; set; }
     public string? PaymentMode { get; set; }
     public string? SpecialInstructions { get; set; }
 }
@@ -237,6 +239,8 @@ public class ImportExcelService
             ("HS Code", false),
             ("Declared Value", false),
             ("Currency", false),
+            ("Duty/VAT Amount", false),
+            ("COD/Collection Amount", false),
             ("Payment Mode", false),
             ("Special Instructions", false)
         };
@@ -560,8 +564,8 @@ public class ImportExcelService
                 ContentsDescription = sheet.Cell(row, 13).GetString()?.Trim(),
                 HSCode = sheet.Cell(row, 14).GetString()?.Trim(),
                 Currency = sheet.Cell(row, 16).GetString()?.Trim(),
-                PaymentMode = sheet.Cell(row, 17).GetString()?.Trim(),
-                SpecialInstructions = sheet.Cell(row, 18).GetString()?.Trim()
+                PaymentMode = sheet.Cell(row, 19).GetString()?.Trim(),
+                SpecialInstructions = sheet.Cell(row, 20).GetString()?.Trim()
             };
             
             var piecesVal = sheet.Cell(row, 11).Value;
@@ -583,6 +587,18 @@ public class ImportExcelService
                 shipment.DeclaredValue = (decimal)declaredVal.GetNumber();
             else if (decimal.TryParse(sheet.Cell(row, 15).GetString(), out var declaredValue))
                 shipment.DeclaredValue = declaredValue;
+            
+            var dutyVatVal = sheet.Cell(row, 17).Value;
+            if (dutyVatVal.IsNumber)
+                shipment.DutyVatAmount = (decimal)dutyVatVal.GetNumber();
+            else if (decimal.TryParse(sheet.Cell(row, 17).GetString(), out var dutyVat))
+                shipment.DutyVatAmount = dutyVat;
+            
+            var codCollVal = sheet.Cell(row, 18).Value;
+            if (codCollVal.IsNumber)
+                shipment.CodCollectionAmount = (decimal)codCollVal.GetNumber();
+            else if (decimal.TryParse(sheet.Cell(row, 18).GetString(), out var codColl))
+                shipment.CodCollectionAmount = codColl;
             
             if (string.IsNullOrWhiteSpace(shipment.ConsigneeName))
             {
@@ -740,6 +756,9 @@ public class ImportExcelService
             HSCode = dto.HSCode,
             DeclaredValue = dto.DeclaredValue,
             Currency = dto.Currency,
+            DutyAmount = dto.DutyVatAmount,
+            CODAmount = dto.CodCollectionAmount,
+            IsCOD = dto.CodCollectionAmount.HasValue && dto.CodCollectionAmount > 0,
             SpecialInstructions = dto.SpecialInstructions,
             PaymentMode = ParsePaymentMode(dto.PaymentMode),
             Status = ImportShipmentStatus.Expected,
