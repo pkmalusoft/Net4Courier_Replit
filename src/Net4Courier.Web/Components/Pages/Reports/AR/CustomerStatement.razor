@@ -1,0 +1,309 @@
+@page "/reports/ar/customer-statement"
+@using Microsoft.EntityFrameworkCore
+@using Net4Courier.Infrastructure.Data
+@using Net4Courier.Finance.Entities
+@using Net4Courier.Masters.Entities
+@using Net4Courier.Web.Services
+@using Microsoft.JSInterop
+@inject ApplicationDbContext DbContext
+@inject ReportExportService ExportService
+@inject IJSRuntime JS
+@inject ISnackbar Snackbar
+
+<PageTitle>Customer Statement - Net4Courier</PageTitle>
+
+<MudContainer MaxWidth="MaxWidth.ExtraLarge" Class="mt-4">
+    <MudPaper Class="pa-4" Elevation="2">
+        <MudGrid>
+            <MudItem xs="12" sm="6">
+                <MudText Typo="Typo.h5">Customer Statement</MudText>
+            </MudItem>
+            <MudItem xs="12" sm="6" Class="d-flex justify-end gap-2">
+                <MudButton Variant="Variant.Outlined" Color="Color.Success" StartIcon="@Icons.Material.Filled.TableChart" 
+                           OnClick="ExportExcel" Disabled="@(!_data.Any())">Excel</MudButton>
+                <MudButton Variant="Variant.Outlined" Color="Color.Error" StartIcon="@Icons.Material.Filled.PictureAsPdf" 
+                           OnClick="ExportPdf" Disabled="@(!_data.Any())">PDF</MudButton>
+            </MudItem>
+        </MudGrid>
+
+        <MudGrid Class="mt-4">
+            <MudItem xs="12" sm="3">
+                <MudSelect T="long?" Label="Customer" @bind-Value="_customerId" Variant="Variant.Outlined" Dense="true">
+                    @foreach (var customer in _customers)
+                    {
+                        <MudSelectItem Value="@((long?)customer.Id)">@customer.Name</MudSelectItem>
+                    }
+                </MudSelect>
+            </MudItem>
+            <MudItem xs="12" sm="2">
+                <MudDatePicker @bind-Date="_fromDate" Label="From Date" DateFormat="dd-MMM-yyyy" Variant="Variant.Outlined" Dense="true" />
+            </MudItem>
+            <MudItem xs="12" sm="2">
+                <MudDatePicker @bind-Date="_toDate" Label="To Date" DateFormat="dd-MMM-yyyy" Variant="Variant.Outlined" Dense="true" />
+            </MudItem>
+            <MudItem xs="12" sm="2">
+                <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="LoadData" FullWidth="true">
+                    Generate
+                </MudButton>
+            </MudItem>
+        </MudGrid>
+
+        @if (_isLoading)
+        {
+            <MudProgressLinear Indeterminate="true" Class="mt-4" />
+        }
+        else if (_data.Any())
+        {
+            <MudPaper Class="pa-4 mt-4" Elevation="1" Outlined="true">
+                <MudGrid>
+                    <MudItem xs="6">
+                        <MudText Typo="Typo.h6">@_customerName</MudText>
+                        <MudText Typo="Typo.body2">@_customerAddress</MudText>
+                        @if (!string.IsNullOrEmpty(_customerPhone))
+                        {
+                            <MudText Typo="Typo.body2">Phone: @_customerPhone</MudText>
+                        }
+                        @if (!string.IsNullOrEmpty(_customerEmail))
+                        {
+                            <MudText Typo="Typo.body2">Email: @_customerEmail</MudText>
+                        }
+                    </MudItem>
+                    <MudItem xs="6" Class="text-right">
+                        <MudText Typo="Typo.body2">Statement Period</MudText>
+                        <MudText Typo="Typo.subtitle1">@_fromDate?.ToString("dd-MMM-yyyy") to @_toDate?.ToString("dd-MMM-yyyy")</MudText>
+                        <MudText Typo="Typo.caption" Class="mt-2">Statement Date: @DateTime.Today.ToString("dd-MMM-yyyy")</MudText>
+                    </MudItem>
+                </MudGrid>
+            </MudPaper>
+
+            <MudPaper Class="pa-4 mt-4" Elevation="1" Style="background: var(--mud-palette-grey-lighten-4);">
+                <MudGrid>
+                    <MudItem xs="6" sm="3">
+                        <MudText Typo="Typo.caption">Opening Balance</MudText>
+                        <MudText Typo="Typo.h6">@_openingBalance.ToString("N2")</MudText>
+                    </MudItem>
+                    <MudItem xs="6" sm="3">
+                        <MudText Typo="Typo.caption">Total Invoiced</MudText>
+                        <MudText Typo="Typo.h6">@_data.Sum(x => x.Invoice).ToString("N2")</MudText>
+                    </MudItem>
+                    <MudItem xs="6" sm="3">
+                        <MudText Typo="Typo.caption">Total Received</MudText>
+                        <MudText Typo="Typo.h6">@_data.Sum(x => x.Receipt).ToString("N2")</MudText>
+                    </MudItem>
+                    <MudItem xs="6" sm="3">
+                        <MudText Typo="Typo.caption">Amount Due</MudText>
+                        <MudText Typo="Typo.h6" Color="@(_closingBalance > 0 ? Color.Error : Color.Success)">
+                            @_closingBalance.ToString("N2")
+                        </MudText>
+                    </MudItem>
+                </MudGrid>
+            </MudPaper>
+
+            <MudTable Items="@_data" Dense="true" Hover="true" Striped="true" Class="mt-4" FixedHeader="true" Height="400px">
+                <HeaderContent>
+                    <MudTh>Date</MudTh>
+                    <MudTh>Reference</MudTh>
+                    <MudTh>Description</MudTh>
+                    <MudTh Style="text-align: right">Invoice</MudTh>
+                    <MudTh Style="text-align: right">Receipt</MudTh>
+                    <MudTh Style="text-align: right">Balance</MudTh>
+                </HeaderContent>
+                <RowTemplate>
+                    <MudTd>@context.Date.ToString("dd-MMM-yyyy")</MudTd>
+                    <MudTd>@context.Reference</MudTd>
+                    <MudTd>@context.Description</MudTd>
+                    <MudTd Style="text-align: right">@(context.Invoice > 0 ? context.Invoice.ToString("N2") : "")</MudTd>
+                    <MudTd Style="text-align: right">@(context.Receipt > 0 ? context.Receipt.ToString("N2") : "")</MudTd>
+                    <MudTd Style="text-align: right; font-weight: bold;">@context.Balance.ToString("N2")</MudTd>
+                </RowTemplate>
+                <FooterContent>
+                    <MudTd colspan="3"><strong>Totals</strong></MudTd>
+                    <MudTd Style="text-align: right"><strong>@_data.Sum(x => x.Invoice).ToString("N2")</strong></MudTd>
+                    <MudTd Style="text-align: right"><strong>@_data.Sum(x => x.Receipt).ToString("N2")</strong></MudTd>
+                    <MudTd Style="text-align: right"><strong>@_closingBalance.ToString("N2")</strong></MudTd>
+                </FooterContent>
+            </MudTable>
+
+            <MudPaper Class="pa-4 mt-4" Elevation="1" Outlined="true">
+                <MudText Typo="Typo.subtitle2" Class="mb-2">Payment Terms</MudText>
+                <MudText Typo="Typo.body2">
+                    Credit Days: @_creditDays days | Credit Limit: @_creditLimit.ToString("N2")
+                </MudText>
+                <MudText Typo="Typo.caption" Class="mt-2">
+                    Please make payment within the credit period to avoid any inconvenience.
+                </MudText>
+            </MudPaper>
+        }
+        else if (!_isLoading && _customerId.HasValue)
+        {
+            <MudAlert Severity="Severity.Info" Class="mt-4">No transactions found for the selected period.</MudAlert>
+        }
+        else
+        {
+            <MudAlert Severity="Severity.Info" Class="mt-4">Select a customer and click Generate to load statement.</MudAlert>
+        }
+    </MudPaper>
+</MudContainer>
+
+@code {
+    private List<StatementEntry> _data = new();
+    private List<Party> _customers = new();
+    private long? _customerId;
+    private DateTime? _fromDate = DateTime.SpecifyKind(new DateTime(DateTime.Today.Year, DateTime.Today.Month, 1), DateTimeKind.Utc);
+    private DateTime? _toDate = DateTime.SpecifyKind(DateTime.Today, DateTimeKind.Utc);
+    private string _customerName = "";
+    private string _customerAddress = "";
+    private string _customerPhone = "";
+    private string _customerEmail = "";
+    private decimal _openingBalance;
+    private decimal _closingBalance;
+    private int _creditDays;
+    private decimal _creditLimit;
+    private bool _isLoading;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _customers = await DbContext.Parties
+            .Where(p => p.IsActive && !p.IsDeleted && p.PartyType == PartyType.Customer)
+            .OrderBy(p => p.Name)
+            .ToListAsync();
+    }
+
+    private async Task LoadData()
+    {
+        if (!_customerId.HasValue)
+        {
+            Snackbar.Add("Please select a customer", Severity.Warning);
+            return;
+        }
+
+        _isLoading = true;
+        _data.Clear();
+
+        try
+        {
+            var fromUtc = _fromDate.HasValue ? DateTime.SpecifyKind(_fromDate.Value.Date, DateTimeKind.Utc) : DateTime.MinValue;
+            var toUtc = _toDate.HasValue ? DateTime.SpecifyKind(_toDate.Value.Date.AddDays(1).AddTicks(-1), DateTimeKind.Utc) : DateTime.MaxValue;
+
+            var customer = await DbContext.Parties
+                .Include(p => p.Addresses)
+                .FirstOrDefaultAsync(p => p.Id == _customerId.Value);
+                
+            if (customer != null)
+            {
+                _customerName = customer.Name;
+                var primaryAddr = customer.Addresses.FirstOrDefault(a => !a.IsDeleted);
+                if (primaryAddr != null)
+                {
+                    var addrParts = new[] { primaryAddr.BuildingName, primaryAddr.Street, primaryAddr.City, primaryAddr.State, primaryAddr.Country }
+                        .Where(s => !string.IsNullOrWhiteSpace(s));
+                    _customerAddress = string.Join(", ", addrParts);
+                }
+                else
+                {
+                    _customerAddress = customer.ClientAddress ?? "";
+                }
+                _customerPhone = customer.Phone ?? customer.Mobile ?? "";
+                _customerEmail = customer.Email ?? "";
+                _creditDays = customer.CreditDays;
+                _creditLimit = customer.CreditLimit;
+            }
+
+            _openingBalance = 0;
+
+            var journalEntries = await DbContext.JournalEntries
+                .Include(e => e.Journal)
+                .Where(e => e.PartyId == _customerId && e.Journal.VoucherDate >= fromUtc && e.Journal.VoucherDate <= toUtc)
+                .OrderBy(e => e.Journal.VoucherDate)
+                .ToListAsync();
+
+            var allEntries = new List<StatementEntry>();
+
+            foreach (var entry in journalEntries)
+            {
+                allEntries.Add(new StatementEntry
+                {
+                    Date = entry.Journal.VoucherDate,
+                    Reference = entry.Journal.VoucherNo ?? "",
+                    Description = entry.Journal.Narration ?? entry.Journal.VoucherType ?? "",
+                    Invoice = entry.Debit ?? 0,
+                    Receipt = entry.Credit ?? 0
+                });
+            }
+
+            allEntries = allEntries.OrderBy(e => e.Date).ThenBy(e => e.Reference).ToList();
+
+            decimal runningBalance = _openingBalance;
+            foreach (var entry in allEntries)
+            {
+                runningBalance = runningBalance + entry.Invoice - entry.Receipt;
+                entry.Balance = runningBalance;
+            }
+
+            _data = allEntries;
+            _closingBalance = runningBalance;
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error: {ex.Message}", Severity.Error);
+        }
+
+        _isLoading = false;
+    }
+
+    private async Task ExportExcel()
+    {
+        var columns = new Dictionary<string, Func<StatementEntry, object?>>
+        {
+            { "Date", x => x.Date },
+            { "Reference", x => x.Reference },
+            { "Description", x => x.Description },
+            { "Invoice", x => x.Invoice },
+            { "Receipt", x => x.Receipt },
+            { "Balance", x => x.Balance }
+        };
+
+        var bytes = ExportService.ExportToExcel("Customer Statement", _data, columns);
+        await DownloadFile(bytes, "CustomerStatement.xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+    }
+
+    private async Task ExportPdf()
+    {
+        var columns = new Dictionary<string, Func<StatementEntry, object?>>
+        {
+            { "Date", x => x.Date },
+            { "Reference", x => x.Reference },
+            { "Description", x => x.Description },
+            { "Invoice", x => x.Invoice },
+            { "Receipt", x => x.Receipt },
+            { "Balance", x => x.Balance }
+        };
+
+        var totals = new Dictionary<string, decimal>
+        {
+            { "Invoice", _data.Sum(x => x.Invoice) },
+            { "Receipt", _data.Sum(x => x.Receipt) },
+            { "Balance", _closingBalance }
+        };
+
+        var subtitle = $"Customer: {_customerName} | Period: {_fromDate:dd-MMM-yyyy} to {_toDate:dd-MMM-yyyy}";
+        var bytes = ExportService.ExportToPdf("Customer Statement", subtitle, _data, columns, totals);
+        await DownloadFile(bytes, "CustomerStatement.pdf", "application/pdf");
+    }
+
+    private async Task DownloadFile(byte[] bytes, string filename, string contentType)
+    {
+        var base64 = Convert.ToBase64String(bytes);
+        await JS.InvokeVoidAsync("downloadFile", filename, base64, contentType);
+    }
+
+    private class StatementEntry
+    {
+        public DateTime Date { get; set; }
+        public string Reference { get; set; } = "";
+        public string Description { get; set; } = "";
+        public decimal Invoice { get; set; }
+        public decimal Receipt { get; set; }
+        public decimal Balance { get; set; }
+    }
+}
