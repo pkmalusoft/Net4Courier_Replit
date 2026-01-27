@@ -11,6 +11,7 @@ public class ImportMaster : AuditableEntity
     public long? CompanyId { get; set; }
     public long? BranchId { get; set; }
     
+    public ShipmentDirection ShipmentDirection { get; set; } = ShipmentDirection.Import;
     public ImportMode ImportMode { get; set; } = ImportMode.Air;
     public MasterReferenceType MasterReferenceType { get; set; } = MasterReferenceType.MAWB;
     public string MasterReferenceNumber { get; set; } = string.Empty;

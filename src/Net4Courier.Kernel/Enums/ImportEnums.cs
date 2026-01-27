@@ -1,5 +1,11 @@
 namespace Net4Courier.Kernel.Enums;
 
+public enum ShipmentDirection
+{
+    Import = 1,
+    Export = 2
+}
+
 public enum ImportMode
 {
     Air = 1,
