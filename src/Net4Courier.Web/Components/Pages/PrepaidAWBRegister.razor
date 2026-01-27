@@ -1,0 +1,271 @@
+@page "/prepaid-awb-register"
+@inject ApplicationDbContext DbContext
+@inject ISnackbar Snackbar
+@inject IJSRuntime JS
+@using Microsoft.EntityFrameworkCore
+@using Net4Courier.Infrastructure.Data
+@using Net4Courier.Operations.Entities
+@using Net4Courier.Masters.Entities
+@using ClosedXML.Excel
+
+<PageTitle>Prepaid AWB Register - Net4Courier</PageTitle>
+
+<MudPaper Class="pa-4 mb-4" Elevation="2">
+    <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
+        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+            <MudText Typo="Typo.h5">Prepaid AWB Register</MudText>
+            <MudChip T="string" Size="Size.Small" Color="Color.Primary">Operations Report</MudChip>
+        </MudStack>
+    </MudStack>
+</MudPaper>
+
+<MudPaper Class="pa-4 mb-4" Elevation="1">
+    <MudStack Row="true" Spacing="3" AlignItems="AlignItems.Center" Wrap="Wrap.Wrap">
+        <MudSelect T="long?" @bind-Value="_selectedCustomerId" Label="Customer" Clearable="true" 
+                   Style="min-width:250px" Placeholder="All Customers">
+            @foreach (var customer in _customers)
+            {
+                <MudSelectItem T="long?" Value="@customer.Id">@customer.Name</MudSelectItem>
+            }
+        </MudSelect>
+        <MudDatePicker @bind-Date="_fromDate" Label="From Date" DateFormat="dd-MMM-yyyy" />
+        <MudDatePicker @bind-Date="_toDate" Label="To Date" DateFormat="dd-MMM-yyyy" />
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="LoadReport" 
+                   StartIcon="@Icons.Material.Filled.Search">Generate</MudButton>
+        <MudButton Variant="Variant.Filled" Color="Color.Success" StartIcon="@Icons.Material.Filled.Download" 
+                   OnClick="DownloadExcel" Disabled="@(_reportData.Count == 0)">Excel</MudButton>
+    </MudStack>
+</MudPaper>
+
+@if (_selectedCustomer != null)
+{
+    <MudPaper Class="pa-4 mb-4" Elevation="1">
+        <MudGrid>
+            <MudItem xs="12" md="4">
+                <MudText Typo="Typo.subtitle2" Color="Color.Secondary">Customer</MudText>
+                <MudText Typo="Typo.h6">@_selectedCustomer.Name</MudText>
+                <MudText Typo="Typo.body2">@_selectedCustomer.Code</MudText>
+            </MudItem>
+            <MudItem xs="12" md="4">
+                <MudText Typo="Typo.subtitle2" Color="Color.Secondary">Total Prepaid AWBs</MudText>
+                <MudText Typo="Typo.h6">@_reportData.Count</MudText>
+            </MudItem>
+            <MudItem xs="12" md="4">
+                <MudText Typo="Typo.subtitle2" Color="Color.Secondary">Total Prepaid Amount</MudText>
+                <MudText Typo="Typo.h6" Color="Color.Primary">@_reportData.Sum(r => r.PrepaidAmount).ToString("N2")</MudText>
+            </MudItem>
+        </MudGrid>
+    </MudPaper>
+}
+
+<MudTable Items="@_reportData" Hover="true" Striped="true" Loading="@_loading" Dense="true" Elevation="2">
+    <HeaderContent>
+        <MudTh>AWB No</MudTh>
+        <MudTh>Document Date</MudTh>
+        <MudTh Style="text-align:right">Prepaid Amount</MudTh>
+        <MudTh>Payment Mode</MudTh>
+        <MudTh>Customer</MudTh>
+        <MudTh>Consignee</MudTh>
+        <MudTh>Destination</MudTh>
+        <MudTh>Status</MudTh>
+    </HeaderContent>
+    <RowTemplate>
+        <MudTd DataLabel="AWB No">
+            <MudText Typo="Typo.body2" Style="font-weight:500">@context.AWBNo</MudText>
+        </MudTd>
+        <MudTd DataLabel="Document Date">@context.DocumentDate.ToString("dd-MMM-yyyy")</MudTd>
+        <MudTd DataLabel="Prepaid Amount" Style="text-align:right">@context.PrepaidAmount.ToString("N2")</MudTd>
+        <MudTd DataLabel="Payment Mode">
+            <MudChip T="string" Size="Size.Small" Color="@GetPaymentModeColor(context.PaymentMode)">@context.PaymentMode</MudChip>
+        </MudTd>
+        <MudTd DataLabel="Customer">@context.CustomerName</MudTd>
+        <MudTd DataLabel="Consignee">@context.Consignee</MudTd>
+        <MudTd DataLabel="Destination">@context.Destination</MudTd>
+        <MudTd DataLabel="Status">
+            <MudChip T="string" Size="Size.Small" Color="@(context.IsUsed ? Color.Success : Color.Warning)">
+                @(context.IsUsed ? "Used" : "Available")
+            </MudChip>
+        </MudTd>
+    </RowTemplate>
+    <NoRecordsContent>
+        <MudText>Select filters and click Generate to view the report.</MudText>
+    </NoRecordsContent>
+    <PagerContent>
+        <MudTablePager PageSizeOptions="new int[] { 25, 50, 100, 500 }" />
+    </PagerContent>
+</MudTable>
+
+@code {
+    private List<Party> _customers = new();
+    private long? _selectedCustomerId;
+    private Party? _selectedCustomer;
+    private DateTime? _fromDate = DateTime.Today.AddMonths(-1);
+    private DateTime? _toDate = DateTime.Today;
+    private bool _loading = false;
+    private List<PrepaidAWBReportItem> _reportData = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadCustomers();
+    }
+
+    private async Task LoadCustomers()
+    {
+        _customers = await DbContext.Parties
+            .Where(p => p.PartyType == PartyType.Customer && !p.IsDeleted && p.IsActive)
+            .OrderBy(p => p.Name)
+            .ToListAsync();
+    }
+
+    private async Task LoadReport()
+    {
+        _loading = true;
+        try
+        {
+            _selectedCustomer = _selectedCustomerId.HasValue
+                ? _customers.FirstOrDefault(c => c.Id == _selectedCustomerId.Value)
+                : null;
+
+            var fromDate = _fromDate.HasValue 
+                ? DateTime.SpecifyKind(_fromDate.Value, DateTimeKind.Utc)
+                : DateTime.MinValue;
+            var toDate = _toDate.HasValue 
+                ? DateTime.SpecifyKind(_toDate.Value.AddDays(1).AddSeconds(-1), DateTimeKind.Utc)
+                : DateTime.MaxValue;
+
+            var query = from awb in DbContext.PrepaidAWBs
+                        join doc in DbContext.PrepaidDocuments on awb.PrepaidDocumentId equals doc.Id
+                        where !awb.IsDeleted && !doc.IsDeleted
+                              && doc.DocumentDate >= fromDate
+                              && doc.DocumentDate <= toDate
+                        select new { awb, doc };
+
+            if (_selectedCustomerId.HasValue)
+            {
+                query = query.Where(x => x.doc.CustomerId == _selectedCustomerId.Value);
+            }
+
+            var data = await query
+                .OrderByDescending(x => x.doc.DocumentDate)
+                .ThenBy(x => x.awb.AWBNo)
+                .ToListAsync();
+
+            _reportData = data.Select(x => new PrepaidAWBReportItem
+            {
+                AWBNo = x.awb.AWBNo,
+                DocumentDate = x.doc.DocumentDate,
+                PrepaidAmount = x.awb.Amount,
+                PaymentMode = x.doc.PaymentMode.ToString(),
+                CustomerName = x.doc.CustomerName ?? "",
+                Consignee = x.awb.Consignee ?? "-",
+                Destination = x.doc.Destination ?? "-",
+                IsUsed = x.awb.IsUsed
+            }).ToList();
+
+            if (_reportData.Count == 0)
+            {
+                Snackbar.Add("No records found for the selected criteria", Severity.Info);
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error loading report: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private Color GetPaymentModeColor(string mode)
+    {
+        return mode switch
+        {
+            "Cash" => Color.Success,
+            "Bank" => Color.Primary,
+            "Cheque" => Color.Warning,
+            _ => Color.Default
+        };
+    }
+
+    private async Task DownloadExcel()
+    {
+        try
+        {
+            using var workbook = new XLWorkbook();
+            var worksheet = workbook.Worksheets.Add("Prepaid AWB Register");
+
+            worksheet.Cell(1, 1).Value = "Prepaid AWB Register";
+            worksheet.Cell(1, 1).Style.Font.Bold = true;
+            worksheet.Cell(1, 1).Style.Font.FontSize = 14;
+            worksheet.Range(1, 1, 1, 8).Merge();
+
+            if (_selectedCustomer != null)
+            {
+                worksheet.Cell(2, 1).Value = $"Customer: {_selectedCustomer.Name}";
+            }
+            worksheet.Cell(3, 1).Value = $"Period: {_fromDate?.ToString("dd-MMM-yyyy")} to {_toDate?.ToString("dd-MMM-yyyy")}";
+
+            var headerRow = 5;
+            worksheet.Cell(headerRow, 1).Value = "AWB No";
+            worksheet.Cell(headerRow, 2).Value = "Document Date";
+            worksheet.Cell(headerRow, 3).Value = "Prepaid Amount";
+            worksheet.Cell(headerRow, 4).Value = "Payment Mode";
+            worksheet.Cell(headerRow, 5).Value = "Customer";
+            worksheet.Cell(headerRow, 6).Value = "Consignee";
+            worksheet.Cell(headerRow, 7).Value = "Destination";
+            worksheet.Cell(headerRow, 8).Value = "Status";
+
+            var headerRange = worksheet.Range(headerRow, 1, headerRow, 8);
+            headerRange.Style.Font.Bold = true;
+            headerRange.Style.Fill.BackgroundColor = XLColor.LightGray;
+            headerRange.Style.Border.OutsideBorder = XLBorderStyleValues.Thin;
+
+            var dataRow = headerRow + 1;
+            foreach (var item in _reportData)
+            {
+                worksheet.Cell(dataRow, 1).Value = item.AWBNo;
+                worksheet.Cell(dataRow, 2).Value = item.DocumentDate.ToString("dd-MMM-yyyy");
+                worksheet.Cell(dataRow, 3).Value = item.PrepaidAmount;
+                worksheet.Cell(dataRow, 4).Value = item.PaymentMode;
+                worksheet.Cell(dataRow, 5).Value = item.CustomerName;
+                worksheet.Cell(dataRow, 6).Value = item.Consignee;
+                worksheet.Cell(dataRow, 7).Value = item.Destination;
+                worksheet.Cell(dataRow, 8).Value = item.IsUsed ? "Used" : "Available";
+                dataRow++;
+            }
+
+            worksheet.Cell(dataRow + 1, 2).Value = "Total:";
+            worksheet.Cell(dataRow + 1, 2).Style.Font.Bold = true;
+            worksheet.Cell(dataRow + 1, 3).Value = _reportData.Sum(r => r.PrepaidAmount);
+            worksheet.Cell(dataRow + 1, 3).Style.Font.Bold = true;
+
+            worksheet.Column(3).Style.NumberFormat.Format = "#,##0.00";
+            worksheet.Columns().AdjustToContents();
+
+            using var stream = new MemoryStream();
+            workbook.SaveAs(stream);
+            var content = stream.ToArray();
+            var fileName = $"PrepaidAWBRegister_{DateTime.Now:yyyyMMdd_HHmmss}.xlsx";
+
+            await JS.InvokeVoidAsync("downloadFileFromBytes", fileName, Convert.ToBase64String(content));
+            Snackbar.Add("Report downloaded successfully", Severity.Success);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error downloading report: {ex.Message}", Severity.Error);
+        }
+    }
+
+    private class PrepaidAWBReportItem
+    {
+        public string AWBNo { get; set; } = "";
+        public DateTime DocumentDate { get; set; }
+        public decimal PrepaidAmount { get; set; }
+        public string PaymentMode { get; set; } = "";
+        public string CustomerName { get; set; } = "";
+        public string Consignee { get; set; } = "";
+        public string Destination { get; set; } = "";
+        public bool IsUsed { get; set; }
+    }
+}
