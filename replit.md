@@ -51,8 +51,16 @@ Key entity property names used in reports:
 - **JournalEntry**: `Debit`, `Credit` (nullable decimals), `JournalId`, `AccountHeadId`, `PartyId`
 - **Journal**: `VoucherDate`, `VoucherNo`, `BranchId` (date/branch info on parent Journal, not JournalEntry)
 
+## Email Integration
+- **Gmail API Integration**: Uses Replit Google Workspace connector for OAuth-based email sending via Gmail API
+- **GmailEmailService**: Service class implementing IGmailEmailService for sending emails with PDF attachments
+- **Report Email Feature**: Customer Ledger, Customer Statement, Supplier Ledger, and Supplier Statement reports have Email buttons to send PDF reports directly to customers/suppliers
+- **Email Pattern**: Branch email used as sender, Party email used as recipient; validates email addresses before sending
+- **Attachment Support**: Reports are generated as PDF attachments with professional HTML email body containing summary information
+
 ## External Dependencies
 - **Database**: PostgreSQL
 - **UI Framework**: MudBlazor
 - **Reporting**: QuestPDF
 - **Excel Handling**: ClosedXML
+- **Email**: Google Gmail API via Replit connector
