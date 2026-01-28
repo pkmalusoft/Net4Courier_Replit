@@ -1,0 +1,276 @@
+@page "/setup"
+@layout EmptyLayout
+@using Net4Courier.Infrastructure.Services
+@inject ISetupService SetupService
+@inject NavigationManager NavigationManager
+@inject ISnackbar Snackbar
+
+<MudThemeProvider />
+<MudPopoverProvider />
+<MudDialogProvider />
+<MudSnackbarProvider />
+
+<div class="setup-container">
+    <MudPaper Class="setup-card" Elevation="4">
+        <div class="setup-header">
+            <MudIcon Icon="@Icons.Material.Filled.Settings" Size="Size.Large" Color="Color.Primary" />
+            <MudText Typo="Typo.h4" Class="mt-2">Initial Setup</MudText>
+            <MudText Typo="Typo.body2" Color="Color.Secondary">Configure your Net4Courier administrator account</MudText>
+        </div>
+
+        @if (!_setupKeyValidated)
+        {
+            <MudForm @ref="_setupKeyForm" Class="mt-4">
+                <MudAlert Severity="Severity.Info" Class="mb-4">
+                    Enter the Setup Key provided by your system administrator to proceed with the initial configuration.
+                </MudAlert>
+                
+                <MudTextField @bind-Value="_setupKey"
+                              Label="Setup Key"
+                              Variant="Variant.Outlined"
+                              InputType="InputType.Password"
+                              Required="true"
+                              RequiredError="Setup Key is required"
+                              FullWidth="true"
+                              Class="mb-4" />
+
+                <MudButton Variant="Variant.Filled"
+                           Color="Color.Primary"
+                           FullWidth="true"
+                           OnClick="ValidateSetupKey"
+                           Disabled="_isValidating">
+                    @if (_isValidating)
+                    {
+                        <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" />
+                    }
+                    Verify Setup Key
+                </MudButton>
+
+                @if (!string.IsNullOrEmpty(_setupKeyError))
+                {
+                    <MudAlert Severity="Severity.Error" Class="mt-4">@_setupKeyError</MudAlert>
+                }
+            </MudForm>
+        }
+        else
+        {
+            <MudForm @ref="_adminForm" Class="mt-4">
+                <MudAlert Severity="Severity.Success" Class="mb-4">
+                    Setup key verified. Create your administrator account below.
+                </MudAlert>
+
+                <MudTextField @bind-Value="_username"
+                              Label="Username"
+                              Variant="Variant.Outlined"
+                              Required="true"
+                              RequiredError="Username is required"
+                              FullWidth="true"
+                              Class="mb-3" />
+
+                <MudTextField @bind-Value="_fullName"
+                              Label="Full Name"
+                              Variant="Variant.Outlined"
+                              Required="true"
+                              RequiredError="Full Name is required"
+                              FullWidth="true"
+                              Class="mb-3" />
+
+                <MudTextField @bind-Value="_email"
+                              Label="Email"
+                              Variant="Variant.Outlined"
+                              InputType="InputType.Email"
+                              Required="true"
+                              RequiredError="Email is required"
+                              FullWidth="true"
+                              Class="mb-3" />
+
+                <MudTextField @bind-Value="_password"
+                              Label="Password"
+                              Variant="Variant.Outlined"
+                              InputType="InputType.Password"
+                              Required="true"
+                              RequiredError="Password is required"
+                              FullWidth="true"
+                              Class="mb-3" />
+
+                <MudTextField @bind-Value="_confirmPassword"
+                              Label="Confirm Password"
+                              Variant="Variant.Outlined"
+                              InputType="InputType.Password"
+                              Required="true"
+                              RequiredError="Please confirm your password"
+                              FullWidth="true"
+                              Class="mb-4" />
+
+                <MudButton Variant="Variant.Filled"
+                           Color="Color.Primary"
+                           FullWidth="true"
+                           OnClick="CreateAdmin"
+                           Disabled="_isCreating">
+                    @if (_isCreating)
+                    {
+                        <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" />
+                    }
+                    Create Administrator Account
+                </MudButton>
+
+                @if (!string.IsNullOrEmpty(_createError))
+                {
+                    <MudAlert Severity="Severity.Error" Class="mt-4">@_createError</MudAlert>
+                }
+            </MudForm>
+        }
+    </MudPaper>
+</div>
+
+<style>
+    .setup-container {
+        min-height: 100vh;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: linear-gradient(135deg, #1a237e 0%, #0d47a1 50%, #01579b 100%);
+        padding: 20px;
+    }
+
+    .setup-card {
+        max-width: 450px;
+        width: 100%;
+        padding: 40px;
+        border-radius: 16px;
+    }
+
+    .setup-header {
+        text-align: center;
+        margin-bottom: 20px;
+    }
+</style>
+
+@code {
+    private MudForm? _setupKeyForm;
+    private MudForm? _adminForm;
+    
+    private string _setupKey = "";
+    private bool _setupKeyValidated = false;
+    private bool _isValidating = false;
+    private string? _setupKeyError;
+
+    private string _username = "";
+    private string _fullName = "";
+    private string _email = "";
+    private string _password = "";
+    private string _confirmPassword = "";
+    private bool _isCreating = false;
+    private string? _createError;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var isSetupRequired = await SetupService.IsSetupRequiredAsync();
+        if (!isSetupRequired)
+        {
+            NavigationManager.NavigateTo("/login");
+        }
+    }
+
+    private async Task ValidateSetupKey()
+    {
+        _setupKeyError = null;
+        
+        if (string.IsNullOrWhiteSpace(_setupKey))
+        {
+            _setupKeyError = "Please enter the setup key";
+            return;
+        }
+
+        _isValidating = true;
+        StateHasChanged();
+
+        try
+        {
+            var isValid = await SetupService.ValidateSetupKeyAsync(_setupKey);
+            if (isValid)
+            {
+                _setupKeyValidated = true;
+            }
+            else
+            {
+                _setupKeyError = "Invalid setup key. Please contact your system administrator.";
+            }
+        }
+        catch (Exception ex)
+        {
+            _setupKeyError = $"Error validating setup key: {ex.Message}";
+        }
+        finally
+        {
+            _isValidating = false;
+        }
+    }
+
+    private async Task CreateAdmin()
+    {
+        _createError = null;
+
+        if (string.IsNullOrWhiteSpace(_username))
+        {
+            _createError = "Username is required";
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(_fullName))
+        {
+            _createError = "Full Name is required";
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(_email))
+        {
+            _createError = "Email is required";
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(_password))
+        {
+            _createError = "Password is required";
+            return;
+        }
+
+        if (_password.Length < 8)
+        {
+            _createError = "Password must be at least 8 characters long";
+            return;
+        }
+
+        if (_password != _confirmPassword)
+        {
+            _createError = "Passwords do not match";
+            return;
+        }
+
+        _isCreating = true;
+        StateHasChanged();
+
+        try
+        {
+            var (success, message) = await SetupService.CreateInitialAdminAsync(_username, _email, _fullName, _password);
+            
+            if (success)
+            {
+                Snackbar.Add(message, Severity.Success);
+                NavigationManager.NavigateTo("/login");
+            }
+            else
+            {
+                _createError = message;
+            }
+        }
+        catch (Exception ex)
+        {
+            _createError = $"Error creating administrator: {ex.Message}";
+        }
+        finally
+        {
+            _isCreating = false;
+        }
+    }
+}

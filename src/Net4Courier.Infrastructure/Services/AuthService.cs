@@ -70,66 +70,47 @@ public class AuthService
     {
         try
         {
-            var adminUser = await _context.Users.FirstOrDefaultAsync(u => u.Username == "admin");
+            var adminRole = await _context.Roles.FirstOrDefaultAsync(r => r.Name == "Administrator");
             
-            if (adminUser == null)
+            if (adminRole == null)
             {
-                var adminRole = await _context.Roles.FirstOrDefaultAsync(r => r.Name == "Administrator");
-                
-                if (adminRole == null)
+                adminRole = new Role
                 {
-                    adminRole = new Role
-                    {
-                        Name = "Administrator",
-                        Description = "Full system access",
-                        IsActive = true
-                    };
-                    _context.Roles.Add(adminRole);
-                    await _context.SaveChangesAsync();
-                }
-
-                adminUser = new User
-                {
-                    Username = "admin",
-                    PasswordHash = BCrypt.Net.BCrypt.HashPassword("Admin@123"),
-                    Email = "admin@net4courier.com",
-                    FullName = "System Administrator",
-                    RoleId = adminRole.Id,
+                    Name = "Administrator",
+                    Description = "Full system access",
                     IsActive = true
                 };
-                _context.Users.Add(adminUser);
+                _context.Roles.Add(adminRole);
                 await _context.SaveChangesAsync();
-                Console.WriteLine("Admin user created successfully");
+                Console.WriteLine("Administrator role created");
             }
 
-            var hasUserBranch = await _context.UserBranches.AnyAsync(ub => ub.UserId == adminUser.Id);
-            if (!hasUserBranch)
+            var adminUser = await _context.Users.FirstOrDefaultAsync(u => u.Username == "admin" || u.RoleId == adminRole.Id);
+            
+            if (adminUser != null)
             {
-                var defaultBranch = await _context.Branches.FirstOrDefaultAsync(b => b.IsActive);
-                if (defaultBranch != null)
+                var hasUserBranch = await _context.UserBranches.AnyAsync(ub => ub.UserId == adminUser.Id);
+                if (!hasUserBranch)
                 {
-                    var userBranch = new UserBranch
+                    var defaultBranch = await _context.Branches.FirstOrDefaultAsync(b => b.IsActive);
+                    if (defaultBranch != null)
                     {
-                        UserId = adminUser.Id,
-                        BranchId = defaultBranch.Id,
-                        IsDefault = true
-                    };
-                    _context.UserBranches.Add(userBranch);
-                    await _context.SaveChangesAsync();
-                    Console.WriteLine($"Admin assigned to branch: {defaultBranch.Name}");
+                        var userBranch = new UserBranch
+                        {
+                            UserId = adminUser.Id,
+                            BranchId = defaultBranch.Id,
+                            IsDefault = true
+                        };
+                        _context.UserBranches.Add(userBranch);
+                        await _context.SaveChangesAsync();
+                        Console.WriteLine($"Admin assigned to branch: {defaultBranch.Name}");
+                    }
                 }
-            }
-
-            if (string.IsNullOrEmpty(adminUser.PasswordHash) || !adminUser.PasswordHash.StartsWith("$2"))
-            {
-                adminUser.PasswordHash = BCrypt.Net.BCrypt.HashPassword("Admin@123");
-                await _context.SaveChangesAsync();
-                Console.WriteLine("Admin password reset");
             }
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"Warning: Could not seed admin user: {ex.Message}");
+            Console.WriteLine($"Warning: Could not seed admin role: {ex.Message}");
         }
     }
 
