@@ -10,7 +10,7 @@ public interface ISetupService
 {
     Task<bool> IsSetupRequiredAsync();
     Task<bool> ValidateSetupKeyAsync(string setupKey);
-    Task<(bool Success, string Message)> CreateInitialAdminAsync(string username, string email, string fullName, string password);
+    Task<(bool Success, string Message)> CreateInitialAdminAsync(string setupKey, string username, string email, string fullName, string password);
 }
 
 public class SetupService : ISetupService
@@ -49,10 +49,22 @@ public class SetupService : ISetupService
         return Task.FromResult(setupKey == configuredKey);
     }
 
-    public async Task<(bool Success, string Message)> CreateInitialAdminAsync(string username, string email, string fullName, string password)
+    public async Task<(bool Success, string Message)> CreateInitialAdminAsync(string setupKey, string username, string email, string fullName, string password)
     {
         try
         {
+            var isSetupRequired = await IsSetupRequiredAsync();
+            if (!isSetupRequired)
+            {
+                return (false, "Setup has already been completed. Cannot create additional administrators through setup.");
+            }
+
+            var isValidKey = await ValidateSetupKeyAsync(setupKey);
+            if (!isValidKey)
+            {
+                return (false, "Invalid setup key. Administrator creation denied.");
+            }
+
             var existingUser = await _context.Users.AnyAsync(u => u.Username == username);
             if (existingUser)
             {

@@ -47,6 +47,8 @@ The application is built on .NET 8 Blazor Server, adopting a modular architectur
 - **General Ledger Module**: Full GL implementation with Chart of Accounts, Control Accounts, Financial Years, Tax Setup, Cash & Bank Vouchers, Bank Accounts, Bank Reconciliation, Journal Vouchers, and comprehensive Financial Reports (Account Ledger, Day Book, Cash & Bank Book, Trial Balance, Profit & Loss, Balance Sheet, Cash Flow).
 - **Error Handling**: Robust global error handling with `ErrorBoundary`, `PageErrorHandler`, and `MudBlazor Snackbar` integration.
 - **Demo Data Management**: Admin feature to create and delete demo data for training purposes. Creates 5 demo customers (DEMO-CUST-001 to 005) with UAE addresses and 5 complete AWB workflows (DEMO-AWB-001 to 005) including pickup requests, inscans, tracking entries, and delivery completion. All demo records are flagged with IsDemo=true for easy identification and safe deletion. Located under Masters & Settings > User & Security menu.
+- **Initial Setup Wizard**: Platform administrators can configure new client deployments through a secure setup page (/setup). When no admin user exists in the database, users are automatically redirected to the setup page. The setup requires a SETUP_KEY environment variable for authentication before allowing administrator account creation. This replaces hardcoded admin creation for secure multi-client deployments.
+- **Barcode Generation**: AWB barcodes generated using ZXing.Net.Bindings.ImageSharp with SixLabors.ImageSharp for horizontal (300x80) and vertical (40x250, rotated 90°) PNG barcodes embedded in AWB labels.
 
 ## Entity Property Reference
 Key entity property names used in reports:
