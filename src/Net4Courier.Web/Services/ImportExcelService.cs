@@ -631,23 +631,76 @@ public class ImportExcelService
     {
         var shipments = new List<ImportShipmentDto>();
         
-        // Find the header row dynamically by looking for "Consignee Name" header
+        // Find the header row and column positions dynamically
         int headerRow = 3;
+        var columnMap = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+        
+        // Search for header row by looking for "Consignee Name" in any column
         for (int r = 1; r <= 5; r++)
         {
-            var cell = sheet.Cell(r, 3).GetString()?.Trim();
-            if (cell != null && cell.Contains("Consignee Name", StringComparison.OrdinalIgnoreCase))
+            for (int c = 1; c <= 25; c++)
             {
-                headerRow = r;
-                break;
+                var cell = sheet.Cell(r, c).GetString()?.Trim();
+                if (cell != null && cell.Contains("Consignee Name", StringComparison.OrdinalIgnoreCase))
+                {
+                    headerRow = r;
+                    break;
+                }
+            }
+            if (headerRow == r) break;
+        }
+        
+        // Build column map from header row
+        for (int c = 1; c <= 25; c++)
+        {
+            var header = sheet.Cell(headerRow, c).GetString()?.Trim();
+            if (!string.IsNullOrWhiteSpace(header))
+            {
+                // Normalize header names for matching
+                var normalizedHeader = header.Replace("*", "").Replace("(kg)", "").Trim();
+                if (!columnMap.ContainsKey(normalizedHeader))
+                    columnMap[normalizedHeader] = c;
             }
         }
+        
+        // Helper to get column index by header name
+        int GetCol(params string[] names)
+        {
+            foreach (var name in names)
+            {
+                if (columnMap.TryGetValue(name, out var col)) return col;
+            }
+            return -1;
+        }
+        
+        // Map columns
+        int colAwb = GetCol("AWB No", "AWB");
+        int colRef = GetCol("Ref. AWB No.", "Ref AWB No", "Reference No");
+        int colConsigneeName = GetCol("Consignee Name");
+        int colConsigneeAddr = GetCol("Consignee Address");
+        int colConsigneeCity = GetCol("Consignee City");
+        int colConsigneeState = GetCol("Consignee State");
+        int colConsigneeCountry = GetCol("Consignee Country");
+        int colConsigneePostal = GetCol("Consignee Postal Code");
+        int colConsigneePhone = GetCol("Consignee Phone");
+        int colShipperName = GetCol("Shipper Name");
+        int colShipperCountry = GetCol("Shipper Country");
+        int colPieces = GetCol("Pieces");
+        int colWeight = GetCol("Weight");
+        int colContents = GetCol("Contents Description");
+        int colHsCode = GetCol("HS Code");
+        int colDeclaredVal = GetCol("Declared Value");
+        int colCurrency = GetCol("Currency");
+        int colDutyVat = GetCol("Duty/VAT Amount", "Duty VAT Amount");
+        int colCodColl = GetCol("COD/Collection Amount", "COD Collection Amount");
+        int colPaymentMode = GetCol("Payment Mode");
+        int colSpecialInstr = GetCol("Special Instructions");
         
         int row = headerRow + 1; // Data starts after header row
         while (true)
         {
-            var awbNo = sheet.Cell(row, 1).GetString()?.Trim();
-            var consigneeName = sheet.Cell(row, 3).GetString()?.Trim();
+            var awbNo = colAwb > 0 ? sheet.Cell(row, colAwb).GetString()?.Trim() : null;
+            var consigneeName = colConsigneeName > 0 ? sheet.Cell(row, colConsigneeName).GetString()?.Trim() : null;
             
             // When auto-generating AWB, use consignee name to detect rows; otherwise use AWB
             var hasData = autoGenerateAwb 
@@ -661,54 +714,73 @@ public class ImportExcelService
             {
                 RowNumber = row,
                 AWBNo = awbNo ?? "",
-                ReferenceNo = sheet.Cell(row, 2).GetString()?.Trim(),
-                ConsigneeName = sheet.Cell(row, 3).GetString()?.Trim() ?? "",
-                ConsigneeAddress = sheet.Cell(row, 4).GetString()?.Trim(),
-                ConsigneeCity = sheet.Cell(row, 5).GetString()?.Trim(),
-                ConsigneeState = sheet.Cell(row, 6).GetString()?.Trim(),
-                ConsigneeCountry = sheet.Cell(row, 7).GetString()?.Trim() ?? "",
-                ConsigneePostalCode = sheet.Cell(row, 8).GetString()?.Trim(),
-                ConsigneePhone = sheet.Cell(row, 9).GetString()?.Trim(),
-                ShipperName = sheet.Cell(row, 10).GetString()?.Trim(),
-                ShipperCountry = sheet.Cell(row, 11).GetString()?.Trim(),
-                ContentsDescription = sheet.Cell(row, 14).GetString()?.Trim(),
-                HSCode = sheet.Cell(row, 15).GetString()?.Trim(),
-                Currency = sheet.Cell(row, 17).GetString()?.Trim(),
-                PaymentMode = sheet.Cell(row, 20).GetString()?.Trim(),
-                SpecialInstructions = sheet.Cell(row, 21).GetString()?.Trim()
+                ReferenceNo = colRef > 0 ? sheet.Cell(row, colRef).GetString()?.Trim() : null,
+                ConsigneeName = consigneeName ?? "",
+                ConsigneeAddress = colConsigneeAddr > 0 ? sheet.Cell(row, colConsigneeAddr).GetString()?.Trim() : null,
+                ConsigneeCity = colConsigneeCity > 0 ? sheet.Cell(row, colConsigneeCity).GetString()?.Trim() : null,
+                ConsigneeState = colConsigneeState > 0 ? sheet.Cell(row, colConsigneeState).GetString()?.Trim() : null,
+                ConsigneeCountry = colConsigneeCountry > 0 ? sheet.Cell(row, colConsigneeCountry).GetString()?.Trim() ?? "" : "",
+                ConsigneePostalCode = colConsigneePostal > 0 ? sheet.Cell(row, colConsigneePostal).GetString()?.Trim() : null,
+                ConsigneePhone = colConsigneePhone > 0 ? sheet.Cell(row, colConsigneePhone).GetString()?.Trim() : null,
+                ShipperName = colShipperName > 0 ? sheet.Cell(row, colShipperName).GetString()?.Trim() : null,
+                ShipperCountry = colShipperCountry > 0 ? sheet.Cell(row, colShipperCountry).GetString()?.Trim() : null,
+                ContentsDescription = colContents > 0 ? sheet.Cell(row, colContents).GetString()?.Trim() : null,
+                HSCode = colHsCode > 0 ? sheet.Cell(row, colHsCode).GetString()?.Trim() : null,
+                Currency = colCurrency > 0 ? sheet.Cell(row, colCurrency).GetString()?.Trim() : null,
+                PaymentMode = colPaymentMode > 0 ? sheet.Cell(row, colPaymentMode).GetString()?.Trim() : null,
+                SpecialInstructions = colSpecialInstr > 0 ? sheet.Cell(row, colSpecialInstr).GetString()?.Trim() : null
             };
             
-            var piecesVal = sheet.Cell(row, 12).Value;
-            if (piecesVal.IsNumber)
-                shipment.Pieces = (int)piecesVal.GetNumber();
-            else if (int.TryParse(sheet.Cell(row, 12).GetString(), out var pieces))
-                shipment.Pieces = pieces;
+            if (colPieces > 0)
+            {
+                var piecesVal = sheet.Cell(row, colPieces).Value;
+                if (piecesVal.IsNumber)
+                    shipment.Pieces = (int)piecesVal.GetNumber();
+                else if (int.TryParse(sheet.Cell(row, colPieces).GetString(), out var pieces))
+                    shipment.Pieces = pieces;
+                else
+                    shipment.Pieces = 1;
+            }
             else
+            {
                 shipment.Pieces = 1;
+            }
             
-            var weightVal = sheet.Cell(row, 13).Value;
-            if (weightVal.IsNumber)
-                shipment.Weight = (decimal)weightVal.GetNumber();
-            else if (decimal.TryParse(sheet.Cell(row, 13).GetString(), out var weight))
-                shipment.Weight = weight;
+            if (colWeight > 0)
+            {
+                var weightVal = sheet.Cell(row, colWeight).Value;
+                if (weightVal.IsNumber)
+                    shipment.Weight = (decimal)weightVal.GetNumber();
+                else if (decimal.TryParse(sheet.Cell(row, colWeight).GetString(), out var weight))
+                    shipment.Weight = weight;
+            }
             
-            var declaredVal = sheet.Cell(row, 16).Value;
-            if (declaredVal.IsNumber)
-                shipment.DeclaredValue = (decimal)declaredVal.GetNumber();
-            else if (decimal.TryParse(sheet.Cell(row, 16).GetString(), out var declaredValue))
-                shipment.DeclaredValue = declaredValue;
+            if (colDeclaredVal > 0)
+            {
+                var declaredVal = sheet.Cell(row, colDeclaredVal).Value;
+                if (declaredVal.IsNumber)
+                    shipment.DeclaredValue = (decimal)declaredVal.GetNumber();
+                else if (decimal.TryParse(sheet.Cell(row, colDeclaredVal).GetString(), out var declaredValue))
+                    shipment.DeclaredValue = declaredValue;
+            }
             
-            var dutyVatVal = sheet.Cell(row, 18).Value;
-            if (dutyVatVal.IsNumber)
-                shipment.DutyVatAmount = (decimal)dutyVatVal.GetNumber();
-            else if (decimal.TryParse(sheet.Cell(row, 18).GetString(), out var dutyVat))
-                shipment.DutyVatAmount = dutyVat;
+            if (colDutyVat > 0)
+            {
+                var dutyVatVal = sheet.Cell(row, colDutyVat).Value;
+                if (dutyVatVal.IsNumber)
+                    shipment.DutyVatAmount = (decimal)dutyVatVal.GetNumber();
+                else if (decimal.TryParse(sheet.Cell(row, colDutyVat).GetString(), out var dutyVat))
+                    shipment.DutyVatAmount = dutyVat;
+            }
             
-            var codCollVal = sheet.Cell(row, 19).Value;
-            if (codCollVal.IsNumber)
-                shipment.CodCollectionAmount = (decimal)codCollVal.GetNumber();
-            else if (decimal.TryParse(sheet.Cell(row, 19).GetString(), out var codColl))
-                shipment.CodCollectionAmount = codColl;
+            if (colCodColl > 0)
+            {
+                var codCollVal = sheet.Cell(row, colCodColl).Value;
+                if (codCollVal.IsNumber)
+                    shipment.CodCollectionAmount = (decimal)codCollVal.GetNumber();
+                else if (decimal.TryParse(sheet.Cell(row, colCodColl).GetString(), out var codColl))
+                    shipment.CodCollectionAmount = codColl;
+            }
             
             if (string.IsNullOrWhiteSpace(shipment.ConsigneeName))
             {
