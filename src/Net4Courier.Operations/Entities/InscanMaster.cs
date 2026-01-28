@@ -117,6 +117,7 @@ public class InscanMaster : AuditableEntity
     public bool IsCOD { get; set; }
     public decimal? CODAmount { get; set; }
     public bool CODCollected { get; set; }
+    public decimal? DutyVatAmount { get; set; }
     
     public string? DeviceId { get; set; }
     public int? EntrySource { get; set; }

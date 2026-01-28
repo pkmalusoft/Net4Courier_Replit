@@ -267,16 +267,40 @@ else
                 return;
             }
             
+            var awbNo = _scanAwb.Trim();
+            
+            // Look up existing InscanMaster to copy values
+            var inscanMaster = await dbContext.InscanMasters
+                .FirstOrDefaultAsync(i => i.AWBNo == awbNo);
+            
             var shipment = new ImportShipment
             {
                 ImportMasterId = ImportId,
                 ImportBagId = _selectedBagId,
-                AWBNo = _scanAwb.Trim(),
-                Pieces = 1,
+                AWBNo = awbNo,
+                Pieces = inscanMaster?.Pieces ?? 1,
+                Weight = inscanMaster?.Weight ?? 0.5m,
+                DutyAmount = inscanMaster?.DutyVatAmount,
+                CODAmount = inscanMaster?.CODAmount,
+                ConsigneeName = inscanMaster?.Consignee,
+                ConsigneePhone = inscanMaster?.ConsigneeMobile,
+                ConsigneeAddress = inscanMaster?.ConsigneeAddress1,
+                ConsigneeCity = inscanMaster?.ConsigneeCity,
+                ConsigneeState = inscanMaster?.ConsigneeState,
+                ConsigneeCountry = inscanMaster?.ConsigneeCountry,
+                ConsigneePostalCode = inscanMaster?.ConsigneePostalCode,
+                ShipperName = inscanMaster?.Consignor,
+                LinkedInscanMasterId = inscanMaster?.Id,
                 Status = ImportShipmentStatus.Inscanned,
                 InscannedAt = DateTime.UtcNow,
                 CreatedAt = DateTime.UtcNow
             };
+            
+            // Auto-set IsCOD flag if COD amount is entered
+            if (shipment.CODAmount.HasValue && shipment.CODAmount > 0)
+            {
+                shipment.IsCOD = true;
+            }
             
             dbContext.ImportShipments.Add(shipment);
             

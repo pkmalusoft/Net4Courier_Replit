@@ -153,7 +153,7 @@ public class ShipmentStatusService
             
             new() { StatusGroupId = groups[2].Id, Code = "INSCAN_ORIGIN", Name = "Inscan – Origin Warehouse", TimelineDescription = "Received at origin warehouse", SequenceNo = 1, MapsToCourierStatus = CourierStatus.InscanAtOrigin, CreatedAt = DateTime.UtcNow },
             new() { StatusGroupId = groups[2].Id, Code = "QC_COMPLETED", Name = "QC Completed", TimelineDescription = "Weight / dimension verified", SequenceNo = 2, CreatedAt = DateTime.UtcNow },
-            new() { StatusGroupId = groups[2].Id, Code = "BAGGED", Name = "Bagged for Manifest", TimelineDescription = "Added to MAWB bag", SequenceNo = 3, CreatedAt = DateTime.UtcNow },
+            new() { StatusGroupId = groups[2].Id, Code = "BAGGED", Name = "Bagged for Manifest", TimelineDescription = "Added to MAWB bag", SequenceNo = 3, MapsToCourierStatus = CourierStatus.InscanAtOrigin, CreatedAt = DateTime.UtcNow },
             new() { StatusGroupId = groups[2].Id, Code = "UNBAGGED", Name = "Removed from Bag", TimelineDescription = "Removed from MAWB bag", SequenceNo = 4, CreatedAt = DateTime.UtcNow },
             new() { StatusGroupId = groups[2].Id, Code = "MANIFESTED", Name = "Manifested", TimelineDescription = "MAWB finalized", SequenceNo = 5, CreatedAt = DateTime.UtcNow },
             new() { StatusGroupId = groups[2].Id, Code = "ORIGIN_PROCESSED", Name = "Origin Processing Completed", TimelineDescription = "Sorted and routed", SequenceNo = 6, CreatedAt = DateTime.UtcNow },
