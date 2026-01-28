@@ -631,7 +631,19 @@ public class ImportExcelService
     {
         var shipments = new List<ImportShipmentDto>();
         
-        int row = 4;
+        // Find the header row dynamically by looking for "Consignee Name" header
+        int headerRow = 3;
+        for (int r = 1; r <= 5; r++)
+        {
+            var cell = sheet.Cell(r, 3).GetString()?.Trim();
+            if (cell != null && cell.Contains("Consignee Name", StringComparison.OrdinalIgnoreCase))
+            {
+                headerRow = r;
+                break;
+            }
+        }
+        
+        int row = headerRow + 1; // Data starts after header row
         while (true)
         {
             var awbNo = sheet.Cell(row, 1).GetString()?.Trim();
