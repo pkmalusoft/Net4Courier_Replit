@@ -149,10 +149,10 @@ public class ImportExcelService
         AddHeaderRow(sheet, ref row, "Coloader Name", "", "No", "Co-loader party name from the system");
         AddHeaderRow(sheet, ref row, "Origin Country", "", "Yes", "Country of origin (must match system values - see Countries tab)");
         AddHeaderRow(sheet, ref row, "Origin City", "", "No", "City of origin (must match system values - see Cities tab)");
-        AddHeaderRow(sheet, ref row, "Origin Port/Airport", "", "No", mode == ImportMode.Air ? "Origin Airport Code (must match system values - see Ports tab)" : "Origin Port Code (must match system values - see Ports tab)");
+        AddHeaderRow(sheet, ref row, "Origin Port Code", "", "No", mode == ImportMode.Air ? "Origin Airport IATA Code e.g. DXB, LHR (see Ports tab)" : "Origin Port Code e.g. AEJEA (see Ports tab)");
         AddHeaderRow(sheet, ref row, "Destination Country", "", "Yes", "Destination country (must match system values - see Countries tab)");
         AddHeaderRow(sheet, ref row, "Destination City", "", "No", "Destination city (must match system values - see Cities tab)");
-        AddHeaderRow(sheet, ref row, "Destination Port/Airport", "", "No", mode == ImportMode.Air ? "Destination Airport Code (must match system values - see Ports tab)" : "Destination Port Code (must match system values - see Ports tab)");
+        AddHeaderRow(sheet, ref row, "Destination Port Code", "", "No", mode == ImportMode.Air ? "Destination Airport IATA Code e.g. JFK, SIN (see Ports tab)" : "Destination Port Code e.g. USNYC (see Ports tab)");
         AddHeaderRow(sheet, ref row, "ETD", "", "No", "Estimated Time of Departure (DD/MM/YYYY)");
         AddHeaderRow(sheet, ref row, "ETA", "", "No", "Estimated Time of Arrival (DD/MM/YYYY)");
         AddHeaderRow(sheet, ref row, "Carrier Name", "", "No", "Carrier/Airline/Shipping Line name");
@@ -473,7 +473,8 @@ public class ImportExcelService
         
         if (fieldValues.TryGetValue("Origin City", out var originCity))
             header.OriginCity = originCity;
-        if (fieldValues.TryGetValue("Origin Port/Airport", out var originPort))
+        if (fieldValues.TryGetValue("Origin Port Code", out var originPort) || 
+            fieldValues.TryGetValue("Origin Port/Airport", out originPort))
             header.OriginPort = originPort;
         
         if (fieldValues.TryGetValue("Destination Country", out var destCountry))
@@ -492,7 +493,8 @@ public class ImportExcelService
         
         if (fieldValues.TryGetValue("Destination City", out var destCity))
             header.DestinationCity = destCity;
-        if (fieldValues.TryGetValue("Destination Port/Airport", out var destPort))
+        if (fieldValues.TryGetValue("Destination Port Code", out var destPort) || 
+            fieldValues.TryGetValue("Destination Port/Airport", out destPort))
             header.DestinationPort = destPort;
         
         if (fieldValues.TryGetValue("ETD", out var etdStr) && !string.IsNullOrWhiteSpace(etdStr))
@@ -536,7 +538,85 @@ public class ImportExcelService
         if (fieldValues.TryGetValue("Remarks", out var remarks))
             header.Remarks = remarks;
         
+        ValidateHeaderFieldLengths(header, errors);
+        
         return header;
+    }
+    
+    private void ValidateHeaderFieldLengths(ImportHeaderDto header, List<ImportValidationError> errors)
+    {
+        var fieldLimits = new Dictionary<string, (string? Value, int MaxLength)>
+        {
+            { "Master Reference", (header.MasterReferenceNumber, 50) },
+            { "Co-Loader Reference", (header.ColoaderNumber, 50) },
+            { "Co-Loader Name", (header.ColoaderName, 100) },
+            { "Origin Country", (header.OriginCountry, 100) },
+            { "Origin City", (header.OriginCity, 100) },
+            { "Origin Port Code", (header.OriginPort, 20) },
+            { "Destination Country", (header.DestinationCountry, 100) },
+            { "Destination City", (header.DestinationCity, 100) },
+            { "Destination Port Code", (header.DestinationPort, 20) },
+            { "Carrier Name", (header.CarrierName, 100) },
+            { "Carrier Code", (header.CarrierCode, 20) },
+            { "Flight No", (header.FlightNo, 20) },
+            { "Vessel Name", (header.VesselName, 100) },
+            { "Voyage Number", (header.VoyageNumber, 50) },
+            { "Truck Number", (header.TruckNumber, 50) },
+            { "Driver Name", (header.DriverName, 100) },
+            { "Driver Phone", (header.DriverPhone, 20) },
+            { "Manifest Number", (header.ManifestNumber, 50) }
+        };
+        
+        foreach (var field in fieldLimits)
+        {
+            if (!string.IsNullOrEmpty(field.Value.Value) && field.Value.Value.Length > field.Value.MaxLength)
+            {
+                errors.Add(new ImportValidationError
+                {
+                    Sheet = "Header",
+                    Column = field.Key,
+                    Message = $"{field.Key}: value exceeds {field.Value.MaxLength} characters (current: {field.Value.Value.Length})",
+                    IsCritical = true
+                });
+            }
+        }
+    }
+    
+    private void ValidateShipmentFieldLengths(ImportShipmentDto shipment, int row, List<ImportValidationError> errors)
+    {
+        var fieldLimits = new Dictionary<string, (string? Value, int MaxLength)>
+        {
+            { "AWB No", (shipment.AWBNo, 50) },
+            { "Reference No", (shipment.ReferenceNo, 50) },
+            { "Consignee Name", (shipment.ConsigneeName, 200) },
+            { "Consignee Address", (shipment.ConsigneeAddress, 500) },
+            { "Consignee City", (shipment.ConsigneeCity, 100) },
+            { "Consignee State", (shipment.ConsigneeState, 100) },
+            { "Consignee Country", (shipment.ConsigneeCountry, 100) },
+            { "Consignee Postal Code", (shipment.ConsigneePostalCode, 20) },
+            { "Consignee Phone", (shipment.ConsigneePhone, 50) },
+            { "Shipper Name", (shipment.ShipperName, 200) },
+            { "Shipper Country", (shipment.ShipperCountry, 100) },
+            { "Contents Description", (shipment.ContentsDescription, 500) },
+            { "HS Code", (shipment.HSCode, 20) },
+            { "Currency", (shipment.Currency, 10) },
+            { "Special Instructions", (shipment.SpecialInstructions, 500) }
+        };
+        
+        foreach (var field in fieldLimits)
+        {
+            if (!string.IsNullOrEmpty(field.Value.Value) && field.Value.Value.Length > field.Value.MaxLength)
+            {
+                errors.Add(new ImportValidationError
+                {
+                    Sheet = "Shipments",
+                    RowNumber = row,
+                    Column = field.Key,
+                    Message = $"{field.Key}: value exceeds {field.Value.MaxLength} characters (current: {field.Value.Value.Length})",
+                    IsCritical = true
+                });
+            }
+        }
     }
 
     private List<ImportShipmentDto> ParseShipments(IXLWorksheet sheet, List<ImportValidationError> errors)
@@ -646,6 +726,8 @@ public class ImportExcelService
                     Message = "Pieces must be greater than 0" 
                 });
             }
+            
+            ValidateShipmentFieldLengths(shipment, row, errors);
             
             shipments.Add(shipment);
             row++;
