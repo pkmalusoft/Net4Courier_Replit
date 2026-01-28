@@ -11,6 +11,7 @@ public class ImportExcelParseResult
     public List<ImportShipmentDto> Shipments { get; set; } = new();
     public List<ImportValidationError> Errors { get; set; } = new();
     public bool IsValid => !Errors.Any(e => e.IsCritical);
+    public bool AutoGenerateAwb { get; set; }
 }
 
 public class ImportHeaderDto
@@ -221,10 +222,16 @@ public class ImportExcelService
         sheet.Cell(1, 1).Style.Font.Bold = true;
         sheet.Cell(1, 1).Style.Font.FontSize = 14;
         
+        // Add description for AWB column
+        sheet.Cell(2, 1).Value = "Leave blank if using Auto-Generate AWB option during upload";
+        sheet.Cell(2, 1).Style.Font.Italic = true;
+        sheet.Cell(2, 1).Style.Font.FontColor = XLColor.Gray;
+        sheet.Range(2, 1, 2, 5).Merge();
+        
         int col = 1;
         var headers = new[]
         {
-            ("AWB No *", true),
+            ("AWB No", false),
             ("Ref. AWB No.", false),
             ("Consignee Name *", true),
             ("Consignee Address", false),
@@ -371,9 +378,10 @@ public class ImportExcelService
         sheet.Columns().AdjustToContents();
     }
 
-    public ImportExcelParseResult ParseExcel(Stream stream)
+    public ImportExcelParseResult ParseExcel(Stream stream, bool autoGenerateAwb = false)
     {
         var result = new ImportExcelParseResult();
+        result.AutoGenerateAwb = autoGenerateAwb;
         
         try
         {
@@ -403,7 +411,7 @@ public class ImportExcelService
                 return result;
             }
             
-            result.Shipments = ParseShipments(shipmentsSheet, result.Errors);
+            result.Shipments = ParseShipments(shipmentsSheet, result.Errors, autoGenerateAwb);
         }
         catch (Exception ex)
         {
@@ -619,7 +627,7 @@ public class ImportExcelService
         }
     }
 
-    private List<ImportShipmentDto> ParseShipments(IXLWorksheet sheet, List<ImportValidationError> errors)
+    private List<ImportShipmentDto> ParseShipments(IXLWorksheet sheet, List<ImportValidationError> errors, bool autoGenerateAwb = false)
     {
         var shipments = new List<ImportShipmentDto>();
         
@@ -627,13 +635,20 @@ public class ImportExcelService
         while (true)
         {
             var awbNo = sheet.Cell(row, 1).GetString()?.Trim();
-            if (string.IsNullOrWhiteSpace(awbNo))
+            var consigneeName = sheet.Cell(row, 3).GetString()?.Trim();
+            
+            // When auto-generating AWB, use consignee name to detect rows; otherwise use AWB
+            var hasData = autoGenerateAwb 
+                ? !string.IsNullOrWhiteSpace(consigneeName) 
+                : !string.IsNullOrWhiteSpace(awbNo);
+            
+            if (!hasData)
                 break;
             
             var shipment = new ImportShipmentDto
             {
                 RowNumber = row,
-                AWBNo = awbNo,
+                AWBNo = awbNo ?? "",
                 ReferenceNo = sheet.Cell(row, 2).GetString()?.Trim(),
                 ConsigneeName = sheet.Cell(row, 3).GetString()?.Trim() ?? "",
                 ConsigneeAddress = sheet.Cell(row, 4).GetString()?.Trim(),
@@ -753,21 +768,26 @@ public class ImportExcelService
             });
         }
         
-        var duplicateAwbs = shipments
-            .GroupBy(s => s.AWBNo.ToUpperInvariant())
-            .Where(g => g.Count() > 1)
-            .Select(g => g.Key)
-            .ToList();
-        
-        foreach (var dup in duplicateAwbs)
+        // Only check for duplicate AWBs when not auto-generating
+        if (!autoGenerateAwb)
         {
-            var dupRows = shipments.Where(s => s.AWBNo.ToUpperInvariant() == dup).Select(s => s.RowNumber);
-            errors.Add(new ImportValidationError 
-            { 
-                Sheet = "Shipments", 
-                Column = "AWB No",
-                Message = $"Duplicate AWB '{dup}' found in rows {string.Join(", ", dupRows)}" 
-            });
+            var duplicateAwbs = shipments
+                .Where(s => !string.IsNullOrWhiteSpace(s.AWBNo))
+                .GroupBy(s => s.AWBNo.ToUpperInvariant())
+                .Where(g => g.Count() > 1)
+                .Select(g => g.Key)
+                .ToList();
+            
+            foreach (var dup in duplicateAwbs)
+            {
+                var dupRows = shipments.Where(s => s.AWBNo.ToUpperInvariant() == dup).Select(s => s.RowNumber);
+                errors.Add(new ImportValidationError 
+                { 
+                    Sheet = "Shipments", 
+                    Column = "AWB No",
+                    Message = $"Duplicate AWB '{dup}' found in rows {string.Join(", ", dupRows)}" 
+                });
+            }
         }
         
         return shipments;

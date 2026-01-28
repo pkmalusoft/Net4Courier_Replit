@@ -7,6 +7,7 @@
 @inject ISnackbar Snackbar
 @inject IJSRuntime JSRuntime
 @inject NavigationManager Navigation
+@inject AWBNumberService AwbNumberService
 
 <MudDialog>
     <TitleContent>
@@ -92,6 +93,15 @@
                 <MudText Typo="Typo.body1" Class="mb-4">
                     Upload your completed Excel file. Make sure all required fields (marked with *) are filled.
                 </MudText>
+                
+                <MudPaper Class="pa-3 mb-4" Outlined="true">
+                    <div class="d-flex align-center gap-3">
+                        <MudSwitch @bind-Value="_autoGenerateAwb" Color="Color.Primary" Label="Auto-Generate AWB Numbers" />
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">
+                            When enabled, leave AWB column blank or zero - system will auto-generate AWB numbers
+                        </MudText>
+                    </div>
+                </MudPaper>
                 
                 <MudFileUpload T="IBrowserFile" 
                                FilesChanged="OnFileSelected" 
@@ -279,6 +289,7 @@
     private ImportExcelParseResult? _parseResult;
     private bool _isProcessing;
     private bool _isSaving;
+    private bool _autoGenerateAwb;
 
     private async Task DownloadTemplate()
     {
@@ -336,7 +347,7 @@
             await stream.CopyToAsync(ms);
             ms.Position = 0;
             
-            _parseResult = ExcelService.ParseExcel(ms);
+            _parseResult = ExcelService.ParseExcel(ms, _autoGenerateAwb);
             
             if (_parseResult.Header != null)
             {
@@ -395,6 +406,39 @@
                 var importMaster = ExcelService.CreateImportMaster(_parseResult.Header, branchId, companyId, financialYearId, _selectedDirection);
                 context.ImportMasters.Add(importMaster);
                 await context.SaveChangesAsync();
+                
+                // Auto-generate AWB numbers if enabled
+                if (_autoGenerateAwb && branchId.HasValue)
+                {
+                    var shipmentsNeedingAwb = _parseResult.Shipments
+                        .Where(s => string.IsNullOrWhiteSpace(s.AWBNo) || s.AWBNo == "0")
+                        .ToList();
+                    
+                    if (shipmentsNeedingAwb.Any())
+                    {
+                        // Use branch's AWB configuration for generation
+                        var prefix = branch?.AWBPrefix ?? "";
+                        var increment = branch?.AWBIncrement ?? 1;
+                        var lastUsed = branch?.AWBLastUsedNumber ?? branch?.AWBStartingNumber ?? 1;
+                        
+                        // If never used, start from starting number
+                        if (lastUsed == 0 && branch?.AWBStartingNumber > 0)
+                            lastUsed = branch.AWBStartingNumber - increment;
+                        
+                        foreach (var shipmentDto in shipmentsNeedingAwb)
+                        {
+                            lastUsed += increment;
+                            shipmentDto.AWBNo = $"{prefix}{lastUsed}";
+                        }
+                        
+                        // Update branch's last used AWB number
+                        if (branch != null)
+                        {
+                            branch.AWBLastUsedNumber = lastUsed;
+                            branch.ModifiedAt = DateTime.UtcNow;
+                        }
+                    }
+                }
                 
                 var shipments = ExcelService.CreateImportShipments(_parseResult.Shipments, importMaster.Id);
                 context.ImportShipments.AddRange(shipments);
