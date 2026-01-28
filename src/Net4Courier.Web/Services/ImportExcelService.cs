@@ -44,6 +44,7 @@ public class ImportShipmentDto
 {
     public int RowNumber { get; set; }
     public string AWBNo { get; set; } = string.Empty;
+    public string? ReferenceNo { get; set; }
     public string ConsigneeName { get; set; } = string.Empty;
     public string? ConsigneeAddress { get; set; }
     public string? ConsigneeCity { get; set; }
@@ -224,6 +225,7 @@ public class ImportExcelService
         var headers = new[]
         {
             ("AWB No *", true),
+            ("Ref. AWB No.", false),
             ("Consignee Name *", true),
             ("Consignee Address", false),
             ("Consignee City", false),
@@ -552,52 +554,53 @@ public class ImportExcelService
             {
                 RowNumber = row,
                 AWBNo = awbNo,
-                ConsigneeName = sheet.Cell(row, 2).GetString()?.Trim() ?? "",
-                ConsigneeAddress = sheet.Cell(row, 3).GetString()?.Trim(),
-                ConsigneeCity = sheet.Cell(row, 4).GetString()?.Trim(),
-                ConsigneeState = sheet.Cell(row, 5).GetString()?.Trim(),
-                ConsigneeCountry = sheet.Cell(row, 6).GetString()?.Trim() ?? "",
-                ConsigneePostalCode = sheet.Cell(row, 7).GetString()?.Trim(),
-                ConsigneePhone = sheet.Cell(row, 8).GetString()?.Trim(),
-                ShipperName = sheet.Cell(row, 9).GetString()?.Trim(),
-                ShipperCountry = sheet.Cell(row, 10).GetString()?.Trim(),
-                ContentsDescription = sheet.Cell(row, 13).GetString()?.Trim(),
-                HSCode = sheet.Cell(row, 14).GetString()?.Trim(),
-                Currency = sheet.Cell(row, 16).GetString()?.Trim(),
-                PaymentMode = sheet.Cell(row, 19).GetString()?.Trim(),
-                SpecialInstructions = sheet.Cell(row, 20).GetString()?.Trim()
+                ReferenceNo = sheet.Cell(row, 2).GetString()?.Trim(),
+                ConsigneeName = sheet.Cell(row, 3).GetString()?.Trim() ?? "",
+                ConsigneeAddress = sheet.Cell(row, 4).GetString()?.Trim(),
+                ConsigneeCity = sheet.Cell(row, 5).GetString()?.Trim(),
+                ConsigneeState = sheet.Cell(row, 6).GetString()?.Trim(),
+                ConsigneeCountry = sheet.Cell(row, 7).GetString()?.Trim() ?? "",
+                ConsigneePostalCode = sheet.Cell(row, 8).GetString()?.Trim(),
+                ConsigneePhone = sheet.Cell(row, 9).GetString()?.Trim(),
+                ShipperName = sheet.Cell(row, 10).GetString()?.Trim(),
+                ShipperCountry = sheet.Cell(row, 11).GetString()?.Trim(),
+                ContentsDescription = sheet.Cell(row, 14).GetString()?.Trim(),
+                HSCode = sheet.Cell(row, 15).GetString()?.Trim(),
+                Currency = sheet.Cell(row, 17).GetString()?.Trim(),
+                PaymentMode = sheet.Cell(row, 20).GetString()?.Trim(),
+                SpecialInstructions = sheet.Cell(row, 21).GetString()?.Trim()
             };
             
-            var piecesVal = sheet.Cell(row, 11).Value;
+            var piecesVal = sheet.Cell(row, 12).Value;
             if (piecesVal.IsNumber)
                 shipment.Pieces = (int)piecesVal.GetNumber();
-            else if (int.TryParse(sheet.Cell(row, 11).GetString(), out var pieces))
+            else if (int.TryParse(sheet.Cell(row, 12).GetString(), out var pieces))
                 shipment.Pieces = pieces;
             else
                 shipment.Pieces = 1;
             
-            var weightVal = sheet.Cell(row, 12).Value;
+            var weightVal = sheet.Cell(row, 13).Value;
             if (weightVal.IsNumber)
                 shipment.Weight = (decimal)weightVal.GetNumber();
-            else if (decimal.TryParse(sheet.Cell(row, 12).GetString(), out var weight))
+            else if (decimal.TryParse(sheet.Cell(row, 13).GetString(), out var weight))
                 shipment.Weight = weight;
             
-            var declaredVal = sheet.Cell(row, 15).Value;
+            var declaredVal = sheet.Cell(row, 16).Value;
             if (declaredVal.IsNumber)
                 shipment.DeclaredValue = (decimal)declaredVal.GetNumber();
-            else if (decimal.TryParse(sheet.Cell(row, 15).GetString(), out var declaredValue))
+            else if (decimal.TryParse(sheet.Cell(row, 16).GetString(), out var declaredValue))
                 shipment.DeclaredValue = declaredValue;
             
-            var dutyVatVal = sheet.Cell(row, 17).Value;
+            var dutyVatVal = sheet.Cell(row, 18).Value;
             if (dutyVatVal.IsNumber)
                 shipment.DutyVatAmount = (decimal)dutyVatVal.GetNumber();
-            else if (decimal.TryParse(sheet.Cell(row, 17).GetString(), out var dutyVat))
+            else if (decimal.TryParse(sheet.Cell(row, 18).GetString(), out var dutyVat))
                 shipment.DutyVatAmount = dutyVat;
             
-            var codCollVal = sheet.Cell(row, 18).Value;
+            var codCollVal = sheet.Cell(row, 19).Value;
             if (codCollVal.IsNumber)
                 shipment.CodCollectionAmount = (decimal)codCollVal.GetNumber();
-            else if (decimal.TryParse(sheet.Cell(row, 18).GetString(), out var codColl))
+            else if (decimal.TryParse(sheet.Cell(row, 19).GetString(), out var codColl))
                 shipment.CodCollectionAmount = codColl;
             
             if (string.IsNullOrWhiteSpace(shipment.ConsigneeName))
@@ -744,6 +747,7 @@ public class ImportExcelService
         {
             ImportMasterId = importMasterId,
             AWBNo = dto.AWBNo,
+            ReferenceNo = dto.ReferenceNo,
             ConsigneeName = dto.ConsigneeName,
             ConsigneeAddress = dto.ConsigneeAddress,
             ConsigneeCity = dto.ConsigneeCity,
