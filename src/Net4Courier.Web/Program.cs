@@ -137,6 +137,7 @@ builder.Services.AddScoped<ImportExcelService>();
 builder.Services.AddScoped<ShipmentExcelService>();
 builder.Services.AddSingleton<BarcodeService>();
 builder.Services.AddScoped<AWBPrintService>(sp => new AWBPrintService(sp.GetRequiredService<IWebHostEnvironment>()));
+builder.Services.AddScoped<IDemoDataService, DemoDataService>();
 builder.Services.AddScoped<PODUpdateService>();
 builder.Services.AddScoped<PODExcelService>();
 builder.Services.AddScoped<ISecureStorageService, SecureStorageService>();

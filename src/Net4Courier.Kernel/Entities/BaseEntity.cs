@@ -9,6 +9,7 @@ public abstract class BaseEntity
     public int? ModifiedBy { get; set; }
     public bool IsActive { get; set; } = true;
     public bool IsDeleted { get; set; } = false;
+    public bool IsDemo { get; set; } = false;
 }
 
 public abstract class AuditableEntity : BaseEntity

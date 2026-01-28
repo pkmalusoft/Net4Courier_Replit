@@ -1,0 +1,262 @@
+@page "/manage-demo-data"
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.EntityFrameworkCore
+@using Net4Courier.Infrastructure.Data
+@using Net4Courier.Web.Services
+@attribute [Authorize]
+@inject IDemoDataService DemoDataService
+@inject ISnackbar Snackbar
+@inject IDialogService DialogService
+
+<PageTitle>Manage Demo Data - Net4Courier</PageTitle>
+
+<MudBreadcrumbs Items="_breadcrumbs" Class="mb-2" />
+
+<MudText Typo="Typo.h4" GutterBottom="true">Manage Demo Data</MudText>
+<MudText Typo="Typo.subtitle1" Class="mb-4" Color="Color.Secondary">Create or delete demo data for training and demonstration purposes</MudText>
+
+@if (_loading)
+{
+    <MudProgressLinear Color="Color.Primary" Indeterminate="true" />
+}
+else
+{
+    <MudGrid>
+        <MudItem xs="12" md="6">
+            <MudPaper Class="pa-4" Elevation="2">
+                <MudText Typo="Typo.h6" Class="mb-4">Demo Data Statistics</MudText>
+                
+                <MudSimpleTable Dense="true" Hover="true">
+                    <thead>
+                        <tr>
+                            <th>Entity</th>
+                            <th style="text-align: right;">Count</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td><MudIcon Icon="@Icons.Material.Filled.People" Size="Size.Small" Class="mr-2" />Customers (Parties)</td>
+                            <td style="text-align: right; color: #2196f3; font-weight: bold;">@_stats.Parties</td>
+                        </tr>
+                        <tr>
+                            <td><MudIcon Icon="@Icons.Material.Filled.LocalShipping" Size="Size.Small" Class="mr-2" />Pickup Requests</td>
+                            <td style="text-align: right; color: #2196f3; font-weight: bold;">@_stats.PickupRequests</td>
+                        </tr>
+                        <tr>
+                            <td><MudIcon Icon="@Icons.Material.Filled.QrCode" Size="Size.Small" Class="mr-2" />AWBs (Shipments)</td>
+                            <td style="text-align: right; color: #2196f3; font-weight: bold;">@_stats.AWBs</td>
+                        </tr>
+                        <tr>
+                            <td><MudIcon Icon="@Icons.Material.Filled.Receipt" Size="Size.Small" Class="mr-2" />Invoices</td>
+                            <td style="text-align: right; color: #2196f3; font-weight: bold;">@_stats.Invoices</td>
+                        </tr>
+                        <tr>
+                            <td><MudIcon Icon="@Icons.Material.Filled.Payment" Size="Size.Small" Class="mr-2" />Receipts</td>
+                            <td style="text-align: right; color: #2196f3; font-weight: bold;">@_stats.Receipts</td>
+                        </tr>
+                        <tr>
+                            <td><MudIcon Icon="@Icons.Material.Filled.Book" Size="Size.Small" Class="mr-2" />Journals</td>
+                            <td style="text-align: right; color: #2196f3; font-weight: bold;">@_stats.Journals</td>
+                        </tr>
+                        <tr>
+                            <td><MudIcon Icon="@Icons.Material.Filled.DeliveryDining" Size="Size.Small" Class="mr-2" />Delivery Run Sheets</td>
+                            <td style="text-align: right; color: #2196f3; font-weight: bold;">@_stats.DRS</td>
+                        </tr>
+                    </tbody>
+                </MudSimpleTable>
+                
+                <MudDivider Class="my-4" />
+                
+                <MudButton Variant="Variant.Outlined" Color="Color.Primary" OnClick="RefreshStats" 
+                           StartIcon="@Icons.Material.Filled.Refresh" Class="mr-2">
+                    Refresh
+                </MudButton>
+            </MudPaper>
+        </MudItem>
+        
+        <MudItem xs="12" md="6">
+            <MudPaper Class="pa-4" Elevation="2">
+                <MudText Typo="Typo.h6" Class="mb-4">Create Demo Data</MudText>
+                <MudText Typo="Typo.body2" Class="mb-4" Color="Color.Secondary">
+                    This will create 5 demo customers and 5 complete AWB workflows (from pickup to delivery) for training purposes.
+                    Demo records will be displayed in <span style="color: #2196f3; font-weight: bold;">blue</span> to distinguish them from real data.
+                </MudText>
+                
+                <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="CreateMasterData" 
+                           Disabled="@_processing" StartIcon="@Icons.Material.Filled.PersonAdd" Class="mr-2 mb-2">
+                    @if (_processing && _processingAction == "master") { <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" /> }
+                    Create Demo Customers
+                </MudButton>
+                
+                <MudButton Variant="Variant.Filled" Color="Color.Secondary" OnClick="CreateTransactionData" 
+                           Disabled="@_processing" StartIcon="@Icons.Material.Filled.LocalShipping" Class="mb-2">
+                    @if (_processing && _processingAction == "transaction") { <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" /> }
+                    Create Demo AWBs
+                </MudButton>
+            </MudPaper>
+            
+            <MudPaper Class="pa-4 mt-4" Elevation="2">
+                <MudText Typo="Typo.h6" Class="mb-4" Color="Color.Error">Delete Demo Data</MudText>
+                <MudText Typo="Typo.body2" Class="mb-4" Color="Color.Secondary">
+                    This will permanently remove all demo data from the system. Real data will not be affected.
+                </MudText>
+                
+                <MudButton Variant="Variant.Filled" Color="Color.Error" OnClick="DeleteDemoData" 
+                           Disabled="@_processing" StartIcon="@Icons.Material.Filled.Delete">
+                    @if (_processing && _processingAction == "delete") { <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" /> }
+                    Delete All Demo Data
+                </MudButton>
+            </MudPaper>
+        </MudItem>
+    </MudGrid>
+    
+    <MudPaper Class="pa-4 mt-4" Elevation="2">
+        <MudText Typo="Typo.h6" Class="mb-3">
+            <MudIcon Icon="@Icons.Material.Filled.Info" Class="mr-2" />About Demo Data
+        </MudText>
+        <MudText Typo="Typo.body2">
+            <ul>
+                <li><strong>Demo Customers:</strong> Creates 5 sample customer accounts with UAE addresses (Dubai, Abu Dhabi, Sharjah, Ajman)</li>
+                <li><strong>Demo AWBs:</strong> Creates 5 complete shipment workflows including:
+                    <ul>
+                        <li>Pickup Request → Pickup Completion</li>
+                        <li>Inscan at Origin → Manifest Creation</li>
+                        <li>Transit → Destination Inscan</li>
+                        <li>Delivery Run Sheet → POD Completion</li>
+                    </ul>
+                </li>
+                <li><strong>Identification:</strong> All demo records are marked with <span style="color: #2196f3; font-weight: bold;">blue text</span> in data grids</li>
+                <li><strong>Safe Deletion:</strong> Only demo records are deleted; real business data is never affected</li>
+            </ul>
+        </MudText>
+    </MudPaper>
+}
+
+@code {
+    private bool _loading = true;
+    private bool _processing = false;
+    private string _processingAction = "";
+    private DemoDataStats _stats = new();
+    
+    private List<BreadcrumbItem> _breadcrumbs = new()
+    {
+        new BreadcrumbItem("Masters & Settings", href: null, disabled: true),
+        new BreadcrumbItem("Manage Demo Data", href: null, disabled: true)
+    };
+
+    protected override async Task OnInitializedAsync()
+    {
+        await RefreshStats();
+        _loading = false;
+    }
+
+    private async Task RefreshStats()
+    {
+        try
+        {
+            _stats = await DemoDataService.GetDemoDataStatsAsync();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error loading stats: {ex.Message}", Severity.Error);
+        }
+    }
+
+    private async Task CreateMasterData()
+    {
+        _processing = true;
+        _processingAction = "master";
+        StateHasChanged();
+        
+        try
+        {
+            var result = await DemoDataService.CreateMasterDataAsync();
+            if (result)
+            {
+                Snackbar.Add("Demo customers created successfully!", Severity.Success);
+                await RefreshStats();
+            }
+            else
+            {
+                Snackbar.Add("Failed to create demo customers", Severity.Error);
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _processing = false;
+            _processingAction = "";
+        }
+    }
+
+    private async Task CreateTransactionData()
+    {
+        _processing = true;
+        _processingAction = "transaction";
+        StateHasChanged();
+        
+        try
+        {
+            var result = await DemoDataService.CreateTransactionDataAsync();
+            if (result)
+            {
+                Snackbar.Add("Demo AWBs and workflows created successfully!", Severity.Success);
+                await RefreshStats();
+            }
+            else
+            {
+                Snackbar.Add("Failed to create demo AWBs", Severity.Error);
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _processing = false;
+            _processingAction = "";
+        }
+    }
+
+    private async Task DeleteDemoData()
+    {
+        var result = await DialogService.ShowMessageBox(
+            "Confirm Delete",
+            "Are you sure you want to delete ALL demo data? This action cannot be undone.",
+            yesText: "Yes, Delete All",
+            cancelText: "Cancel");
+        
+        if (result != true) return;
+        
+        _processing = true;
+        _processingAction = "delete";
+        StateHasChanged();
+        
+        try
+        {
+            var deleteResult = await DemoDataService.DeleteAllDemoDataAsync();
+            if (deleteResult)
+            {
+                Snackbar.Add("All demo data deleted successfully!", Severity.Success);
+                await RefreshStats();
+            }
+            else
+            {
+                Snackbar.Add("Failed to delete demo data", Severity.Error);
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _processing = false;
+            _processingAction = "";
+        }
+    }
+}
