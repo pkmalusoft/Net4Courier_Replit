@@ -54,9 +54,8 @@
             <HeaderContent>
                 <MudTh>Zone Code</MudTh>
                 <MudTh>Zone Name</MudTh>
-                <MudTh>Default Country</MudTh>
-                <MudTh>Default City</MudTh>
-                <MudTh>Mapped Locations</MudTh>
+                <MudTh>Type</MudTh>
+                <MudTh>Countries/Cities</MudTh>
                 <MudTh>Sort Order</MudTh>
                 <MudTh Style="width:120px">Actions</MudTh>
             </HeaderContent>
@@ -65,10 +64,13 @@
                     <MudChip T="string" Size="Size.Small" Color="Color.Primary">@context.ZoneCode</MudChip>
                 </MudTd>
                 <MudTd DataLabel="Zone Name">@context.ZoneName</MudTd>
-                <MudTd DataLabel="Country">@GetCountryName(context.CountryId)</MudTd>
-                <MudTd DataLabel="City">@GetCityName(context.CityId)</MudTd>
+                <MudTd DataLabel="Type">
+                    <MudChip T="string" Size="Size.Small" Color="@(context.ZoneType == ZoneType.International ? Color.Info : Color.Secondary)">
+                        @context.ZoneType.ToString()
+                    </MudChip>
+                </MudTd>
                 <MudTd DataLabel="Locations">
-                    <MudLink OnClick="@(() => EditZoneDetails(context))">@context.Details.Count locations</MudLink>
+                    <MudLink OnClick="@(() => EditZone(context))">@context.Details.Count @(context.ZoneType == ZoneType.International ? "countries" : "cities")</MudLink>
                 </MudTd>
                 <MudTd DataLabel="Sort">@context.SortOrder</MudTd>
                 <MudTd>
@@ -94,8 +96,6 @@
     private List<ZoneMatrixEntity> _zones = new();
     private List<ZoneCategory> _categories = new();
     private ZoneCategory? _selectedCategory;
-    private Dictionary<long, string> _countryNames = new();
-    private Dictionary<long, string> _cityNames = new();
     private bool _loading = true;
     private string _searchText = "";
     private long? _categoryId;
@@ -143,23 +143,6 @@
             }
 
             _zones = await query.OrderBy(z => z.SortOrder).ThenBy(z => z.ZoneCode).ToListAsync();
-
-            var countryIds = _zones.Where(z => z.CountryId.HasValue).Select(z => z.CountryId!.Value).Distinct().ToList();
-            var cityIds = _zones.Where(z => z.CityId.HasValue).Select(z => z.CityId!.Value).Distinct().ToList();
-
-            if (countryIds.Any())
-            {
-                _countryNames = await DbContext.Countries
-                    .Where(c => countryIds.Contains(c.Id))
-                    .ToDictionaryAsync(c => c.Id, c => c.Name);
-            }
-
-            if (cityIds.Any())
-            {
-                _cityNames = await DbContext.Cities
-                    .Where(c => cityIds.Contains(c.Id))
-                    .ToDictionaryAsync(c => c.Id, c => c.Name);
-            }
         }
         finally
         {
@@ -235,7 +218,4 @@
     {
         Navigation.NavigateTo("/rate-cards");
     }
-
-    private string GetCountryName(long? id) => id.HasValue && _countryNames.TryGetValue(id.Value, out var name) ? name : "-";
-    private string GetCityName(long? id) => id.HasValue && _cityNames.TryGetValue(id.Value, out var name) ? name : "-";
 }

@@ -11,28 +11,76 @@
     </TitleContent>
     <DialogContent>
         <MudGrid>
-            <MudItem xs="12" md="6">
+            <MudItem xs="12" md="4">
                 <MudTextField @bind-Value="_zone.ZoneCode" Label="Zone Code" Required="true"
                               Variant="Variant.Outlined" Margin="Margin.Dense" MaxLength="20" />
             </MudItem>
-            <MudItem xs="12" md="6">
+            <MudItem xs="12" md="4">
+                <MudTextField @bind-Value="_zone.ZoneName" Label="Zone Name" Required="true"
+                              Variant="Variant.Outlined" Margin="Margin.Dense" MaxLength="100" />
+            </MudItem>
+            <MudItem xs="12" md="4">
                 <MudNumericField T="int" @bind-Value="_zone.SortOrder" Label="Sort Order"
                                  Variant="Variant.Outlined" Margin="Margin.Dense" />
             </MudItem>
             <MudItem xs="12">
-                <MudTextField @bind-Value="_zone.ZoneName" Label="Zone Name" Required="true"
-                              Variant="Variant.Outlined" Margin="Margin.Dense" MaxLength="100" />
+                <MudSelect T="ZoneType" Value="_zone.ZoneType" ValueChanged="OnZoneTypeChanged" Label="Zone Type" Required="true"
+                           Variant="Variant.Outlined" Margin="Margin.Dense">
+                    <MudSelectItem Value="ZoneType.International">International</MudSelectItem>
+                    <MudSelectItem Value="ZoneType.Domestic">Domestic</MudSelectItem>
+                </MudSelect>
             </MudItem>
-            <MudItem xs="12">
-                <MudAutocomplete T="Country" @bind-Value="_selectedCountry" Label="Default Country"
-                                 SearchFunc="SearchCountries" ToStringFunc="@(c => c?.Name ?? "")"
-                                 Variant="Variant.Outlined" Margin="Margin.Dense" Clearable="true" />
-            </MudItem>
-            <MudItem xs="12">
-                <MudAutocomplete T="City" @bind-Value="_selectedCity" Label="Default City"
-                                 SearchFunc="SearchCities" ToStringFunc="@(c => c?.Name ?? "")"
-                                 Variant="Variant.Outlined" Margin="Margin.Dense" Clearable="true" />
-            </MudItem>
+
+            @if (_zone.ZoneType == ZoneType.International)
+            {
+                <MudItem xs="12">
+                    <MudText Typo="Typo.subtitle2" Class="mb-2">Select Countries</MudText>
+                    <MudAutocomplete T="Country" Label="Search and Add Countries"
+                                     SearchFunc="SearchCountries" ToStringFunc="@(c => c?.Name ?? "")"
+                                     Variant="Variant.Outlined" Margin="Margin.Dense"
+                                     ValueChanged="AddCountry" Clearable="true"
+                                     ResetValueOnEmptyText="true" />
+                </MudItem>
+                <MudItem xs="12">
+                    <MudChipSet>
+                        @foreach (var country in _selectedCountries)
+                        {
+                            <MudChip T="string" Color="Color.Primary" OnClose="() => RemoveCountry(country)">
+                                @country.Name
+                            </MudChip>
+                        }
+                    </MudChipSet>
+                    @if (!_selectedCountries.Any())
+                    {
+                        <MudText Typo="Typo.caption" Color="Color.Warning">No countries selected</MudText>
+                    }
+                </MudItem>
+            }
+            else
+            {
+                <MudItem xs="12">
+                    <MudText Typo="Typo.subtitle2" Class="mb-2">Select Cities</MudText>
+                    <MudAutocomplete T="City" Label="Search and Add Cities"
+                                     SearchFunc="SearchCities" ToStringFunc="@(c => c != null ? $"{c.Name} ({c.Country?.Name ?? ""})" : "")"
+                                     Variant="Variant.Outlined" Margin="Margin.Dense"
+                                     ValueChanged="AddCity" Clearable="true"
+                                     ResetValueOnEmptyText="true" />
+                </MudItem>
+                <MudItem xs="12">
+                    <MudChipSet>
+                        @foreach (var city in _selectedCities)
+                        {
+                            <MudChip T="string" Color="Color.Secondary" OnClose="() => RemoveCity(city)">
+                                @city.Name (@(city.Country?.Name ?? ""))
+                            </MudChip>
+                        }
+                    </MudChipSet>
+                    @if (!_selectedCities.Any())
+                    {
+                        <MudText Typo="Typo.caption" Color="Color.Warning">No cities selected</MudText>
+                    }
+                </MudItem>
+            }
         </MudGrid>
     </DialogContent>
     <DialogActions>
@@ -46,8 +94,8 @@
     [Parameter] public long ZoneId { get; set; }
 
     private ZoneMatrixEntity _zone = new();
-    private Country? _selectedCountry;
-    private City? _selectedCity;
+    private List<Country> _selectedCountries = new();
+    private List<City> _selectedCities = new();
     private bool _isNew => ZoneId == 0;
     private bool _saving;
 
@@ -55,25 +103,41 @@
     {
         if (!_isNew)
         {
-            _zone = await DbContext.ZoneMatrices.FirstOrDefaultAsync(z => z.Id == ZoneId) ?? new ZoneMatrixEntity();
-            if (_zone.CountryId.HasValue)
+            _zone = await DbContext.ZoneMatrices
+                .Include(z => z.Details)
+                .FirstOrDefaultAsync(z => z.Id == ZoneId) ?? new ZoneMatrixEntity();
+            
+            var countryIds = _zone.Details.Where(d => d.CountryId.HasValue).Select(d => d.CountryId!.Value).ToList();
+            var cityIds = _zone.Details.Where(d => d.CityId.HasValue).Select(d => d.CityId!.Value).ToList();
+            
+            if (countryIds.Any())
             {
-                _selectedCountry = await DbContext.Countries.FindAsync(_zone.CountryId.Value);
+                _selectedCountries = await DbContext.Countries
+                    .Where(c => countryIds.Contains(c.Id))
+                    .ToListAsync();
             }
-            if (_zone.CityId.HasValue)
+            
+            if (cityIds.Any())
             {
-                _selectedCity = await DbContext.Cities.FindAsync(_zone.CityId.Value);
+                _selectedCities = await DbContext.Cities
+                    .Include(c => c.Country)
+                    .Where(c => cityIds.Contains(c.Id))
+                    .ToListAsync();
             }
         }
         else
         {
-            _zone = new ZoneMatrixEntity { IsActive = true };
+            _zone = new ZoneMatrixEntity { IsActive = true, ZoneType = ZoneType.International };
         }
     }
 
     private async Task<IEnumerable<Country>> SearchCountries(string value)
     {
         var query = DbContext.Countries.Where(c => !c.IsDeleted && c.IsActive);
+        
+        var selectedIds = _selectedCountries.Select(c => c.Id).ToList();
+        query = query.Where(c => !selectedIds.Contains(c.Id));
+        
         if (!string.IsNullOrWhiteSpace(value))
         {
             query = query.Where(c => c.Name.ToLower().Contains(value.ToLower()) ||
@@ -84,16 +148,65 @@
 
     private async Task<IEnumerable<City>> SearchCities(string value)
     {
-        var query = DbContext.Cities.Where(c => !c.IsDeleted && c.IsActive);
-        if (_selectedCountry != null)
-        {
-            query = query.Where(c => c.CountryId == _selectedCountry.Id);
-        }
+        var query = DbContext.Cities
+            .Include(c => c.Country)
+            .Where(c => !c.IsDeleted && c.IsActive);
+        
+        var selectedIds = _selectedCities.Select(c => c.Id).ToList();
+        query = query.Where(c => !selectedIds.Contains(c.Id));
+        
         if (!string.IsNullOrWhiteSpace(value))
         {
             query = query.Where(c => c.Name.ToLower().Contains(value.ToLower()));
         }
         return await query.OrderBy(c => c.Name).Take(20).ToListAsync();
+    }
+
+    private void AddCountry(Country? country)
+    {
+        if (country != null && !_selectedCountries.Any(c => c.Id == country.Id))
+        {
+            _selectedCountries.Add(country);
+            StateHasChanged();
+        }
+    }
+
+    private void RemoveCountry(Country country)
+    {
+        _selectedCountries.Remove(country);
+        StateHasChanged();
+    }
+
+    private void AddCity(City? city)
+    {
+        if (city != null && !_selectedCities.Any(c => c.Id == city.Id))
+        {
+            _selectedCities.Add(city);
+            StateHasChanged();
+        }
+    }
+
+    private void RemoveCity(City city)
+    {
+        _selectedCities.Remove(city);
+        StateHasChanged();
+    }
+
+    private void OnZoneTypeChanged(ZoneType newType)
+    {
+        if (_zone.ZoneType != newType)
+        {
+            _zone.ZoneType = newType;
+            if (newType == ZoneType.International)
+            {
+                _selectedCities.Clear();
+            }
+            else
+            {
+                _selectedCountries.Clear();
+            }
+            StateHasChanged();
+        }
     }
 
     private async Task Save()
@@ -104,24 +217,78 @@
             return;
         }
 
+        if (_zone.ZoneType == ZoneType.International && !_selectedCountries.Any())
+        {
+            Snackbar.Add("Please select at least one country for international zone", Severity.Error);
+            return;
+        }
+
+        if (_zone.ZoneType == ZoneType.Domestic && !_selectedCities.Any())
+        {
+            Snackbar.Add("Please select at least one city for domestic zone", Severity.Error);
+            return;
+        }
+
         _saving = true;
+        using var transaction = await DbContext.Database.BeginTransactionAsync();
         try
         {
-            _zone.CountryId = _selectedCountry?.Id;
-            _zone.CityId = _selectedCity?.Id;
-
             if (_isNew)
             {
                 _zone.CreatedAt = DateTime.UtcNow;
                 DbContext.ZoneMatrices.Add(_zone);
+                await DbContext.SaveChangesAsync();
             }
             else
             {
                 _zone.ModifiedAt = DateTime.UtcNow;
+                
+                var existingDetails = await DbContext.ZoneMatrixDetails
+                    .Where(d => d.ZoneMatrixId == _zone.Id)
+                    .ToListAsync();
+                DbContext.ZoneMatrixDetails.RemoveRange(existingDetails);
+            }
+
+            if (_zone.ZoneType == ZoneType.International)
+            {
+                foreach (var country in _selectedCountries)
+                {
+                    var detail = new ZoneMatrixDetail
+                    {
+                        ZoneMatrixId = _zone.Id,
+                        CountryId = country.Id,
+                        CreatedAt = DateTime.UtcNow,
+                        IsActive = true
+                    };
+                    DbContext.ZoneMatrixDetails.Add(detail);
+                }
+                _zone.CountryId = _selectedCountries.FirstOrDefault()?.Id;
+                _zone.CityId = null;
+            }
+            else
+            {
+                foreach (var city in _selectedCities)
+                {
+                    var detail = new ZoneMatrixDetail
+                    {
+                        ZoneMatrixId = _zone.Id,
+                        CityId = city.Id,
+                        CreatedAt = DateTime.UtcNow,
+                        IsActive = true
+                    };
+                    DbContext.ZoneMatrixDetails.Add(detail);
+                }
+                _zone.CityId = _selectedCities.FirstOrDefault()?.Id;
+                _zone.CountryId = null;
             }
 
             await DbContext.SaveChangesAsync();
+            await transaction.CommitAsync();
             MudDialog.Close(DialogResult.Ok(true));
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error saving zone: {ex.Message}", Severity.Error);
         }
         finally
         {

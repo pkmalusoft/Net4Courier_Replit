@@ -7,6 +7,7 @@ public class ZoneMatrix : AuditableEntity
     public long? ZoneCategoryId { get; set; }
     public string ZoneCode { get; set; } = string.Empty;
     public string ZoneName { get; set; } = string.Empty;
+    public ZoneType ZoneType { get; set; } = ZoneType.International;
     public long? CountryId { get; set; }
     public long? CityId { get; set; }
     public long? CompanyId { get; set; }
