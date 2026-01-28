@@ -688,15 +688,17 @@ public class ImportExcelService
         return shipments;
     }
 
-    public ImportMaster CreateImportMaster(ImportHeaderDto header, long? branchId, long? companyId, long? financialYearId)
+    public ImportMaster CreateImportMaster(ImportHeaderDto header, long? branchId, long? companyId, long? financialYearId, ShipmentDirection shipmentDirection = ShipmentDirection.Import)
     {
-        var refPrefix = header.ImportMode switch
+        var dirPrefix = shipmentDirection == ShipmentDirection.Export ? "EXP" : "IMP";
+        var modePrefix = header.ImportMode switch
         {
-            ImportMode.Air => "IMP-AIR",
-            ImportMode.Sea => "IMP-SEA",
-            ImportMode.Land => "IMP-LND",
-            _ => "IMP"
+            ImportMode.Air => "AIR",
+            ImportMode.Sea => "SEA",
+            ImportMode.Land => "LND",
+            _ => ""
         };
+        var refPrefix = $"{dirPrefix}-{modePrefix}";
         
         return new ImportMaster
         {
@@ -706,6 +708,7 @@ public class ImportExcelService
             CompanyId = companyId,
             BranchId = branchId,
             ImportMode = header.ImportMode,
+            ShipmentDirection = shipmentDirection,
             MasterReferenceType = header.ImportMode == ImportMode.Air ? MasterReferenceType.MAWB : 
                                   header.ImportMode == ImportMode.Sea ? MasterReferenceType.BL : MasterReferenceType.TruckWaybill,
             MasterReferenceNumber = header.MasterReferenceNumber,
