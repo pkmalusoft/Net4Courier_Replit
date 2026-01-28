@@ -979,10 +979,10 @@ public class ApplicationDbContext : DbContext
             entity.Property(e => e.MasterReferenceNumber).HasMaxLength(50).IsRequired();
             entity.Property(e => e.OriginCountryName).HasMaxLength(100);
             entity.Property(e => e.OriginCityName).HasMaxLength(100);
-            entity.Property(e => e.OriginPortCode).HasMaxLength(20);
+            entity.Property(e => e.OriginPortCode).HasMaxLength(100);
             entity.Property(e => e.DestinationCountryName).HasMaxLength(100);
             entity.Property(e => e.DestinationCityName).HasMaxLength(100);
-            entity.Property(e => e.DestinationPortCode).HasMaxLength(20);
+            entity.Property(e => e.DestinationPortCode).HasMaxLength(100);
             entity.Property(e => e.CarrierName).HasMaxLength(100);
             entity.Property(e => e.CarrierCode).HasMaxLength(20);
             entity.Property(e => e.FlightNo).HasMaxLength(20);
