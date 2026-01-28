@@ -723,12 +723,12 @@ public class ImportExcelService
             DestinationCountryName = header.DestinationCountry,
             DestinationCityName = header.DestinationCity,
             DestinationPortCode = header.DestinationPort,
-            ETD = header.ETD,
-            ETA = header.ETA,
+            ETD = ToUtc(header.ETD),
+            ETA = ToUtc(header.ETA),
             CarrierName = header.CarrierName,
             CarrierCode = header.CarrierCode,
             FlightNo = header.FlightNo,
-            FlightDate = header.FlightDate,
+            FlightDate = ToUtc(header.FlightDate),
             VesselName = header.VesselName,
             VoyageNumber = header.VoyageNumber,
             TruckNumber = header.TruckNumber,
@@ -785,5 +785,14 @@ public class ImportExcelService
             "credit" => PaymentMode.Credit,
             _ => PaymentMode.Prepaid
         };
+    }
+
+    private static DateTime? ToUtc(DateTime? dateTime)
+    {
+        if (!dateTime.HasValue) return null;
+        var dt = dateTime.Value;
+        return dt.Kind == DateTimeKind.Unspecified 
+            ? DateTime.SpecifyKind(dt, DateTimeKind.Utc) 
+            : dt.ToUniversalTime();
     }
 }
