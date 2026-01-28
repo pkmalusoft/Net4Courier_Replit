@@ -107,15 +107,35 @@ else
             </div>
         </div>
 
+        <div class="d-flex gap-2 mb-4">
+            <MudButtonGroup Color="Color.Primary" Variant="Variant.Outlined" Size="Size.Small">
+                <MudButton OnClick="@(() => SetDirectionFilter(null))" 
+                           Variant="@(_filterDirection == null ? Variant.Filled : Variant.Outlined)">All</MudButton>
+                <MudButton OnClick="@(() => SetDirectionFilter(ShipmentDirection.Import))" 
+                           Variant="@(_filterDirection == ShipmentDirection.Import ? Variant.Filled : Variant.Outlined)"
+                           StartIcon="@Icons.Material.Filled.CallReceived">Import</MudButton>
+                <MudButton OnClick="@(() => SetDirectionFilter(ShipmentDirection.Export))" 
+                           Variant="@(_filterDirection == ShipmentDirection.Export ? Variant.Filled : Variant.Outlined)"
+                           StartIcon="@Icons.Material.Filled.CallMade">Export</MudButton>
+            </MudButtonGroup>
+            <MudDivider Vertical="true" FlexItem="true" Class="mx-2" />
+            <MudButtonGroup Color="Color.Secondary" Variant="Variant.Outlined" Size="Size.Small">
+                <MudButton OnClick="@(() => SetModeFilter(null))" 
+                           Variant="@(_filterMode == null ? Variant.Filled : Variant.Outlined)">All</MudButton>
+                <MudButton OnClick="@(() => SetModeFilter(ImportMode.Air))" 
+                           Variant="@(_filterMode == ImportMode.Air ? Variant.Filled : Variant.Outlined)"
+                           StartIcon="@Icons.Material.Filled.Flight">Air</MudButton>
+                <MudButton OnClick="@(() => SetModeFilter(ImportMode.Sea))" 
+                           Variant="@(_filterMode == ImportMode.Sea ? Variant.Filled : Variant.Outlined)"
+                           StartIcon="@Icons.Material.Filled.DirectionsBoat">Sea</MudButton>
+                <MudButton OnClick="@(() => SetModeFilter(ImportMode.Land))" 
+                           Variant="@(_filterMode == ImportMode.Land ? Variant.Filled : Variant.Outlined)"
+                           StartIcon="@Icons.Material.Filled.LocalShipping">Land</MudButton>
+            </MudButtonGroup>
+        </div>
+
         <MudGrid Class="mb-4">
-            <MudItem xs="12" sm="4" md="3">
-                <MudSelect T="ImportMode?" Label="Mode" @bind-Value="_filterMode" Variant="Variant.Outlined" Dense="true" Clearable="true">
-                    <MudSelectItem T="ImportMode?" Value="ImportMode.Air">Air</MudSelectItem>
-                    <MudSelectItem T="ImportMode?" Value="ImportMode.Sea">Sea</MudSelectItem>
-                    <MudSelectItem T="ImportMode?" Value="ImportMode.Land">Land</MudSelectItem>
-                </MudSelect>
-            </MudItem>
-            <MudItem xs="12" sm="4" md="3">
+            <MudItem xs="12" sm="4" md="4">
                 <MudSelect T="ImportMasterStatus?" Label="Status" @bind-Value="_filterStatus" Variant="Variant.Outlined" Dense="true" Clearable="true">
                     @foreach (ImportMasterStatus status in Enum.GetValues(typeof(ImportMasterStatus)))
                     {
@@ -123,7 +143,7 @@ else
                     }
                 </MudSelect>
             </MudItem>
-            <MudItem xs="12" sm="4" md="3">
+            <MudItem xs="12" sm="4" md="4">
                 <MudDatePicker Label="From Date" @bind-Date="_filterFromDate" Variant="Variant.Outlined" Dense="true" />
             </MudItem>
             <MudItem xs="12" sm="4" md="2">
@@ -131,7 +151,7 @@ else
                     <MudIcon Icon="@Icons.Material.Filled.Search" Class="mr-1" /> Filter
                 </MudButton>
             </MudItem>
-            <MudItem xs="12" sm="4" md="1">
+            <MudItem xs="12" sm="4" md="2">
                 <MudButton Variant="Variant.Text" Color="Color.Secondary" OnClick="ClearFilter" FullWidth="true" Class="mt-1">
                     Clear
                 </MudButton>
@@ -199,6 +219,7 @@ else
         new BreadcrumbItem("Manifest Dashboard", href: null, disabled: true)
     };
 
+    private ShipmentDirection? _filterDirection;
     private ImportMode? _filterMode;
     private ImportMasterStatus? _filterStatus;
     private DateTime? _filterFromDate;
@@ -239,6 +260,9 @@ else
         await using var dbContext = await DbFactory.CreateDbContextAsync();
         var query = dbContext.ImportMasters.Where(i => !i.IsDeleted);
 
+        if (_filterDirection.HasValue)
+            query = query.Where(i => i.ShipmentDirection == _filterDirection.Value);
+
         if (_filterMode.HasValue)
             query = query.Where(i => i.ImportMode == _filterMode.Value);
 
@@ -264,9 +288,22 @@ else
 
     private async Task ClearFilter()
     {
+        _filterDirection = null;
         _filterMode = null;
         _filterStatus = null;
         _filterFromDate = null;
+        await LoadImports();
+    }
+
+    private async Task SetDirectionFilter(ShipmentDirection? direction)
+    {
+        _filterDirection = direction;
+        await LoadImports();
+    }
+
+    private async Task SetModeFilter(ImportMode? mode)
+    {
+        _filterMode = mode;
         await LoadImports();
     }
 
@@ -345,12 +382,12 @@ else
         using var workbook = new XLWorkbook();
         var worksheet = workbook.Worksheets.Add("Imports");
 
-        worksheet.Cell(1, 1).Value = "Import Dashboard";
+        worksheet.Cell(1, 1).Value = "Manifest Dashboard";
         worksheet.Cell(1, 1).Style.Font.Bold = true;
         worksheet.Cell(1, 1).Style.Font.FontSize = 14;
-        worksheet.Range(1, 1, 1, 10).Merge();
+        worksheet.Range(1, 1, 1, 12).Merge();
 
-        var headers = new[] { "Ref No", "Mode", "Master No", "Origin", "Destination", "ETA", "Bags", "Shipments", "VAT Amount", "Status" };
+        var headers = new[] { "Ref No", "Ref.AWB", "Direction", "Mode", "Master No", "Origin", "Destination", "ETA", "Bags", "Shipments", "VAT Amount", "Status" };
         for (int i = 0; i < headers.Length; i++)
         {
             worksheet.Cell(3, i + 1).Value = headers[i];
@@ -366,25 +403,27 @@ else
             totalVAT += vatAmount;
 
             worksheet.Cell(row, 1).Value = import.ImportRefNo ?? "";
-            worksheet.Cell(row, 2).Value = import.ImportMode.ToString();
-            worksheet.Cell(row, 3).Value = import.MasterReferenceNumber ?? "";
-            worksheet.Cell(row, 4).Value = $"{import.OriginCityName}, {import.OriginCountryName}";
-            worksheet.Cell(row, 5).Value = $"{import.DestinationCityName}, {import.DestinationCountryName}";
-            worksheet.Cell(row, 6).Value = import.ETA?.ToString("dd/MM/yyyy") ?? "";
-            worksheet.Cell(row, 7).Value = import.TotalBags;
-            worksheet.Cell(row, 8).Value = import.TotalShipments;
-            worksheet.Cell(row, 9).Value = vatAmount;
-            worksheet.Cell(row, 9).Style.NumberFormat.Format = "#,##0.00";
-            worksheet.Cell(row, 10).Value = import.Status.ToString();
+            worksheet.Cell(row, 2).Value = import.MasterReferenceNumber ?? "";
+            worksheet.Cell(row, 3).Value = import.ShipmentDirection.ToString();
+            worksheet.Cell(row, 4).Value = import.ImportMode.ToString();
+            worksheet.Cell(row, 5).Value = import.MasterReferenceNumber ?? "";
+            worksheet.Cell(row, 6).Value = $"{import.OriginCityName}, {import.OriginCountryName}";
+            worksheet.Cell(row, 7).Value = $"{import.DestinationCityName}, {import.DestinationCountryName}";
+            worksheet.Cell(row, 8).Value = import.ETA?.ToString("dd/MM/yyyy") ?? "";
+            worksheet.Cell(row, 9).Value = import.TotalBags;
+            worksheet.Cell(row, 10).Value = import.TotalShipments;
+            worksheet.Cell(row, 11).Value = vatAmount;
+            worksheet.Cell(row, 11).Style.NumberFormat.Format = "#,##0.00";
+            worksheet.Cell(row, 12).Value = import.Status.ToString();
             row++;
         }
 
         worksheet.Row(row).Style.Font.Bold = true;
-        worksheet.Cell(row, 6).Value = "Total:";
-        worksheet.Cell(row, 7).Value = _imports.Sum(i => i.TotalBags);
-        worksheet.Cell(row, 8).Value = _imports.Sum(i => i.TotalShipments);
-        worksheet.Cell(row, 9).Value = totalVAT;
-        worksheet.Cell(row, 9).Style.NumberFormat.Format = "#,##0.00";
+        worksheet.Cell(row, 8).Value = "Total:";
+        worksheet.Cell(row, 9).Value = _imports.Sum(i => i.TotalBags);
+        worksheet.Cell(row, 10).Value = _imports.Sum(i => i.TotalShipments);
+        worksheet.Cell(row, 11).Value = totalVAT;
+        worksheet.Cell(row, 11).Style.NumberFormat.Format = "#,##0.00";
 
         worksheet.Columns().AdjustToContents();
 
