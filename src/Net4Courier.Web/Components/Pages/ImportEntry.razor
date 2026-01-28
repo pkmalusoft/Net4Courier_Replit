@@ -11,11 +11,11 @@
 @inject IDialogService DialogService
 @inject IJSRuntime JSRuntime
 
-<PageTitle>@(IsNew ? "New Import" : "Edit Import") - Net4Courier</PageTitle>
+<PageTitle>@(IsNew ? "New Manifest" : "Edit Manifest") - Net4Courier</PageTitle>
 
 <MudBreadcrumbs Items="_breadcrumbs" Class="mb-2" />
 
-<MudText Typo="Typo.h4" GutterBottom="true">@(IsNew ? "New Import" : "Edit Import")</MudText>
+<MudText Typo="Typo.h4" GutterBottom="true">@(IsNew ? "New Manifest" : "Edit Manifest")</MudText>
 
 @if (_loading)
 {
@@ -130,12 +130,12 @@ else
                                              ValueChanged="OnOriginCountryChanged" />
                         </MudItem>
                         <MudItem xs="12" sm="6">
-                            <MudSelect T="Port" Label="@(_import.ImportMode == ImportMode.Sea ? "Origin Port" : "Origin Airport")" 
+                            <MudSelect T="Port" Label="@GetOriginPortLabel()" 
                                        @bind-Value="_originPort"
                                        Variant="Variant.Outlined" Dense="true"
                                        ToStringFunc="@(p => p != null ? $"{p.Name} ({p.IATACode ?? p.Code})" : "")">
                                 <MudSelectItem T="Port" Value="@((Port?)null)">-- Select --</MudSelectItem>
-                                @foreach (var port in GetFilteredPorts())
+                                @foreach (var port in GetOriginFilteredPorts())
                                 {
                                     <MudSelectItem T="Port" Value="@port">@port.Name (@(port.IATACode ?? port.Code))</MudSelectItem>
                                 }
@@ -148,12 +148,12 @@ else
                                              ValueChanged="OnDestCountryChanged" />
                         </MudItem>
                         <MudItem xs="12" sm="6">
-                            <MudSelect T="Port" Label="@(_import.ImportMode == ImportMode.Sea ? "Destination Port" : "Destination Airport")" 
+                            <MudSelect T="Port" Label="@GetDestPortLabel()" 
                                        @bind-Value="_destinationPort"
                                        Variant="Variant.Outlined" Dense="true"
                                        ToStringFunc="@(p => p != null ? $"{p.Name} ({p.IATACode ?? p.Code})" : "")">
                                 <MudSelectItem T="Port" Value="@((Port?)null)">-- Select --</MudSelectItem>
-                                @foreach (var port in GetFilteredPorts())
+                                @foreach (var port in GetDestFilteredPorts())
                                 {
                                     <MudSelectItem T="Port" Value="@port">@port.Name (@(port.IATACode ?? port.Code))</MudSelectItem>
                                 }
@@ -473,8 +473,8 @@ else
     
     private List<BreadcrumbItem> _breadcrumbs = new()
     {
-        new BreadcrumbItem("Import Dashboard", href: "/import-dashboard"),
-        new BreadcrumbItem("Import Entry", href: null, disabled: true)
+        new BreadcrumbItem("Manifest Dashboard", href: "/import-dashboard"),
+        new BreadcrumbItem("Manifest Entry", href: null, disabled: true)
     };
 
     protected override async Task OnInitializedAsync()
@@ -572,18 +572,62 @@ else
         return Task.FromResult(_countries.Where(c => c.Name.Contains(value, StringComparison.OrdinalIgnoreCase)).Take(20));
     }
 
-    private void OnOriginCountryChanged(Country? country)
+    private async Task OnOriginCountryChanged(Country? country)
     {
         _originCountry = country;
         _import.OriginCountryId = country?.Id;
         _import.OriginCountryName = country?.Name;
+        _originPort = null;
+        
+        if (country != null)
+        {
+            var availablePorts = GetOriginFilteredPorts().ToList();
+            if (!availablePorts.Any())
+            {
+                await ShowNoPortsWarning("origin", country.Name ?? "");
+            }
+        }
+        StateHasChanged();
     }
 
-    private void OnDestCountryChanged(Country? country)
+    private async Task OnDestCountryChanged(Country? country)
     {
         _destCountry = country;
         _import.DestinationCountryId = country?.Id;
         _import.DestinationCountryName = country?.Name;
+        _destinationPort = null;
+        
+        if (country != null)
+        {
+            var availablePorts = GetDestFilteredPorts().ToList();
+            if (!availablePorts.Any())
+            {
+                await ShowNoPortsWarning("destination", country.Name ?? "");
+            }
+        }
+        StateHasChanged();
+    }
+    
+    private async Task ShowNoPortsWarning(string portDirection, string countryName)
+    {
+        var portTypeName = _import.ImportMode switch
+        {
+            ImportMode.Air => "airports",
+            ImportMode.Sea => "seaports",
+            ImportMode.Land => "land borders",
+            _ => "ports"
+        };
+        
+        var result = await DialogService.ShowMessageBox(
+            "No Ports Available",
+            $"No {portTypeName} are available in {countryName}. Would you like to create new ports?",
+            yesText: "Yes, Create Port",
+            cancelText: "No, Leave Blank");
+        
+        if (result == true)
+        {
+            Navigation.NavigateTo($"/ports?returnUrl=/import-entry{(IsNew ? "" : $"/{Id}")}&country={countryName}");
+        }
     }
 
     private string GetReferenceLabel() => _import.ImportMode switch
@@ -602,17 +646,59 @@ else
         _ => ""
     };
 
-    private IEnumerable<Port> GetFilteredPorts()
+    private PortType GetPortTypeForMode() => _import.ImportMode switch
     {
-        var portType = _import.ImportMode switch
+        ImportMode.Air => PortType.Airport,
+        ImportMode.Sea => PortType.Seaport,
+        ImportMode.Land => PortType.LandBorder,
+        _ => PortType.Airport
+    };
+    
+    private IEnumerable<Port> GetOriginFilteredPorts()
+    {
+        var portType = GetPortTypeForMode();
+        var filtered = _ports.Where(p => p.PortType == portType);
+        
+        if (_originCountry != null)
         {
-            ImportMode.Air => PortType.Airport,
-            ImportMode.Sea => PortType.Seaport,
-            ImportMode.Land => PortType.LandBorder,
-            _ => PortType.Airport
-        };
-        return _ports.Where(p => p.PortType == portType);
+            filtered = filtered.Where(p => 
+                (!string.IsNullOrEmpty(_originCountry.Code) && string.Equals(p.CountryCode, _originCountry.Code, StringComparison.OrdinalIgnoreCase)) ||
+                (!string.IsNullOrEmpty(_originCountry.Name) && string.Equals(p.Country, _originCountry.Name, StringComparison.OrdinalIgnoreCase)));
+        }
+        
+        return filtered;
     }
+    
+    private IEnumerable<Port> GetDestFilteredPorts()
+    {
+        var portType = GetPortTypeForMode();
+        var filtered = _ports.Where(p => p.PortType == portType);
+        
+        if (_destCountry != null)
+        {
+            filtered = filtered.Where(p => 
+                (!string.IsNullOrEmpty(_destCountry.Code) && string.Equals(p.CountryCode, _destCountry.Code, StringComparison.OrdinalIgnoreCase)) ||
+                (!string.IsNullOrEmpty(_destCountry.Name) && string.Equals(p.Country, _destCountry.Name, StringComparison.OrdinalIgnoreCase)));
+        }
+        
+        return filtered;
+    }
+    
+    private string GetOriginPortLabel() => _import.ImportMode switch
+    {
+        ImportMode.Air => "Origin Airport",
+        ImportMode.Sea => "Origin Port",
+        ImportMode.Land => "Origin Border",
+        _ => "Origin Port"
+    };
+    
+    private string GetDestPortLabel() => _import.ImportMode switch
+    {
+        ImportMode.Air => "Destination Airport",
+        ImportMode.Sea => "Destination Port",
+        ImportMode.Land => "Destination Border",
+        _ => "Destination Port"
+    };
 
     private async Task SaveDraft()
     {
