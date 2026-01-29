@@ -1,0 +1,90 @@
+@inject ApplicationDbContext DbContext
+@inject ISnackbar Snackbar
+@using Microsoft.EntityFrameworkCore
+@using MudBlazor
+@using Net4Courier.Infrastructure.Data
+@using Net4Courier.Masters.Entities
+
+<MudDialog>
+    <TitleContent>
+        <MudText Typo="Typo.h6">@(Currency.Id == 0 ? "Add Currency" : "Edit Currency")</MudText>
+    </TitleContent>
+    <DialogContent>
+        <MudGrid Spacing="2">
+            <MudItem xs="4">
+                <MudTextField @bind-Value="Currency.Code" Label="Code*" Variant="Variant.Outlined" Required="true" MaxLength="3" />
+            </MudItem>
+            <MudItem xs="8">
+                <MudTextField @bind-Value="Currency.Name" Label="Name*" Variant="Variant.Outlined" Required="true" />
+            </MudItem>
+            <MudItem xs="6">
+                <MudTextField @bind-Value="Currency.Symbol" Label="Symbol" Variant="Variant.Outlined" />
+            </MudItem>
+            <MudItem xs="6">
+                <MudNumericField @bind-Value="Currency.DecimalPlaces" Label="Decimal Places" Variant="Variant.Outlined" Min="0" Max="4" />
+            </MudItem>
+            <MudItem xs="12">
+                <MudCheckBox @bind-Value="Currency.IsActive" Label="Active" Color="Color.Success" />
+            </MudItem>
+        </MudGrid>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Cancel">Cancel</MudButton>
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="Save">Save</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] MudDialogInstance MudDialog { get; set; } = null!;
+    [Parameter] public Currency Currency { get; set; } = new();
+
+    private void Cancel() => MudDialog.Cancel();
+
+    private async Task Save()
+    {
+        if (string.IsNullOrWhiteSpace(Currency.Code) || string.IsNullOrWhiteSpace(Currency.Name))
+        {
+            Snackbar.Add("Code and Name are required", Severity.Warning);
+            return;
+        }
+
+        try
+        {
+            if (Currency.Id == 0)
+            {
+                var exists = await DbContext.Currencies.AnyAsync(c => c.Code == Currency.Code && !c.IsDeleted);
+                if (exists)
+                {
+                    Snackbar.Add("A currency with this code already exists", Severity.Warning);
+                    return;
+                }
+
+                Currency.CreatedAt = DateTime.UtcNow;
+                DbContext.Currencies.Add(Currency);
+                await DbContext.SaveChangesAsync();
+                Snackbar.Add("Currency added successfully", Severity.Success);
+            }
+            else
+            {
+                var existing = await DbContext.Currencies.FindAsync(Currency.Id);
+                if (existing != null)
+                {
+                    existing.Code = Currency.Code;
+                    existing.Name = Currency.Name;
+                    existing.Symbol = Currency.Symbol;
+                    existing.DecimalPlaces = Currency.DecimalPlaces;
+                    existing.IsActive = Currency.IsActive;
+                    existing.ModifiedAt = DateTime.UtcNow;
+                    await DbContext.SaveChangesAsync();
+                    Snackbar.Add("Currency updated successfully", Severity.Success);
+                }
+            }
+
+            MudDialog.Close(DialogResult.Ok(true));
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error saving currency: {ex.Message}", Severity.Error);
+        }
+    }
+}
