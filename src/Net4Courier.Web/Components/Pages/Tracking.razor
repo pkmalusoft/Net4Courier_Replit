@@ -6,6 +6,7 @@
 @using Net4Courier.Operations.Entities
 @using Net4Courier.Web.Services
 @using Net4Courier.Kernel.Enums
+@using Net4Courier.Operations.Enums
 @using Net4Courier.Masters.Entities
 @inject ApplicationDbContext DbContext
 @inject ShipmentStatusService StatusService
@@ -104,6 +105,13 @@
                                                StartIcon="@Icons.Material.Filled.Print"
                                                OnClick="@(() => PrintTrackingDetails(result))">
                                         Print
+                                    </MudButton>
+                                    <MudButton Variant="Variant.Filled" 
+                                               Color="Color.Warning" 
+                                               Size="Size.Small"
+                                               StartIcon="@Icons.Material.Filled.Update"
+                                               OnClick="@(() => OpenChangeStatusDialog(result.Shipment))">
+                                        Change Status
                                     </MudButton>
                                 </div>
                             </div>
@@ -680,6 +688,45 @@
     private void EditShipment(long shipmentId)
     {
         NavigationManager.NavigateTo($"/awb-entry/{shipmentId}");
+    }
+    
+    private async Task OpenChangeStatusDialog(InscanMaster shipment)
+    {
+        var parameters = new DialogParameters<UpdateStatusDialog>
+        {
+            { x => x.Shipment, shipment },
+            { x => x.EntityType, EntityType.Shipment }
+        };
+        
+        var options = new DialogOptions 
+        { 
+            CloseButton = true, 
+            MaxWidth = MaxWidth.Small, 
+            FullWidth = true 
+        };
+        
+        var dialog = await DialogService.ShowAsync<UpdateStatusDialog>(
+            "Change Status", parameters, options);
+        var result = await dialog.Result;
+        
+        if (!result.Canceled)
+        {
+            // Refresh the timeline for this shipment after status change
+            var trackingResult = _shipmentResults.FirstOrDefault(r => r.Shipment.Id == shipment.Id);
+            if (trackingResult != null)
+            {
+                trackingResult.Timeline = await StatusService.GetTimeline(shipment.Id);
+                
+                // Reload shipment to get updated status
+                var updatedShipment = await DbContext.InscanMasters.FirstOrDefaultAsync(s => s.Id == shipment.Id);
+                if (updatedShipment != null)
+                {
+                    trackingResult.Shipment = updatedShipment;
+                }
+                
+                StateHasChanged();
+            }
+        }
     }
 
     private async Task PrintTrackingDetails(ShipmentTrackingResult result)
