@@ -439,37 +439,66 @@
         var awb = await DbContext.InscanMasters
             .FirstOrDefaultAsync(a => a.AWBNo == awbNo && !a.IsDeleted);
 
-        if (awb == null)
+        if (awb != null)
         {
-            _lastMessage = $"AWB {awbNo} scanned (not found in system - logged only)";
-            _lastSeverity = Severity.Info;
-            Snackbar.Add(_lastMessage, Severity.Info);
+            if (awb.CourierStatusId == CourierStatus.InscanAtOrigin)
+            {
+                _lastMessage = $"AWB {awbNo} already inscanned at origin";
+                _lastSeverity = Severity.Warning;
+                Snackbar.Add(_lastMessage, Severity.Warning);
+            }
+            else
+            {
+                awb.CourierStatusId = CourierStatus.InscanAtOrigin;
+                awb.ModifiedAt = DateTime.UtcNow;
+                awb.ModifiedByName = _currentUsername;
+                
+                await DbContext.SaveChangesAsync();
+                
+                await ShipmentStatusService.SetStatus(
+                    awb.Id, "INSCAN_ORIGIN", "PickupInscan", null, null,
+                    null, awb.ConsignorCity, null, null,
+                    $"AWB received into warehouse via direct scan", isAutomatic: true);
+                
+                _lastMessage = $"AWB {awbNo} received into warehouse! Status updated to InscanAtOrigin.";
+                _lastSeverity = Severity.Success;
+                Snackbar.Add(_lastMessage, Severity.Success);
+                
+                await LoadData();
+            }
+            return;
         }
-        else if (awb.CourierStatusId == CourierStatus.InscanAtOrigin)
+        
+        var importShipment = await DbContext.ImportShipments
+            .FirstOrDefaultAsync(s => s.AWBNo == awbNo && !s.IsDeleted);
+        
+        if (importShipment != null)
         {
-            _lastMessage = $"AWB {awbNo} already inscanned at origin";
-            _lastSeverity = Severity.Warning;
-            Snackbar.Add(_lastMessage, Severity.Warning);
+            if (importShipment.Status == ImportShipmentStatus.ReceivedAtWarehouse)
+            {
+                _lastMessage = $"Import AWB {awbNo} already received at warehouse";
+                _lastSeverity = Severity.Warning;
+                Snackbar.Add(_lastMessage, Severity.Warning);
+            }
+            else
+            {
+                importShipment.Status = ImportShipmentStatus.ReceivedAtWarehouse;
+                importShipment.ModifiedAt = DateTime.UtcNow;
+                
+                await DbContext.SaveChangesAsync();
+                
+                _lastMessage = $"Import AWB {awbNo} received at warehouse! Status updated to Received at Origin Facility.";
+                _lastSeverity = Severity.Success;
+                Snackbar.Add(_lastMessage, Severity.Success);
+                
+                await LoadData();
+            }
+            return;
         }
-        else
-        {
-            awb.CourierStatusId = CourierStatus.InscanAtOrigin;
-            awb.ModifiedAt = DateTime.UtcNow;
-            awb.ModifiedByName = _currentUsername;
-            
-            await DbContext.SaveChangesAsync();
-            
-            await ShipmentStatusService.SetStatus(
-                awb.Id, "INSCAN_ORIGIN", "PickupInscan", null, null,
-                null, awb.ConsignorCity, null, null,
-                $"AWB received into warehouse via direct scan", isAutomatic: true);
-            
-            _lastMessage = $"AWB {awbNo} received into warehouse! Status updated to InscanAtOrigin.";
-            _lastSeverity = Severity.Success;
-            Snackbar.Add(_lastMessage, Severity.Success);
-            
-            await LoadData();
-        }
+        
+        _lastMessage = $"AWB {awbNo} not found in system";
+        _lastSeverity = Severity.Warning;
+        Snackbar.Add(_lastMessage, Severity.Warning);
     }
 
     private void SelectPickup(PickupRequest pickup)

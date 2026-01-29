@@ -47,6 +47,7 @@ public enum ImportShipmentStatus
 {
     Expected = 0,
     Inscanned = 1,
+    ReceivedAtWarehouse = 10,
     PendingCustoms = 2,
     CustomsHold = 3,
     UnderExamination = 4,
