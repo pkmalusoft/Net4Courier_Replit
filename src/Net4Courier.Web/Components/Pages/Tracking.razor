@@ -13,6 +13,7 @@
 @inject IDialogService DialogService
 @inject NavigationManager NavigationManager
 @inject IJSRuntime JSRuntime
+@inject ISnackbar Snackbar
 @rendermode InteractiveServer
 
 <PageTitle>Track Shipment | Net4Courier</PageTitle>
@@ -590,7 +591,6 @@
                 if (_searchType == SearchType.AWBNumber)
                 {
                     var shipment = await DbContext.InscanMasters
-                        .Include(i => i.ServiceType)
                         .FirstOrDefaultAsync(i => i.AWBNo == term && !i.IsDeleted);
 
                     if (shipment != null)
@@ -601,11 +601,15 @@
                             .OrderByDescending(t => t.ChangedAt)
                             .ToListAsync();
 
+                        var serviceTypeName = shipment.ShipmentModeId.HasValue 
+                            ? (await DbContext.ShipmentModes.FindAsync(shipment.ShipmentModeId.Value))?.Name 
+                            : null;
+
                         _shipmentResults.Add(new ShipmentTrackingResult
                         {
                             Shipment = shipment,
                             Timeline = timeline,
-                            ServiceTypeName = shipment.ServiceType?.Name
+                            ServiceTypeName = serviceTypeName ?? "Standard"
                         });
                         found = true;
                     }
@@ -623,9 +627,11 @@
                 }
                 else if (_searchType == SearchType.PickupRequestNumber)
                 {
+                    if (!long.TryParse(term, out var pickupRequestId))
+                        continue;
+                    
                     var shipments = await DbContext.InscanMasters
-                        .Include(i => i.ServiceType)
-                        .Where(i => i.PickupRequestNo == term && !i.IsDeleted)
+                        .Where(i => i.PickupRequestId == pickupRequestId && !i.IsDeleted)
                         .ToListAsync();
 
                     foreach (var shipment in shipments)
@@ -636,11 +642,15 @@
                             .OrderByDescending(t => t.ChangedAt)
                             .ToListAsync();
 
+                        var serviceTypeName = shipment.ShipmentModeId.HasValue 
+                            ? (await DbContext.ShipmentModes.FindAsync(shipment.ShipmentModeId.Value))?.Name 
+                            : null;
+
                         _shipmentResults.Add(new ShipmentTrackingResult
                         {
                             Shipment = shipment,
                             Timeline = timeline,
-                            ServiceTypeName = shipment.ServiceType?.Name
+                            ServiceTypeName = serviceTypeName ?? "Standard"
                         });
                         found = true;
                     }
@@ -648,7 +658,6 @@
                 else if (_searchType == SearchType.ReferenceNumber)
                 {
                     var shipments = await DbContext.InscanMasters
-                        .Include(i => i.ServiceType)
                         .Where(i => i.ReferenceNo == term && !i.IsDeleted)
                         .ToListAsync();
 
@@ -660,11 +669,15 @@
                             .OrderByDescending(t => t.ChangedAt)
                             .ToListAsync();
 
+                        var serviceTypeName = shipment.ShipmentModeId.HasValue 
+                            ? (await DbContext.ShipmentModes.FindAsync(shipment.ShipmentModeId.Value))?.Name 
+                            : null;
+
                         _shipmentResults.Add(new ShipmentTrackingResult
                         {
                             Shipment = shipment,
                             Timeline = timeline,
-                            ServiceTypeName = shipment.ServiceType?.Name
+                            ServiceTypeName = serviceTypeName ?? "Standard"
                         });
                         found = true;
                     }
@@ -699,8 +712,8 @@
         CourierStatus.OutForDelivery => Color.Info,
         CourierStatus.InTransit => Color.Primary,
         CourierStatus.Pending => Color.Warning,
-        CourierStatus.Exception => Color.Error,
-        CourierStatus.RTS => Color.Error,
+        CourierStatus.NotDelivered => Color.Error,
+        CourierStatus.ReturnToOrigin => Color.Error,
         _ => Color.Default
     };
 
@@ -710,8 +723,8 @@
         CourierStatus.OutForDelivery => "Out for Delivery",
         CourierStatus.InTransit => "In Transit",
         CourierStatus.Pending => "Pending",
-        CourierStatus.Exception => "Exception",
-        CourierStatus.RTS => "Return to Shipper",
+        CourierStatus.NotDelivered => "Not Delivered",
+        CourierStatus.ReturnToOrigin => "Return to Origin",
         _ => status.ToString()
     };
 
@@ -734,45 +747,40 @@
     private string GetOriginFull(InscanMaster shipment)
     {
         var parts = new List<string>();
-        if (!string.IsNullOrEmpty(shipment.OriginCity)) parts.Add(shipment.OriginCity);
-        if (!string.IsNullOrEmpty(shipment.ConsignorPincode)) parts.Add(shipment.ConsignorPincode);
-        if (!string.IsNullOrEmpty(shipment.OriginCountry)) parts.Add(shipment.OriginCountry);
+        if (!string.IsNullOrEmpty(shipment.ConsignorCity)) parts.Add(shipment.ConsignorCity);
+        if (!string.IsNullOrEmpty(shipment.ConsignorPostalCode)) parts.Add(shipment.ConsignorPostalCode);
+        if (!string.IsNullOrEmpty(shipment.ConsignorCountry)) parts.Add(shipment.ConsignorCountry);
         return parts.Any() ? string.Join(", ", parts) : "N/A";
     }
 
     private string GetDestinationFull(InscanMaster shipment)
     {
         var parts = new List<string>();
-        if (!string.IsNullOrEmpty(shipment.DestinationCity)) parts.Add(shipment.DestinationCity);
-        if (!string.IsNullOrEmpty(shipment.ConsigneePincode)) parts.Add(shipment.ConsigneePincode);
-        if (!string.IsNullOrEmpty(shipment.DestinationCountry)) parts.Add(shipment.DestinationCountry);
+        if (!string.IsNullOrEmpty(shipment.ConsigneeCity)) parts.Add(shipment.ConsigneeCity);
+        if (!string.IsNullOrEmpty(shipment.ConsigneePostalCode)) parts.Add(shipment.ConsigneePostalCode);
+        if (!string.IsNullOrEmpty(shipment.ConsigneeCountry)) parts.Add(shipment.ConsigneeCountry);
         return parts.Any() ? string.Join(", ", parts) : "N/A";
     }
 
     private Color GetImportStatusColor(ImportShipmentStatus status) => status switch
     {
-        ImportShipmentStatus.Delivered => Color.Success,
-        ImportShipmentStatus.OutForDelivery => Color.Info,
-        ImportShipmentStatus.InTransit => Color.Primary,
-        ImportShipmentStatus.Inscanned => Color.Secondary,
-        ImportShipmentStatus.Pending => Color.Warning,
+        ImportShipmentStatus.HandedOver => Color.Success,
+        ImportShipmentStatus.Released => Color.Info,
+        ImportShipmentStatus.Inscanned => Color.Primary,
+        ImportShipmentStatus.Expected => Color.Warning,
         _ => Color.Default
     };
 
     private Color GetCODStatusColor(InscanMaster shipment)
     {
-        if (shipment.CODRemittedDate.HasValue)
+        if (shipment.CODCollected)
             return Color.Success;
-        if (shipment.CODCollectedDate.HasValue)
-            return Color.Info;
         return Color.Warning;
     }
 
     private string GetCODStatusText(InscanMaster shipment)
     {
-        if (shipment.CODRemittedDate.HasValue)
-            return "Remitted";
-        if (shipment.CODCollectedDate.HasValue)
+        if (shipment.CODCollected)
             return "Collected";
         return "Pending";
     }
@@ -789,19 +797,7 @@
 
     private async Task OpenChangeStatusDialog(InscanMaster shipment)
     {
-        var parameters = new DialogParameters<ChangeStatusDialog>
-        {
-            { x => x.AWBNo, shipment.AWBNo },
-            { x => x.CurrentStatus, shipment.CourierStatusId }
-        };
-
-        var options = new DialogOptions { MaxWidth = MaxWidth.Small, FullWidth = true };
-        var dialog = await DialogService.ShowAsync<ChangeStatusDialog>("Change Status", parameters, options);
-        var dialogResult = await dialog.Result;
-
-        if (dialogResult != null && !dialogResult.Canceled)
-        {
-            await TrackShipments();
-        }
+        Snackbar.Add("Status change feature coming soon", Severity.Info);
+        await Task.CompletedTask;
     }
 }
