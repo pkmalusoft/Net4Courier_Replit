@@ -1,0 +1,201 @@
+@page "/currencies"
+@inject ApplicationDbContext DbContext
+@inject ISnackbar Snackbar
+@inject IDialogService DialogService
+@using Microsoft.EntityFrameworkCore
+@using Net4Courier.Infrastructure.Data
+@using Net4Courier.Masters.Entities
+
+<PageTitle>Currency Management - Net4Courier</PageTitle>
+
+<MudPaper Class="pa-4" Elevation="0">
+    <MudToolBar Dense="true" Class="pl-0">
+        <MudText Typo="Typo.h6">Currency Management</MudText>
+        <MudSpacer />
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add" OnClick="OpenAddDialog">
+            Add Currency
+        </MudButton>
+    </MudToolBar>
+
+    <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-3">
+        Configure currencies for shipment values and transactions
+    </MudText>
+
+    <MudTable Items="_currencies" Hover="true" Dense="true" Loading="_loading">
+        <HeaderContent>
+            <MudTh>Code</MudTh>
+            <MudTh>Name</MudTh>
+            <MudTh>Symbol</MudTh>
+            <MudTh>Decimal Places</MudTh>
+            <MudTh>Status</MudTh>
+            <MudTh Style="width: 120px;">Actions</MudTh>
+        </HeaderContent>
+        <RowTemplate>
+            <MudTd>@context.Code</MudTd>
+            <MudTd>@context.Name</MudTd>
+            <MudTd>@(context.Symbol ?? "-")</MudTd>
+            <MudTd>@context.DecimalPlaces</MudTd>
+            <MudTd>
+                <MudChip T="string" Size="Size.Small" Color="@(context.IsActive ? Color.Success : Color.Default)">
+                    @(context.IsActive ? "Active" : "Inactive")
+                </MudChip>
+            </MudTd>
+            <MudTd>
+                <MudIconButton Icon="@Icons.Material.Filled.Edit" Size="Size.Small" OnClick="@(() => OpenEditDialog(context))" />
+                <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" Color="Color.Error" OnClick="@(() => DeleteCurrency(context))" />
+            </MudTd>
+        </RowTemplate>
+        <NoRecordsContent>
+            <MudText>No currencies found. Click "Add Currency" to create one.</MudText>
+        </NoRecordsContent>
+    </MudTable>
+</MudPaper>
+
+<MudDialog @bind-Visible="_dialogVisible">
+    <TitleContent>
+        <MudText Typo="Typo.h6">@(_editingCurrency.Id == 0 ? "Add Currency" : "Edit Currency")</MudText>
+    </TitleContent>
+    <DialogContent>
+        <MudGrid Spacing="2">
+            <MudItem xs="4">
+                <MudTextField @bind-Value="_editingCurrency.Code" Label="Code*" Variant="Variant.Outlined" Required="true" MaxLength="3" />
+            </MudItem>
+            <MudItem xs="8">
+                <MudTextField @bind-Value="_editingCurrency.Name" Label="Name*" Variant="Variant.Outlined" Required="true" />
+            </MudItem>
+            <MudItem xs="6">
+                <MudTextField @bind-Value="_editingCurrency.Symbol" Label="Symbol" Variant="Variant.Outlined" />
+            </MudItem>
+            <MudItem xs="6">
+                <MudNumericField @bind-Value="_editingCurrency.DecimalPlaces" Label="Decimal Places" Variant="Variant.Outlined" Min="0" Max="4" />
+            </MudItem>
+            <MudItem xs="12">
+                <MudCheckBox @bind-Value="_editingCurrency.IsActive" Label="Active" Color="Color.Success" />
+            </MudItem>
+        </MudGrid>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="CloseDialog">Cancel</MudButton>
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="SaveCurrency">Save</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    private List<Currency> _currencies = new();
+    private bool _loading = true;
+    private bool _dialogVisible;
+    private Currency _editingCurrency = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadData();
+    }
+
+    private async Task LoadData()
+    {
+        _loading = true;
+        _currencies = await DbContext.Currencies
+            .Where(c => !c.IsDeleted)
+            .OrderBy(c => c.Code)
+            .ToListAsync();
+        _loading = false;
+    }
+
+    private void OpenAddDialog()
+    {
+        _editingCurrency = new Currency { IsActive = true, DecimalPlaces = 2 };
+        _dialogVisible = true;
+    }
+
+    private void OpenEditDialog(Currency currency)
+    {
+        _editingCurrency = new Currency
+        {
+            Id = currency.Id,
+            Code = currency.Code,
+            Name = currency.Name,
+            Symbol = currency.Symbol,
+            DecimalPlaces = currency.DecimalPlaces,
+            IsActive = currency.IsActive
+        };
+        _dialogVisible = true;
+    }
+
+    private void CloseDialog()
+    {
+        _dialogVisible = false;
+    }
+
+    private async Task SaveCurrency()
+    {
+        if (string.IsNullOrWhiteSpace(_editingCurrency.Code) || string.IsNullOrWhiteSpace(_editingCurrency.Name))
+        {
+            Snackbar.Add("Code and Name are required", Severity.Warning);
+            return;
+        }
+
+        try
+        {
+            if (_editingCurrency.Id == 0)
+            {
+                var exists = await DbContext.Currencies.AnyAsync(c => c.Code == _editingCurrency.Code && !c.IsDeleted);
+                if (exists)
+                {
+                    Snackbar.Add("A currency with this code already exists", Severity.Warning);
+                    return;
+                }
+
+                _editingCurrency.CreatedAt = DateTime.UtcNow;
+                DbContext.Currencies.Add(_editingCurrency);
+                await DbContext.SaveChangesAsync();
+                Snackbar.Add("Currency added successfully", Severity.Success);
+            }
+            else
+            {
+                var existing = await DbContext.Currencies.FindAsync(_editingCurrency.Id);
+                if (existing != null)
+                {
+                    existing.Code = _editingCurrency.Code;
+                    existing.Name = _editingCurrency.Name;
+                    existing.Symbol = _editingCurrency.Symbol;
+                    existing.DecimalPlaces = _editingCurrency.DecimalPlaces;
+                    existing.IsActive = _editingCurrency.IsActive;
+                    existing.ModifiedAt = DateTime.UtcNow;
+                    await DbContext.SaveChangesAsync();
+                    Snackbar.Add("Currency updated successfully", Severity.Success);
+                }
+            }
+
+            _dialogVisible = false;
+            await LoadData();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error saving currency: {ex.Message}", Severity.Error);
+        }
+    }
+
+    private async Task DeleteCurrency(Currency currency)
+    {
+        var confirm = await DialogService.ShowMessageBox(
+            "Confirm Delete",
+            $"Are you sure you want to delete the currency '{currency.Name}'?",
+            yesText: "Delete", cancelText: "Cancel");
+
+        if (confirm == true)
+        {
+            try
+            {
+                currency.IsDeleted = true;
+                currency.ModifiedAt = DateTime.UtcNow;
+                await DbContext.SaveChangesAsync();
+                Snackbar.Add("Currency deleted", Severity.Success);
+                await LoadData();
+            }
+            catch (Exception ex)
+            {
+                Snackbar.Add($"Error deleting currency: {ex.Message}", Severity.Error);
+            }
+        }
+    }
+}
