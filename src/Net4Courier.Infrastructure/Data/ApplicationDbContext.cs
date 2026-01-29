@@ -13,6 +13,7 @@ public class ApplicationDbContext : DbContext
 
     public DbSet<Company> Companies => Set<Company>();
     public DbSet<Branch> Branches => Set<Branch>();
+    public DbSet<BranchAWBConfig> BranchAWBConfigs => Set<BranchAWBConfig>();
     public DbSet<User> Users => Set<User>();
     public DbSet<UserBranch> UserBranches => Set<UserBranch>();
     public DbSet<Warehouse> Warehouses => Set<Warehouse>();

@@ -1,6 +1,7 @@
 @using Microsoft.EntityFrameworkCore
 @using Net4Courier.Infrastructure.Data
 @using Net4Courier.Masters.Entities
+@using Net4Courier.Kernel.Enums
 @inject ApplicationDbContext DbContext
 
 <MudDialog>
@@ -98,24 +99,40 @@
 
                 <MudItem xs="12">
                     <MudDivider Class="my-2" />
-                    <MudText Typo="Typo.subtitle2" Class="mb-2">AWB Number Configuration</MudText>
+                    <MudText Typo="Typo.subtitle2" Class="mb-2">AWB Number Configuration by Movement Type</MudText>
                 </MudItem>
 
-                <MudItem xs="12" md="3">
-                    <MudTextField @bind-Value="Branch.AWBPrefix" Label="AWB Prefix" 
-                                  Variant="Variant.Outlined" HelperText="e.g. 120309" />
-                </MudItem>
-                <MudItem xs="12" md="3">
-                    <MudNumericField @bind-Value="Branch.AWBStartingNumber" Label="Starting Number" 
-                                     Variant="Variant.Outlined" Min="1" HelperText="First AWB number" />
-                </MudItem>
-                <MudItem xs="12" md="3">
-                    <MudNumericField @bind-Value="Branch.AWBIncrement" Label="Increment By" 
-                                     Variant="Variant.Outlined" Min="1" HelperText="e.g. 1, 10, 100" />
-                </MudItem>
-                <MudItem xs="12" md="3">
-                    <MudNumericField @bind-Value="Branch.AWBLastUsedNumber" Label="Last Used Number" 
-                                     Variant="Variant.Outlined" ReadOnly="true" HelperText="Auto-updated" />
+                <MudItem xs="12">
+                    <MudTable Items="_awbConfigs" Dense="true" Hover="true" Bordered="true" Striped="true">
+                        <HeaderContent>
+                            <MudTh>Movement Type</MudTh>
+                            <MudTh>AWB Prefix</MudTh>
+                            <MudTh>Starting Number</MudTh>
+                            <MudTh>Increment By</MudTh>
+                            <MudTh>Last Used Number</MudTh>
+                        </HeaderContent>
+                        <RowTemplate>
+                            <MudTd DataLabel="Movement Type">
+                                <MudText>@GetMovementTypeLabel(context.MovementType)</MudText>
+                            </MudTd>
+                            <MudTd DataLabel="AWB Prefix">
+                                <MudTextField @bind-Value="context.AWBPrefix" Variant="Variant.Text" 
+                                              Placeholder="e.g. DOM" Style="max-width: 100px;" />
+                            </MudTd>
+                            <MudTd DataLabel="Starting Number">
+                                <MudNumericField @bind-Value="context.StartingNumber" Variant="Variant.Text" 
+                                                 Min="1" Style="max-width: 100px;" />
+                            </MudTd>
+                            <MudTd DataLabel="Increment By">
+                                <MudNumericField @bind-Value="context.IncrementBy" Variant="Variant.Text" 
+                                                 Min="1" Style="max-width: 80px;" />
+                            </MudTd>
+                            <MudTd DataLabel="Last Used Number">
+                                <MudNumericField @bind-Value="context.LastUsedNumber" Variant="Variant.Text" 
+                                                 Style="max-width: 100px;" ReadOnly="true" />
+                            </MudTd>
+                        </RowTemplate>
+                    </MudTable>
                 </MudItem>
             </MudGrid>
         </MudForm>
@@ -138,6 +155,7 @@
     private List<Country> _countries = new();
     private List<State> _states = new();
     private List<City> _cities = new();
+    private List<BranchAWBConfig> _awbConfigs = new();
 
     protected override async Task OnInitializedAsync()
     {
@@ -152,7 +170,64 @@
         {
             await LoadCities(Branch.StateId.Value);
         }
+        
+        await LoadAWBConfigs();
     }
+
+    private async Task LoadAWBConfigs()
+    {
+        if (!IsNew && Branch.Id > 0)
+        {
+            _awbConfigs = await DbContext.BranchAWBConfigs
+                .Where(c => c.BranchId == Branch.Id && !c.IsDeleted)
+                .ToListAsync();
+        }
+
+        foreach (MovementType movementType in Enum.GetValues<MovementType>())
+        {
+            if (!_awbConfigs.Any(c => c.MovementType == movementType))
+            {
+                _awbConfigs.Add(new BranchAWBConfig
+                {
+                    BranchId = Branch.Id,
+                    MovementType = movementType,
+                    AWBPrefix = GetDefaultPrefix(movementType),
+                    StartingNumber = GetDefaultStartingNumber(movementType),
+                    IncrementBy = 1,
+                    LastUsedNumber = 0
+                });
+            }
+        }
+
+        _awbConfigs = _awbConfigs.OrderBy(c => (int)c.MovementType).ToList();
+    }
+
+    private string GetDefaultPrefix(MovementType movementType) => movementType switch
+    {
+        MovementType.Domestic => "DOM",
+        MovementType.InternationalExport => "SGE",
+        MovementType.InternationalImport => "SGI",
+        MovementType.Transhipment => "SGT",
+        _ => ""
+    };
+
+    private long GetDefaultStartingNumber(MovementType movementType) => movementType switch
+    {
+        MovementType.Domestic => 101,
+        MovementType.InternationalExport => 201,
+        MovementType.InternationalImport => 301,
+        MovementType.Transhipment => 401,
+        _ => 1
+    };
+
+    private string GetMovementTypeLabel(MovementType movementType) => movementType switch
+    {
+        MovementType.Domestic => "Domestic",
+        MovementType.InternationalExport => "Export",
+        MovementType.InternationalImport => "Import",
+        MovementType.Transhipment => "Transhipment",
+        _ => movementType.ToString()
+    };
 
     private async Task LoadCountries()
     {
@@ -214,11 +289,34 @@
             Branch.CreatedAt = DateTime.UtcNow;
             Branch.AWBLastUsedNumber = Branch.AWBStartingNumber;
             DbContext.Branches.Add(Branch);
+            await DbContext.SaveChangesAsync();
+            
+            foreach (var config in _awbConfigs)
+            {
+                config.BranchId = Branch.Id;
+                config.CreatedAt = DateTime.UtcNow;
+                DbContext.BranchAWBConfigs.Add(config);
+            }
         }
         else
         {
             Branch.ModifiedAt = DateTime.UtcNow;
             DbContext.Branches.Update(Branch);
+            
+            foreach (var config in _awbConfigs)
+            {
+                config.ModifiedAt = DateTime.UtcNow;
+                if (config.Id == 0)
+                {
+                    config.BranchId = Branch.Id;
+                    config.CreatedAt = DateTime.UtcNow;
+                    DbContext.BranchAWBConfigs.Add(config);
+                }
+                else
+                {
+                    DbContext.BranchAWBConfigs.Update(config);
+                }
+            }
         }
 
         await DbContext.SaveChangesAsync();

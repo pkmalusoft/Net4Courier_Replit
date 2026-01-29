@@ -35,4 +35,5 @@ public class Branch : BaseEntity
     public virtual City? City { get; set; }
     public virtual ICollection<Warehouse> Warehouses { get; set; } = new List<Warehouse>();
     public virtual ICollection<UserBranch> UserBranches { get; set; } = new List<UserBranch>();
+    public virtual ICollection<BranchAWBConfig> AWBConfigs { get; set; } = new List<BranchAWBConfig>();
 }
