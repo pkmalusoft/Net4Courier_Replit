@@ -868,4 +868,278 @@ public class AWBPrintService
             });
         });
     }
+
+    public byte[] GenerateTrackingReport(InscanMaster shipment, List<ShipmentStatusHistory> timeline, string? serviceTypeName = null, byte[]? logoData = null)
+    {
+        var document = Document.Create(container =>
+        {
+            container.Page(page =>
+            {
+                page.Size(PageSizes.A4);
+                page.Margin(30);
+                page.DefaultTextStyle(x => x.FontSize(10).FontFamily("Arial"));
+                
+                page.Header().Element(c => BuildTrackingHeader(c, shipment, logoData));
+                
+                page.Content().Column(column =>
+                {
+                    column.Spacing(15);
+                    
+                    BuildTrackingShipmentInfo(column, shipment, serviceTypeName);
+                    BuildTrackingRouteSection(column, shipment);
+                    BuildTrackingDetailsGrid(column, shipment);
+                    BuildTrackingTimeline(column, timeline);
+                });
+                
+                page.Footer().AlignCenter().Text(t =>
+                {
+                    t.Span("Generated on ").FontSize(8).FontColor(Colors.Grey.Medium);
+                    t.Span(DateTime.Now.ToString("dd MMM yyyy HH:mm")).FontSize(8).FontColor(Colors.Grey.Medium);
+                    t.Span(" | Page ").FontSize(8).FontColor(Colors.Grey.Medium);
+                    t.CurrentPageNumber().FontSize(8).FontColor(Colors.Grey.Medium);
+                    t.Span(" of ").FontSize(8).FontColor(Colors.Grey.Medium);
+                    t.TotalPages().FontSize(8).FontColor(Colors.Grey.Medium);
+                });
+            });
+        });
+        
+        return document.GeneratePdf();
+    }
+
+    private void BuildTrackingHeader(IContainer container, InscanMaster shipment, byte[]? logoData)
+    {
+        container.Column(col =>
+        {
+            col.Item().Row(row =>
+            {
+                row.RelativeItem().Column(c =>
+                {
+                    if (logoData != null)
+                    {
+                        c.Item().Width(120).Image(logoData);
+                    }
+                    else
+                    {
+                        c.Item().Text("Net4Courier").Bold().FontSize(20).FontColor(Colors.Blue.Darken2);
+                    }
+                });
+                
+                row.RelativeItem().AlignRight().Column(c =>
+                {
+                    c.Item().Text("SHIPMENT TRACKING").Bold().FontSize(16).FontColor(Colors.Grey.Darken3);
+                    c.Item().Text("Proof of Shipment Status").FontSize(9).FontColor(Colors.Grey.Medium);
+                });
+            });
+            
+            col.Item().Height(15);
+            col.Item().LineHorizontal(1).LineColor(Colors.Grey.Lighten2);
+            col.Item().Height(15);
+        });
+    }
+
+    private void BuildTrackingShipmentInfo(ColumnDescriptor column, InscanMaster shipment, string? serviceTypeName)
+    {
+        column.Item().Background(Colors.Blue.Lighten5).Padding(15).Row(row =>
+        {
+            row.RelativeItem().Column(c =>
+            {
+                c.Item().Text("AWB NUMBER").FontSize(9).FontColor(Colors.Grey.Darken1).Bold();
+                c.Item().Height(3);
+                c.Item().Text(shipment.AWBNo ?? "N/A").Bold().FontSize(18).FontColor(Colors.Blue.Darken3);
+            });
+            
+            row.RelativeItem().AlignCenter().Column(c =>
+            {
+                c.Item().Text("BOOKING DATE").FontSize(9).FontColor(Colors.Grey.Darken1).Bold();
+                c.Item().Height(3);
+                c.Item().Text(shipment.TransactionDate.ToString("dd MMM yyyy")).FontSize(12);
+            });
+            
+            row.RelativeItem().AlignRight().Column(c =>
+            {
+                c.Item().Text("STATUS").FontSize(9).FontColor(Colors.Grey.Darken1).Bold();
+                c.Item().Height(3);
+                var statusColor = shipment.CourierStatusId switch
+                {
+                    CourierStatus.Delivered => Colors.Green.Darken2,
+                    CourierStatus.InTransit => Colors.Blue.Darken2,
+                    CourierStatus.Pending => Colors.Orange.Darken2,
+                    _ => Colors.Grey.Darken2
+                };
+                c.Item().Text(shipment.CourierStatusId.ToString()).Bold().FontSize(14).FontColor(statusColor);
+            });
+        });
+    }
+
+    private void BuildTrackingRouteSection(ColumnDescriptor column, InscanMaster shipment)
+    {
+        column.Item().Row(row =>
+        {
+            row.RelativeItem().Border(1).BorderColor(Colors.Grey.Lighten2).Padding(15).Column(c =>
+            {
+                c.Item().Row(r =>
+                {
+                    r.ConstantItem(10).Height(10).Background(Colors.Grey.Lighten1);
+                    r.ConstantItem(10);
+                    r.RelativeItem().Text("FROM (SHIPPER)").Bold().FontSize(9).FontColor(Colors.Grey.Darken2);
+                });
+                c.Item().Height(8);
+                c.Item().Text(shipment.Consignor ?? "N/A").Bold().FontSize(11);
+                c.Item().Height(4);
+                c.Item().Text($"{shipment.ConsignorAddress1} {shipment.ConsignorAddress2}".Trim()).FontSize(9).FontColor(Colors.Grey.Darken1);
+                c.Item().Height(2);
+                c.Item().Text($"{shipment.ConsignorCity ?? ""}, {shipment.ConsignorPostalCode ?? ""}".Trim().TrimEnd(',')).FontSize(9).FontColor(Colors.Grey.Darken1);
+                c.Item().Text(shipment.ConsignorCountry ?? "").FontSize(9).FontColor(Colors.Grey.Darken1);
+                c.Item().Height(4);
+                if (!string.IsNullOrEmpty(shipment.ConsignorPhone) || !string.IsNullOrEmpty(shipment.ConsignorMobile))
+                {
+                    c.Item().Text($"Tel: {shipment.ConsignorPhone ?? shipment.ConsignorMobile}").FontSize(8).FontColor(Colors.Grey.Medium);
+                }
+            });
+            
+            row.ConstantItem(20);
+            
+            row.RelativeItem().Border(1).BorderColor(Colors.Blue.Lighten3).Padding(15).Column(c =>
+            {
+                c.Item().Row(r =>
+                {
+                    r.ConstantItem(10).Height(10).Background(Colors.Blue.Darken2);
+                    r.ConstantItem(10);
+                    r.RelativeItem().Text("TO (CONSIGNEE)").Bold().FontSize(9).FontColor(Colors.Blue.Darken2);
+                });
+                c.Item().Height(8);
+                c.Item().Text(shipment.Consignee ?? "N/A").Bold().FontSize(11);
+                c.Item().Height(4);
+                c.Item().Text($"{shipment.ConsigneeAddress1} {shipment.ConsigneeAddress2}".Trim()).FontSize(9).FontColor(Colors.Grey.Darken1);
+                c.Item().Height(2);
+                c.Item().Text($"{shipment.ConsigneeCity ?? ""}, {shipment.ConsigneePostalCode ?? ""}".Trim().TrimEnd(',')).FontSize(9).FontColor(Colors.Grey.Darken1);
+                c.Item().Text(shipment.ConsigneeCountry ?? "").FontSize(9).FontColor(Colors.Grey.Darken1);
+                c.Item().Height(4);
+                if (!string.IsNullOrEmpty(shipment.ConsigneePhone) || !string.IsNullOrEmpty(shipment.ConsigneeMobile))
+                {
+                    c.Item().Text($"Tel: {shipment.ConsigneePhone ?? shipment.ConsigneeMobile}").FontSize(8).FontColor(Colors.Grey.Medium);
+                }
+            });
+        });
+    }
+
+    private void BuildTrackingDetailsGrid(ColumnDescriptor column, InscanMaster shipment)
+    {
+        column.Item().Border(1).BorderColor(Colors.Grey.Lighten2).Table(table =>
+        {
+            table.ColumnsDefinition(cols =>
+            {
+                cols.RelativeColumn();
+                cols.RelativeColumn();
+                cols.RelativeColumn();
+                cols.RelativeColumn();
+            });
+            
+            void AddCell(string label, string value)
+            {
+                table.Cell().Border(1).BorderColor(Colors.Grey.Lighten3).Padding(8).Column(c =>
+                {
+                    c.Item().Text(label).FontSize(8).FontColor(Colors.Grey.Darken1).Bold();
+                    c.Item().Height(3);
+                    c.Item().Text(value).FontSize(10);
+                });
+            }
+            
+            AddCell("PIECES", (shipment.Pieces ?? 1).ToString());
+            AddCell("WEIGHT", $"{shipment.Weight?.ToString("F2") ?? "0.00"} kg");
+            AddCell("VOLUME WEIGHT", $"{shipment.VolumetricWeight?.ToString("F2") ?? "0.00"} kg");
+            AddCell("CHARGEABLE WEIGHT", $"{shipment.ChargeableWeight?.ToString("F2") ?? "0.00"} kg");
+            
+            AddCell("MOVEMENT TYPE", shipment.MovementTypeId.ToString());
+            AddCell("DOCUMENT TYPE", shipment.DocumentTypeId.ToString());
+            AddCell("PAYMENT MODE", shipment.PaymentModeId.ToString());
+            AddCell("COD AMOUNT", shipment.CODAmount?.ToString("F2") ?? "0.00");
+            
+            if (!string.IsNullOrEmpty(shipment.ReferenceNo))
+            {
+                AddCell("REFERENCE", shipment.ReferenceNo);
+                AddCell("", "");
+            }
+        });
+    }
+
+    private void BuildTrackingTimeline(ColumnDescriptor column, List<ShipmentStatusHistory> timeline)
+    {
+        column.Item().Column(c =>
+        {
+            c.Item().Text("TRACKING HISTORY").Bold().FontSize(12).FontColor(Colors.Grey.Darken3);
+            c.Item().Height(10);
+            
+            if (timeline == null || !timeline.Any())
+            {
+                c.Item().Background(Colors.Grey.Lighten4).Padding(20).AlignCenter().Text("No tracking events recorded yet.").FontSize(10).FontColor(Colors.Grey.Darken1);
+                return;
+            }
+            
+            var orderedTimeline = timeline.OrderByDescending(t => t.ChangedAt).ToList();
+            
+            c.Item().Border(1).BorderColor(Colors.Grey.Lighten2).Column(timelineCol =>
+            {
+                for (int i = 0; i < orderedTimeline.Count; i++)
+                {
+                    var evt = orderedTimeline[i];
+                    var isFirst = i == 0;
+                    var isLast = i == orderedTimeline.Count - 1;
+                    
+                    timelineCol.Item().Row(row =>
+                    {
+                        row.ConstantItem(80).Padding(10).AlignRight().Column(dateCol =>
+                        {
+                            dateCol.Item().Text(evt.ChangedAt.ToLocalTime().ToString("dd MMM")).FontSize(9).Bold().FontColor(Colors.Grey.Darken2);
+                            dateCol.Item().Text(evt.ChangedAt.ToLocalTime().ToString("yyyy")).FontSize(8).FontColor(Colors.Grey.Medium);
+                            dateCol.Item().Text(evt.ChangedAt.ToLocalTime().ToString("HH:mm")).FontSize(9).FontColor(Colors.Grey.Darken1);
+                        });
+                        
+                        row.ConstantItem(30).AlignCenter().Column(dotCol =>
+                        {
+                            if (!isFirst)
+                            {
+                                dotCol.Item().Width(2).Height(10).Background(Colors.Grey.Lighten2);
+                            }
+                            else
+                            {
+                                dotCol.Item().Height(10);
+                            }
+                            
+                            var dotColor = isFirst ? Colors.Green.Darken1 : Colors.Blue.Lighten1;
+                            dotCol.Item().Width(12).Height(12).AlignCenter().Background(dotColor);
+                            
+                            if (!isLast)
+                            {
+                                dotCol.Item().Width(2).Height(30).Background(Colors.Grey.Lighten2);
+                            }
+                        });
+                        
+                        row.RelativeItem().Padding(10).Column(contentCol =>
+                        {
+                            var statusName = evt.Status?.Name ?? evt.EventType ?? "Status Update";
+                            contentCol.Item().Text(statusName).Bold().FontSize(10).FontColor(isFirst ? Colors.Green.Darken2 : Colors.Grey.Darken3);
+                            
+                            if (!string.IsNullOrEmpty(evt.Remarks))
+                            {
+                                contentCol.Item().Height(3);
+                                contentCol.Item().Text(evt.Remarks).FontSize(9).FontColor(Colors.Grey.Darken1);
+                            }
+                            
+                            if (!string.IsNullOrEmpty(evt.LocationName))
+                            {
+                                contentCol.Item().Height(3);
+                                contentCol.Item().Text($"Location: {evt.LocationName}").FontSize(8).FontColor(Colors.Green.Darken1);
+                            }
+                        });
+                    });
+                    
+                    if (!isLast)
+                    {
+                        timelineCol.Item().LineHorizontal(0.5f).LineColor(Colors.Grey.Lighten3);
+                    }
+                }
+            });
+        });
+    }
 }

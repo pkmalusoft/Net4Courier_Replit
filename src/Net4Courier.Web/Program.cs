@@ -321,6 +321,43 @@ app.MapGet("/api/report/shipment-invoice/{id:long}", async (long id, Application
     return Results.File(pdf, "application/pdf", $"ShipmentInvoice-{awb.AWBNo}.pdf");
 });
 
+app.MapGet("/api/report/tracking/{awbNo}", async (string awbNo, ApplicationDbContext db, AWBPrintService printService, IWebHostEnvironment env) =>
+{
+    var awb = await db.InscanMasters
+        .FirstOrDefaultAsync(a => a.AWBNo == awbNo);
+    if (awb == null) return Results.NotFound("AWB not found");
+    
+    var timeline = await db.ShipmentStatusHistories
+        .Include(h => h.Status)
+        .Where(h => h.InscanMasterId == awb.Id)
+        .OrderByDescending(h => h.ChangedAt)
+        .ToListAsync();
+    
+    string? serviceTypeName = null;
+    if (awb.ShipmentModeId.HasValue)
+    {
+        var shipmentMode = await db.ShipmentModes.FindAsync(awb.ShipmentModeId.Value);
+        serviceTypeName = shipmentMode?.Name;
+    }
+    
+    byte[]? logoData = null;
+    if (awb.BranchId.HasValue)
+    {
+        var branch = await db.Branches.Include(b => b.Company).FirstOrDefaultAsync(b => b.Id == awb.BranchId);
+        if (branch?.Company?.Logo != null)
+        {
+            var logoPath = Path.Combine(env.WebRootPath, branch.Company.Logo.TrimStart('/'));
+            if (File.Exists(logoPath))
+            {
+                logoData = await File.ReadAllBytesAsync(logoPath);
+            }
+        }
+    }
+    
+    var pdf = printService.GenerateTrackingReport(awb, timeline, serviceTypeName, logoData);
+    return Results.File(pdf, "application/pdf", $"Tracking-{awb.AWBNo}.pdf");
+});
+
 app.MapGet("/api/report/invoice/{id:long}", async (long id, ApplicationDbContext db, ReportingService reportService) =>
 {
     var invoice = await db.Invoices.Include(i => i.Details).FirstOrDefaultAsync(i => i.Id == id);
