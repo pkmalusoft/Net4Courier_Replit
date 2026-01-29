@@ -51,40 +51,9 @@
     </MudTable>
 </MudPaper>
 
-<MudDialog @bind-Visible="_dialogVisible">
-    <TitleContent>
-        <MudText Typo="Typo.h6">@(_editingDesignation.Id == 0 ? "Add Designation" : "Edit Designation")</MudText>
-    </TitleContent>
-    <DialogContent>
-        <MudGrid Spacing="2">
-            <MudItem xs="4">
-                <MudTextField @bind-Value="_editingDesignation.Code" Label="Code*" Variant="Variant.Outlined" Required="true" />
-            </MudItem>
-            <MudItem xs="8">
-                <MudTextField @bind-Value="_editingDesignation.Name" Label="Name*" Variant="Variant.Outlined" Required="true" />
-            </MudItem>
-            <MudItem xs="12">
-                <MudTextField @bind-Value="_editingDesignation.Description" Label="Description" Variant="Variant.Outlined" Lines="2" />
-            </MudItem>
-            <MudItem xs="4">
-                <MudNumericField @bind-Value="_editingDesignation.SortOrder" Label="Sort Order" Variant="Variant.Outlined" Min="0" />
-            </MudItem>
-            <MudItem xs="4">
-                <MudCheckBox @bind-Value="_editingDesignation.IsActive" Label="Active" Color="Color.Success" />
-            </MudItem>
-        </MudGrid>
-    </DialogContent>
-    <DialogActions>
-        <MudButton OnClick="CloseDialog">Cancel</MudButton>
-        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="SaveDesignation">Save</MudButton>
-    </DialogActions>
-</MudDialog>
-
 @code {
     private List<Designation> _designations = new();
     private bool _loading = true;
-    private bool _dialogVisible;
-    private Designation _editingDesignation = new();
 
     protected override async Task OnInitializedAsync()
     {
@@ -102,15 +71,22 @@
         _loading = false;
     }
 
-    private void OpenAddDialog()
+    private async Task OpenAddDialog()
     {
-        _editingDesignation = new Designation { IsActive = true, SortOrder = _designations.Count + 1 };
-        _dialogVisible = true;
+        var designation = new Designation { IsActive = true, SortOrder = _designations.Count + 1 };
+        var parameters = new DialogParameters<DesignationDialog> { { x => x.Designation, designation } };
+        var options = new DialogOptions { MaxWidth = MaxWidth.Medium, FullWidth = true };
+        var dialog = await DialogService.ShowAsync<DesignationDialog>("Add Designation", parameters, options);
+        var result = await dialog.Result;
+        if (result != null && !result.Canceled)
+        {
+            await LoadData();
+        }
     }
 
-    private void OpenEditDialog(Designation designation)
+    private async Task OpenEditDialog(Designation designation)
     {
-        _editingDesignation = new Designation
+        var editDesignation = new Designation
         {
             Id = designation.Id,
             Code = designation.Code,
@@ -119,55 +95,13 @@
             SortOrder = designation.SortOrder,
             IsActive = designation.IsActive
         };
-        _dialogVisible = true;
-    }
-
-    private void CloseDialog()
-    {
-        _dialogVisible = false;
-    }
-
-    private async Task SaveDesignation()
-    {
-        if (string.IsNullOrWhiteSpace(_editingDesignation.Code) || string.IsNullOrWhiteSpace(_editingDesignation.Name))
+        var parameters = new DialogParameters<DesignationDialog> { { x => x.Designation, editDesignation } };
+        var options = new DialogOptions { MaxWidth = MaxWidth.Medium, FullWidth = true };
+        var dialog = await DialogService.ShowAsync<DesignationDialog>("Edit Designation", parameters, options);
+        var result = await dialog.Result;
+        if (result != null && !result.Canceled)
         {
-            Snackbar.Add("Code and Name are required", Severity.Warning);
-            return;
-        }
-
-        try
-        {
-            if (_editingDesignation.Id == 0)
-            {
-                _editingDesignation.CreatedAt = DateTime.UtcNow;
-                DbContext.Designations.Add(_editingDesignation);
-            }
-            else
-            {
-                var existing = await DbContext.Designations.FindAsync(_editingDesignation.Id);
-                if (existing != null)
-                {
-                    existing.Code = _editingDesignation.Code;
-                    existing.Name = _editingDesignation.Name;
-                    existing.Description = _editingDesignation.Description;
-                    existing.SortOrder = _editingDesignation.SortOrder;
-                    existing.IsActive = _editingDesignation.IsActive;
-                    existing.ModifiedAt = DateTime.SpecifyKind(DateTime.UtcNow, DateTimeKind.Utc);
-                }
-            }
-
-            await DbContext.SaveChangesAsync();
-            Snackbar.Add("Designation saved successfully", Severity.Success);
-            _dialogVisible = false;
             await LoadData();
-        }
-        catch (DbUpdateException ex) when (ex.InnerException?.Message.Contains("duplicate") == true || ex.InnerException?.Message.Contains("unique") == true)
-        {
-            Snackbar.Add("A designation with this code already exists", Severity.Error);
-        }
-        catch (Exception ex)
-        {
-            Snackbar.Add($"Error: {ex.Message}", Severity.Error);
         }
     }
 

@@ -1,0 +1,85 @@
+@inject ApplicationDbContext DbContext
+@inject ISnackbar Snackbar
+@using Microsoft.EntityFrameworkCore
+@using MudBlazor
+@using Net4Courier.Infrastructure.Data
+@using Net4Courier.Masters.Entities
+
+<MudDialog>
+    <TitleContent>
+        <MudText Typo="Typo.h6">@(Designation.Id == 0 ? "Add Designation" : "Edit Designation")</MudText>
+    </TitleContent>
+    <DialogContent>
+        <MudGrid Spacing="2">
+            <MudItem xs="4">
+                <MudTextField @bind-Value="Designation.Code" Label="Code*" Variant="Variant.Outlined" Required="true" />
+            </MudItem>
+            <MudItem xs="8">
+                <MudTextField @bind-Value="Designation.Name" Label="Name*" Variant="Variant.Outlined" Required="true" />
+            </MudItem>
+            <MudItem xs="12">
+                <MudTextField @bind-Value="Designation.Description" Label="Description" Variant="Variant.Outlined" Lines="2" />
+            </MudItem>
+            <MudItem xs="4">
+                <MudNumericField @bind-Value="Designation.SortOrder" Label="Sort Order" Variant="Variant.Outlined" Min="0" />
+            </MudItem>
+            <MudItem xs="4">
+                <MudCheckBox @bind-Value="Designation.IsActive" Label="Active" Color="Color.Success" />
+            </MudItem>
+        </MudGrid>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Cancel">Cancel</MudButton>
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="Save">Save</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] MudDialogInstance MudDialog { get; set; } = null!;
+    [Parameter] public Designation Designation { get; set; } = new();
+
+    private void Cancel() => MudDialog?.Cancel();
+
+    private async Task Save()
+    {
+        if (string.IsNullOrWhiteSpace(Designation.Code) || string.IsNullOrWhiteSpace(Designation.Name))
+        {
+            Snackbar.Add("Code and Name are required", Severity.Warning);
+            return;
+        }
+
+        try
+        {
+            if (Designation.Id == 0)
+            {
+                Designation.CreatedAt = DateTime.UtcNow;
+                DbContext.Designations.Add(Designation);
+            }
+            else
+            {
+                var existing = await DbContext.Designations.FindAsync(Designation.Id);
+                if (existing != null)
+                {
+                    existing.Code = Designation.Code;
+                    existing.Name = Designation.Name;
+                    existing.Description = Designation.Description;
+                    existing.SortOrder = Designation.SortOrder;
+                    existing.IsActive = Designation.IsActive;
+                    existing.ModifiedAt = DateTime.SpecifyKind(DateTime.UtcNow, DateTimeKind.Utc);
+                }
+            }
+
+            await DbContext.SaveChangesAsync();
+            Snackbar.Add("Designation saved successfully", Severity.Success);
+            MudDialog?.Close(DialogResult.Ok(true));
+        }
+        catch (DbUpdateException ex) when (ex.InnerException?.Message.Contains("duplicate") == true || ex.InnerException?.Message.Contains("unique") == true)
+        {
+            Snackbar.Add("A designation with this code already exists", Severity.Error);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error: {ex.Message}", Severity.Error);
+        }
+    }
+}

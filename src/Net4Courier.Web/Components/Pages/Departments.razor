@@ -53,58 +53,9 @@
     </MudTable>
 </MudPaper>
 
-<MudDialog @bind-Visible="_dialogVisible">
-    <TitleContent>
-        <MudText Typo="Typo.h6">@(_editingDepartment.Id == 0 ? "Add Department" : "Edit Department")</MudText>
-    </TitleContent>
-    <DialogContent>
-        <MudGrid Spacing="2">
-            <MudItem xs="4">
-                <MudTextField @bind-Value="_editingDepartment.Code" Label="Code*" Variant="Variant.Outlined" Required="true" />
-            </MudItem>
-            <MudItem xs="8">
-                <MudTextField @bind-Value="_editingDepartment.Name" Label="Name*" Variant="Variant.Outlined" Required="true" />
-            </MudItem>
-            <MudItem xs="12">
-                <MudTextField @bind-Value="_editingDepartment.Description" Label="Description" Variant="Variant.Outlined" Lines="2" />
-            </MudItem>
-            <MudItem xs="6">
-                <MudSelect T="long?" @bind-Value="_editingDepartment.ParentDepartmentId" Label="Parent Department" Variant="Variant.Outlined" Clearable="true">
-                    @foreach (var dept in _parentDepartments.Where(d => d.Id != _editingDepartment.Id))
-                    {
-                        <MudSelectItem Value="@((long?)dept.Id)">@dept.Name</MudSelectItem>
-                    }
-                </MudSelect>
-            </MudItem>
-            <MudItem xs="6">
-                <MudSelect T="long?" @bind-Value="_editingDepartment.BranchId" Label="Branch" Variant="Variant.Outlined" Clearable="true">
-                    @foreach (var branch in _branches)
-                    {
-                        <MudSelectItem Value="@((long?)branch.Id)">@branch.Name</MudSelectItem>
-                    }
-                </MudSelect>
-            </MudItem>
-            <MudItem xs="4">
-                <MudNumericField @bind-Value="_editingDepartment.SortOrder" Label="Sort Order" Variant="Variant.Outlined" Min="0" />
-            </MudItem>
-            <MudItem xs="4">
-                <MudCheckBox @bind-Value="_editingDepartment.IsActive" Label="Active" Color="Color.Success" />
-            </MudItem>
-        </MudGrid>
-    </DialogContent>
-    <DialogActions>
-        <MudButton OnClick="CloseDialog">Cancel</MudButton>
-        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="SaveDepartment">Save</MudButton>
-    </DialogActions>
-</MudDialog>
-
 @code {
     private List<Department> _departments = new();
-    private List<Department> _parentDepartments = new();
-    private List<Branch> _branches = new();
     private bool _loading = true;
-    private bool _dialogVisible;
-    private Department _editingDepartment = new();
 
     protected override async Task OnInitializedAsync()
     {
@@ -121,26 +72,25 @@
             .OrderBy(d => d.SortOrder)
             .ThenBy(d => d.Name)
             .ToListAsync();
-        
-        _parentDepartments = _departments.ToList();
-        
-        _branches = await DbContext.Branches
-            .Where(b => !b.IsDeleted && b.IsActive)
-            .OrderBy(b => b.Name)
-            .ToListAsync();
-        
         _loading = false;
     }
 
-    private void OpenAddDialog()
+    private async Task OpenAddDialog()
     {
-        _editingDepartment = new Department { IsActive = true, SortOrder = _departments.Count + 1 };
-        _dialogVisible = true;
+        var department = new Department { IsActive = true, SortOrder = _departments.Count + 1 };
+        var parameters = new DialogParameters<DepartmentDialog> { { x => x.Department, department } };
+        var options = new DialogOptions { MaxWidth = MaxWidth.Medium, FullWidth = true };
+        var dialog = await DialogService.ShowAsync<DepartmentDialog>("Add Department", parameters, options);
+        var result = await dialog.Result;
+        if (result != null && !result.Canceled)
+        {
+            await LoadData();
+        }
     }
 
-    private void OpenEditDialog(Department department)
+    private async Task OpenEditDialog(Department department)
     {
-        _editingDepartment = new Department
+        var editDepartment = new Department
         {
             Id = department.Id,
             Code = department.Code,
@@ -151,63 +101,13 @@
             SortOrder = department.SortOrder,
             IsActive = department.IsActive
         };
-        _dialogVisible = true;
-    }
-
-    private void CloseDialog()
-    {
-        _dialogVisible = false;
-    }
-
-    private async Task SaveDepartment()
-    {
-        if (string.IsNullOrWhiteSpace(_editingDepartment.Code) || string.IsNullOrWhiteSpace(_editingDepartment.Name))
+        var parameters = new DialogParameters<DepartmentDialog> { { x => x.Department, editDepartment } };
+        var options = new DialogOptions { MaxWidth = MaxWidth.Medium, FullWidth = true };
+        var dialog = await DialogService.ShowAsync<DepartmentDialog>("Edit Department", parameters, options);
+        var result = await dialog.Result;
+        if (result != null && !result.Canceled)
         {
-            Snackbar.Add("Code and Name are required", Severity.Warning);
-            return;
-        }
-
-        if (_editingDepartment.ParentDepartmentId == _editingDepartment.Id && _editingDepartment.Id != 0)
-        {
-            Snackbar.Add("A department cannot be its own parent", Severity.Warning);
-            return;
-        }
-
-        try
-        {
-            if (_editingDepartment.Id == 0)
-            {
-                _editingDepartment.CreatedAt = DateTime.UtcNow;
-                DbContext.Departments.Add(_editingDepartment);
-            }
-            else
-            {
-                var existing = await DbContext.Departments.FindAsync(_editingDepartment.Id);
-                if (existing != null)
-                {
-                    existing.Code = _editingDepartment.Code;
-                    existing.Name = _editingDepartment.Name;
-                    existing.Description = _editingDepartment.Description;
-                    existing.ParentDepartmentId = _editingDepartment.ParentDepartmentId;
-                    existing.BranchId = _editingDepartment.BranchId;
-                    existing.SortOrder = _editingDepartment.SortOrder;
-                    existing.IsActive = _editingDepartment.IsActive;
-                    existing.ModifiedAt = DateTime.SpecifyKind(DateTime.UtcNow, DateTimeKind.Utc);
-                }
-            }
-
-            await DbContext.SaveChangesAsync();
-            Snackbar.Add("Department saved successfully", Severity.Success);
-            _dialogVisible = false;
             await LoadData();
-        }
-        catch (DbUpdateException ex) when (ex.InnerException?.Message.Contains("duplicate") == true || ex.InnerException?.Message.Contains("unique") == true)
-        {
-            Snackbar.Add("A department with this code already exists", Severity.Error);
-        }
-        catch (Exception ex)
-        {
-            Snackbar.Add($"Error: {ex.Message}", Severity.Error);
         }
     }
 
