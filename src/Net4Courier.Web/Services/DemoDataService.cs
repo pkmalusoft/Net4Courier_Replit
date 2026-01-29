@@ -305,6 +305,48 @@ public class DemoDataService : IDemoDataService
     {
         await using var context = await _dbFactory.CreateDbContextAsync();
 
+        // Delete Import-related demo data first (child tables first)
+        var demoImportMasterIds = await context.ImportMasters
+            .Where(m => m.IsDemo)
+            .Select(m => m.Id)
+            .ToListAsync();
+
+        var demoImportShipmentIds = await context.ImportShipments
+            .Where(s => s.IsDemo)
+            .Select(s => s.Id)
+            .ToListAsync();
+
+        if (demoImportShipmentIds.Any())
+        {
+            var importNotes = await context.ImportShipmentNotes
+                .Where(n => demoImportShipmentIds.Contains(n.ImportShipmentId))
+                .ToListAsync();
+            context.ImportShipmentNotes.RemoveRange(importNotes);
+            await context.SaveChangesAsync();
+        }
+
+        if (demoImportMasterIds.Any())
+        {
+            var importDocs = await context.ImportDocuments
+                .Where(d => demoImportMasterIds.Contains(d.ImportMasterId))
+                .ToListAsync();
+            context.ImportDocuments.RemoveRange(importDocs);
+            await context.SaveChangesAsync();
+        }
+
+        var importShipments = await context.ImportShipments.Where(s => s.IsDemo).ToListAsync();
+        context.ImportShipments.RemoveRange(importShipments);
+        await context.SaveChangesAsync();
+
+        var importBags = await context.ImportBags.Where(b => b.IsDemo).ToListAsync();
+        context.ImportBags.RemoveRange(importBags);
+        await context.SaveChangesAsync();
+
+        var importMasters = await context.ImportMasters.Where(m => m.IsDemo).ToListAsync();
+        context.ImportMasters.RemoveRange(importMasters);
+        await context.SaveChangesAsync();
+
+        // Delete AWB/Inscan related demo data
         var demoInscanIds = await context.InscanMasters
             .Where(a => a.IsDemo)
             .Select(a => a.Id)
@@ -347,6 +389,7 @@ public class DemoDataService : IDemoDataService
         context.InscanMasters.RemoveRange(inscanMasters);
         await context.SaveChangesAsync();
 
+        // Get demo party IDs for related deletions
         var demoPartyIds = await context.Parties
             .Where(p => p.IsDemo)
             .Select(p => p.Id)
@@ -354,6 +397,19 @@ public class DemoDataService : IDemoDataService
 
         if (demoPartyIds.Any())
         {
+            // Delete SLA agreements for demo parties
+            var slaAgreements = await context.SLAAgreements
+                .Where(s => demoPartyIds.Contains(s.CustomerId))
+                .ToListAsync();
+            context.SLAAgreements.RemoveRange(slaAgreements);
+
+            // Delete customer branches for demo parties
+            var customerBranches = await context.CustomerBranches
+                .Where(cb => demoPartyIds.Contains(cb.PartyId))
+                .ToListAsync();
+            context.CustomerBranches.RemoveRange(customerBranches);
+
+            // Delete party addresses
             var addresses = await context.PartyAddresses
                 .Where(a => demoPartyIds.Contains(a.PartyId))
                 .ToListAsync();
