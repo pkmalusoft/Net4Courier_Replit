@@ -111,6 +111,7 @@ public class ApplicationDbContext : DbContext
     public DbSet<ServiceType> ServiceTypes => Set<ServiceType>();
     public DbSet<Port> Ports => Set<Port>();
     public DbSet<ShipmentMode> ShipmentModes => Set<ShipmentMode>();
+    public DbSet<IncoTerm> IncoTerms => Set<IncoTerm>();
     
     public DbSet<ImportMaster> ImportMasters => Set<ImportMaster>();
     public DbSet<ImportBag> ImportBags => Set<ImportBag>();
