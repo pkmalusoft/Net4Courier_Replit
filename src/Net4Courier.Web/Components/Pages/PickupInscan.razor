@@ -19,16 +19,16 @@
 
 <MudPaper Class="pa-3 mb-4" Elevation="1">
     <MudRadioGroup T="InscanMode" @bind-Value="_scanMode">
-        <MudRadio Value="InscanMode.PickupRequest" Color="Color.Primary" Dense="true">
-            <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="1">
-                <MudIcon Icon="@Icons.Material.Filled.LocalShipping" Size="Size.Small" />
-                <MudText>Pickup Request</MudText>
-            </MudStack>
-        </MudRadio>
         <MudRadio Value="InscanMode.AWB" Color="Color.Primary" Dense="true">
             <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="1">
                 <MudIcon Icon="@Icons.Material.Filled.QrCode" Size="Size.Small" />
                 <MudText>AWB</MudText>
+            </MudStack>
+        </MudRadio>
+        <MudRadio Value="InscanMode.PickupRequest" Color="Color.Primary" Dense="true">
+            <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="1">
+                <MudIcon Icon="@Icons.Material.Filled.LocalShipping" Size="Size.Small" />
+                <MudText>Pickup Request</MudText>
             </MudStack>
         </MudRadio>
     </MudRadioGroup>
@@ -178,16 +178,22 @@
                         </tr>
                     </thead>
                     <tbody>
-                        @foreach (var awb in _inscannedAWBsToday)
+                        @foreach (var awb in _receivedAWBsToday)
                         {
                             <tr>
-                                <td>@awb.AWBNo</td>
+                                <td>
+                                    @awb.AWBNo
+                                    @if (awb.Source == "Import")
+                                    {
+                                        <MudChip T="string" Size="Size.Small" Color="Color.Info" Class="ml-1">Import</MudChip>
+                                    }
+                                </td>
                                 <td>@awb.Consignee</td>
-                                <td>@awb.ConsigneeCity</td>
-                                <td>@awb.ModifiedAt?.ToString("HH:mm")</td>
+                                <td>@awb.Destination</td>
+                                <td>@awb.ReceivedAt?.ToString("HH:mm")</td>
                             </tr>
                         }
-                        @if (!_inscannedAWBsToday.Any())
+                        @if (!_receivedAWBsToday.Any())
                         {
                             <tr>
                                 <td colspan="4" class="text-center">No received AWBs today</td>
@@ -204,7 +210,7 @@
                     <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
                         <MudStack Spacing="0">
                             <MudText Typo="Typo.h3" Color="Color.Success">
-                                @(_scanMode == InscanMode.PickupRequest ? _inscannedToday.Count : _inscannedAWBsToday.Count)
+                                @(_scanMode == InscanMode.PickupRequest ? _inscannedToday.Count : _receivedAWBsToday.Count)
                             </MudText>
                             <MudText Typo="Typo.body2">
                                 @(_scanMode == InscanMode.PickupRequest ? "Pickups Received" : "AWBs Received")
@@ -236,7 +242,7 @@
 @code {
     [SupplyParameterFromQuery] public long? pickupId { get; set; }
     
-    private InscanMode _scanMode = InscanMode.PickupRequest;
+    private InscanMode _scanMode = InscanMode.AWB;
     private string _scanInput = "";
     private string _lastMessage = "";
     private Severity _lastSeverity = Severity.Info;
@@ -244,6 +250,9 @@
     private List<PickupRequest> _inscannedToday = new();
     private List<InscanMaster> _pendingAWBs = new();
     private List<InscanMaster> _inscannedAWBsToday = new();
+    private List<ReceivedAWBDisplay> _receivedAWBsToday = new();
+    
+    private record ReceivedAWBDisplay(string AWBNo, string Consignee, string Destination, DateTime? ReceivedAt, string Source);
     private MudTextField<string>? _scanField;
     private bool _processing;
     private int _pendingConversionCount;
@@ -314,6 +323,19 @@
             .OrderByDescending(a => a.ModifiedAt)
             .Take(50)
             .ToListAsync();
+        
+        var importShipmentsToday = await DbContext.ImportShipments
+            .Where(s => s.Status == ImportShipmentStatus.ReceivedAtWarehouse && !s.IsDeleted && s.ModifiedAt >= today)
+            .OrderByDescending(s => s.ModifiedAt)
+            .Take(50)
+            .ToListAsync();
+        
+        _receivedAWBsToday = _inscannedAWBsToday
+            .Select(a => new ReceivedAWBDisplay(a.AWBNo, a.Consignee ?? "", a.ConsigneeCity ?? "", a.ModifiedAt, "Domestic"))
+            .Concat(importShipmentsToday.Select(s => new ReceivedAWBDisplay(s.AWBNo ?? "", s.ConsigneeName ?? "", s.ConsigneeCity ?? "", s.ModifiedAt, "Import")))
+            .OrderByDescending(r => r.ReceivedAt)
+            .Take(50)
+            .ToList();
     }
 
     private async Task OnScanKeyUp(KeyboardEventArgs e)
