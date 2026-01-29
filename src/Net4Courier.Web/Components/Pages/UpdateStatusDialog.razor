@@ -6,7 +6,7 @@
 @using Net4Courier.Operations.Enums
 @using Net4Courier.Web.Services
 @using System.Security.Claims
-@inject ApplicationDbContext DbContext
+@inject IDbContextFactory<ApplicationDbContext> DbContextFactory
 @inject ShipmentStatusService StatusService
 @inject ISnackbar Snackbar
 @inject AuthenticationStateProvider AuthStateProvider
@@ -191,27 +191,29 @@
 
     private async Task LoadStatusGroups()
     {
+        await using var dbContext = await DbContextFactory.CreateDbContextAsync();
+        
         if (EntityType == EntityType.Pickup)
         {
-            _statusGroups = await DbContext.ShipmentStatusGroups
+            _statusGroups = await dbContext.ShipmentStatusGroups
                 .Where(g => g.IsActive && (g.Code == "PRE_PICKUP" || g.Code == "COLLECTION"))
                 .OrderBy(g => g.SequenceNo)
                 .ToListAsync();
                 
             var groupIds = _statusGroups.Select(g => g.Id).ToList();
-            _allStatuses = await DbContext.ShipmentStatuses
+            _allStatuses = await dbContext.ShipmentStatuses
                 .Where(s => s.IsActive && groupIds.Contains(s.StatusGroupId))
                 .OrderBy(s => s.SequenceNo)
                 .ToListAsync();
         }
         else
         {
-            _statusGroups = await DbContext.ShipmentStatusGroups
+            _statusGroups = await dbContext.ShipmentStatusGroups
                 .Where(g => g.IsActive)
                 .OrderBy(g => g.SequenceNo)
                 .ToListAsync();
                 
-            _allStatuses = await DbContext.ShipmentStatuses
+            _allStatuses = await dbContext.ShipmentStatuses
                 .Where(s => s.IsActive)
                 .OrderBy(s => s.SequenceNo)
                 .ToListAsync();
@@ -284,7 +286,9 @@
     {
         if (PickupRequest == null) return;
 
-        var pickup = await DbContext.PickupRequests.FindAsync(PickupRequest.Id);
+        await using var dbContext = await DbContextFactory.CreateDbContextAsync();
+        
+        var pickup = await dbContext.PickupRequests.FindAsync(PickupRequest.Id);
         if (pickup == null)
         {
             Snackbar.Add("Pickup request not found", Severity.Error);
@@ -326,8 +330,8 @@
             CreatedBy = (int?)_currentUserId
         };
 
-        DbContext.PickupStatusHistories.Add(history);
-        await DbContext.SaveChangesAsync();
+        dbContext.PickupStatusHistories.Add(history);
+        await dbContext.SaveChangesAsync();
 
         Snackbar.Add($"Pickup status updated to: {status.Name}", Severity.Success);
         MudDialog.Close(DialogResult.Ok(true));
