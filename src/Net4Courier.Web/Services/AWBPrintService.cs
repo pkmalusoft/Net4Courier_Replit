@@ -433,27 +433,276 @@ public class AWBPrintService
             container.Page(page =>
             {
                 page.Size(100, 150, Unit.Millimetre);
-                page.Margin(3);
+                page.Margin(2);
                 page.DefaultTextStyle(x => x.FontSize(7).FontFamily("Arial"));
                 
-                page.Content().Border(1).Column(column =>
+                page.Content().Border(1).Row(mainRow =>
                 {
-                    column.Spacing(0);
+                    mainRow.RelativeItem(3).Column(column =>
+                    {
+                        column.Spacing(0);
+                        
+                        BuildGateexHeader(column, shipment, companyName ?? "Net4Courier");
+                        BuildGateexOriginDest(column, shipment);
+                        BuildGateexService(column, shipment);
+                        BuildGateexWeight(column, shipment);
+                        BuildGateexShipper(column, shipment);
+                        BuildGateexConsignee(column, shipment);
+                        BuildGateexRouteRemarks(column, shipment);
+                        BuildGateexDescription(column, shipment);
+                        BuildGateexReferences(column, shipment);
+                    });
                     
-                    BuildLabelHeader(column, shipment, companyName ?? "Net4Courier");
-                    BuildLabelOriginDest(column, shipment);
-                    BuildLabelService(column, shipment);
-                    BuildLabelWeight(column, shipment);
-                    BuildLabelShipper(column, shipment);
-                    BuildLabelConsignee(column, shipment);
-                    BuildLabelRoute(column, shipment);
-                    BuildLabelDescription(column, shipment);
-                    BuildLabelReferences(column, shipment);
+                    mainRow.ConstantItem(28).BorderLeft(1).Column(rightCol =>
+                    {
+                        BuildGateexRightPanel(rightCol, shipment);
+                    });
                 });
             });
         });
         
         return document.GeneratePdf();
+    }
+
+    private string GetPortCode(string? portCode, string? city)
+    {
+        if (!string.IsNullOrWhiteSpace(portCode)) return portCode;
+        if (!string.IsNullOrWhiteSpace(city) && city.Length >= 3) return city.Substring(0, 3).ToUpper();
+        if (!string.IsNullOrWhiteSpace(city)) return city.ToUpper();
+        return "---";
+    }
+
+    private void BuildGateexHeader(ColumnDescriptor column, InscanMaster shipment, string companyName)
+    {
+        column.Item().Row(row =>
+        {
+            row.RelativeItem(1).Padding(2).Column(c =>
+            {
+                if (_logoData != null)
+                {
+                    c.Item().Height(18).Image(_logoData).FitHeight();
+                }
+                else
+                {
+                    c.Item().Text(companyName).Bold().FontSize(10).FontColor(Colors.Red.Darken2);
+                }
+            });
+            
+            row.RelativeItem(2).BorderLeft(1).Padding(2).Column(c =>
+            {
+                c.Item().Text("Origin:").FontSize(5).FontColor(Colors.Grey.Darken1);
+                c.Item().Text(GetPortCode(shipment.OriginPortCode, shipment.ConsignorCity)).Bold().FontSize(18);
+            });
+            
+            row.RelativeItem(3).BorderLeft(1).Padding(2).Column(c =>
+            {
+                if (shipment.BarcodeImage != null)
+                {
+                    c.Item().AlignCenter().Height(22).Image(shipment.BarcodeImage);
+                }
+                c.Item().AlignCenter().Text(shipment.AWBNo).Bold().FontSize(8);
+            });
+        });
+    }
+
+    private void BuildGateexOriginDest(ColumnDescriptor column, InscanMaster shipment)
+    {
+        column.Item().BorderTop(1).Row(row =>
+        {
+            row.RelativeItem(1).Padding(2).Column(c =>
+            {
+                c.Item().Text("Destination:").FontSize(5).FontColor(Colors.Grey.Darken1);
+                c.Item().Text(GetPortCode(shipment.DestinationPortCode, shipment.ConsigneeCity)).Bold().FontSize(18);
+            });
+            
+            row.RelativeItem(2).BorderLeft(1).Padding(2).Column(c =>
+            {
+                c.Item().Row(r =>
+                {
+                    r.ConstantItem(25).Text("Date:").FontSize(5).FontColor(Colors.Grey.Darken1);
+                    r.RelativeItem().Text(shipment.TransactionDate.ToString("MMM d, yyyy")).FontSize(6);
+                });
+                c.Item().Row(r =>
+                {
+                    r.ConstantItem(25).Text("Ref:").FontSize(5).FontColor(Colors.Grey.Darken1);
+                    r.RelativeItem().Text(shipment.ReferenceNo ?? "").FontSize(5);
+                });
+            });
+        });
+    }
+
+    private void BuildGateexService(ColumnDescriptor column, InscanMaster shipment)
+    {
+        column.Item().BorderTop(1).Row(row =>
+        {
+            var isExport = shipment.MovementTypeId == MovementType.InternationalExport || shipment.MovementTypeId == MovementType.InternationalImport;
+            
+            row.ConstantItem(28).BorderRight(1).Padding(1).AlignCenter().AlignMiddle().Text(isExport ? "EXP" : "DOM").Bold().FontSize(12);
+            row.ConstantItem(28).BorderRight(1).Padding(1).AlignCenter().AlignMiddle().Text("PPX").Bold().FontSize(12);
+            row.ConstantItem(18).BorderRight(1).Padding(1).AlignCenter().AlignMiddle().Text(shipment.PaymentModeId == PaymentMode.Prepaid ? "P" : "C").Bold().FontSize(12);
+            row.RelativeItem().Padding(1).AlignCenter().AlignMiddle().Text((shipment.Pieces ?? 1).ToString()).Bold().FontSize(12);
+        });
+    }
+
+    private void BuildGateexWeight(ColumnDescriptor column, InscanMaster shipment)
+    {
+        column.Item().BorderTop(1).Row(row =>
+        {
+            row.RelativeItem().Padding(2).Column(c =>
+            {
+                c.Item().Text($"Weight: {shipment.Weight?.ToString("F1") ?? "0.0"} KG").FontSize(6);
+                c.Item().Text($"Chargeable: {shipment.ChargeableWeight?.ToString("F1") ?? "0.0"} KG").FontSize(6);
+            });
+            
+            row.RelativeItem().BorderLeft(1).Padding(2).Column(c =>
+            {
+                c.Item().Text("Services:").FontSize(5).FontColor(Colors.Grey.Darken1);
+                if (shipment.CustomsValue > 0)
+                {
+                    c.Item().Text($"Customs: {shipment.CustomsValue?.ToString("F0")} {shipment.Currency ?? "AED"}").FontSize(6).FontColor(Colors.Red.Medium);
+                }
+            });
+            
+            if (shipment.IsCOD)
+            {
+                row.ConstantItem(30).BorderLeft(1).Background(Colors.Grey.Lighten3).Padding(2).AlignCenter().Column(c =>
+                {
+                    c.Item().Text("COD").Bold().FontSize(8);
+                    c.Item().Text(shipment.CODAmount?.ToString("F0") ?? "0").Bold().FontSize(10);
+                });
+            }
+        });
+    }
+
+    private void BuildGateexShipper(ColumnDescriptor column, InscanMaster shipment)
+    {
+        column.Item().BorderTop(1).Padding(2).Column(c =>
+        {
+            c.Item().Row(r =>
+            {
+                r.ConstantItem(35).Text("Account:").FontSize(5).FontColor(Colors.Grey.Darken1);
+                r.RelativeItem().Text(shipment.CustomerId?.ToString() ?? "").FontSize(6);
+            });
+            c.Item().Text(shipment.Consignor ?? "").Bold().FontSize(7);
+            c.Item().Text($"{shipment.ConsignorAddress1} {shipment.ConsignorAddress2}".Trim()).FontSize(6);
+            c.Item().Row(r =>
+            {
+                r.RelativeItem().Text(shipment.ConsignorCity ?? "").FontSize(6);
+                r.ConstantItem(40).Text(shipment.ConsignorPostalCode ?? "").FontSize(6);
+            });
+            c.Item().Row(r =>
+            {
+                r.RelativeItem().Text(shipment.ConsignorCountry ?? "").FontSize(6);
+                r.RelativeItem().Text(shipment.ConsignorPhone ?? shipment.ConsignorMobile ?? "").FontSize(6);
+            });
+        });
+    }
+
+    private void BuildGateexConsignee(ColumnDescriptor column, InscanMaster shipment)
+    {
+        column.Item().BorderTop(2).Padding(2).Column(c =>
+        {
+            c.Item().Text(shipment.Consignee ?? "").Bold().FontSize(8);
+            c.Item().Text($"{shipment.ConsigneeAddress1} {shipment.ConsigneeAddress2}".Trim()).FontSize(6);
+            c.Item().Height(2);
+            c.Item().Text(shipment.ConsigneeCity ?? "").Bold().FontSize(8);
+            c.Item().Text(shipment.ConsigneeCountry ?? "").FontSize(6);
+            c.Item().Row(r =>
+            {
+                r.RelativeItem().Text(shipment.ConsigneePhone ?? shipment.ConsigneeMobile ?? "").Bold().FontSize(7);
+                r.RelativeItem().Text(shipment.ConsigneeMobile ?? "").FontSize(6);
+            });
+        });
+    }
+
+    private void BuildGateexRouteRemarks(ColumnDescriptor column, InscanMaster shipment)
+    {
+        column.Item().BorderTop(1).Padding(2).Row(row =>
+        {
+            row.RelativeItem().Text($"Route: {shipment.DestinationPortCode ?? "N/A"}").FontSize(6);
+        });
+        
+        column.Item().BorderTop(1).Padding(2).Row(row =>
+        {
+            row.RelativeItem().Text($"Remarks: {shipment.Remarks ?? ""}").FontSize(6);
+        });
+    }
+
+    private void BuildGateexDescription(ColumnDescriptor column, InscanMaster shipment)
+    {
+        column.Item().BorderTop(1).Padding(2).Row(row =>
+        {
+            row.ConstantItem(45).Text("Description:").FontSize(5).FontColor(Colors.Grey.Darken1);
+            row.RelativeItem().Text(shipment.CargoDescription ?? "Documents").FontSize(6);
+        });
+    }
+
+    private void BuildGateexReferences(ColumnDescriptor column, InscanMaster shipment)
+    {
+        column.Item().BorderTop(1).Padding(2).Row(row =>
+        {
+            row.RelativeItem().Column(c =>
+            {
+                c.Item().Text($"Shipper Ref: {shipment.ReferenceNo ?? ""}").FontSize(5);
+            });
+            row.RelativeItem().Column(c =>
+            {
+                c.Item().Text($"Consignee Ref: {shipment.ReferenceNo ?? ""}").FontSize(5);
+            });
+        });
+    }
+
+    private void BuildGateexRightPanel(ColumnDescriptor column, InscanMaster shipment)
+    {
+        column.Item().Padding(2).Column(c =>
+        {
+            c.Item().Text("PAYMENT").FontSize(5).FontColor(Colors.Grey.Darken1);
+            c.Item().Text("MODE").FontSize(5).FontColor(Colors.Grey.Darken1);
+            var hasDuty = (shipment.DutyVatAmount ?? 0) > 0;
+            var paymentMode = hasDuty ? "DDP" : "DDU";
+            c.Item().Text(paymentMode).Bold().FontSize(7).FontColor(Colors.Blue.Darken2);
+        });
+        
+        column.Item().Height(3);
+        
+        if (shipment.DutyVatAmount > 0)
+        {
+            column.Item().Padding(2).Column(c =>
+            {
+                c.Item().Text("DUTY/VAT").FontSize(4).FontColor(Colors.Grey.Darken1);
+                c.Item().Text($":{shipment.DutyVatAmount?.ToString("F0") ?? "0"}").FontSize(6);
+            });
+        }
+        
+        if (shipment.IsCOD && shipment.CODAmount > 0)
+        {
+            column.Item().Padding(2).Column(c =>
+            {
+                c.Item().Text("COD AMT").FontSize(4).FontColor(Colors.Grey.Darken1);
+                c.Item().Text($":{shipment.CODAmount?.ToString("F0") ?? "0"}").FontSize(6);
+            });
+        }
+        
+        var totalCollect = (shipment.DutyVatAmount ?? 0) + (shipment.CODAmount ?? 0);
+        if (totalCollect > 0)
+        {
+            column.Item().Height(3);
+            column.Item().Padding(2).Column(c =>
+            {
+                c.Item().Text("TOTAL").FontSize(4).FontColor(Colors.Grey.Darken1);
+                c.Item().Text("COLLECT").FontSize(4).FontColor(Colors.Grey.Darken1);
+                c.Item().Text($":{totalCollect:F0}").Bold().FontSize(7);
+            });
+        }
+        
+        column.Item().Height(3);
+        column.Item().Padding(2).Text(shipment.Currency ?? "AED").FontSize(5).FontColor(Colors.Grey.Medium);
+        
+        if (shipment.BarcodeImageVertical != null)
+        {
+            column.Item().Height(10);
+            column.Item().AlignCenter().Padding(1).Image(shipment.BarcodeImageVertical).FitWidth();
+        }
     }
 
     private void BuildLabelHeader(ColumnDescriptor column, InscanMaster shipment, string companyName)
