@@ -298,6 +298,29 @@ app.MapGet("/api/report/awb-label/{id:long}", async (long id, ApplicationDbConte
     return Results.File(pdf, "application/pdf", $"Label-{awb.AWBNo}.pdf");
 });
 
+app.MapGet("/api/report/shipment-invoice/{id:long}", async (long id, ApplicationDbContext db, AWBPrintService printService, IWebHostEnvironment env) =>
+{
+    var awb = await db.InscanMasters.FindAsync(id);
+    if (awb == null) return Results.NotFound();
+    
+    byte[]? logoData = null;
+    if (awb.BranchId.HasValue)
+    {
+        var branch = await db.Branches.Include(b => b.Company).FirstOrDefaultAsync(b => b.Id == awb.BranchId);
+        if (branch?.Company?.Logo != null)
+        {
+            var logoPath = Path.Combine(env.WebRootPath, branch.Company.Logo.TrimStart('/'));
+            if (File.Exists(logoPath))
+            {
+                logoData = await File.ReadAllBytesAsync(logoPath);
+            }
+        }
+    }
+    
+    var pdf = printService.GenerateShipmentInvoice(awb, logoData, $"INV-{awb.AWBNo}");
+    return Results.File(pdf, "application/pdf", $"ShipmentInvoice-{awb.AWBNo}.pdf");
+});
+
 app.MapGet("/api/report/invoice/{id:long}", async (long id, ApplicationDbContext db, ReportingService reportService) =>
 {
     var invoice = await db.Invoices.Include(i => i.Details).FirstOrDefaultAsync(i => i.Id == id);
