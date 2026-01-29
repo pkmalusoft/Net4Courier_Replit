@@ -33,3 +33,15 @@ window.downloadFileFromBytes = function (fileName, base64Content) {
     link.click();
     document.body.removeChild(link);
 };
+
+window.printContent = function (htmlContent) {
+    var printWindow = window.open('', '_blank');
+    if (printWindow) {
+        printWindow.document.write(htmlContent);
+        printWindow.document.close();
+        printWindow.focus();
+        setTimeout(function() {
+            printWindow.print();
+        }, 250);
+    }
+};

@@ -439,14 +439,53 @@
                     
                     if (shipmentsNeedingAwb.Any())
                     {
-                        // Use branch's AWB configuration for generation
-                        var prefix = branch?.AWBPrefix ?? "";
-                        var increment = branch?.AWBIncrement ?? 1;
-                        var lastUsed = branch?.AWBLastUsedNumber ?? branch?.AWBStartingNumber ?? 1;
+                        // Map selected direction to movement type
+                        var movementType = _selectedDirection == ShipmentDirection.Import 
+                            ? MovementType.InternationalImport 
+                            : MovementType.InternationalExport;
                         
-                        // If never used, start from starting number
-                        if (lastUsed == 0 && branch?.AWBStartingNumber > 0)
-                            lastUsed = branch.AWBStartingNumber - increment;
+                        // Try to get movement-type-specific AWB config first
+                        var awbConfig = await context.BranchAWBConfigs
+                            .FirstOrDefaultAsync(c => c.BranchId == branchId.Value 
+                                && c.MovementType == movementType 
+                                && !c.IsDeleted);
+                        
+                        string prefix;
+                        long increment;
+                        long lastUsed;
+                        
+                        if (awbConfig != null)
+                        {
+                            // Use movement-type-specific config with proper safeguards
+                            prefix = awbConfig.AWBPrefix ?? "";
+                            increment = awbConfig.IncrementBy > 0 ? awbConfig.IncrementBy : 1;
+                            
+                            // Start from StartingNumber if LastUsedNumber is 0 or less than StartingNumber
+                            if (awbConfig.LastUsedNumber == 0 || awbConfig.LastUsedNumber < awbConfig.StartingNumber)
+                            {
+                                lastUsed = awbConfig.StartingNumber - increment;
+                            }
+                            else
+                            {
+                                lastUsed = awbConfig.LastUsedNumber;
+                            }
+                        }
+                        else
+                        {
+                            // Fallback to branch default config with proper safeguards
+                            prefix = branch?.AWBPrefix ?? "";
+                            increment = (branch?.AWBIncrement ?? 1) > 0 ? (branch?.AWBIncrement ?? 1) : 1;
+                            
+                            // Start from StartingNumber if LastUsedNumber is 0 or less than StartingNumber
+                            if (branch?.AWBLastUsedNumber == 0 || branch?.AWBLastUsedNumber < branch?.AWBStartingNumber)
+                            {
+                                lastUsed = (branch?.AWBStartingNumber ?? 1) - increment;
+                            }
+                            else
+                            {
+                                lastUsed = branch?.AWBLastUsedNumber ?? 1;
+                            }
+                        }
                         
                         foreach (var shipmentDto in shipmentsNeedingAwb)
                         {
@@ -454,8 +493,13 @@
                             shipmentDto.AWBNo = $"{prefix}{lastUsed}";
                         }
                         
-                        // Update branch's last used AWB number
-                        if (branch != null)
+                        // Update the appropriate last used AWB number
+                        if (awbConfig != null)
+                        {
+                            awbConfig.LastUsedNumber = lastUsed;
+                            awbConfig.ModifiedAt = DateTime.UtcNow;
+                        }
+                        else if (branch != null)
                         {
                             branch.AWBLastUsedNumber = lastUsed;
                             branch.ModifiedAt = DateTime.UtcNow;

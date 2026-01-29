@@ -23,7 +23,7 @@ window.initSignatureCanvas = function(canvasId) {
     signatureCanvas.addEventListener('touchmove', handleTouchMove, { passive: false });
     signatureCanvas.addEventListener('touchend', stopDrawing);
     
-    clearCanvas(canvasId);
+    window.clearSignatureCanvas(canvasId);
 };
 
 function startDrawing(e) {
