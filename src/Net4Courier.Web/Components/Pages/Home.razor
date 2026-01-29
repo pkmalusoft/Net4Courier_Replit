@@ -1,13 +1,57 @@
 @page "/"
 @inject Net4Courier.Infrastructure.Data.ApplicationDbContext DbContext
 @inject IDialogService DialogService
+@inject Net4Courier.Web.Services.GlobalSearchService SearchService
+@inject NavigationManager NavigationManager
 @using Microsoft.EntityFrameworkCore
 @using Net4Courier.Operations.Entities
 @using Net4Courier.Kernel.Enums
+@using Net4Courier.Web.Services
 
 <PageTitle>Dashboard - Net4Courier</PageTitle>
 
 <style>
+    .global-search-container {
+        position: relative;
+        flex: 1;
+        max-width: 500px;
+        margin-left: 24px;
+    }
+    .global-search-field .mud-input-root {
+        background: #f8fafc !important;
+        border-radius: 8px !important;
+        border: 1px solid #e2e8f0 !important;
+    }
+    .global-search-field .mud-input-root:focus-within {
+        border-color: #556ee6 !important;
+        box-shadow: 0 0 0 3px rgba(85, 110, 230, 0.1) !important;
+    }
+    .search-result-item {
+        padding: 10px 16px;
+        cursor: pointer;
+        transition: background 0.15s ease;
+    }
+    .search-result-item:hover {
+        background: #f1f5f9;
+    }
+    .search-category-header {
+        padding: 8px 16px;
+        background: #f8fafc;
+        font-weight: 600;
+        font-size: 0.75rem;
+        color: #64748b;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+    }
+    .search-kbd {
+        background: #f1f5f9;
+        border: 1px solid #e2e8f0;
+        border-radius: 4px;
+        padding: 2px 8px;
+        font-size: 0.75rem;
+        color: #64748b;
+        font-family: monospace;
+    }
     .stat-card {
         border-radius: 12px !important;
         border: 1px solid rgba(0,0,0,0.05);
@@ -47,11 +91,61 @@
     }
 </style>
 
-<div class="d-flex justify-space-between align-center mb-4">
+<div class="d-flex align-center mb-4">
     <div>
         <MudText Typo="Typo.h4" Style="font-weight: 600;">Dashboard</MudText>
         <MudText Typo="Typo.body2" Color="Color.Secondary">Welcome back! Here's your operations overview.</MudText>
     </div>
+    
+    <div class="global-search-container">
+        <MudAutocomplete T="SearchResult"
+                         @ref="_searchField"
+                         @bind-Value="_selectedResult"
+                         SearchFunc="SearchAsync"
+                         Placeholder="Search by AWB, Customer, or Invoice..."
+                         Variant="Variant.Outlined"
+                         Margin="Margin.Dense"
+                         Adornment="Adornment.Start"
+                         AdornmentIcon="@Icons.Material.Filled.Search"
+                         Class="global-search-field"
+                         Immediate="true"
+                         DebounceInterval="300"
+                         MinCharacters="2"
+                         MaxItems="15"
+                         Dense="true"
+                         ResetValueOnEmptyText="true"
+                         CoerceText="false"
+                         CoerceValue="false"
+                         ValueChanged="OnSearchResultSelected">
+            <ItemTemplate>
+                <div class="d-flex align-center gap-3 py-1">
+                    <MudIcon Icon="@GetResultIcon(context)" Size="Size.Small" Color="@GetResultColor(context)" />
+                    <div class="flex-grow-1">
+                        <MudText Typo="Typo.body2" Style="font-weight: 500;">@context.Title</MudText>
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">@context.Subtitle</MudText>
+                    </div>
+                    @if (!string.IsNullOrEmpty(context.Status))
+                    {
+                        <MudChip T="string" Size="Size.Small" Variant="Variant.Outlined" Color="@GetStatusChipColor(context.Status)" Style="font-size: 0.65rem;">
+                            @context.Status
+                        </MudChip>
+                    }
+                </div>
+            </ItemTemplate>
+            <NoItemsTemplate>
+                <div class="pa-4 text-center">
+                    <MudText Typo="Typo.body2" Color="Color.Secondary">No results found</MudText>
+                </div>
+            </NoItemsTemplate>
+            <MoreItemsTemplate>
+                <div class="pa-2 text-center">
+                    <MudText Typo="Typo.caption" Color="Color.Primary">Type more to refine results...</MudText>
+                </div>
+            </MoreItemsTemplate>
+        </MudAutocomplete>
+    </div>
+    
+    <MudSpacer />
     <MudChip T="string" Color="Color.Primary" Variant="Variant.Outlined" Size="Size.Small" Icon="@Icons.Material.Filled.CalendarToday">
         @DateTime.Now.ToString("dddd, MMMM dd, yyyy")
     </MudChip>
@@ -311,6 +405,66 @@ else
     private bool _isLoading = true;
     private DashboardStats _stats = new();
     private List<InscanMaster> _recentShipments = new();
+    private MudAutocomplete<SearchResult>? _searchField;
+    private SearchResult? _selectedResult;
+
+    private async Task<IEnumerable<SearchResult>> SearchAsync(string query, CancellationToken token)
+    {
+        if (string.IsNullOrWhiteSpace(query) || query.Length < 2)
+            return Enumerable.Empty<SearchResult>();
+        
+        try
+        {
+            var results = await SearchService.SearchAsync(query);
+            return results;
+        }
+        catch
+        {
+            return Enumerable.Empty<SearchResult>();
+        }
+    }
+
+    private void OnSearchResultSelected(SearchResult? result)
+    {
+        if (result != null)
+        {
+            NavigationManager.NavigateTo(result.NavigateUrl);
+            _selectedResult = null;
+        }
+    }
+
+    private string GetResultIcon(SearchResult result) => result.Type switch
+    {
+        SearchResultType.AWB => Icons.Material.Filled.LocalShipping,
+        SearchResultType.Customer => Icons.Material.Filled.Person,
+        SearchResultType.Invoice => Icons.Material.Filled.Receipt,
+        _ => Icons.Material.Filled.Search
+    };
+
+    private Color GetResultColor(SearchResult result) => result.Type switch
+    {
+        SearchResultType.AWB => Color.Primary,
+        SearchResultType.Customer => Color.Success,
+        SearchResultType.Invoice => Color.Warning,
+        _ => Color.Default
+    };
+
+    private Color GetStatusChipColor(string status)
+    {
+        if (Enum.TryParse<CourierStatus>(status, out var courierStatus))
+        {
+            return courierStatus switch
+            {
+                CourierStatus.Delivered => Color.Success,
+                CourierStatus.InTransit => Color.Primary,
+                CourierStatus.OutForDelivery => Color.Info,
+                CourierStatus.Pending => Color.Warning,
+                CourierStatus.Returned => Color.Error,
+                _ => Color.Default
+            };
+        }
+        return Color.Default;
+    }
 
     protected override async Task OnInitializedAsync()
     {

@@ -150,6 +150,7 @@ builder.Services.AddScoped<CODRemittanceService>();
 builder.Services.AddScoped<PickupCommitmentService>();
 builder.Services.AddScoped<PickupIncentiveService>();
 builder.Services.AddScoped<TransferOrderService>();
+builder.Services.AddScoped<GlobalSearchService>();
 builder.Services.AddScoped<IPageErrorHandler, PageErrorHandler>();
 builder.Services.AddScoped<ISLAPdfService, SLAPdfService>();
 builder.Services.AddScoped<RateCardImportService>();
