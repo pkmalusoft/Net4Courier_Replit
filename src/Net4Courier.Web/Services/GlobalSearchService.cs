@@ -36,11 +36,12 @@ public class GlobalSearchService
 
     private async Task<List<SearchResult>> SearchAWBsAsync(ApplicationDbContext context, string query, int limit)
     {
+        var searchPattern = $"%{query}%";
         var awbs = await context.InscanMasters
             .Where(a => !a.IsDeleted && 
-                (a.AWBNo.ToLower().Contains(query) ||
-                 (a.Consignor != null && a.Consignor.ToLower().Contains(query)) ||
-                 (a.Consignee != null && a.Consignee.ToLower().Contains(query))))
+                (EF.Functions.ILike(a.AWBNo, searchPattern) ||
+                 (a.Consignor != null && EF.Functions.ILike(a.Consignor, searchPattern)) ||
+                 (a.Consignee != null && EF.Functions.ILike(a.Consignee, searchPattern))))
             .OrderByDescending(a => a.TransactionDate)
             .Take(limit)
             .Select(a => new { a.AWBNo, a.Consignor, a.ConsigneeCity, a.ConsigneeCountry, a.CourierStatusId })
@@ -59,44 +60,50 @@ public class GlobalSearchService
 
     private async Task<List<SearchResult>> SearchCustomersAsync(ApplicationDbContext context, string query, int limit)
     {
+        var searchPattern = $"%{query}%";
         var customers = await context.Parties
             .Where(p => !p.IsDeleted && p.IsActive &&
                 p.PartyType == Net4Courier.Masters.Entities.PartyType.Customer &&
-                (p.Name.ToLower().Contains(query) ||
-                 (p.Code != null && p.Code.ToLower().Contains(query))))
+                (EF.Functions.ILike(p.Name, searchPattern) ||
+                 (p.Code != null && EF.Functions.ILike(p.Code, searchPattern))))
             .OrderBy(p => p.Name)
             .Take(limit)
-            .Select(p => new { p.Id, p.Name, p.Code, p.City })
+            .Select(p => new { 
+                p.Id, 
+                p.Name, 
+                p.Code, 
+                City = p.Addresses.Select(a => a.City).FirstOrDefault() 
+            })
             .ToListAsync();
 
         return customers.Select(c => new SearchResult
         {
             Type = SearchResultType.Customer,
             Title = c.Name,
-            Subtitle = $"{c.Code} - {c.City}",
+            Subtitle = $"{c.Code} - {c.City ?? ""}",
             Status = null,
-            NavigateUrl = $"/customer-master/{c.Id}",
+            NavigateUrl = $"/customer-master?search={Uri.EscapeDataString(c.Code ?? c.Name)}",
             Icon = "Person"
         }).ToList();
     }
 
     private async Task<List<SearchResult>> SearchInvoicesAsync(ApplicationDbContext context, string query, int limit)
     {
+        var searchPattern = $"%{query}%";
         var invoices = await context.Invoices
-            .Include(i => i.Party)
             .Where(i => !i.IsDeleted &&
-                (i.InvoiceNo.ToLower().Contains(query) ||
-                 (i.Party != null && i.Party.Name.ToLower().Contains(query))))
+                (EF.Functions.ILike(i.InvoiceNo, searchPattern) ||
+                 (i.CustomerName != null && EF.Functions.ILike(i.CustomerName, searchPattern))))
             .OrderByDescending(i => i.InvoiceDate)
             .Take(limit)
-            .Select(i => new { i.Id, i.InvoiceNo, PartyName = i.Party != null ? i.Party.Name : "", i.TotalAmount, i.CurrencyCode })
+            .Select(i => new { i.Id, i.InvoiceNo, i.CustomerName, i.NetTotal })
             .ToListAsync();
 
         return invoices.Select(i => new SearchResult
         {
             Type = SearchResultType.Invoice,
             Title = i.InvoiceNo,
-            Subtitle = $"{i.PartyName} - {i.CurrencyCode} {i.TotalAmount:N2}",
+            Subtitle = $"{i.CustomerName} - {(i.NetTotal ?? 0):N2}",
             Status = null,
             NavigateUrl = $"/invoice-view/{i.Id}",
             Icon = "Receipt"
