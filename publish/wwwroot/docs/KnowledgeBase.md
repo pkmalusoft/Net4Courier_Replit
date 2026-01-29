@@ -16,13 +16,20 @@ This comprehensive knowledge base covers all aspects of Net4Courier - from picku
    **System Setup Guides**
    - [Create a New Company](#how-to-create-a-new-company)
    - [Create a New Branch](#how-to-create-a-new-branch)
+   - [Configure Branch AWB Numbers by Movement Type](#how-to-configure-branch-awb-numbers-by-movement-type)
    - [Create a New Warehouse](#how-to-create-a-new-warehouse)
    - [Create New Users](#how-to-create-new-users)
+   - [Create Users and Assign Roles & Permissions](#how-to-create-users-and-assign-roles-permissions)
    - [Give Menu Access to Users](#how-to-give-access-to-menu-for-users)
    - [Restrict Menu Access](#how-to-restrict-menu-access-to-users)
    - [Give Access for Agents/Customers/Vendors](#how-to-give-access-for-agents-customers-vendors)
    - [Configure Service Types](#how-to-configure-service-types)
-   - [Set Up Zones](#how-to-set-up-zones)
+   - [Set Up Zones (International/Domestic)](#how-to-set-up-zones)
+   - [Manage Currencies](#how-to-manage-currencies)
+   - [Manage Departments](#how-to-manage-departments)
+   - [Manage Designations](#how-to-manage-designations)
+   - [Set Up Initial Administrator (First-Time Setup)](#how-to-set-up-initial-administrator)
+   - [Create and Delete Demo Data](#how-to-create-and-delete-demo-data)
    
    **Operations Guides**
    - [Create a New Shipment (AWB)](#how-to-create-a-new-shipment-awb-entry)
@@ -32,17 +39,29 @@ This comprehensive knowledge base covers all aspects of Net4Courier - from picku
    - [Convert Pickup Request to AWB](#how-to-convert-pickup-request-to-awb)
    - [Use City Selection (Geography Dropdown)](#how-to-use-city-selection-geography-dropdown)
    - [Process Inscan](#how-to-process-inscan-warehouse-receiving)
+   - [Use Unified Warehouse Inscan (Domestic + Import)](#how-to-use-unified-warehouse-inscan)
    - [Create MAWB and Bag Shipments](#how-to-create-mawb-and-bag-shipments)
    - [Create DRS (Delivery Run Sheet)](#how-to-create-drs-delivery-run-sheet)
    - [Capture POD (Proof of Delivery)](#how-to-capture-pod-proof-of-delivery)
    - [Update Bulk POD via Excel](#how-to-update-bulk-pod-via-excel)
    - [Process Return to Shipper (RTS)](#how-to-process-return-to-shipper-rts)
    - [Track a Shipment](#how-to-track-a-shipment)
+   - [Use Global Search](#how-to-use-global-search)
+   - [Print Tracking Report (PDF)](#how-to-print-tracking-report)
+   - [Generate Shipment Invoice](#how-to-generate-shipment-invoice)
    
    **Import Operations Guides**
    - [Create Import (Air/Sea/Land)](#how-to-create-a-new-import-airsealand)
    - [Process Import Customs Clearance](#how-to-process-import-customs-clearance)
    - [Create Import via Excel Upload](#how-to-create-import-via-excel-upload)
+   - [Import Shipment Fields (Shipper, Duty/VAT, COD)](#import-shipment-data-fields)
+   - [Receive Import Shipments at Warehouse](#how-to-receive-import-shipments-at-warehouse)
+   
+   **Prepaid AWB Guides**
+   - [Manage AWB Stock](#how-to-manage-awb-stock)
+   - [Sell Prepaid AWBs to Customers](#how-to-sell-prepaid-awbs)
+   - [Use Prepaid AWB in Shipment Entry](#how-to-use-prepaid-awb-in-shipment)
+   - [View Prepaid AWB Register](#how-to-view-prepaid-awb-register)
    
    **Dashboard & Reporting Guides**
    - [Use Customer Dashboard](#how-to-use-customer-dashboard)
@@ -57,6 +76,8 @@ This comprehensive knowledge base covers all aspects of Net4Courier - from picku
    - [Use Rate Simulator](#how-to-use-rate-simulator)
    - [Generate Reports](#how-to-generate-reports)
    - [Use Public Tracking Page](#how-to-use-public-tracking-page)
+   - [Use General Ledger Module](#how-to-use-general-ledger)
+   - [Email Reports to Customers/Suppliers](#how-to-email-reports)
    
    **Help & Feedback**
    - [Suggest a New Topic](#suggest-a-new-how-to-topic)
@@ -576,31 +597,454 @@ New to Net4Courier? Follow these steps to set up your system:
 
 **Navigation:** Pricing & Billing → Zone Management
 
-**When to Use:** When configuring geographic pricing regions.
+**When to Use:** When configuring geographic pricing regions for rate calculation.
+
+**Prerequisites:** Countries and cities should be configured in Geography Masters.
 
 **Detailed Steps:**
 
-1. Go to **Pricing & Billing → Zone Management**
-2. Click **"+ New Zone"**
-3. Enter zone details:
+1. **Access Zone Management**
+   - Go to **Pricing & Billing → Zone Management**
+   - Click **"+ New Zone"**
+
+2. **Select Zone Type**
+   | Type | Use For | Members |
+   |------|---------|---------|
+   | International | Cross-border shipments | Select countries |
+   | Domestic | Within-country shipments | Select cities |
+
+3. **Enter Zone Details**
    | Field | Description | Example |
    |-------|-------------|---------|
-   | Zone Name | Descriptive name | "UAE Local" |
-   | Zone Code | Short identifier | "UAE-L" |
-   | Description | Zone coverage | "Within same emirate" |
-4. **Add Zone Members:**
-   - Select countries, states, or cities included
-   - Use checkboxes to select multiple
-5. Click **"Save"**
+   | Zone Name | Descriptive name | "GCC Countries" or "UAE Metro" |
+   | Zone Code | Short identifier | "GCC" or "UAE-M" |
+   | Zone Category | Category grouping | "International" or "Local" |
+   | Description | Zone coverage details | "Gulf Cooperation Council countries" |
+
+4. **Add Zone Members (based on type)**
+
+   **For International Zones:**
+   - Click on countries to add them as chips
+   - Multiple countries can be selected
+   - Countries appear as removable chips
+   - Example: UAE, Saudi Arabia, Qatar, Kuwait, Bahrain, Oman
+
+   **For Domestic Zones:**
+   - Click on cities to add them as chips
+   - Multiple cities can be selected
+   - Cities appear as removable chips
+   - Example: Dubai, Abu Dhabi, Sharjah, Ajman
+
+5. **Save Zone**
+   - Click **"Save"**
+   - Zone details stored in ZoneMatrixDetails
+   - Available for rate card configuration
 
 **Sample Zone Structure:**
-| Zone | Coverage |
-|------|----------|
-| Local | Same city |
-| Regional | Same country |
-| Gulf | GCC countries |
-| Middle East | ME region |
-| International | Rest of world |
+| Zone Type | Zone Name | Coverage |
+|-----------|-----------|----------|
+| Domestic | Local | Same city delivery |
+| Domestic | Metro | Major cities in country |
+| Domestic | Remote | Rural/remote areas |
+| International | Gulf | GCC countries |
+| International | Middle East | ME region |
+| International | Asia | Asian countries |
+| International | Europe | European countries |
+| International | Americas | North/South America |
+
+**Zone Resolution Priority:**
+1. City match (most specific)
+2. Country match
+3. Default zone (fallback)
+
+---
+
+## How to Manage Currencies
+
+**Navigation:** Masters & Settings → Operations Masters → Currencies
+
+**When to Use:** When adding or modifying currencies for transactions and shipment values.
+
+**Detailed Steps:**
+
+1. **Access Currency Management**
+   - Go to **Masters & Settings → Operations Masters → Currencies**
+   - View existing currencies in the grid
+
+2. **Add New Currency**
+   - Click **"Add Currency"** button
+   - Dialog opens for currency entry
+
+3. **Enter Currency Details**
+   | Field | Description | Example |
+   |-------|-------------|---------|
+   | Code | ISO 4217 currency code (3 chars) | "USD", "AED", "INR" |
+   | Name | Full currency name | "US Dollar", "UAE Dirham" |
+   | Symbol | Display symbol | "$", "AED", "₹" |
+   | Decimal Places | Precision (0-4) | 2 |
+   | Is Active | Enable/disable currency | Yes |
+
+4. **Save Currency**
+   - Click **"Save"**
+   - Currency available for selection in branches and transactions
+
+**Edit/Delete Currency:**
+- Click **Edit** icon to modify existing currency
+- Click **Delete** icon to soft-delete (marks as deleted, not removed)
+
+**Common Currencies:**
+| Code | Name | Symbol | Decimals |
+|------|------|--------|----------|
+| AED | UAE Dirham | AED | 2 |
+| USD | US Dollar | $ | 2 |
+| EUR | Euro | € | 2 |
+| GBP | British Pound | £ | 2 |
+| INR | Indian Rupee | ₹ | 2 |
+| SAR | Saudi Riyal | SAR | 2 |
+
+---
+
+## How to Manage Departments
+
+**Navigation:** Masters & Settings → Organization → Departments
+
+**When to Use:** When organizing staff into departments for reporting and access control.
+
+**Detailed Steps:**
+
+1. **Access Department Management**
+   - Go to **Masters & Settings → Organization → Departments**
+   - View existing departments
+
+2. **Add New Department**
+   - Click **"Add Department"** button
+   - Dialog opens for entry
+
+3. **Enter Department Details**
+   | Field | Description | Example |
+   |-------|-------------|---------|
+   | Code | Short unique code | "OPS", "FIN", "HR" |
+   | Name | Full department name | "Operations", "Finance", "Human Resources" |
+   | Description | Department purpose | "Handles shipment processing" |
+   | Is Active | Enable/disable | Yes |
+
+4. **Save Department**
+   - Click **"Save"**
+   - Department available for user assignment
+
+**Sample Departments:**
+- Operations (OPS) - Shipment handling
+- Finance (FIN) - Billing and payments
+- Customer Service (CS) - Customer support
+- Human Resources (HR) - Employee management
+- IT (IT) - Technical support
+- Sales (SALES) - Business development
+
+---
+
+## How to Manage Designations
+
+**Navigation:** Masters & Settings → Organization → Designations
+
+**When to Use:** When defining job titles/positions for staff members.
+
+**Detailed Steps:**
+
+1. **Access Designation Management**
+   - Go to **Masters & Settings → Organization → Designations**
+   - View existing designations
+
+2. **Add New Designation**
+   - Click **"Add Designation"** button
+   - Dialog opens for entry
+
+3. **Enter Designation Details**
+   | Field | Description | Example |
+   |-------|-------------|---------|
+   | Code | Short unique code | "MGR", "EXE", "DIR" |
+   | Name | Full title | "Manager", "Executive", "Director" |
+   | Description | Role description | "Team lead responsible for..." |
+   | Is Active | Enable/disable | Yes |
+
+4. **Save Designation**
+   - Click **"Save"**
+   - Designation available for user profiles
+
+**Sample Designations:**
+- Director (DIR)
+- General Manager (GM)
+- Manager (MGR)
+- Assistant Manager (AM)
+- Senior Executive (SR-EXE)
+- Executive (EXE)
+- Junior Executive (JR-EXE)
+- Courier (COU)
+- Driver (DRV)
+
+---
+
+## How to Set Up Initial Administrator
+
+**Navigation:** /setup (First-time access only)
+
+**When to Use:** When deploying Net4Courier for a new client/installation for the first time.
+
+**Prerequisites:** 
+- SETUP_KEY environment variable must be configured
+- No admin user exists in the database
+
+**Detailed Steps:**
+
+1. **Access Setup Page**
+   - Navigate to `/setup` in browser
+   - If admin already exists, you'll be redirected to login
+   - If no admin exists, setup form appears
+
+2. **Enter Setup Key**
+   - Enter the **SETUP_KEY** provided by system administrator
+   - This authenticates the setup process
+   - Prevents unauthorized admin creation
+
+3. **Create Administrator Account**
+   | Field | Description | Example |
+   |-------|-------------|---------|
+   | Username | Admin login ID | "admin" |
+   | Password | Secure password (min 8 chars) | "SecurePass123!" |
+   | Confirm Password | Re-enter password | "SecurePass123!" |
+   | Full Name | Administrator name | "System Administrator" |
+   | Email | Admin email | "admin@company.ae" |
+
+4. **Complete Setup**
+   - Click **"Create Administrator"**
+   - Admin account created with full system access
+   - Redirected to login page
+   - Login with new credentials
+
+**Security Notes:**
+- Setup page only accessible when no admin exists
+- SETUP_KEY should be kept confidential
+- Change admin password after first login
+- Create individual user accounts for staff (don't share admin)
+
+---
+
+## How to Create and Delete Demo Data
+
+**Navigation:** Masters & Settings → User & Security → Demo Data Management
+
+**When to Use:** When setting up training environments or demonstrating system features.
+
+**Prerequisites:** Administrator access required.
+
+**Detailed Steps:**
+
+### Creating Demo Data
+
+1. **Access Demo Data Page**
+   - Go to **Masters & Settings → User & Security → Demo Data Management**
+
+2. **Click "Create Demo Data"**
+   - Confirmation dialog appears
+   - Review what will be created
+
+3. **Demo Data Created:**
+   | Type | Records | Details |
+   |------|---------|---------|
+   | Customers | 5 | DEMO-CUST-001 to 005 with UAE addresses |
+   | AWBs | 5 | DEMO-AWB-001 to 005 with complete workflows |
+   | Pickup Requests | 5 | Linked to demo AWBs |
+   | Tracking Entries | Multiple | Full tracking history per AWB |
+   | Inscans | 5 | Warehouse receiving records |
+
+4. **All Demo Records**
+   - Flagged with `IsDemo = true`
+   - Easily identifiable in reports
+   - Safe to delete without affecting real data
+
+### Deleting Demo Data
+
+1. **Access Demo Data Page**
+   - Go to **Masters & Settings → User & Security → Demo Data Management**
+
+2. **Click "Delete Demo Data"**
+   - Confirmation dialog with warning
+   - Lists count of records to be deleted
+
+3. **Confirm Deletion**
+   - Click **"Delete"** to proceed
+   - All demo records removed
+   - Real data unaffected
+
+**Use Cases:**
+- Training new staff
+- Client demonstrations
+- Testing new features
+- UAT environments
+
+---
+
+## How to Configure Branch AWB Numbers by Movement Type
+
+**Navigation:** Masters & Settings → Organization → Branches → Edit Branch
+
+**When to Use:** When different AWB number series are needed for Domestic, Export, Import, and Transhipment shipments.
+
+**Prerequisites:** Branch must exist.
+
+**Detailed Steps:**
+
+1. **Access Branch Edit**
+   - Go to **Masters & Settings → Organization → Branches**
+   - Click **Edit** on the branch to configure
+
+2. **Navigate to AWB Configuration Section**
+   - Scroll to **"AWB Configuration by Movement Type"** section
+   - Grid shows 4 movement types
+
+3. **Configure Each Movement Type**
+
+   | Movement Type | Use For | Example Prefix |
+   |---------------|---------|----------------|
+   | Domestic | Within-country shipments | "DXB-D" |
+   | Export | Outbound international | "DXB-E" |
+   | Import | Inbound international | "DXB-I" |
+   | Transhipment | Pass-through cargo | "DXB-T" |
+
+4. **Set AWB Parameters**
+   For each movement type, configure:
+   | Field | Description | Example |
+   |-------|-------------|---------|
+   | AWB Prefix | Unique prefix for this type | "DXB-E" |
+   | Starting Number | First AWB number | 100001 |
+   | Increment By | Number increment (typically 1) | 1 |
+   | Last Used Number | Read-only, shows current | 100045 |
+
+5. **Save Configuration**
+   - Click **"Save"**
+   - Each movement type now has its own AWB series
+
+**How It Works:**
+- When creating an AWB, system checks movement type
+- Uses movement-type-specific config if available
+- Falls back to branch default if no specific config
+- AWB numbers auto-generate based on configuration
+
+**Example AWB Numbers:**
+```
+Domestic:      DXB-D100001, DXB-D100002, ...
+Export:        DXB-E100001, DXB-E100002, ...
+Import:        DXB-I100001, DXB-I100002, ...
+Transhipment:  DXB-T100001, DXB-T100002, ...
+```
+
+**Benefits:**
+- Easy identification of shipment type from AWB
+- Separate numbering for accounting/reporting
+- Clear audit trail by movement type
+- Flexible configuration per branch
+
+---
+
+## How to Create Users and Assign Roles & Permissions
+
+**Navigation:** Masters & Settings → User & Security → Users, Roles
+
+**When to Use:** When onboarding new staff and configuring their access levels.
+
+**Prerequisites:** At least one branch must exist.
+
+**Detailed Steps:**
+
+### Step 1: Create or Select a Role
+
+1. **Access Role Management**
+   - Go to **Masters & Settings → User & Security → Roles**
+   - View existing roles or create new
+
+2. **Create New Role (if needed)**
+   - Click **"+ New Role"**
+   - Enter role name (e.g., "Operations Manager")
+   - Enter description
+
+3. **Configure Permissions**
+   For each module, set access levels:
+   | Permission | Description |
+   |------------|-------------|
+   | View | Can see data and menus |
+   | Create | Can add new records |
+   | Edit | Can modify existing records |
+   | Delete | Can remove records |
+
+4. **Save Role**
+   - Click **"Save"**
+   - Role available for user assignment
+
+### Step 2: Create User Account
+
+1. **Access User Management**
+   - Go to **Masters & Settings → User & Security → Users**
+   - Click **"+ New User"**
+
+2. **Enter Login Credentials**
+   | Field | Description | Example |
+   |-------|-------------|---------|
+   | Username | Unique login ID | "ahmed.rashid" |
+   | Password | Min 8 characters | "SecurePass123!" |
+   | Confirm Password | Re-enter password | "SecurePass123!" |
+
+3. **Enter Personal Information**
+   | Field | Description | Example |
+   |-------|-------------|---------|
+   | Full Name | Display name | "Ahmed Al Rashid" |
+   | Email | User's email | "ahmed@company.ae" |
+   | Phone | Contact number | "+971 50 123 4567" |
+
+4. **Assign User Type**
+   | Type | Use For |
+   |------|---------|
+   | Staff | Internal employees |
+   | Agent | Delivery couriers |
+   | Customer | External customer portal |
+   | Vendor | Supplier access |
+
+5. **Assign Role**
+   - Select from dropdown
+   - Role determines all permissions
+
+6. **Assign Branches**
+   - Check all branches user can access
+   - Set one as **Default Branch**
+   - User selects branch at login if multiple
+
+7. **Set Status**
+   - **Is Active**: Enable to allow login
+   - Save user
+
+### Step 3: Verify Access
+
+1. **User Logs In**
+   - Enter username and password
+   - If multiple branches, select branch
+
+2. **Menu Access**
+   - Only sees menus based on role permissions
+   - Hidden menus = no permission
+
+3. **Data Access**
+   - Only sees data for assigned branches
+   - Operations scoped to selected branch
+
+**Common Role Templates:**
+
+| Role | Permissions |
+|------|-------------|
+| Administrator | Full access to all modules |
+| Operations Manager | Full Operations, View Finance |
+| Finance Manager | Full Finance, View Operations |
+| Operator | Create/Edit Operations, no Settings |
+| Courier | Only DRS and POD capture |
+| Customer Portal | Track shipments, view invoices |
+| Read Only | View all, no create/edit/delete |
 
 ---
 
@@ -1318,6 +1762,196 @@ Requested → Assigned → In Transit → Collected → At Hub
 
 ---
 
+## How to Use Global Search
+
+**Navigation:** Dashboard → Top Navigation Bar → Search Box
+
+**When to Use:** When quickly searching across AWBs, customers, and invoices from anywhere in the system.
+
+**Detailed Steps:**
+
+1. **Access Global Search**
+   - Located in the top navigation bar on the Dashboard
+   - Single search box for all entity types
+
+2. **Enter Search Query**
+   - Type AWB number, customer name/code, or invoice number
+   - Minimum 2 characters to start search
+   - Search is case-insensitive
+
+3. **View Search Results**
+   Results are categorized with icons:
+   | Icon | Category | Examples |
+   |------|----------|----------|
+   | 📦 | AWBs | AWB numbers matching query |
+   | 👤 | Customers | Customer names or codes |
+   | 🧾 | Invoices | Invoice numbers |
+
+4. **Select Result**
+   - Click on any result to navigate
+   - **AWB** → Opens tracking page with full details
+   - **Customer** → Opens customer master with filter applied
+   - **Invoice** → Opens invoice view
+
+**Search Examples:**
+| Query | Finds |
+|-------|-------|
+| "DXB100" | AWBs starting with DXB100 |
+| "ABC Trading" | Customers with matching name |
+| "INV-2026" | Invoices from 2026 |
+| "Mohammed" | Customers named Mohammed |
+
+**Features:**
+- Autocomplete suggestions as you type
+- Status badges shown on AWB results
+- Results limited to user's branch access
+- PostgreSQL-optimized case-insensitive search
+
+---
+
+## How to Print Tracking Report
+
+**Navigation:** Tracking Page → Print Icon
+
+**When to Use:** When generating a professional PDF tracking report for customers or records.
+
+**Detailed Steps:**
+
+1. **Access Tracking Page**
+   - Search for AWB using Global Search, OR
+   - Navigate to **Shipments & Operations → Tracking**
+   - Enter AWB number
+
+2. **View Shipment Details**
+   - Confirm shipment information displayed
+   - Review tracking timeline
+
+3. **Generate PDF Report**
+   - Click the **Print** icon (🖨️) in the tracking page header
+   - PDF generates and downloads automatically
+
+**Report Contents:**
+
+| Section | Information |
+|---------|-------------|
+| **Header** | Company logo, report title, generation date |
+| **AWB Info** | AWB number, booking date, current status (color-coded) |
+| **Parties** | Shipper and Consignee details (two-column layout) |
+| **Shipment** | Pieces, weight, movement type, payment mode, COD amount |
+| **Timeline** | Full tracking history with events, remarks, locations, timestamps |
+| **Footer** | Page numbers, generation timestamp |
+
+**Report Format:**
+- A4 portrait orientation
+- Professional layout suitable for customer sharing
+- Status shown with color coding (Green=Delivered, Blue=In Transit, etc.)
+- Generated via `/api/report/tracking/{awbNo}` endpoint
+
+**Use Cases:**
+- Customer proof of delivery requests
+- Claims documentation
+- Internal audit records
+- Insurance documentation
+
+---
+
+## How to Generate Shipment Invoice
+
+**Navigation:** Shipments & Operations → AWB Entry → Shipment Invoice Button
+
+**When to Use:** When creating commercial/customs invoices for international shipments.
+
+**Detailed Steps:**
+
+1. **Access AWB Entry**
+   - Go to **Shipments & Operations → Shipments**
+   - Open the shipment (AWB) requiring invoice
+
+2. **Generate Invoice**
+   - Click **"Shipment Invoice"** button
+   - PDF generates and downloads
+
+**Invoice Contents:**
+
+| Section | Information |
+|---------|-------------|
+| **Header** | Company logo, "Commercial Invoice" title |
+| **Shipper Details** | Name, address, contact information |
+| **Consignee Details** | Name, address, contact, tax ID if applicable |
+| **Items Table** | Description, quantity, unit value, total value |
+| **HS Codes** | Harmonized System codes for customs |
+| **Customs Summary** | Total value, currency, country of origin |
+| **Declaration** | Customs declaration statement |
+
+**Invoice Format:**
+- A4 portrait orientation
+- Suitable for customs clearance
+- Includes HS code columns for international shipments
+- Generated via `/api/report/shipment-invoice/{id}` endpoint
+
+**Use Cases:**
+- International shipment documentation
+- Customs clearance requirements
+- Commercial trade documentation
+- Proof of value for insurance
+
+---
+
+## How to Use Unified Warehouse Inscan
+
+**Navigation:** Shipments & Operations → Pickup Inscan
+
+**When to Use:** When receiving both domestic pickups and import shipments at the warehouse.
+
+**Prerequisites:** Pickup requests or import shipments must exist in the system.
+
+**Detailed Steps:**
+
+1. **Access Pickup Inscan Page**
+   - Go to **Shipments & Operations → Pickup Inscan**
+   - Page opens with AWB mode selected by default
+
+2. **Select Scan Mode**
+   | Mode | Use For |
+   |------|---------|
+   | AWB | Scan domestic AWBs or import shipments |
+   | Pickup Request | Scan pickup request numbers |
+
+3. **Scan AWB Barcode**
+   - Enter AWB number in scan field
+   - Press Enter or click Scan
+   - System automatically detects shipment type:
+     - **Domestic AWB** → Updates status to "Inscanned at Origin"
+     - **Import Shipment** → Updates status to "Received at Warehouse"
+
+4. **View Recently Received**
+   - **Combined Grid** shows both domestic and import shipments
+   - **Import Chip** indicator shows which are import shipments
+   - **Counter** shows total of both types received today
+
+**Grid Columns:**
+| Column | Description |
+|--------|-------------|
+| AWB No | Shipment number |
+| Type | "Domestic" or "Import" chip |
+| Consignee | Receiver name |
+| City | Destination city |
+| Time | Scan timestamp |
+
+**Benefits of Unified Inscan:**
+- Single scanning interface for all shipment types
+- Warehouse staff don't need to switch between pages
+- Combined counter for throughput tracking
+- Consistent workflow for both domestic and import
+
+**Status Updates:**
+| Shipment Type | Before Scan | After Scan |
+|---------------|-------------|------------|
+| Domestic AWB | Collected | Inscanned at Origin |
+| Import Shipment | In Transit | Received at Warehouse |
+
+---
+
 # Import Operations Guides
 
 ## How to Create a New Import (Air/Sea/Land)
@@ -1518,6 +2152,226 @@ Requested → Assigned → In Transit → Collected → At Hub
    - Click **"Import"** to create records
    - Transaction-safe: All or none
    - View imported records in dashboard
+
+---
+
+## Import Shipment Data Fields
+
+The Import Inscan page displays shipment details in a comprehensive table with the following columns:
+
+| Column | Description | Source |
+|--------|-------------|--------|
+| AWB | House Airwaybill number | Manual entry or Excel import |
+| Shipper | Sender/shipper name | Manual entry or Excel import |
+| Consignee | Receiver/consignee name | Manual entry or Excel import |
+| Weight | Shipment weight in kg | Manual entry or Excel import |
+| Pieces | Number of packages | Manual entry or Excel import |
+| Bag | Assigned bag number | Bag management |
+| Duty/VAT | Customs duty and VAT amount | Manual entry or Excel import |
+| COD/Coll | Cash on Delivery or Collection amount | Manual entry or Excel import |
+| Status | Current shipment status | System-managed |
+| Inscanned | Time of inscan | Automatic |
+
+**Excel Import Mapping:**
+- Column "Duty/VAT Amount" → `DutyAmount` field
+- Column "COD/Collection Amount" → `CODAmount` field
+- Column "Shipper Name" → `ShipperName` field
+- When COD amount is entered, `IsCOD` flag is automatically set to true
+
+---
+
+## How to Receive Import Shipments at Warehouse
+
+**Navigation:** Shipments & Operations → Pickup Inscan (AWB Mode)
+
+**When to Use:** When receiving import shipments at the warehouse after customs clearance.
+
+**Prerequisites:** Import shipment must exist and be cleared for release.
+
+**Detailed Steps:**
+
+1. **Access Pickup Inscan Page**
+   - Go to **Shipments & Operations → Pickup Inscan**
+   - Ensure **AWB Mode** is selected (default)
+
+2. **Scan Import AWB**
+   - Enter or scan the import AWB number
+   - Press Enter or click Scan
+
+3. **System Detection**
+   - System automatically detects this is an import shipment
+   - Different from domestic AWB handling
+
+4. **Status Update**
+   - Import shipment status changes to **"Received at Warehouse"**
+   - (Different from domestic AWBs which get "Inscanned at Origin")
+   - Timestamp recorded automatically
+
+5. **View in Combined Grid**
+   - Import shipment appears in "Recently Received Today" grid
+   - **"Import" chip** indicator distinguishes it from domestic
+   - Counter includes both domestic and import shipments
+
+**Visual Indicators:**
+| Type | Chip Color | Status After Scan |
+|------|------------|-------------------|
+| Domestic AWB | No chip | Inscanned at Origin |
+| Import Shipment | "Import" chip | Received at Warehouse |
+
+**Next Steps After Receiving:**
+- Import shipment ready for local delivery
+- Assign to DRS for final delivery
+- Track via unified tracking system
+
+**Benefits:**
+- Single interface for all receiving operations
+- Warehouse staff don't switch between systems
+- Unified throughput counter
+- Clear visual distinction between shipment types
+
+---
+
+# Prepaid AWB Guides
+
+## How to Manage AWB Stock
+
+**Navigation:** Masters & Settings → Operations Masters → AWB Stock Management
+
+**When to Use:** When receiving and tracking physical AWB inventory (books, stickers, rolls).
+
+**Detailed Steps:**
+
+1. **Access AWB Stock Management**
+   - Go to **Masters & Settings → Operations Masters → AWB Stock Management**
+   - View current stock summary
+
+2. **Add New Stock**
+   - Click **"+ Add Stock"**
+   - Enter stock details:
+   
+   | Field | Description | Example |
+   |-------|-------------|---------|
+   | Stock Type | Book / Sticker Roll / Sheet | "Book" |
+   | AWB Prefix | Prefix for AWB numbers | "DXB" |
+   | Start Number | First AWB in range | 100001 |
+   | End Number | Last AWB in range | 100100 |
+   | Quantity | Total AWBs in stock | 100 |
+   | Rate per AWB | Cost per AWB | 5.00 |
+   | Received Date | Date stock received | 2026-01-15 |
+   | Supplier | AWB supplier name | "Emirates Post" |
+
+3. **Track Usage**
+   - View allocated vs available AWBs
+   - Monitor stock levels by type
+   - Generate reorder alerts
+
+---
+
+## How to Sell Prepaid AWBs
+
+**Navigation:** Customers & CRM → Prepaid AWB Sales
+
+**When to Use:** When selling prepaid AWBs to customers in advance.
+
+**Detailed Steps:**
+
+1. **Access Prepaid Management**
+   - Go to **Customers & CRM → Prepaid AWB Sales**
+
+2. **Create New Prepaid Sale**
+   - Click **"+ New Prepaid Sale"**
+   - Select customer from dropdown
+   - Enter prepaid details:
+   
+   | Field | Description | Example |
+   |-------|-------------|---------|
+   | Customer | Customer account | "ABC Trading LLC" |
+   | Quantity | Number of AWBs to sell | 50 |
+   | Rate per AWB | Price charged per AWB | 15.00 |
+   | Total Amount | Auto-calculated | 750.00 |
+   | Payment Mode | Cash / Bank / Cheque | "Cash" |
+
+3. **AWB Allocation**
+   - System automatically allocates AWBs from stock
+   - AWB range assigned to customer
+   - Stock updated immediately
+
+4. **Accounting Entry (Automatic)**
+   - Dr: Cash/Bank Account
+   - Cr: Prepaid AWB Control Account
+
+5. **When Customer Uses AWB**
+   - AWB validated during shipment entry
+   - Prepaid balance decremented
+   - Accounting: Dr Prepaid Control, Cr Revenue
+
+---
+
+## How to Use Prepaid AWB in Shipment
+
+**Navigation:** Shipments & Operations → Shipments → New AWB
+
+**When to Use:** When creating a shipment using a prepaid AWB number.
+
+**Detailed Steps:**
+
+1. **Start New Shipment**
+   - Go to **Shipments & Operations → Shipments**
+   - Click **"+ New AWB"**
+
+2. **Select Prepaid Customer**
+   - Choose customer with prepaid AWBs
+   - System shows available prepaid balance
+
+3. **Enter Prepaid AWB Number**
+   - Enter the prepaid AWB number from customer's allocated range
+   - System validates:
+     - AWB belongs to selected customer
+     - AWB not already used
+     - AWB within valid range
+
+4. **Complete Shipment Entry**
+   - Fill remaining shipment details
+   - Save shipment
+   - Prepaid balance updated automatically
+
+**Validation Errors:**
+| Error | Meaning | Solution |
+|-------|---------|----------|
+| "AWB not in prepaid range" | AWB number not allocated to customer | Check customer's prepaid AWB range |
+| "AWB already used" | AWB was used in another shipment | Use different AWB number |
+| "No prepaid balance" | Customer has no prepaid AWBs remaining | Sell more prepaid AWBs |
+
+---
+
+## How to View Prepaid AWB Register
+
+**Navigation:** Customers & CRM → Prepaid AWB Register
+
+**When to Use:** To view prepaid AWB usage and balance by customer.
+
+**Detailed Steps:**
+
+1. **Access Prepaid Register**
+   - Go to **Customers & CRM → Prepaid AWB Register**
+
+2. **Filter Options**
+   - Select customer (required)
+   - Date range (optional)
+   - Status filter (All / Used / Available)
+
+3. **Report Columns**
+   | Column | Description |
+   |--------|-------------|
+   | Customer Name | Customer account |
+   | Total Prepaid | Total AWBs purchased |
+   | Used | AWBs consumed in shipments |
+   | Available | Remaining balance |
+   | Prepaid Amount | Total prepaid value |
+
+4. **Export Options**
+   - Export to Excel
+   - Print report
 
 ---
 
@@ -2073,6 +2927,123 @@ Draft → Issued → Partially Paid → Fully Paid
 - Share tracking URL with customers
 - Format: `/tracking?awb=AWB123456`
 - Embed in emails or SMS notifications
+
+---
+
+## How to Use General Ledger
+
+**Navigation:** Finance & Accounting → General Ledger
+
+The General Ledger module provides comprehensive financial management with the following components:
+
+### Masters Setup
+
+**1. Chart of Accounts**
+- **Navigation:** Finance & Accounting → General Ledger → Masters → Chart of Accounts
+- Create and manage account hierarchy (Assets, Liabilities, Income, Expenses, Equity)
+- Self-referential structure for unlimited nesting levels
+- Define account types and nature (Debit/Credit)
+
+**2. Control Accounts**
+- **Navigation:** Finance & Accounting → General Ledger → Masters → Control Accounts
+- Link operational modules to GL accounts
+- Map: AR Control, AP Control, Cash, Bank, Revenue, COD Payable
+
+**3. Financial Years**
+- **Navigation:** Finance & Accounting → General Ledger → Masters → Financial Years
+- Define fiscal periods with auto-generated monthly periods
+- Open/Close periods for transaction control
+
+**4. Tax Setup**
+- **Navigation:** Finance & Accounting → General Ledger → Masters → Tax Setup
+- Configure GST, VAT, Service Tax rates
+
+### Transactions
+
+**Cash & Bank Vouchers**
+- **Navigation:** Finance & Accounting → General Ledger → Transactions → Cash & Bank → Cash & Bank Vouchers
+- Record cash receipts, cash payments, bank deposits, bank payments, bank transfers
+
+**Bank Accounts**
+- **Navigation:** Finance & Accounting → General Ledger → Transactions → Cash & Bank → Bank Accounts
+- Manage bank account details
+
+**Bank Reconciliation**
+- **Navigation:** Finance & Accounting → General Ledger → Transactions → Cash & Bank → Bank Reconciliation
+- Match bank statement with system records
+
+**Journal Voucher**
+- **Navigation:** Finance & Accounting → General Ledger → Transactions → Journal Voucher
+- Create general journal entries with multi-line debits and credits
+
+### Financial Reports
+
+| Report | Navigation | Purpose |
+|--------|------------|---------|
+| Account Ledger | Financial Reports → Account Ledger | View account transactions (Standard/Detailed/Summary) |
+| Day Book | Financial Reports → Day Book | Daily transaction listing |
+| Cash & Bank Book | Financial Reports → Cash & Bank Book | Cash and bank movement summary |
+| Trial Balance | Financial Reports → Trial Balance | Account balances (Summary/Standard/Grouped/Monthly/Detailed) |
+| Profit & Loss | Financial Reports → Profit & Loss | Income vs expenses (Summary/Item Wise/Period Comparison) |
+| Balance Sheet | Financial Reports → Balance Sheet | Assets vs liabilities (Standard/Group-wise/Horizontal/Vertical) |
+| Cash Flow | Financial Reports → Cash Flow | Cash movement (Indirect/Direct Method) |
+
+---
+
+## How to Email Reports
+
+**Navigation:** Various report pages (Customer Ledger, Customer Statement, Supplier Ledger, Supplier Statement)
+
+**When to Use:** To send PDF reports directly to customers or suppliers via email.
+
+**Prerequisites:** 
+- Google Gmail integration configured
+- Customer/Supplier must have valid email address on file
+- Branch must have email address configured
+
+**Detailed Steps:**
+
+1. **Generate the Report**
+   - Navigate to the desired report:
+     - **Customer Ledger:** Finance & Accounting → Accounts Receivable → AR Reports → Customer Ledger
+     - **Customer Statement:** Finance & Accounting → Accounts Receivable → AR Reports → Customer Statement
+     - **Supplier Ledger:** Finance & Accounting → Accounts Payable → AP Reports → Supplier Ledger
+     - **Supplier Statement:** Finance & Accounting → Accounts Payable → AP Reports → Supplier Statement
+
+2. **Select Party and Filters**
+   - Choose customer or supplier
+   - Set date range
+   - Apply any additional filters
+   - Click **"Generate Report"**
+
+3. **Click Email Button**
+   - Find the **"Email"** button in the toolbar
+   - Click to open email dialog
+
+4. **Confirm Email Details**
+   | Field | Auto-populated |
+   |-------|----------------|
+   | To | Party's email address |
+   | From | Branch email address |
+   | Subject | Report name and date range |
+   | Attachment | PDF report |
+
+5. **Send Email**
+   - Click **"Send"**
+   - Email sent via Gmail API
+   - Success message confirms delivery
+
+**Email Content:**
+- Professional HTML email body with report summary
+- PDF attachment with full report details
+- Includes: Party name, date range, opening/closing balances
+
+**Troubleshooting:**
+| Issue | Solution |
+|-------|----------|
+| Email button disabled | Ensure party has email address |
+| Send failed | Check Gmail integration status |
+| No "From" address | Configure branch email in Branch Settings |
 
 ---
 
@@ -3867,8 +4838,10 @@ status code, status ID, shipment status, tracking status, courier status, AWB st
 | Task | Navigation |
 |------|------------|
 | Create pickup request | Pickup Management |
-| Receive shipment | Sorting/Hub Operations → Inscan |
+| Receive shipment (domestic) | Shipments & Operations → Pickup Inscan |
+| Receive import shipment | Shipments & Operations → Pickup Inscan (AWB mode) |
 | Create AWB | Shipments → New |
+| Configure branch AWB by movement type | Masters & Settings → Branches → Edit |
 | Dispatch for delivery | Sorting/Hub Operations → DRS-Outscan |
 | Capture POD | Mobile POD (field) |
 | Generate invoice | Accounts & Finance → AR → Generate Invoice |
@@ -3876,6 +4849,28 @@ status code, status ID, shipment status, tracking status, courier status, AWB st
 | Add customer | CRM → Customer Profiles |
 | Create rate card | Pricing & Billing → Rate Cards |
 | Check rate | Pricing & Billing → Rate Simulator |
+| Set up zones (Int'l/Domestic) | Pricing & Billing → Zone Management |
+| Use global search | Dashboard → Top Search Box |
+| Print tracking report | Tracking Page → Print Icon |
+| Generate shipment invoice | AWB Entry → Shipment Invoice Button |
+| Email report to customer | Financial Reports → Email Button |
+| Manage currencies | Masters & Settings → Currencies |
+| Create demo data | Masters & Settings → Demo Data Management |
+| Initial setup | /setup (first-time only) |
+
+## New Features (January 2026)
+
+| Feature | Description |
+|---------|-------------|
+| Unified Warehouse Inscan | Single scanning interface for domestic and import shipments |
+| Movement-Type AWB Config | Separate AWB series for Domestic/Export/Import/Transhipment per branch |
+| Zone Types | International zones (countries) and Domestic zones (cities) with chip selection |
+| Global Search | Search across AWBs, Customers, and Invoices from dashboard |
+| Tracking Print | Generate professional A4 PDF tracking reports |
+| Shipment Invoice | Generate commercial/customs invoices for international shipments |
+| Email Reports | Send financial reports via Gmail to customers/suppliers |
+| Initial Setup Wizard | Secure administrator setup for new deployments |
+| Demo Data Management | Create/delete demo records for training purposes |
 
 ## Keyboard Shortcuts
 
@@ -3888,18 +4883,18 @@ status code, status ID, shipment status, tracking status, courier status, AWB st
 
 ## Search Keywords Summary
 
-**Operations:** pickup, collection, inscan, AWB, shipment, manifest, MAWB, bag, DRS, outscan, dispatch, POD, delivery, RTS, return, tracking
+**Operations:** pickup, collection, inscan, AWB, shipment, manifest, MAWB, bag, DRS, outscan, dispatch, POD, delivery, RTS, return, tracking, import, warehouse, unified
 
-**Finance:** invoice, receipt, payment, journal, ledger, GL, AR, AP, tax, GST, aging, credit note, debit note
+**Finance:** invoice, receipt, payment, journal, ledger, GL, AR, AP, tax, GST, aging, credit note, debit note, email report
 
-**CRM:** customer, party, contract, SLA, complaint, ticket
+**CRM:** customer, party, contract, SLA, complaint, ticket, department, designation
 
-**Pricing:** rate card, zone, slab, fuel surcharge, discount, charges, simulator
+**Pricing:** rate card, zone, slab, fuel surcharge, discount, charges, simulator, international zone, domestic zone
 
-**System:** company, branch, user, role, permission, status, service type
+**System:** company, branch, user, role, permission, status, service type, currency, movement type, AWB config, setup, demo data
 
 ---
 
 *Last Updated: January 2026*
-*Version: 1.0*
+*Version: 2.0*
 *Net4Courier - Linked To Deliver*
