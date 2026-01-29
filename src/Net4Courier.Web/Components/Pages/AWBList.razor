@@ -30,6 +30,11 @@
                       AdornmentIcon="@Icons.Material.Filled.Search" IconSize="Size.Medium" Class="mt-0" Immediate="true" Style="width:280px" />
         <MudDatePicker @bind-Date="_fromDate" Label="From Date" Variant="Variant.Outlined" DateFormat="dd/MM/yyyy" Style="width:150px" AnchorOrigin="Origin.BottomCenter" TransformOrigin="Origin.TopCenter" />
         <MudDatePicker @bind-Date="_toDate" Label="To Date" Variant="Variant.Outlined" DateFormat="dd/MM/yyyy" Style="width:150px" AnchorOrigin="Origin.BottomCenter" TransformOrigin="Origin.TopCenter" />
+        <MudSelect T="ShipmentTypeFilter" @bind-Value="_typeFilter" Label="Type" Variant="Variant.Outlined" Style="width:130px" AnchorOrigin="Origin.BottomCenter">
+            <MudSelectItem T="ShipmentTypeFilter" Value="ShipmentTypeFilter.All">All Types</MudSelectItem>
+            <MudSelectItem T="ShipmentTypeFilter" Value="ShipmentTypeFilter.Domestic">Domestic/Export</MudSelectItem>
+            <MudSelectItem T="ShipmentTypeFilter" Value="ShipmentTypeFilter.Import">Import</MudSelectItem>
+        </MudSelect>
         <MudSelect T="CourierStatus?" @bind-Value="_statusFilter" Label="Status" Variant="Variant.Outlined" Style="width:150px" AnchorOrigin="Origin.BottomCenter">
             <MudSelectItem T="CourierStatus?" Value="@((CourierStatus?)null)">All Status</MudSelectItem>
             <MudSelectItem T="CourierStatus?" Value="@CourierStatus.Pending">Pending</MudSelectItem>
@@ -47,7 +52,8 @@
 <MudPaper Elevation="2">
     <MudTable Items="@_shipments" Hover="true" Striped="true" Loading="@_loading" LoadingProgressColor="Color.Primary">
         <HeaderContent>
-            <MudTh><MudTableSortLabel SortBy="new Func<InscanMaster, object>(x => x.AWBNo)">AWB No</MudTableSortLabel></MudTh>
+            <MudTh><MudTableSortLabel SortBy="new Func<ShipmentListItem, object>(x => x.AWBNo)">AWB No</MudTableSortLabel></MudTh>
+            <MudTh>Type</MudTh>
             <MudTh>Date</MudTh>
             <MudTh>Consignor</MudTh>
             <MudTh>Consignee</MudTh>
@@ -55,12 +61,19 @@
             <MudTh>Weight</MudTh>
             <MudTh>Status</MudTh>
             <MudTh>Amount</MudTh>
-            <MudTh Style="width: 180px;">Actions</MudTh>
+            <MudTh Style="width: 150px;">Actions</MudTh>
         </HeaderContent>
         <RowTemplate>
             <MudTd DataLabel="AWB No">
                 <div>
-                    <MudLink Href="@($"/awb-entry/{context.Id}")">@context.AWBNo</MudLink>
+                    @if (context.IsImport)
+                    {
+                        <MudLink Href="@($"/import-shipment/{context.Id}")">@context.AWBNo</MudLink>
+                    }
+                    else
+                    {
+                        <MudLink Href="@($"/awb-entry/{context.Id}")">@context.AWBNo</MudLink>
+                    }
                 </div>
                 @if (context.PickupRequestId.HasValue && _pickupNoLookup.TryGetValue(context.PickupRequestId.Value, out var pickupNo))
                 {
@@ -69,26 +82,44 @@
                     </div>
                 }
             </MudTd>
+            <MudTd DataLabel="Type">
+                @if (context.IsImport)
+                {
+                    <MudChip T="string" Color="Color.Info" Size="Size.Small">Import</MudChip>
+                }
+                else
+                {
+                    <MudChip T="string" Color="Color.Default" Size="Size.Small">Domestic</MudChip>
+                }
+            </MudTd>
             <MudTd DataLabel="Date">@context.TransactionDate.ToString("dd/MM/yyyy")</MudTd>
             <MudTd DataLabel="Consignor">@context.Consignor</MudTd>
             <MudTd DataLabel="Consignee">@context.Consignee</MudTd>
-            <MudTd DataLabel="Destination">@context.ConsigneeCity</MudTd>
-            <MudTd DataLabel="Weight">@context.ChargeableWeight?.ToString("N2") kg</MudTd>
+            <MudTd DataLabel="Destination">@context.Destination</MudTd>
+            <MudTd DataLabel="Weight">@context.Weight?.ToString("N2") kg</MudTd>
             <MudTd DataLabel="Status">
-                <MudChip T="string" Color="@GetStatusColor(context.CourierStatusId)" Size="Size.Small">@context.CourierStatusId</MudChip>
+                <MudChip T="string" Color="@GetStatusColorFromString(context.Status)" Size="Size.Small">@context.Status</MudChip>
             </MudTd>
-            <MudTd DataLabel="Amount">@context.NetTotal?.ToString("N2")</MudTd>
+            <MudTd DataLabel="Amount">@context.Amount?.ToString("N2")</MudTd>
             <MudTd>
-                <MudIconButton Icon="@Icons.Material.Filled.Visibility" Size="Size.Small" Color="Color.Secondary" Href="@($"/shipment/{context.Id}")" Title="View Dashboard" />
-                <MudIconButton Icon="@Icons.Material.Filled.Edit" Size="Size.Small" Color="Color.Primary" Href="@($"/awb-entry/{context.Id}")" Title="Edit" />
-                <MudIconButton Icon="@Icons.Material.Filled.LocalShipping" Size="Size.Small" Color="Color.Info" Href="@($"/tracking/{context.AWBNo}")" Title="Track" />
-                <MudIconButton Icon="@Icons.Material.Filled.Update" Size="Size.Small" Color="Color.Warning" OnClick="@(() => OpenStatusDialog(context))" Title="Update Status" />
-                <MudIconButton Icon="@Icons.Material.Filled.AttachFile" Size="Size.Small" Color="Color.Tertiary" OnClick="@(() => OpenDocumentsDialog(context))" Title="Documents" />
-                <MudMenu Icon="@Icons.Material.Filled.Print" Size="Size.Small" Color="Color.Default" Title="Print Options" Dense="true">
-                    <MudMenuItem OnClick="@(() => PrintAWB(context.Id))">Print AWB (A5)</MudMenuItem>
-                    <MudMenuItem OnClick="@(() => PrintLabel(context.Id))">Print Label</MudMenuItem>
-                </MudMenu>
-                <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" Color="Color.Error" OnClick="@(() => DeleteAWB(context))" Title="Delete" />
+                @if (context.IsImport)
+                {
+                    <MudIconButton Icon="@Icons.Material.Filled.Visibility" Size="Size.Small" Color="Color.Secondary" Href="@($"/import-shipment/{context.Id}")" Title="View Details" />
+                    <MudIconButton Icon="@Icons.Material.Filled.LocalShipping" Size="Size.Small" Color="Color.Info" Href="@($"/tracking/{context.AWBNo}")" Title="Track" />
+                    <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" Color="Color.Error" OnClick="@(() => DeleteImportShipment(context))" Title="Delete" />
+                }
+                else
+                {
+                    <MudIconButton Icon="@Icons.Material.Filled.Visibility" Size="Size.Small" Color="Color.Secondary" Href="@($"/shipment/{context.Id}")" Title="View Dashboard" />
+                    <MudIconButton Icon="@Icons.Material.Filled.Edit" Size="Size.Small" Color="Color.Primary" Href="@($"/awb-entry/{context.Id}")" Title="Edit" />
+                    <MudIconButton Icon="@Icons.Material.Filled.LocalShipping" Size="Size.Small" Color="Color.Info" Href="@($"/tracking/{context.AWBNo}")" Title="Track" />
+                    <MudIconButton Icon="@Icons.Material.Filled.Update" Size="Size.Small" Color="Color.Warning" OnClick="@(() => OpenStatusDialogById(context.Id))" Title="Update Status" />
+                    <MudMenu Icon="@Icons.Material.Filled.Print" Size="Size.Small" Color="Color.Default" Title="Print Options" Dense="true">
+                        <MudMenuItem OnClick="@(() => PrintAWB(context.Id))">Print AWB (A5)</MudMenuItem>
+                        <MudMenuItem OnClick="@(() => PrintLabel(context.Id))">Print Label</MudMenuItem>
+                    </MudMenu>
+                    <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" Color="Color.Error" OnClick="@(() => DeleteAWBById(context.Id))" Title="Delete" />
+                }
             </MudTd>
         </RowTemplate>
         <NoRecordsContent>
@@ -101,13 +132,30 @@
 </MudPaper>
 
 @code {
-    private List<InscanMaster> _shipments = new();
+    private List<ShipmentListItem> _shipments = new();
     private Dictionary<long, string> _pickupNoLookup = new();
     private bool _loading = true;
     private string _searchString = "";
     private DateTime? _fromDate = DateTime.Today;
     private DateTime? _toDate = DateTime.Today;
     private CourierStatus? _statusFilter;
+    private ShipmentTypeFilter _typeFilter = ShipmentTypeFilter.All;
+
+    private record ShipmentListItem(
+        long Id,
+        string AWBNo,
+        DateTime TransactionDate,
+        string? Consignor,
+        string? Consignee,
+        string? Destination,
+        decimal? Weight,
+        string Status,
+        decimal? Amount,
+        bool IsImport,
+        long? PickupRequestId
+    );
+    
+    private enum ShipmentTypeFilter { All, Domestic, Import }
 
     protected override async Task OnInitializedAsync()
     {
@@ -120,39 +168,101 @@
         _fromDate = DateTime.Today;
         _toDate = DateTime.Today;
         _statusFilter = null;
+        _typeFilter = ShipmentTypeFilter.All;
         await Search();
     }
 
     private async Task Search()
     {
         _loading = true;
-        var query = DbContext.InscanMasters.Where(i => !i.IsDeleted).AsQueryable();
-
-        if (!string.IsNullOrWhiteSpace(_searchString))
+        var results = new List<ShipmentListItem>();
+        
+        var from = _fromDate.HasValue ? DateTime.SpecifyKind(_fromDate.Value, DateTimeKind.Utc) : (DateTime?)null;
+        var to = _toDate.HasValue ? DateTime.SpecifyKind(_toDate.Value.AddDays(1), DateTimeKind.Utc) : (DateTime?)null;
+        
+        if (_typeFilter != ShipmentTypeFilter.Import)
         {
-            query = query.Where(i => i.AWBNo.Contains(_searchString) || 
-                                     (i.Consignor != null && i.Consignor.Contains(_searchString)) ||
-                                     (i.Consignee != null && i.Consignee.Contains(_searchString)));
-        }
+            var inscanQuery = DbContext.InscanMasters.Where(i => !i.IsDeleted).AsQueryable();
 
-        if (_fromDate.HasValue)
+            if (!string.IsNullOrWhiteSpace(_searchString))
+            {
+                inscanQuery = inscanQuery.Where(i => i.AWBNo.Contains(_searchString) || 
+                                         (i.Consignor != null && i.Consignor.Contains(_searchString)) ||
+                                         (i.Consignee != null && i.Consignee.Contains(_searchString)));
+            }
+
+            if (from.HasValue)
+                inscanQuery = inscanQuery.Where(i => i.TransactionDate >= from.Value);
+
+            if (to.HasValue)
+                inscanQuery = inscanQuery.Where(i => i.TransactionDate < to.Value);
+
+            if (_statusFilter.HasValue)
+                inscanQuery = inscanQuery.Where(i => i.CourierStatusId == _statusFilter.Value);
+
+            var inscanResults = await inscanQuery
+                .OrderByDescending(i => i.TransactionDate)
+                .ThenByDescending(i => i.Id)
+                .Take(500)
+                .Select(i => new ShipmentListItem(
+                    i.Id,
+                    i.AWBNo,
+                    i.TransactionDate,
+                    i.Consignor,
+                    i.Consignee,
+                    i.ConsigneeCity,
+                    i.ChargeableWeight,
+                    i.CourierStatusId.ToString(),
+                    i.NetTotal,
+                    false,
+                    i.PickupRequestId
+                ))
+                .ToListAsync();
+            
+            results.AddRange(inscanResults);
+        }
+        
+        if (_typeFilter != ShipmentTypeFilter.Domestic && !_statusFilter.HasValue)
         {
-            var from = DateTime.SpecifyKind(_fromDate.Value, DateTimeKind.Utc);
-            query = query.Where(i => i.TransactionDate >= from);
-        }
+            var importQuery = DbContext.ImportShipments.Where(i => !i.IsDeleted).AsQueryable();
 
-        if (_toDate.HasValue)
-        {
-            var to = DateTime.SpecifyKind(_toDate.Value.AddDays(1), DateTimeKind.Utc);
-            query = query.Where(i => i.TransactionDate < to);
-        }
+            if (!string.IsNullOrWhiteSpace(_searchString))
+            {
+                var searchTerm = _searchString;
+                importQuery = importQuery.Where(i => i.AWBNo.Contains(searchTerm) || 
+                                         (i.ShipperName != null && i.ShipperName.Contains(searchTerm)) ||
+                                         i.ConsigneeName.Contains(searchTerm));
+            }
 
-        if (_statusFilter.HasValue)
-        {
-            query = query.Where(i => i.CourierStatusId == _statusFilter.Value);
-        }
+            if (from.HasValue)
+                importQuery = importQuery.Where(i => i.CreatedAt >= from.Value);
 
-        _shipments = await query.OrderByDescending(i => i.TransactionDate).ThenByDescending(i => i.Id).Take(500).ToListAsync();
+            if (to.HasValue)
+                importQuery = importQuery.Where(i => i.CreatedAt < to.Value);
+
+            var importResults = await importQuery
+                .OrderByDescending(i => i.CreatedAt)
+                .ThenByDescending(i => i.Id)
+                .Take(500)
+                .Select(i => new ShipmentListItem(
+                    i.Id,
+                    i.AWBNo,
+                    i.CreatedAt,
+                    i.ShipperName,
+                    i.ConsigneeName,
+                    i.ConsigneeCity,
+                    i.ChargeableWeight,
+                    i.Status.ToString(),
+                    i.TotalCustomsCharges,
+                    true,
+                    null
+                ))
+                .ToListAsync();
+            
+            results.AddRange(importResults);
+        }
+        
+        _shipments = results.OrderByDescending(s => s.TransactionDate).ThenByDescending(s => s.Id).Take(500).ToList();
         
         var pickupIds = _shipments.Where(s => s.PickupRequestId.HasValue).Select(s => s.PickupRequestId!.Value).Distinct().ToList();
         if (pickupIds.Any())
@@ -179,9 +289,23 @@
         CourierStatus.Returned => Color.Error,
         _ => Color.Default
     };
-
-    private async Task OpenStatusDialog(InscanMaster shipment)
+    
+    private Color GetStatusColorFromString(string status) => status switch
     {
+        "Pending" or "Expected" => Color.Default,
+        "PickedUp" or "ReceivedAtWarehouse" => Color.Info,
+        "InTransit" or "InCustoms" => Color.Primary,
+        "OutForDelivery" or "ReadyForDelivery" => Color.Warning,
+        "Delivered" => Color.Success,
+        "Returned" or "HeldByCustoms" => Color.Error,
+        _ => Color.Default
+    };
+
+    private async Task OpenStatusDialogById(long id)
+    {
+        var shipment = await DbContext.InscanMasters.FindAsync(id);
+        if (shipment == null) return;
+        
         var parameters = new DialogParameters<UpdateStatusDialog> { { x => x.Shipment, shipment } };
         var dialog = await DialogService.ShowAsync<UpdateStatusDialog>("Update Status", parameters, new DialogOptions { MaxWidth = MaxWidth.Small, FullWidth = true });
         var result = await dialog.Result;
@@ -192,8 +316,11 @@
         }
     }
 
-    private async Task DeleteAWB(InscanMaster shipment)
+    private async Task DeleteAWBById(long id)
     {
+        var shipment = await DbContext.InscanMasters.FindAsync(id);
+        if (shipment == null) return;
+        
         var confirm = await DialogService.ShowMessageBox("Confirm Delete", $"Are you sure you want to delete AWB {shipment.AWBNo}?", yesText: "Delete", cancelText: "Cancel");
         
         if (confirm == true)
@@ -202,6 +329,23 @@
             await DbContext.SaveChangesAsync();
             await Search();
             Snackbar.Add("AWB deleted successfully", Severity.Success);
+        }
+    }
+    
+    private async Task DeleteImportShipment(ShipmentListItem item)
+    {
+        var confirm = await DialogService.ShowMessageBox("Confirm Delete", $"Are you sure you want to delete import shipment {item.AWBNo}?", yesText: "Delete", cancelText: "Cancel");
+        
+        if (confirm == true)
+        {
+            var shipment = await DbContext.ImportShipments.FindAsync(item.Id);
+            if (shipment != null)
+            {
+                shipment.IsDeleted = true;
+                await DbContext.SaveChangesAsync();
+                await Search();
+                Snackbar.Add("Import shipment deleted successfully", Severity.Success);
+            }
         }
     }
 
@@ -228,9 +372,7 @@
             using var workbook = new XLWorkbook();
             var worksheet = workbook.Worksheets.Add("Shipments");
 
-            var headers = new[] { "AWB No", "Date", "Consignor", "Consignor Address", "Consignor City", "Consignor Country",
-                "Consignee", "Consignee Address", "Consignee City", "Consignee Country", "Pieces", "Weight", 
-                "Chargeable Weight", "Cargo Description", "Status", "Payment Mode", "Courier Charge", "Discount", "Net Total" };
+            var headers = new[] { "AWB No", "Type", "Date", "Consignor", "Consignee", "Destination", "Weight", "Status", "Amount" };
 
             for (int i = 0; i < headers.Length; i++)
             {
@@ -243,24 +385,14 @@
             foreach (var s in _shipments)
             {
                 worksheet.Cell(row, 1).Value = s.AWBNo;
-                worksheet.Cell(row, 2).Value = s.TransactionDate.ToString("dd/MM/yyyy");
-                worksheet.Cell(row, 3).Value = s.Consignor ?? "";
-                worksheet.Cell(row, 4).Value = s.ConsignorAddress1 ?? "";
-                worksheet.Cell(row, 5).Value = s.ConsignorCity ?? "";
-                worksheet.Cell(row, 6).Value = s.ConsignorCountry ?? "";
-                worksheet.Cell(row, 7).Value = s.Consignee ?? "";
-                worksheet.Cell(row, 8).Value = s.ConsigneeAddress1 ?? "";
-                worksheet.Cell(row, 9).Value = s.ConsigneeCity ?? "";
-                worksheet.Cell(row, 10).Value = s.ConsigneeCountry ?? "";
-                worksheet.Cell(row, 11).Value = s.Pieces ?? 0;
-                worksheet.Cell(row, 12).Value = s.Weight ?? 0;
-                worksheet.Cell(row, 13).Value = s.ChargeableWeight ?? 0;
-                worksheet.Cell(row, 14).Value = s.CargoDescription ?? "";
-                worksheet.Cell(row, 15).Value = s.CourierStatusId.ToString();
-                worksheet.Cell(row, 16).Value = s.PaymentModeId.ToString();
-                worksheet.Cell(row, 17).Value = s.CourierCharge ?? 0;
-                worksheet.Cell(row, 18).Value = s.Discount ?? 0;
-                worksheet.Cell(row, 19).Value = s.NetTotal ?? 0;
+                worksheet.Cell(row, 2).Value = s.IsImport ? "Import" : "Domestic";
+                worksheet.Cell(row, 3).Value = s.TransactionDate.ToString("dd/MM/yyyy");
+                worksheet.Cell(row, 4).Value = s.Consignor ?? "";
+                worksheet.Cell(row, 5).Value = s.Consignee ?? "";
+                worksheet.Cell(row, 6).Value = s.Destination ?? "";
+                worksheet.Cell(row, 7).Value = s.Weight ?? 0;
+                worksheet.Cell(row, 8).Value = s.Status;
+                worksheet.Cell(row, 9).Value = s.Amount ?? 0;
                 row++;
             }
 
@@ -280,15 +412,4 @@
         }
     }
     
-    private async Task OpenDocumentsDialog(InscanMaster shipment)
-    {
-        var parameters = new DialogParameters<ManageDocumentsDialog>
-        {
-            { x => x.ShipmentId, shipment.Id },
-            { x => x.ShipmentAWB, shipment.AWBNo }
-        };
-        
-        await DialogService.ShowAsync<ManageDocumentsDialog>($"Documents - {shipment.AWBNo}", 
-            parameters, new DialogOptions { MaxWidth = MaxWidth.Large, FullWidth = true, CloseOnEscapeKey = true });
-    }
 }
