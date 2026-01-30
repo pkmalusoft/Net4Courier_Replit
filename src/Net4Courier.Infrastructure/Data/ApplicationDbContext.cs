@@ -164,6 +164,8 @@ public class ApplicationDbContext : DbContext
                   .OnDelete(DeleteBehavior.Restrict);
             entity.HasOne(e => e.City).WithMany().HasForeignKey(e => e.CityId)
                   .OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(e => e.Currency).WithMany().HasForeignKey(e => e.CurrencyId)
+                  .OnDelete(DeleteBehavior.Restrict);
         });
 
         modelBuilder.Entity<Branch>(entity =>
@@ -172,9 +174,9 @@ public class ApplicationDbContext : DbContext
             entity.HasKey(e => e.Id);
             entity.Property(e => e.Name).HasMaxLength(200).IsRequired();
             entity.Property(e => e.Code).HasMaxLength(50);
-            entity.Property(e => e.CurrencyCode).HasMaxLength(10).HasDefaultValue("USD");
-            entity.Property(e => e.CurrencySymbol).HasMaxLength(10);
             entity.HasIndex(e => new { e.CompanyId, e.Code }).IsUnique();
+            entity.HasOne(e => e.Currency).WithMany().HasForeignKey(e => e.CurrencyId)
+                  .OnDelete(DeleteBehavior.Restrict);
             entity.HasOne(e => e.Company)
                   .WithMany(c => c.Branches)
                   .HasForeignKey(e => e.CompanyId)

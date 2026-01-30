@@ -33,6 +33,9 @@ public class Company : BaseEntity
     public long? CityId { get; set; }
     public virtual City? City { get; set; }
     
+    public long? CurrencyId { get; set; }
+    public virtual Currency? Currency { get; set; }
+    
     public virtual ICollection<Branch> Branches { get; set; } = new List<Branch>();
     public virtual ICollection<FinancialYear> FinancialYears { get; set; } = new List<FinancialYear>();
 }

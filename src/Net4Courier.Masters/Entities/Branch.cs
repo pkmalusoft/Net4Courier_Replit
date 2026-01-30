@@ -20,8 +20,8 @@ public class Branch : BaseEntity
     public bool IsActive { get; set; } = true;
     
     // Currency for this branch
-    public string CurrencyCode { get; set; } = "USD";
-    public string? CurrencySymbol { get; set; }
+    public long? CurrencyId { get; set; }
+    public virtual Currency? Currency { get; set; }
     
     // AWB Configuration
     public string? AWBPrefix { get; set; }

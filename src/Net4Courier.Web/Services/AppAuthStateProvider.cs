@@ -32,8 +32,8 @@ public class AppAuthStateProvider : AuthenticationStateProvider
             new("BranchName", _currentBranch?.Name ?? ""),
             new("CompanyId", _currentBranch?.CompanyId.ToString() ?? ""),
             new("CompanyName", _currentBranch?.Company?.Name ?? ""),
-            new("CurrencyCode", _currentBranch?.CurrencyCode ?? "USD"),
-            new("CurrencySymbol", _currentBranch?.CurrencySymbol ?? "$")
+            new("CurrencyCode", _currentBranch?.Currency?.Code ?? "USD"),
+            new("CurrencySymbol", _currentBranch?.Currency?.Symbol ?? "$")
         };
 
         var identity = new ClaimsIdentity(claims, "Custom");
