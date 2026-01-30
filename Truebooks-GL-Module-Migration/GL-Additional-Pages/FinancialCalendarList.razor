@@ -1,0 +1,394 @@
+@page "/finance/financial-calendars"
+
+@inject PlatformServices.IFinancialCalendarService CalendarService
+@inject LegacyServices.IAuthService AuthService
+@inject ISnackbar Snackbar
+@inject IDialogService DialogService
+
+<PageTitle>Financial Calendars</PageTitle>
+
+<MudContainer MaxWidth="MaxWidth.Large" Class="mt-4">
+    <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center" Class="mb-4">
+        <MudText Typo="Typo.h4">Financial Calendars</MudText>
+        <MudButton Variant="Variant.Filled" 
+                   Color="Color.Primary" 
+                   StartIcon="@Icons.Material.Filled.Add"
+                   OnClick="OpenCreateDialog">
+            Add Calendar
+        </MudButton>
+    </MudStack>
+
+    @if (!isEnabled)
+    {
+        <MudAlert Severity="Severity.Warning" Class="mb-4">
+            <MudText>Multiple Financial Calendars feature is not enabled. 
+                <MudLink Href="/settings/company">Enable it in Company Settings</MudLink> to use this feature.
+            </MudText>
+        </MudAlert>
+    }
+
+    @if (loading)
+    {
+        <MudProgressCircular Indeterminate="true" />
+    }
+    else
+    {
+        <MudDataGrid T="PlatformFinanceDTOs.FinancialCalendarDto" Items="calendars" Striped="true" Hover="true" Dense="false">
+            <Columns>
+                <PropertyColumn Property="x => x.Name" Title="Calendar Name" />
+                <PropertyColumn Property="x => x.Code" Title="Code" />
+                <TemplateColumn Title="Type">
+                    <CellTemplate>
+                        <MudChip T="string" Size="MudBlazor.Size.Small" 
+                                 Color="@GetTypeColor(context.Item.Type)">
+                            @context.Item.Type
+                        </MudChip>
+                    </CellTemplate>
+                </TemplateColumn>
+                <TemplateColumn Title="Start Month">
+                    <CellTemplate>
+                        @GetMonthName(context.Item.StartMonth)
+                    </CellTemplate>
+                </TemplateColumn>
+                <PropertyColumn Property="x => x.CountryCode" Title="Country" />
+                <TemplateColumn Title="Primary">
+                    <CellTemplate>
+                        @if (context.Item.IsPrimary)
+                        {
+                            <MudChip T="string" Size="MudBlazor.Size.Small" Color="Color.Success">Primary</MudChip>
+                        }
+                    </CellTemplate>
+                </TemplateColumn>
+                <TemplateColumn Title="Status">
+                    <CellTemplate>
+                        <MudChip T="string" Size="MudBlazor.Size.Small" 
+                                 Color="@(context.Item.IsActive ? Color.Success : Color.Default)">
+                            @(context.Item.IsActive ? "Active" : "Inactive")
+                        </MudChip>
+                    </CellTemplate>
+                </TemplateColumn>
+                <TemplateColumn Title="Actions">
+                    <CellTemplate>
+                        <MudStack Row="true" Spacing="1">
+                            <MudIconButton Icon="@Icons.Material.Filled.Edit" 
+                                          Size="MudBlazor.Size.Small"
+                                          Color="Color.Primary"
+                                          OnClick="@(() => OpenEditDialog(context.Item))" />
+                            <MudIconButton Icon="@Icons.Material.Filled.CalendarMonth" 
+                                          Size="MudBlazor.Size.Small"
+                                          Color="Color.Info"
+                                          Title="Generate Periods"
+                                          OnClick="@(() => OpenGeneratePeriodsDialog(context.Item))" />
+                            @if (!context.Item.IsPrimary)
+                            {
+                                <MudIconButton Icon="@Icons.Material.Filled.Delete" 
+                                              Size="MudBlazor.Size.Small"
+                                              Color="Color.Error"
+                                              OnClick="@(() => DeleteCalendar(context.Item))" />
+                            }
+                        </MudStack>
+                    </CellTemplate>
+                </TemplateColumn>
+            </Columns>
+        </MudDataGrid>
+    }
+</MudContainer>
+
+<MudDialog @bind-Visible="isDialogVisible" Options="dialogOptions">
+    <TitleContent>
+        <MudText Typo="Typo.h6">@(isEditing ? "Edit Calendar" : "Create Calendar")</MudText>
+    </TitleContent>
+    <DialogContent>
+        <MudForm @ref="form">
+            <MudGrid>
+                <MudItem xs="12" md="6">
+                    <MudTextField @bind-Value="editModel.Name" 
+                                  Label="Calendar Name" 
+                                  Required="true"
+                                  Variant="Variant.Outlined" />
+                </MudItem>
+                <MudItem xs="12" md="6">
+                    <MudTextField @bind-Value="editModel.Code" 
+                                  Label="Code" 
+                                  Required="true"
+                                  MaxLength="20"
+                                  Variant="Variant.Outlined" />
+                </MudItem>
+                <MudItem xs="12" md="6">
+                    <MudSelect T="PlatformFinanceDTOs.CalendarType" @bind-Value="editModel.Type" 
+                               Label="Type" 
+                               Variant="Variant.Outlined">
+                        <MudSelectItem Value="PlatformFinanceDTOs.CalendarType.Statutory">Statutory</MudSelectItem>
+                        <MudSelectItem Value="PlatformFinanceDTOs.CalendarType.ClientFacing">Client Facing</MudSelectItem>
+                        <MudSelectItem Value="PlatformFinanceDTOs.CalendarType.Internal">Internal</MudSelectItem>
+                    </MudSelect>
+                </MudItem>
+                <MudItem xs="12" md="6">
+                    <MudSelect T="int" @bind-Value="editModel.StartMonth" 
+                               Label="Fiscal Year Start Month" 
+                               Variant="Variant.Outlined">
+                        @for (int m = 1; m <= 12; m++)
+                        {
+                            var month = m;
+                            <MudSelectItem Value="month">@GetMonthName(month)</MudSelectItem>
+                        }
+                    </MudSelect>
+                </MudItem>
+                <MudItem xs="12" md="6">
+                    <MudTextField @bind-Value="editModel.CountryCode" 
+                                  Label="Country Code" 
+                                  MaxLength="3"
+                                  Placeholder="e.g., USA, IND"
+                                  Variant="Variant.Outlined" />
+                </MudItem>
+                <MudItem xs="12" md="6">
+                    <MudSwitch T="bool" @bind-Value="editModel.IsActive" 
+                               Label="Active" 
+                               Color="Color.Primary" />
+                </MudItem>
+                <MudItem xs="12">
+                    <MudTextField @bind-Value="editModel.Description" 
+                                  Label="Description" 
+                                  Lines="2"
+                                  Variant="Variant.Outlined" />
+                </MudItem>
+            </MudGrid>
+        </MudForm>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="CloseDialog">Cancel</MudButton>
+        <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="SaveCalendar">Save</MudButton>
+    </DialogActions>
+</MudDialog>
+
+<MudDialog @bind-Visible="isGenerateDialogVisible" Options="dialogOptions">
+    <TitleContent>
+        <MudText Typo="Typo.h6">Generate Financial Periods</MudText>
+    </TitleContent>
+    <DialogContent>
+        <MudText Class="mb-4">
+            Generate 12 monthly periods for <strong>@selectedCalendar?.Name</strong>
+        </MudText>
+        <MudNumericField T="int" @bind-Value="generateFiscalYear" 
+                         Label="Fiscal Year" 
+                         Min="2000" 
+                         Max="2050"
+                         Variant="Variant.Outlined" />
+        <MudText Typo="Typo.caption" Color="Color.Secondary" Class="mt-2">
+            This will generate 12 monthly periods for the specified fiscal year.
+        </MudText>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="@(() => isGenerateDialogVisible = false)">Cancel</MudButton>
+        <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="GeneratePeriods">Generate</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    private MudForm form = null!;
+    private bool loading = true;
+    private bool isEnabled = false;
+    private bool isDialogVisible = false;
+    private bool isGenerateDialogVisible = false;
+    private bool isEditing = false;
+    private List<PlatformFinanceDTOs.FinancialCalendarDto> calendars = new();
+    private CalendarEditModel editModel = new();
+    private Guid? editingId = null;
+    private PlatformFinanceDTOs.FinancialCalendarDto? selectedCalendar;
+    private int generateFiscalYear = DateTime.Now.Year;
+    private Guid tenantId = Guid.Empty;
+
+    private DialogOptions dialogOptions = new()
+    {
+        MaxWidth = MaxWidth.Medium,
+        FullWidth = true
+    };
+
+    protected override async Task OnInitializedAsync()
+    {
+        tenantId = Guid.TryParse(AuthService.GetTenantId(), out var parsedId) ? parsedId : Guid.Empty;
+        await CheckFeatureEnabled();
+        await LoadCalendars();
+    }
+
+    private async Task CheckFeatureEnabled()
+    {
+        try
+        {
+            isEnabled = await CalendarService.IsMultiCalendarEnabledAsync(tenantId);
+        }
+        catch { isEnabled = false; }
+    }
+
+    private async Task LoadCalendars()
+    {
+        loading = true;
+        try
+        {
+            var result = await CalendarService.GetAllAsync(tenantId);
+            calendars = result?.ToList() ?? new();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error loading calendars: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            loading = false;
+        }
+    }
+
+    private void OpenCreateDialog()
+    {
+        if (!isEnabled)
+        {
+            Snackbar.Add("Please enable Multiple Financial Calendars in Company Settings first.", Severity.Warning);
+            return;
+        }
+        isEditing = false;
+        editingId = null;
+        editModel = new CalendarEditModel { IsActive = true, StartMonth = 1 };
+        isDialogVisible = true;
+    }
+
+    private void OpenEditDialog(PlatformFinanceDTOs.FinancialCalendarDto calendar)
+    {
+        isEditing = true;
+        editingId = calendar.Id;
+        editModel = new CalendarEditModel
+        {
+            Name = calendar.Name,
+            Code = calendar.Code,
+            Type = calendar.Type,
+            StartMonth = calendar.StartMonth,
+            IsActive = calendar.IsActive,
+            Description = calendar.Description,
+            CountryCode = calendar.CountryCode
+        };
+        isDialogVisible = true;
+    }
+
+    private void CloseDialog() => isDialogVisible = false;
+
+    private async Task SaveCalendar()
+    {
+        try
+        {
+            PlatformFinanceDTOs.FinancialCalendarDto? result;
+
+            if (isEditing && editingId.HasValue)
+            {
+                var request = new PlatformFinanceDTOs.UpdateFinancialCalendarRequest(
+                    editModel.Name,
+                    editModel.Code,
+                    editModel.Type.ToString(),
+                    editModel.StartMonth,
+                    editModel.IsActive,
+                    editModel.Description,
+                    editModel.CountryCode
+                );
+                result = await CalendarService.UpdateAsync(tenantId, editingId.Value, request);
+            }
+            else
+            {
+                var request = new PlatformFinanceDTOs.CreateFinancialCalendarRequest(
+                    editModel.Name,
+                    editModel.Code,
+                    editModel.Type.ToString(),
+                    editModel.StartMonth,
+                    editModel.IsActive,
+                    editModel.Description,
+                    editModel.CountryCode
+                );
+                result = await CalendarService.CreateAsync(tenantId, request);
+            }
+
+            if (result != null)
+            {
+                Snackbar.Add("Calendar saved successfully", Severity.Success);
+                CloseDialog();
+                await LoadCalendars();
+            }
+            else
+            {
+                Snackbar.Add("Error saving calendar", Severity.Error);
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error saving calendar: {ex.Message}", Severity.Error);
+        }
+    }
+
+    private async Task DeleteCalendar(PlatformFinanceDTOs.FinancialCalendarDto calendar)
+    {
+        var confirmed = await DialogService.ShowMessageBox(
+            "Confirm Delete",
+            $"Are you sure you want to delete '{calendar.Name}'?",
+            yesText: "Delete", cancelText: "Cancel");
+
+        if (confirmed == true)
+        {
+            try
+            {
+                var success = await CalendarService.DeleteAsync(tenantId, calendar.Id);
+                if (success)
+                {
+                    Snackbar.Add("Calendar deleted", Severity.Success);
+                    await LoadCalendars();
+                }
+                else
+                {
+                    Snackbar.Add("Error deleting calendar", Severity.Error);
+                }
+            }
+            catch (Exception ex)
+            {
+                Snackbar.Add($"Error: {ex.Message}", Severity.Error);
+            }
+        }
+    }
+
+    private void OpenGeneratePeriodsDialog(PlatformFinanceDTOs.FinancialCalendarDto calendar)
+    {
+        selectedCalendar = calendar;
+        generateFiscalYear = DateTime.Now.Year;
+        isGenerateDialogVisible = true;
+    }
+
+    private async Task GeneratePeriods()
+    {
+        if (selectedCalendar == null) return;
+
+        try
+        {
+            Snackbar.Add($"Period generation for FY {generateFiscalYear} - Feature pending implementation", Severity.Info);
+            isGenerateDialogVisible = false;
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error: {ex.Message}", Severity.Error);
+        }
+    }
+
+    private Color GetTypeColor(PlatformFinanceDTOs.CalendarType type) => type switch
+    {
+        PlatformFinanceDTOs.CalendarType.Statutory => Color.Error,
+        PlatformFinanceDTOs.CalendarType.ClientFacing => Color.Info,
+        PlatformFinanceDTOs.CalendarType.Internal => Color.Warning,
+        _ => Color.Default
+    };
+
+    private string GetMonthName(int month) => new DateTime(2000, month, 1).ToString("MMMM");
+
+    private class CalendarEditModel
+    {
+        public string Name { get; set; } = string.Empty;
+        public string Code { get; set; } = string.Empty;
+        public PlatformFinanceDTOs.CalendarType Type { get; set; }
+        public int StartMonth { get; set; } = 1;
+        public bool IsActive { get; set; } = true;
+        public string? Description { get; set; }
+        public string? CountryCode { get; set; }
+    }
+}

@@ -1,0 +1,251 @@
+@page "/gl/deferred-revenue"
+@inject ISnackbar Snackbar
+
+<PageTitle>Deferred Revenue Dashboard</PageTitle>
+
+<MudContainer MaxWidth="MaxWidth.ExtraLarge" Class="mt-4">
+    <MudGrid Class="mb-4">
+        <MudItem xs="12" md="8">
+            <MudText Typo="Typo.h4">Deferred Revenue Dashboard</MudText>
+            <MudText Typo="Typo.body2" Color="Color.Secondary">
+                Track and manage deferred revenue recognition schedules
+            </MudText>
+        </MudItem>
+        <MudItem xs="12" md="4" Class="d-flex justify-end align-center gap-2">
+            <MudButton Variant="Variant.Outlined" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Refresh" OnClick="LoadData">
+                Refresh
+            </MudButton>
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add" OnClick="CreateSchedule">
+                New Schedule
+            </MudButton>
+        </MudItem>
+    </MudGrid>
+
+    <MudGrid Class="mb-4">
+        <MudItem xs="12" md="3">
+            <MudCard>
+                <MudCardContent>
+                    <MudText Typo="Typo.subtitle2" Color="Color.Secondary">Total Deferred Revenue</MudText>
+                    <MudText Typo="Typo.h4">@totalDeferred.ToString("C0")</MudText>
+                </MudCardContent>
+            </MudCard>
+        </MudItem>
+        <MudItem xs="12" md="3">
+            <MudCard>
+                <MudCardContent>
+                    <MudText Typo="Typo.subtitle2" Color="Color.Secondary">This Month Recognition</MudText>
+                    <MudText Typo="Typo.h4" Color="Color.Success">@monthRecognition.ToString("C0")</MudText>
+                </MudCardContent>
+            </MudCard>
+        </MudItem>
+        <MudItem xs="12" md="3">
+            <MudCard>
+                <MudCardContent>
+                    <MudText Typo="Typo.subtitle2" Color="Color.Secondary">Active Schedules</MudText>
+                    <MudText Typo="Typo.h4">@activeSchedules</MudText>
+                </MudCardContent>
+            </MudCard>
+        </MudItem>
+        <MudItem xs="12" md="3">
+            <MudCard>
+                <MudCardContent>
+                    <MudText Typo="Typo.subtitle2" Color="Color.Secondary">Pending Recognition</MudText>
+                    <MudText Typo="Typo.h4" Color="Color.Warning">@pendingRecognition</MudText>
+                </MudCardContent>
+            </MudCard>
+        </MudItem>
+    </MudGrid>
+
+    <MudTabs Elevation="2" Rounded="true" ApplyEffectsToContainer="true" PanelClass="pa-4">
+        <MudTabPanel Text="Active Schedules">
+            <MudTable Items="@schedules.Where(s => s.Status == "Active")" Dense="true" Hover="true" Bordered="true" Loading="@isLoading">
+                <HeaderContent>
+                    <MudTh>Schedule #</MudTh>
+                    <MudTh>Customer</MudTh>
+                    <MudTh>Description</MudTh>
+                    <MudTh>Start Date</MudTh>
+                    <MudTh>End Date</MudTh>
+                    <MudTh Style="text-align: right;">Original Amount</MudTh>
+                    <MudTh Style="text-align: right;">Recognized</MudTh>
+                    <MudTh Style="text-align: right;">Remaining</MudTh>
+                    <MudTh>Progress</MudTh>
+                    <MudTh>Actions</MudTh>
+                </HeaderContent>
+                <RowTemplate>
+                    <MudTd>@context.ScheduleNo</MudTd>
+                    <MudTd>@context.CustomerName</MudTd>
+                    <MudTd>@context.Description</MudTd>
+                    <MudTd>@context.StartDate.ToString("MMM dd, yyyy")</MudTd>
+                    <MudTd>@context.EndDate.ToString("MMM dd, yyyy")</MudTd>
+                    <MudTd Style="text-align: right;">@context.OriginalAmount.ToString("N2")</MudTd>
+                    <MudTd Style="text-align: right;">@context.RecognizedAmount.ToString("N2")</MudTd>
+                    <MudTd Style="text-align: right;">@context.RemainingAmount.ToString("N2")</MudTd>
+                    <MudTd>
+                        <MudProgressLinear Color="Color.Primary" Size="Size.Small" Value="@context.ProgressPercent" />
+                        <MudText Typo="Typo.caption">@context.ProgressPercent.ToString("F0")%</MudText>
+                    </MudTd>
+                    <MudTd>
+                        <MudIconButton Icon="@Icons.Material.Filled.Visibility" Size="Size.Small" OnClick="@(() => ViewSchedule(context))" />
+                        <MudIconButton Icon="@Icons.Material.Filled.PlayArrow" Size="Size.Small" Color="Color.Success" 
+                                      OnClick="@(() => RecognizeRevenue(context))" Title="Recognize Revenue" />
+                    </MudTd>
+                </RowTemplate>
+                <NoRecordsContent>
+                    <MudText>No active deferred revenue schedules.</MudText>
+                </NoRecordsContent>
+            </MudTable>
+        </MudTabPanel>
+
+        <MudTabPanel Text="Recognition Calendar">
+            <MudGrid>
+                <MudItem xs="12" md="4">
+                    <MudSelect @bind-Value="selectedYear" Label="Year" Variant="Variant.Outlined">
+                        @for (int y = DateTime.Now.Year - 1; y <= DateTime.Now.Year + 2; y++)
+                        {
+                            <MudSelectItem Value="@y">@y</MudSelectItem>
+                        }
+                    </MudSelect>
+                </MudItem>
+                <MudItem xs="12">
+                    <MudSimpleTable Dense="true" Hover="true" Bordered="true">
+                        <thead>
+                            <tr>
+                                <th>Month</th>
+                                <th style="text-align: right;">Scheduled Recognition</th>
+                                <th style="text-align: right;">Actual Recognition</th>
+                                <th>Status</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var month in calendarData)
+                            {
+                                <tr>
+                                    <td>@month.MonthName</td>
+                                    <td style="text-align: right;">@month.ScheduledAmount.ToString("N2")</td>
+                                    <td style="text-align: right;">@month.ActualAmount.ToString("N2")</td>
+                                    <td>
+                                        <MudChip T="string" Size="Size.Small" Color="@GetMonthStatusColor(month)">
+                                            @GetMonthStatus(month)
+                                        </MudChip>
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </MudSimpleTable>
+                </MudItem>
+            </MudGrid>
+        </MudTabPanel>
+
+        <MudTabPanel Text="Completed Schedules">
+            <MudTable Items="@schedules.Where(s => s.Status == "Completed")" Dense="true" Hover="true" Bordered="true">
+                <HeaderContent>
+                    <MudTh>Schedule #</MudTh>
+                    <MudTh>Customer</MudTh>
+                    <MudTh>Description</MudTh>
+                    <MudTh Style="text-align: right;">Total Amount</MudTh>
+                    <MudTh>Completed Date</MudTh>
+                    <MudTh>Actions</MudTh>
+                </HeaderContent>
+                <RowTemplate>
+                    <MudTd>@context.ScheduleNo</MudTd>
+                    <MudTd>@context.CustomerName</MudTd>
+                    <MudTd>@context.Description</MudTd>
+                    <MudTd Style="text-align: right;">@context.OriginalAmount.ToString("N2")</MudTd>
+                    <MudTd>@context.EndDate.ToString("MMM dd, yyyy")</MudTd>
+                    <MudTd>
+                        <MudIconButton Icon="@Icons.Material.Filled.Visibility" Size="Size.Small" OnClick="@(() => ViewSchedule(context))" />
+                    </MudTd>
+                </RowTemplate>
+                <NoRecordsContent>
+                    <MudText>No completed schedules.</MudText>
+                </NoRecordsContent>
+            </MudTable>
+        </MudTabPanel>
+    </MudTabs>
+</MudContainer>
+
+@code {
+    private bool isLoading = false;
+    private decimal totalDeferred = 450000m;
+    private decimal monthRecognition = 37500m;
+    private int activeSchedules = 12;
+    private int pendingRecognition = 3;
+    private int selectedYear = DateTime.Now.Year;
+
+    private List<DeferredRevenueSchedule> schedules = new();
+    private List<MonthCalendarData> calendarData = new();
+
+    protected override void OnInitialized()
+    {
+        LoadData();
+    }
+
+    private void LoadData()
+    {
+        schedules = new List<DeferredRevenueSchedule>
+        {
+            new() { ScheduleNo = "DRS-001", CustomerName = "ABC Corp", Description = "Annual Support Contract", StartDate = DateTime.Now.AddMonths(-3), EndDate = DateTime.Now.AddMonths(9), OriginalAmount = 120000, RecognizedAmount = 30000, Status = "Active" },
+            new() { ScheduleNo = "DRS-002", CustomerName = "XYZ Ltd", Description = "Software License", StartDate = DateTime.Now.AddMonths(-6), EndDate = DateTime.Now.AddMonths(6), OriginalAmount = 60000, RecognizedAmount = 30000, Status = "Active" },
+            new() { ScheduleNo = "DRS-003", CustomerName = "Global Inc", Description = "Training Package", StartDate = DateTime.Now.AddMonths(-12), EndDate = DateTime.Now.AddMonths(-1), OriginalAmount = 24000, RecognizedAmount = 24000, Status = "Completed" }
+        };
+
+        calendarData = Enumerable.Range(1, 12).Select(m => new MonthCalendarData
+        {
+            MonthName = new DateTime(selectedYear, m, 1).ToString("MMMM"),
+            Month = m,
+            ScheduledAmount = 37500m,
+            ActualAmount = m < DateTime.Now.Month ? 37500m : 0m
+        }).ToList();
+    }
+
+    private void CreateSchedule()
+    {
+        Snackbar.Add("Create Deferred Revenue Schedule - Feature coming soon", Severity.Info);
+    }
+
+    private void ViewSchedule(DeferredRevenueSchedule schedule)
+    {
+        Snackbar.Add($"Viewing schedule {schedule.ScheduleNo}", Severity.Info);
+    }
+
+    private void RecognizeRevenue(DeferredRevenueSchedule schedule)
+    {
+        Snackbar.Add($"Revenue recognition for {schedule.ScheduleNo} - Feature coming soon", Severity.Info);
+    }
+
+    private Color GetMonthStatusColor(MonthCalendarData month)
+    {
+        if (month.Month > DateTime.Now.Month) return Color.Default;
+        if (month.ActualAmount >= month.ScheduledAmount) return Color.Success;
+        return Color.Warning;
+    }
+
+    private string GetMonthStatus(MonthCalendarData month)
+    {
+        if (month.Month > DateTime.Now.Month) return "Pending";
+        if (month.ActualAmount >= month.ScheduledAmount) return "Complete";
+        return "Partial";
+    }
+
+    private class DeferredRevenueSchedule
+    {
+        public string ScheduleNo { get; set; } = "";
+        public string CustomerName { get; set; } = "";
+        public string Description { get; set; } = "";
+        public DateTime StartDate { get; set; }
+        public DateTime EndDate { get; set; }
+        public decimal OriginalAmount { get; set; }
+        public decimal RecognizedAmount { get; set; }
+        public string Status { get; set; } = "Active";
+        public decimal RemainingAmount => OriginalAmount - RecognizedAmount;
+        public double ProgressPercent => OriginalAmount > 0 ? (double)(RecognizedAmount / OriginalAmount * 100) : 0;
+    }
+
+    private class MonthCalendarData
+    {
+        public string MonthName { get; set; } = "";
+        public int Month { get; set; }
+        public decimal ScheduledAmount { get; set; }
+        public decimal ActualAmount { get; set; }
+    }
+}

@@ -1,0 +1,235 @@
+@page "/gl/financial-calendar"
+@inject ISnackbar Snackbar
+
+<PageTitle>Financial Calendar</PageTitle>
+
+<MudContainer MaxWidth="MaxWidth.ExtraLarge" Class="mt-4">
+    <MudGrid Class="mb-4">
+        <MudItem xs="12" md="8">
+            <MudText Typo="Typo.h4">Financial Calendar</MudText>
+            <MudText Typo="Typo.body2" Color="Color.Secondary">
+                Track important financial deadlines, reporting dates, and closing schedules
+            </MudText>
+        </MudItem>
+        <MudItem xs="12" md="4" Class="d-flex justify-end align-center gap-2">
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add" OnClick="AddEvent">
+                Add Event
+            </MudButton>
+        </MudItem>
+    </MudGrid>
+
+    <MudGrid>
+        <MudItem xs="12" md="4">
+            <MudPaper Class="pa-4" Elevation="2">
+                <MudText Typo="Typo.h6" Class="mb-4">Upcoming Deadlines</MudText>
+                <MudList T="CalendarEvent" Dense="true">
+                    @foreach (var evt in upcomingEvents.Take(5))
+                    {
+                        <MudListItem>
+                            <div class="d-flex justify-space-between align-center w-100">
+                                <div>
+                                    <MudText Typo="Typo.body2">@evt.Title</MudText>
+                                    <MudText Typo="Typo.caption" Color="Color.Secondary">@evt.Date.ToString("MMM dd, yyyy")</MudText>
+                                </div>
+                                <MudChip T="string" Size="Size.Small" Color="@GetEventColor(evt.Category)">@evt.Category</MudChip>
+                            </div>
+                        </MudListItem>
+                    }
+                </MudList>
+            </MudPaper>
+        </MudItem>
+
+        <MudItem xs="12" md="8">
+            <MudPaper Class="pa-4" Elevation="2">
+                <div class="d-flex justify-space-between align-center mb-4">
+                    <div class="d-flex align-center gap-2">
+                        <MudIconButton Icon="@Icons.Material.Filled.ChevronLeft" OnClick="PreviousMonth" />
+                        <MudText Typo="Typo.h6">@currentDate.ToString("MMMM yyyy")</MudText>
+                        <MudIconButton Icon="@Icons.Material.Filled.ChevronRight" OnClick="NextMonth" />
+                    </div>
+                    <MudButton Variant="Variant.Text" Color="Color.Primary" OnClick="GoToToday">Today</MudButton>
+                </div>
+
+                <MudSimpleTable Dense="true" Bordered="true" Style="table-layout: fixed;">
+                    <thead>
+                        <tr>
+                            @foreach (var day in new[] { "Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat" })
+                            {
+                                <th style="width: 14.28%; text-align: center; padding: 8px;">@day</th>
+                            }
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var week in GetCalendarWeeks())
+                        {
+                            <tr>
+                                @foreach (var day in week)
+                                {
+                                    <td style="height: 80px; vertical-align: top; padding: 4px; @(day.Month != currentDate.Month ? "background-color: #f5f5f5;" : "")">
+                                        <div class="d-flex flex-column h-100">
+                                            <MudText Typo="Typo.caption" 
+                                                    Color="@(day.Date == DateTime.Today ? Color.Primary : Color.Default)"
+                                                    Style="@(day.Date == DateTime.Today ? "font-weight: bold;" : "")">
+                                                @day.Day
+                                            </MudText>
+                                            @foreach (var evt in GetEventsForDate(day))
+                                            {
+                                                <MudChip T="string" Size="Size.Small" Color="@GetEventColor(evt.Category)" 
+                                                        Style="font-size: 10px; height: 18px; margin: 1px 0;">
+                                                    @evt.Title.Substring(0, Math.Min(10, evt.Title.Length))
+                                                </MudChip>
+                                            }
+                                        </div>
+                                    </td>
+                                }
+                            </tr>
+                        }
+                    </tbody>
+                </MudSimpleTable>
+            </MudPaper>
+        </MudItem>
+    </MudGrid>
+
+    <MudPaper Class="pa-4 mt-4" Elevation="2">
+        <MudText Typo="Typo.h6" Class="mb-4">All Financial Events</MudText>
+        <MudGrid Class="mb-4">
+            <MudItem xs="12" md="3">
+                <MudSelect @bind-Value="filterCategory" Label="Category" Variant="Variant.Outlined" Clearable="true">
+                    <MudSelectItem Value="@("")">All Categories</MudSelectItem>
+                    <MudSelectItem Value="@("Reporting")">Reporting</MudSelectItem>
+                    <MudSelectItem Value="@("Closing")">Period Closing</MudSelectItem>
+                    <MudSelectItem Value="@("Tax")">Tax</MudSelectItem>
+                    <MudSelectItem Value="@("Audit")">Audit</MudSelectItem>
+                </MudSelect>
+            </MudItem>
+            <MudItem xs="12" md="3">
+                <MudDatePicker @bind-Date="filterFromDate" Label="From Date" Variant="Variant.Outlined" />
+            </MudItem>
+            <MudItem xs="12" md="3">
+                <MudDatePicker @bind-Date="filterToDate" Label="To Date" Variant="Variant.Outlined" />
+            </MudItem>
+        </MudGrid>
+
+        <MudTable Items="@GetFilteredEvents()" Dense="true" Hover="true" Bordered="true">
+            <HeaderContent>
+                <MudTh>Date</MudTh>
+                <MudTh>Event</MudTh>
+                <MudTh>Category</MudTh>
+                <MudTh>Description</MudTh>
+                <MudTh>Reminder</MudTh>
+                <MudTh>Actions</MudTh>
+            </HeaderContent>
+            <RowTemplate>
+                <MudTd>@context.Date.ToString("MMM dd, yyyy")</MudTd>
+                <MudTd>@context.Title</MudTd>
+                <MudTd>
+                    <MudChip T="string" Size="Size.Small" Color="@GetEventColor(context.Category)">@context.Category</MudChip>
+                </MudTd>
+                <MudTd>@context.Description</MudTd>
+                <MudTd>
+                    @if (context.HasReminder)
+                    {
+                        <MudIcon Icon="@Icons.Material.Filled.NotificationsActive" Size="Size.Small" Color="Color.Primary" />
+                    }
+                </MudTd>
+                <MudTd>
+                    <MudIconButton Icon="@Icons.Material.Filled.Edit" Size="Size.Small" />
+                    <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" Color="Color.Error" />
+                </MudTd>
+            </RowTemplate>
+        </MudTable>
+    </MudPaper>
+</MudContainer>
+
+@code {
+    private DateTime currentDate = DateTime.Today;
+    private string filterCategory = "";
+    private DateTime? filterFromDate;
+    private DateTime? filterToDate;
+
+    private List<CalendarEvent> allEvents = new();
+    private List<CalendarEvent> upcomingEvents => allEvents.Where(e => e.Date >= DateTime.Today).OrderBy(e => e.Date).ToList();
+
+    protected override void OnInitialized()
+    {
+        LoadEvents();
+    }
+
+    private void LoadEvents()
+    {
+        allEvents = new List<CalendarEvent>
+        {
+            new() { Date = DateTime.Today.AddDays(5), Title = "Month-End Close", Category = "Closing", Description = "Complete all month-end closing activities", HasReminder = true },
+            new() { Date = DateTime.Today.AddDays(10), Title = "Financial Report Due", Category = "Reporting", Description = "Monthly financial report submission", HasReminder = true },
+            new() { Date = DateTime.Today.AddDays(15), Title = "VAT Filing", Category = "Tax", Description = "Submit VAT return", HasReminder = true },
+            new() { Date = DateTime.Today.AddDays(20), Title = "Bank Reconciliation", Category = "Closing", Description = "Complete bank reconciliation for all accounts", HasReminder = false },
+            new() { Date = DateTime.Today.AddDays(30), Title = "Quarter-End Audit", Category = "Audit", Description = "Internal audit review", HasReminder = true },
+            new() { Date = DateTime.Today.AddMonths(1), Title = "Annual Audit Prep", Category = "Audit", Description = "Prepare documentation for annual audit", HasReminder = true }
+        };
+    }
+
+    private void PreviousMonth() => currentDate = currentDate.AddMonths(-1);
+    private void NextMonth() => currentDate = currentDate.AddMonths(1);
+    private void GoToToday() => currentDate = DateTime.Today;
+
+    private List<List<DateTime>> GetCalendarWeeks()
+    {
+        var weeks = new List<List<DateTime>>();
+        var firstDay = new DateTime(currentDate.Year, currentDate.Month, 1);
+        var startDate = firstDay.AddDays(-(int)firstDay.DayOfWeek);
+
+        for (int w = 0; w < 6; w++)
+        {
+            var week = new List<DateTime>();
+            for (int d = 0; d < 7; d++)
+            {
+                week.Add(startDate.AddDays(w * 7 + d));
+            }
+            weeks.Add(week);
+        }
+        return weeks;
+    }
+
+    private List<CalendarEvent> GetEventsForDate(DateTime date)
+    {
+        return allEvents.Where(e => e.Date.Date == date.Date).ToList();
+    }
+
+    private List<CalendarEvent> GetFilteredEvents()
+    {
+        var filtered = allEvents.AsEnumerable();
+        if (!string.IsNullOrEmpty(filterCategory))
+            filtered = filtered.Where(e => e.Category == filterCategory);
+        if (filterFromDate.HasValue)
+            filtered = filtered.Where(e => e.Date >= filterFromDate.Value);
+        if (filterToDate.HasValue)
+            filtered = filtered.Where(e => e.Date <= filterToDate.Value);
+        return filtered.OrderBy(e => e.Date).ToList();
+    }
+
+    private Color GetEventColor(string category)
+    {
+        return category switch
+        {
+            "Reporting" => Color.Primary,
+            "Closing" => Color.Warning,
+            "Tax" => Color.Error,
+            "Audit" => Color.Info,
+            _ => Color.Default
+        };
+    }
+
+    private void AddEvent()
+    {
+        Snackbar.Add("Add Financial Calendar Event - Feature coming soon", Severity.Info);
+    }
+
+    private class CalendarEvent
+    {
+        public DateTime Date { get; set; }
+        public string Title { get; set; } = "";
+        public string Category { get; set; } = "";
+        public string Description { get; set; } = "";
+        public bool HasReminder { get; set; }
+    }
+}

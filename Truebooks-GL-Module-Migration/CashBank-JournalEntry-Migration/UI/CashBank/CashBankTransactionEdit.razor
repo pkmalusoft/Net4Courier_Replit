@@ -1,0 +1,1915 @@
+@page "/cash-bank-transaction/new"
+@page "/cash-bank-transaction/edit/{Id:guid}"
+
+
+
+@using System.Text.Json
+@using System.Text.Json.Serialization
+@inject PlatformServices.ICashBankTransactionService CashBankTransactionService
+@inject PlatformServices.IChartOfAccountsService ChartOfAccountsService
+@inject PlatformServices.IAccountClassificationService AccountClassificationService
+@inject IProjectService ProjectService
+@inject PlatformServices.IVoucherNumberingService VoucherNumberingService
+@inject IBranchService BranchService
+@inject IDepartmentService DepartmentService
+@inject PlatformServices.IBankAccountService BankAccountService
+@inject PlatformServices.ICustomerService CustomerService
+@inject PlatformServices.ISupplierService SupplierService
+@inject PlatformServices.IPaymentAllocationService PaymentAllocationService
+@inject PlatformServices.IVoucherAttachmentService VoucherAttachmentService
+@inject LegacyServices.IAuthService AuthService
+@inject NavigationManager Navigation
+@inject ISnackbar Snackbar
+@inject IJSRuntime JSRuntime
+@inject IWorkingPeriodStateProvider WorkingPeriodState
+
+<MudContainer MaxWidth="MaxWidth.ExtraLarge" Class="mt-4">
+    <MudText Typo="Typo.h4" Class="mb-4">@(Id.HasValue ? "Edit" : "New") Cash & Bank Transaction</MudText>
+
+    <MudPaper Class="pa-6" Elevation="2">
+        <MudForm @ref="form" @bind-IsValid="@formIsValid">
+            <MudGrid>
+                <MudItem xs="12" md="6">
+                    <MudTextField @bind-Value="transaction.VoucherNo" 
+                                Label="Voucher No" 
+                                ReadOnly="true"
+                                Variant="Variant.Outlined"
+                                Placeholder="@(Id.HasValue ? "" : "Auto-Generated")"
+                                HelperText="@(Id.HasValue ? "" : "Voucher number will be auto-generated when saved")" />
+                </MudItem>
+                <MudItem xs="12" md="6">
+                    <MudDatePicker @ref="datePickerRef"
+                                 @bind-Date="voucherDate" 
+                                 Label="Voucher Date" 
+                                 Required="true"
+                                 Variant="Variant.Outlined"
+                                 RequiredError="Voucher date is required"
+                                 MinDate="@WorkingPeriodState.GetPeriodMinDate()" 
+                                 MaxDate="@WorkingPeriodState.GetPeriodMaxDate()"
+                                 HelperText="@GetPeriodHelperText()" />
+                </MudItem>
+
+                <MudItem xs="12" md="6">
+                    <MudText Typo="Typo.body2" Class="mb-2">Transaction Type</MudText>
+                    <MudRadioGroup Value="transaction.TransactionType" T="TransactionType" ValueChanged="OnTransactionTypeChanged">
+                        <MudRadio Value="@TransactionType.Bank" Color="Color.Primary">Bank</MudRadio>
+                        <MudRadio Value="@TransactionType.Cash" Color="Color.Info">Cash</MudRadio>
+                    </MudRadioGroup>
+                </MudItem>
+
+                <MudItem xs="12" md="6">
+                    <MudSelect Value="transaction.TransactionCategory"
+                             ValueChanged="OnTransactionCategoryChanged"
+                             Label="Transaction Category"
+                             Variant="Variant.Outlined"
+                             Required="true"
+                             T="TransactionCategory"
+                             HelperText="Select whether this is a GL transaction, customer receipt, or vendor payment">
+                        <MudSelectItem Value="@TransactionCategory.GL">General Ledger</MudSelectItem>
+                        <MudSelectItem Value="@TransactionCategory.PartyReceipt">Party - Receipt (Customer)</MudSelectItem>
+                        <MudSelectItem Value="@TransactionCategory.PartyPayment">Party - Payment (Vendor)</MudSelectItem>
+                    </MudSelect>
+                </MudItem>
+                
+                @if (transaction.TransactionCategory == TransactionCategory.GL)
+                {
+                    <MudItem xs="12" md="6">
+                        <MudText Typo="Typo.body2" Class="mb-2">Receipt/Payment Direction</MudText>
+                        <MudRadioGroup @bind-Value="transaction.RecPayType" T="RecPayType">
+                            <MudRadio Value="@RecPayType.Receipt" Color="Color.Success">Receipt (Money In)</MudRadio>
+                            <MudRadio Value="@RecPayType.Payment" Color="Color.Warning">Payment (Money Out)</MudRadio>
+                        </MudRadioGroup>
+                    </MudItem>
+                }
+
+                @if (transaction.TransactionCategory == TransactionCategory.PartyReceipt)
+                {
+                    <MudItem xs="12" md="6">
+                        <MudSelect Value="transaction.CustomerId"
+                                 Label="Customer"
+                                 Variant="Variant.Outlined"
+                                 Required="true"
+                                 T="Guid?"
+                                 Clearable="true"
+                                 ValueChanged="OnCustomerSelected">
+                            @foreach (var customer in customers)
+                            {
+                                <MudSelectItem Value="@((Guid?)customer.Id)">@customer.Name - @customer.CustomerCode</MudSelectItem>
+                            }
+                        </MudSelect>
+                    </MudItem>
+                }
+                
+                @if (transaction.TransactionCategory == TransactionCategory.PartyPayment)
+                {
+                    <MudItem xs="12" md="6">
+                        <MudSelect Value="transaction.VendorId"
+                                 Label="Vendor"
+                                 Variant="Variant.Outlined"
+                                 Required="true"
+                                 T="Guid?"
+                                 Clearable="true"
+                                 ValueChanged="OnVendorSelected">
+                            @foreach (var vendor in vendors)
+                            {
+                                <MudSelectItem Value="@((Guid?)vendor.Id)">@vendor.Name - @vendor.VendorCode</MudSelectItem>
+                            }
+                        </MudSelect>
+                    </MudItem>
+                }
+
+                <MudItem xs="12" md="6">
+                    <MudSelect Value="selectedBranchIdForTxn" Label="Branch" Variant="Variant.Outlined" 
+                               Clearable="true" T="Guid?" ValueChanged="OnTxnBranchChanged"
+                               ValueExpression="@(() => selectedBranchIdForTxn)">
+                        @foreach (var branch in branches)
+                        {
+                            <MudSelectItem Value="@((Guid?)branch.Id)">@branch.Code - @branch.Name</MudSelectItem>
+                        }
+                    </MudSelect>
+                </MudItem>
+                <MudItem xs="12" md="6">
+                    <MudSelect @bind-Value="selectedDepartmentIdForTxn" Label="Department" Variant="Variant.Outlined" 
+                               Clearable="true" T="Guid?" Disabled="@(!selectedBranchIdForTxn.HasValue && branches.Any())">
+                        @foreach (var dept in filteredDepartments)
+                        {
+                            <MudSelectItem Value="@((Guid?)dept.Id)">@dept.Code - @dept.Name</MudSelectItem>
+                        }
+                    </MudSelect>
+                </MudItem>
+
+                <MudItem xs="12" md="6" @key="@($"sourceaccount{transaction.TransactionType}")">
+                    @if (transaction.TransactionType == TransactionType.Bank)
+                    {
+                        <MudSelect @key="@("bankselect")"
+                                 Value="selectedBankAccountId" 
+                                 ValueChanged="OnBankAccountSelected"
+                                 Label="Bank Account" 
+                                 Required="true"
+                                 Variant="Variant.Outlined"
+                                 HelperText="Select the bank account for this transaction"
+                                 T="Guid">
+                            @foreach (var bankAccount in bankAccounts)
+                            {
+                                <MudSelectItem Value="@bankAccount.Id">
+                                    @bankAccount.AccountName - @bankAccount.BankName (Acc# @bankAccount.AccountNumber)
+                                </MudSelectItem>
+                            }
+                        </MudSelect>
+                    }
+                    else
+                    {
+                        <MudSelect @key="@("cashselect")"
+                                 @bind-Value="transaction.SourceAccountId" 
+                                 Label="Cash Account" 
+                                 Required="true"
+                                 Variant="Variant.Outlined"
+                                 HelperText="Select the cash account for this transaction"
+                                 T="Guid">
+                            @foreach (var account in cashAccounts)
+                            {
+                                <MudSelectItem Value="@account.Id">@account.DisplayName</MudSelectItem>
+                            }
+                        </MudSelect>
+                    }
+                </MudItem>
+
+                @if (transaction.TransactionType == TransactionType.Bank)
+                {
+                    <MudItem xs="12" md="6">
+                        <MudTextField @bind-Value="transaction.ChequeNo" 
+                                    Label="Cheque No" 
+                                    Variant="Variant.Outlined" />
+                    </MudItem>
+                    <MudItem xs="12" md="6">
+                        <MudDatePicker @bind-Date="chequeDate" 
+                                     Label="Cheque Date" 
+                                     Variant="Variant.Outlined" />
+                    </MudItem>
+                    
+                    @* PDC Indicator and Status *@
+                    @if (transaction.IsPDC)
+                    {
+                        <MudItem xs="12">
+                            <MudChip T="string" Color="Color.Error" Size="MudBlazor.Size.Large" Icon="@Icons.Material.Filled.CalendarToday">POST-DATED CHEQUE</MudChip>
+                        </MudItem>
+                        
+                        @* Deposit Status Control *@
+                        <MudItem xs="12" md="6">
+                            <MudSelect Value="transaction.DepositStatus"
+                                     ValueChanged="OnDepositStatusChanged"
+                                     Label="Deposit Status"
+                                     Variant="Variant.Outlined"
+                                     T="DepositStatus"
+                                     HelperText="Track the deposit status of the post-dated cheque">
+                                <MudSelectItem Value="@DepositStatus.PendingDeposit">Pending Deposit</MudSelectItem>
+                                <MudSelectItem Value="@DepositStatus.Deposited">Deposited</MudSelectItem>
+                            </MudSelect>
+                        </MudItem>
+                        
+                        @* Actual Deposit Date *@
+                        @if (transaction.DepositStatus == DepositStatus.Deposited)
+                        {
+                            <MudItem xs="12" md="6">
+                                <MudDatePicker @bind-Date="actualDepositDate" 
+                                             Label="Actual Deposit Date" 
+                                             Variant="Variant.Outlined"
+                                             HelperText="Date when cheque was deposited to bank" />
+                            </MudItem>
+                        }
+                        
+                        @* Clearance Status Control *@
+                        @if (transaction.DepositStatus == DepositStatus.Deposited)
+                        {
+                            <MudItem xs="12" md="6">
+                                <MudSelect @bind-Value="transaction.ClearanceStatus"
+                                         Label="Clearance Status"
+                                         Variant="Variant.Outlined"
+                                         T="ClearanceStatus"
+                                         HelperText="Track whether the cheque has cleared or bounced">
+                                    <MudSelectItem Value="@ClearanceStatus.PendingClearance">Pending Clearance</MudSelectItem>
+                                    <MudSelectItem Value="@ClearanceStatus.Cleared">Cleared</MudSelectItem>
+                                    <MudSelectItem Value="@ClearanceStatus.Bounced">Bounced</MudSelectItem>
+                                </MudSelect>
+                            </MudItem>
+                            
+                            @* Clearance Date *@
+                            @if (transaction.ClearanceStatus == ClearanceStatus.Cleared || transaction.ClearanceStatus == ClearanceStatus.Bounced)
+                            {
+                                <MudItem xs="12" md="6">
+                                    <MudDatePicker @bind-Date="clearanceDate" 
+                                                 Label="Clearance Date" 
+                                                 Variant="Variant.Outlined"
+                                                 HelperText="Date when cheque was cleared or bounced" />
+                                </MudItem>
+                            }
+                            
+                            @* Bounced Reason *@
+                            @if (transaction.ClearanceStatus == ClearanceStatus.Bounced)
+                            {
+                                <MudItem xs="12">
+                                    <MudTextField @bind-Value="transaction.BouncedReason" 
+                                                Label="Bounced Reason" 
+                                                Variant="Variant.Outlined"
+                                                Lines="2"
+                                                HelperText="Reason why the cheque was bounced" />
+                                </MudItem>
+                            }
+                        }
+                    }
+                    
+                    @* Bank Details *@
+                    <MudItem xs="12" md="6">
+                        <MudTextField @bind-Value="transaction.BankName" 
+                                    Label="Bank Name" 
+                                    Variant="Variant.Outlined" />
+                    </MudItem>
+                    <MudItem xs="12" md="6">
+                        <MudTextField @bind-Value="transaction.BranchName" 
+                                    Label="Branch Name" 
+                                    Variant="Variant.Outlined" />
+                    </MudItem>
+                }
+                else
+                {
+                    <MudItem xs="12" md="6">
+                        <MudTextField @bind-Value="transaction.ReferenceNo" 
+                                    Label="Reference No" 
+                                    Variant="Variant.Outlined" />
+                    </MudItem>
+                }
+            </MudGrid>
+
+            @if (transaction.TransactionCategory == TransactionCategory.PartyReceipt && transaction.CustomerId.HasValue && outstandingInvoices.Count > 0)
+            {
+                <MudDivider Class="my-6" />
+
+                <MudText Typo="Typo.h6" Class="mb-4">Customer Receipt - Invoice Allocation</MudText>
+
+                <MudTable Items="@invoiceAllocations" Dense="true" Hover="true" Bordered="true">
+                    <HeaderContent>
+                        <MudTh>Invoice Number</MudTh>
+                        <MudTh>Invoice Date</MudTh>
+                        <MudTh Style="text-align: right;">Total Amount</MudTh>
+                        <MudTh Style="text-align: right;">Paid Amount</MudTh>
+                        <MudTh Style="text-align: right;">Balance</MudTh>
+                        <MudTh Style="text-align: right;">Allocate</MudTh>
+                        <MudTh>Actions</MudTh>
+                    </HeaderContent>
+                    <RowTemplate>
+                        <MudTd DataLabel="Invoice Number">@context.InvoiceNumber</MudTd>
+                        <MudTd DataLabel="Invoice Date">@context.InvoiceDate.ToString("dd-MMM-yyyy")</MudTd>
+                        <MudTd DataLabel="Total Amount" Style="text-align: right;">@context.InvoiceTotal.ToString("N2")</MudTd>
+                        <MudTd DataLabel="Paid Amount" Style="text-align: right;">@context.InvoiceOutstanding.ToString("N2")</MudTd>
+                        <MudTd DataLabel="Balance" Style="text-align: right;">
+                            <MudChip T="string" Color="Color.Warning">@context.InvoiceOutstanding.ToString("N2")</MudChip>
+                        </MudTd>
+                        <MudTd DataLabel="Allocate" Style="text-align: right;">
+                            <MudNumericField Value="context.AllocationAmount"
+                                           Variant="Variant.Outlined"
+                                           Margin="Margin.Dense"
+                                           Format="N2"
+                                           Min="0"
+                                           Max="@context.InvoiceOutstanding"
+                                           ValueChanged="@((decimal val) => OnAllocationAmountChanged(context, val))" />
+                        </MudTd>
+                        <MudTd DataLabel="Actions">
+                            @if (context.AllocationAmount > 0)
+                            {
+                                <MudIconButton Icon="@Icons.Material.Filled.Check"
+                                             Size="MudBlazor.Size.Small"
+                                             Color="Color.Success"
+                                             OnClick="@(() => AddAllocation(context))" />
+                            }
+                            else if (allocatedInvoiceIds.Contains(context.SalesInvoiceId))
+                            {
+                                <MudIconButton Icon="@Icons.Material.Filled.Delete"
+                                             Size="MudBlazor.Size.Small"
+                                             Color="Color.Error"
+                                             OnClick="@(() => RemoveAllocation(context))" />
+                            }
+                        </MudTd>
+                    </RowTemplate>
+                </MudTable>
+
+                <MudGrid Class="mt-4">
+                    <MudItem xs="12" md="6">
+                        <MudText Typo="Typo.body1">
+                            <strong>Total Receipt Amount:</strong> <MudChip T="string" Color="Color.Primary">@TotalAmount.ToString("N2")</MudChip>
+                        </MudText>
+                    </MudItem>
+                    <MudItem xs="12" md="6">
+                        <MudText Typo="Typo.body1">
+                            <strong>Total Allocated:</strong> <MudChip T="string" Color="Color.Success">@TotalAllocated.ToString("N2")</MudChip>
+                        </MudText>
+                    </MudItem>
+                    <MudItem xs="12" md="6">
+                        <MudText Typo="Typo.body1">
+                            <strong>Unallocated (Advance):</strong> <MudChip T="string" Color="@(UnallocatedAmount > 0 ? Color.Info : Color.Default)">@UnallocatedAmount.ToString("N2")</MudChip>
+                        </MudText>
+                    </MudItem>
+                </MudGrid>
+            }
+            
+            @if (transaction.TransactionCategory == TransactionCategory.PartyPayment && transaction.VendorId.HasValue && outstandingBills.Count > 0)
+            {
+                <MudDivider Class="my-6" />
+
+                <MudText Typo="Typo.h6" Class="mb-4">Vendor Payment - Bill Allocation</MudText>
+
+                <MudTable Items="@billAllocations" Dense="true" Hover="true" Bordered="true">
+                    <HeaderContent>
+                        <MudTh>Bill Number</MudTh>
+                        <MudTh>Bill Date</MudTh>
+                        <MudTh>Due Date</MudTh>
+                        <MudTh Style="text-align: right;">Total Amount</MudTh>
+                        <MudTh Style="text-align: right;">Paid Amount</MudTh>
+                        <MudTh Style="text-align: right;">Balance</MudTh>
+                        <MudTh Style="text-align: right;">Allocate</MudTh>
+                        <MudTh>Actions</MudTh>
+                    </HeaderContent>
+                    <RowTemplate>
+                        <MudTd DataLabel="Bill Number">@context.BillNumber</MudTd>
+                        <MudTd DataLabel="Bill Date">@context.BillDate.ToString("dd-MMM-yyyy")</MudTd>
+                        <MudTd DataLabel="Due Date">@(context.DueDate?.ToString("dd-MMM-yyyy") ?? "N/A")</MudTd>
+                        <MudTd DataLabel="Total Amount" Style="text-align: right;">@context.BillTotal.ToString("N2")</MudTd>
+                        <MudTd DataLabel="Paid Amount" Style="text-align: right;">@context.BillOutstanding.ToString("N2")</MudTd>
+                        <MudTd DataLabel="Balance" Style="text-align: right;">
+                            <MudChip T="string" Color="Color.Warning">@context.BillOutstanding.ToString("N2")</MudChip>
+                        </MudTd>
+                        <MudTd DataLabel="Allocate" Style="text-align: right;">
+                            <MudNumericField Value="context.AllocationAmount"
+                                           Variant="Variant.Outlined"
+                                           Margin="Margin.Dense"
+                                           Format="N2"
+                                           Min="0"
+                                           Max="@context.BillOutstanding"
+                                           ValueChanged="@((decimal val) => OnBillAllocationAmountChanged(context, val))" />
+                        </MudTd>
+                        <MudTd DataLabel="Actions">
+                            @if (context.AllocationAmount > 0)
+                            {
+                                <MudIconButton Icon="@Icons.Material.Filled.Check"
+                                             Size="MudBlazor.Size.Small"
+                                             Color="Color.Success"
+                                             OnClick="@(() => AddBillAllocation(context))" />
+                            }
+                            else if (allocatedBillIds.Contains(context.PurchaseBillId))
+                            {
+                                <MudIconButton Icon="@Icons.Material.Filled.Delete"
+                                             Size="MudBlazor.Size.Small"
+                                             Color="Color.Error"
+                                             OnClick="@(() => RemoveBillAllocation(context))" />
+                            }
+                        </MudTd>
+                    </RowTemplate>
+                </MudTable>
+
+                <MudGrid Class="mt-4">
+                    <MudItem xs="12" md="6">
+                        <MudText Typo="Typo.body1">
+                            <strong>Total Payment Amount:</strong> <MudChip T="string" Color="Color.Primary">@TotalAmount.ToString("N2")</MudChip>
+                        </MudText>
+                    </MudItem>
+                    <MudItem xs="12" md="6">
+                        <MudText Typo="Typo.body1">
+                            <strong>Total Allocated:</strong> <MudChip T="string" Color="Color.Success">@TotalBillAllocated.ToString("N2")</MudChip>
+                        </MudText>
+                    </MudItem>
+                    <MudItem xs="12" md="6">
+                        <MudText Typo="Typo.body1">
+                            <strong>Unallocated (Advance):</strong> <MudChip T="string" Color="@(UnallocatedBillAmount > 0 ? Color.Info : Color.Default)">@UnallocatedBillAmount.ToString("N2")</MudChip>
+                        </MudText>
+                    </MudItem>
+                </MudGrid>
+            }
+
+            <MudDivider Class="my-6" />
+
+            <MudText Typo="Typo.h6" Class="mb-4">Transaction Lines</MudText>
+
+            <MudTable Items="@lines" Dense="true" Hover="true" Bordered="true">
+                <HeaderContent>
+                    <MudTh>Destination Account</MudTh>
+                    <MudTh Style="text-align: right;">Gross Amount</MudTh>
+                    <MudTh Style="text-align: right;">Tax Rate %</MudTh>
+                    <MudTh>Tax Inclusive</MudTh>
+                    <MudTh Style="text-align: right;">Net Amount</MudTh>
+                    <MudTh Style="text-align: right;">Tax Amount</MudTh>
+                    <MudTh>Project</MudTh>
+                    <MudTh>Actions</MudTh>
+                </HeaderContent>
+                <RowTemplate>
+                    <MudTd DataLabel="Destination Account">
+                        <MudSelect @bind-Value="context.DestinationAccountId" 
+                                 Variant="Variant.Outlined" 
+                                 Margin="Margin.Dense" 
+                                 T="Guid" 
+                                 Required="true">
+                            @foreach (var account in activeAccounts.Where(a => a.AllowPosting))
+                            {
+                                <MudSelectItem Value="@account.Id">@account.DisplayName</MudSelectItem>
+                            }
+                        </MudSelect>
+                    </MudTd>
+                    <MudTd DataLabel="Gross Amount" Style="text-align: right;">
+                        <MudNumericField Value="context.GrossAmount" 
+                                       Variant="Variant.Outlined" 
+                                       Margin="Margin.Dense" 
+                                       Format="N2" 
+                                       Min="0"
+                                       ValueChanged="@((decimal val) => OnGrossAmountChanged(context, val))" />
+                    </MudTd>
+                    <MudTd DataLabel="Tax Rate %" Style="text-align: right;">
+                        <MudNumericField Value="context.TaxRate" 
+                                       Variant="Variant.Outlined" 
+                                       Margin="Margin.Dense" 
+                                       Format="N2" 
+                                       Min="0"
+                                       Max="100"
+                                       ValueChanged="@((decimal val) => OnTaxRateChanged(context, val))" />
+                    </MudTd>
+                    <MudTd DataLabel="Tax Inclusive">
+                        <MudCheckBox Value="context.IsTaxInclusive" 
+                                   T="bool"
+                                   ValueChanged="@((bool val) => OnTaxInclusiveChanged(context, val))" />
+                    </MudTd>
+                    <MudTd DataLabel="Net Amount" Style="text-align: right;">
+                        <MudNumericField @bind-Value="context.NetAmount" 
+                                       Variant="Variant.Outlined" 
+                                       Margin="Margin.Dense" 
+                                       Format="N2" 
+                                       ReadOnly="true" />
+                    </MudTd>
+                    <MudTd DataLabel="Tax Amount" Style="text-align: right;">
+                        <MudNumericField @bind-Value="context.TaxAmount" 
+                                       Variant="Variant.Outlined" 
+                                       Margin="Margin.Dense" 
+                                       Format="N2" 
+                                       ReadOnly="true" />
+                    </MudTd>
+                    <MudTd DataLabel="Project">
+                        <MudSelect @bind-Value="context.ProjectId" 
+                                 Variant="Variant.Outlined" 
+                                 Margin="Margin.Dense" 
+                                 T="Guid?"
+                                 Clearable="true">
+                            @foreach (var project in activeProjects)
+                            {
+                                <MudSelectItem Value="@((Guid?)project.Id)">@project.DisplayName</MudSelectItem>
+                            }
+                        </MudSelect>
+                    </MudTd>
+                    <MudTd DataLabel="Actions">
+                        <MudIconButton Icon="@Icons.Material.Filled.Delete" 
+                                     Size="MudBlazor.Size.Small" 
+                                     OnClick="@(() => RemoveLine(context))" />
+                    </MudTd>
+                </RowTemplate>
+            </MudTable>
+
+            <MudButton StartIcon="@Icons.Material.Filled.Add" 
+                      Color="Color.Primary" 
+                      Class="mt-4" 
+                      OnClick="AddLine">
+                Add Line
+            </MudButton>
+
+            <MudDivider Class="my-6" />
+
+            <MudGrid>
+                <MudItem xs="12">
+                    <MudText Typo="Typo.h6">
+                        Total Amount: 
+                        <MudChip T="string" Color="Color.Primary">@TotalAmount.ToString("N2")</MudChip>
+                    </MudText>
+                </MudItem>
+            </MudGrid>
+
+            <MudDivider Class="my-6" />
+
+            @* Attachments Section *@
+            @if (Id.HasValue)
+            {
+                <MudText Typo="Typo.h6" Class="mb-2">
+                    <MudIcon Icon="@Icons.Material.Filled.AttachFile" Class="mr-2" />
+                    Voucher Attachments (Max 3)
+                </MudText>
+                <MudPaper Class="pa-4 mb-4" Elevation="1">
+                    <MudGrid>
+                        <MudItem xs="12">
+                            @if (attachments.Count < 3)
+                            {
+                                <MudFileUpload T="IBrowserFile" 
+                                             FilesChanged="OnFileSelected"
+                                             Accept=".jpg,.jpeg,.png,.pdf"
+                                             MaximumFileCount="1">
+                                    <ActivatorContent>
+                                        <MudButton Variant="Variant.Outlined" 
+                                                  Color="Color.Primary" 
+                                                  StartIcon="@Icons.Material.Filled.CloudUpload"
+                                                  Disabled="@isUploading">
+                                            @if (isUploading)
+                                            {
+                                                <MudProgressCircular Size="MudBlazor.Size.Small" Indeterminate="true" Class="mr-2" />
+                                                <text>Uploading...</text>
+                                            }
+                                            else
+                                            {
+                                                <text>Upload Attachment</text>
+                                            }
+                                        </MudButton>
+                                    </ActivatorContent>
+                                </MudFileUpload>
+                                <MudText Typo="Typo.caption" Class="ml-2" Style="opacity: 0.7;">
+                                    Accepted: JPG, PNG, PDF (Max 5MB each)
+                                </MudText>
+                            }
+                            else
+                            {
+                                <MudAlert Severity="Severity.Info" Dense="true">
+                                    Maximum attachments reached (3/3)
+                                </MudAlert>
+                            }
+                        </MudItem>
+                        
+                        @if (attachments.Any())
+                        {
+                            <MudItem xs="12">
+                                <MudTable Items="@attachments" Dense="true" Hover="true">
+                                    <HeaderContent>
+                                        <MudTh>File Name</MudTh>
+                                        <MudTh>Type</MudTh>
+                                        <MudTh>Size</MudTh>
+                                        <MudTh>Uploaded</MudTh>
+                                        <MudTh Style="width: 150px;">Actions</MudTh>
+                                    </HeaderContent>
+                                    <RowTemplate>
+                                        <MudTd DataLabel="File Name">
+                                            <MudIcon Icon="@GetFileIcon(context.ContentType)" Class="mr-2" Size="MudBlazor.Size.Small" />
+                                            @context.FileName
+                                        </MudTd>
+                                        <MudTd DataLabel="Type">@GetFileTypeLabel(context.ContentType)</MudTd>
+                                        <MudTd DataLabel="Size">@FormatFileSize(context.FileSize)</MudTd>
+                                        <MudTd DataLabel="Uploaded">@context.UploadedAt.ToString("dd MMM yyyy HH:mm")</MudTd>
+                                        <MudTd DataLabel="Actions">
+                                            <MudTooltip Text="Preview">
+                                                <MudIconButton Icon="@Icons.Material.Filled.Visibility" 
+                                                             Size="MudBlazor.Size.Small" 
+                                                             Color="Color.Info"
+                                                             OnClick="@(() => PreviewAttachment(context))" />
+                                            </MudTooltip>
+                                            <MudTooltip Text="Download">
+                                                <MudIconButton Icon="@Icons.Material.Filled.Download" 
+                                                             Size="MudBlazor.Size.Small" 
+                                                             Color="Color.Primary"
+                                                             OnClick="@(() => DownloadAttachment(context))" />
+                                            </MudTooltip>
+                                            <MudTooltip Text="Delete">
+                                                <MudIconButton Icon="@Icons.Material.Filled.Delete" 
+                                                             Size="MudBlazor.Size.Small" 
+                                                             Color="Color.Error"
+                                                             OnClick="@(() => DeleteAttachment(context))" />
+                                            </MudTooltip>
+                                        </MudTd>
+                                    </RowTemplate>
+                                </MudTable>
+                            </MudItem>
+                        }
+                        else
+                        {
+                            <MudItem xs="12">
+                                <MudText Typo="Typo.body2" Style="opacity: 0.6;">No attachments uploaded yet.</MudText>
+                            </MudItem>
+                        }
+                    </MudGrid>
+                </MudPaper>
+            }
+            else
+            {
+                <MudAlert Severity="Severity.Info" Dense="true" Class="mb-4">
+                    <MudIcon Icon="@Icons.Material.Filled.Info" Class="mr-2" />
+                    Save the transaction first to upload attachments.
+                </MudAlert>
+            }
+
+            <MudDivider Class="my-6" />
+
+            @if (!string.IsNullOrEmpty(errorMessage))
+            {
+                <MudAlert Severity="Severity.Error" Class="mb-4">@errorMessage</MudAlert>
+            }
+
+            <MudGrid>
+                <MudItem xs="12" sm="6" md="3">
+                    <MudButton Variant="Variant.Filled" 
+                              Color="Color.Primary" 
+                              FullWidth="true" 
+                              OnClick="SaveDraft" 
+                              Disabled="@(isLoading || lines.Count == 0)">
+                        Save Draft
+                    </MudButton>
+                </MudItem>
+                @if (transaction.Status == CashBankStatus.Draft && Id.HasValue)
+                {
+                    <MudItem xs="12" sm="6" md="3">
+                        <MudButton Variant="Variant.Filled" 
+                                  Color="Color.Success" 
+                                  FullWidth="true" 
+                                  OnClick="PostTransaction" 
+                                  Disabled="@(isLoading || lines.Count == 0)">
+                            Post Transaction
+                        </MudButton>
+                    </MudItem>
+                }
+                <MudItem xs="12" sm="6" md="3">
+                    <MudButton Variant="Variant.Outlined" 
+                              Color="Color.Secondary" 
+                              FullWidth="true" 
+                              OnClick="Cancel" 
+                              Disabled="isLoading">
+                        Cancel
+                    </MudButton>
+                </MudItem>
+            </MudGrid>
+        </MudForm>
+    </MudPaper>
+</MudContainer>
+
+@code {
+    [Parameter]
+    public Guid? Id { get; set; }
+
+    private static readonly JsonSerializerOptions _jsonOptions = new()
+    {
+        PropertyNameCaseInsensitive = true,
+        Converters = { new JsonStringEnumConverter() }
+    };
+
+    private MudForm? form;
+    private MudDatePicker? datePickerRef;
+    private bool formIsValid;
+    private CashBankTransaction transaction = new();
+    private List<TransactionLine> lines = new();
+    private List<ChartOfAccount> activeAccounts = new();
+    private List<ChartOfAccount> cashAccounts = new();
+    private List<BankAccountModel> bankAccounts = new();
+    private Guid selectedBankAccountId = Guid.Empty;
+    private List<AccountClassification> accountClassifications = new();
+    private List<Project> activeProjects = new();
+    private List<Customer> customers = new();
+    private List<Vendor> vendors = new();
+    private List<InvoiceForAllocation> outstandingInvoices = new();
+    private List<CashBankInvoiceAllocation> invoiceAllocations = new();
+    private HashSet<Guid> allocatedInvoiceIds = new();
+    private List<BillForAllocation> outstandingBills = new();
+    private List<CashBankBillAllocation> billAllocations = new();
+    private HashSet<Guid> allocatedBillIds = new();
+    private List<BranchDto> branches = new();
+    private List<DepartmentDto> departments = new();
+    private Guid? selectedBranchIdForTxn;
+    private Guid? selectedDepartmentIdForTxn;
+    private string errorMessage = "";
+    private bool isLoading = false;
+    private Guid? cashClassificationId = null;
+    private Guid? bankClassificationId = null;
+
+    private IEnumerable<DepartmentDto> filteredDepartments => selectedBranchIdForTxn.HasValue 
+        ? departments.Where(d => d.BranchId == selectedBranchIdForTxn || d.BranchId == null)
+        : departments;
+
+    private decimal TotalAllocated => invoiceAllocations.Where(a => allocatedInvoiceIds.Contains(a.SalesInvoiceId)).Sum(a => a.AllocationAmount);
+    private decimal UnallocatedAmount => TotalAmount - TotalAllocated;
+    private decimal TotalBillAllocated => billAllocations.Where(a => allocatedBillIds.Contains(a.PurchaseBillId)).Sum(a => a.AllocationAmount);
+    private decimal UnallocatedBillAmount => TotalAmount - TotalBillAllocated;
+
+    private DateTime? voucherDate
+    {
+        get => transaction.VoucherDate;
+        set
+        {
+            transaction.VoucherDate = value ?? DateTime.Today;
+            CheckPDC();
+        }
+    }
+
+    private DateTime? chequeDate
+    {
+        get => transaction.ChequeDate;
+        set
+        {
+            transaction.ChequeDate = value;
+            CheckPDC();
+        }
+    }
+
+    private DateTime? actualDepositDate
+    {
+        get => transaction.ActualDepositDate;
+        set => transaction.ActualDepositDate = value;
+    }
+
+    private DateTime? clearanceDate
+    {
+        get => transaction.ClearanceDate;
+        set => transaction.ClearanceDate = value;
+    }
+
+    private decimal TotalAmount => lines.Sum(l => l.NetAmount + l.TaxAmount);
+    
+    private string GetPeriodHelperText()
+    {
+        var period = WorkingPeriodState.CurrentPeriod;
+        if (period == null) return "No working period selected";
+        return $"Period: {period.PeriodName} ({period.StartDate:dd MMM} - {period.EndDate:dd MMM yyyy})";
+    }
+
+    private void OnTxnBranchChanged(Guid? newBranchId)
+    {
+        selectedBranchIdForTxn = newBranchId;
+        if (!newBranchId.HasValue || !filteredDepartments.Any(d => d.Id == selectedDepartmentIdForTxn))
+        {
+            selectedDepartmentIdForTxn = null;
+        }
+    }
+
+    private TransactionType previousTransactionType = TransactionType.Bank;
+
+    private Guid GetTenantId()
+    {
+        var tenantIdStr = AuthService.GetTenantId();
+        return Guid.TryParse(tenantIdStr, out var tenantId) ? tenantId : Guid.Empty;
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            var tenantId = GetTenantId();
+
+            var accountsTask = ChartOfAccountsService.GetAllAsync(tenantId);
+            var projectsTask = ProjectService.GetActiveAsync();
+            var classificationsTask = AccountClassificationService.GetAllAsync(tenantId);
+            var bankAccountsTask = BankAccountService.GetAllAsync(tenantId);
+            var customersTask = CustomerService.GetAllAsync(tenantId);
+            var vendorsTask = SupplierService.GetAllAsync(tenantId);
+            var branchesTask = BranchService.GetActiveAsync();
+            var departmentsTask = DepartmentService.GetActiveAsync();
+            
+            await Task.WhenAll(accountsTask, projectsTask, classificationsTask, bankAccountsTask, customersTask, vendorsTask, branchesTask, departmentsTask);
+            
+            var platformAccounts = await accountsTask;
+            activeAccounts = platformAccounts.Where(a => a.IsActive).Select(a => new ChartOfAccount 
+            { 
+                Id = a.Id, 
+                AccountCode = a.AccountCode ?? "", 
+                AccountName = a.AccountName, 
+                IsActive = a.IsActive, 
+                AllowPosting = a.AllowPosting
+            }).ToList();
+            activeProjects = projectsTask.Result;
+            var platformClassifications = await classificationsTask;
+            accountClassifications = platformClassifications.Select(c => new AccountClassification 
+            { 
+                Id = c.Id, 
+                Name = c.Name, 
+                Description = c.Description 
+            }).ToList();
+            var platformBankAccounts = await bankAccountsTask;
+            bankAccounts = platformBankAccounts.Where(b => b.IsActive).Select(b => new BankAccountModel
+            {
+                Id = b.Id,
+                AccountNumber = b.AccountNumber,
+                AccountName = b.AccountName,
+                BankName = b.BankName,
+                IsActive = b.IsActive
+            }).ToList();
+            var platformCustomers = await customersTask;
+            customers = platformCustomers.Select(c => new Customer
+            {
+                Id = c.Id,
+                Name = c.Name ?? "",
+                CustomerCode = c.CustomerCode ?? ""
+            }).ToList();
+            var platformVendors = await vendorsTask;
+            vendors = platformVendors.Select(v => new Vendor
+            {
+                Id = v.Id,
+                Name = v.Name ?? "",
+                VendorCode = v.SupplierCode ?? ""
+            }).ToList();
+            branches = branchesTask.Result;
+            departments = departmentsTask.Result;
+            
+            if (branches.Count == 1)
+            {
+                selectedBranchIdForTxn = branches[0].Id;
+            }
+            
+            cashClassificationId = accountClassifications.FirstOrDefault(c => c.Name == "Cash Account")?.Id;
+            bankClassificationId = accountClassifications.FirstOrDefault(c => c.Name == "Bank Account")?.Id;
+
+            // Load cash accounts for cash transactions
+            if (cashClassificationId.HasValue)
+            {
+                var postableAccounts = await ChartOfAccountsService.GetPostableAccountsAsync(tenantId);
+                cashAccounts = postableAccounts
+                    .Where(a => a.AccountClassificationId == cashClassificationId.Value)
+                    .Select(a => new ChartOfAccount 
+                    { 
+                        Id = a.Id, 
+                        AccountCode = a.AccountCode ?? "", 
+                        AccountName = a.AccountName, 
+                        IsActive = a.IsActive, 
+                        AllowPosting = a.AllowPosting
+                    }).ToList();
+            }
+            else
+            {
+                cashAccounts = activeAccounts.Where(a => a.AllowPosting).ToList();
+            }
+
+            if (Id.HasValue)
+            {
+                var loadedDto = await CashBankTransactionService.GetByIdAsync(tenantId, Id.Value);
+                if (loadedDto != null)
+                {
+                    // Map Platform DTO to Legacy model for UI binding
+                    transaction = MapPlatformDtoToLegacyTransaction(loadedDto);
+                    
+                    // Set the selected bank account if it exists
+                    if (transaction.BankAccountId.HasValue)
+                    {
+                        selectedBankAccountId = transaction.BankAccountId.Value;
+                    }
+                    
+                    // Set the selected branch and department if they exist
+                    selectedBranchIdForTxn = transaction.BranchId;
+                    selectedDepartmentIdForTxn = transaction.DepartmentId;
+                    
+                    lines = loadedDto.Lines.Select(l => new TransactionLine
+                    {
+                        Id = l.Id,
+                        DestinationAccountId = l.DestinationAccountId,
+                        GrossAmount = l.GrossAmount,
+                        TaxRate = l.TaxRate,
+                        IsTaxInclusive = l.IsTaxInclusive,
+                        NetAmount = l.NetAmount,
+                        TaxAmount = l.TaxAmount,
+                        ProjectId = l.ProjectId,
+                        Description = l.Description
+                    }).ToList();
+                    previousTransactionType = transaction.TransactionType;
+                    
+                    // Load attachments for existing transaction
+                    await LoadAttachments();
+                }
+            }
+            else
+            {
+                // Voucher number will be auto-generated on server during save
+                transaction.VoucherNo = string.Empty;
+                AddLine();
+            }
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Failed to load data: {ex.Message}";
+            Snackbar.Add(errorMessage, Severity.Error);
+        }
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender && !Id.HasValue && datePickerRef != null)
+        {
+            // Set focus on the date field for new transactions
+            await Task.Delay(100); // Small delay to ensure rendering is complete
+            await datePickerRef.FocusAsync();
+        }
+    }
+
+    protected override void OnParametersSet()
+    {
+        if (transaction.TransactionType != previousTransactionType)
+        {
+            if (transaction.TransactionType == TransactionType.Cash)
+            {
+                transaction.ChequeNo = null;
+                transaction.ChequeDate = null;
+                transaction.IsPDC = false;
+            }
+            else
+            {
+                transaction.ReferenceNo = null;
+            }
+            previousTransactionType = transaction.TransactionType;
+        }
+    }
+
+    private async Task OnTransactionTypeChanged(TransactionType newType)
+    {
+        transaction.TransactionType = newType;
+        
+        // Clear bank account reference when switching to Cash
+        if (newType == TransactionType.Cash)
+        {
+            transaction.BankAccountId = null;
+            selectedBankAccountId = Guid.Empty;
+            transaction.SourceAccountId = Guid.Empty; // Force user to select a cash account
+        }
+        else if (newType == TransactionType.Bank)
+        {
+            // Clear source account when switching to Bank to force bank account selection
+            transaction.SourceAccountId = Guid.Empty;
+            selectedBankAccountId = Guid.Empty;
+        }
+        
+        StateHasChanged();
+        await Task.CompletedTask;
+    }
+
+    private void OnBankAccountSelected(Guid bankAccountId)
+    {
+        // Find the selected bank account first
+        var selectedBankAccount = bankAccounts.FirstOrDefault(b => b.Id == bankAccountId);
+        if (selectedBankAccount != null)
+        {
+            if (selectedBankAccount.ChartOfAccountId == Guid.Empty)
+            {
+                // Invalid selection - revert to empty and show error
+                selectedBankAccountId = Guid.Empty;
+                errorMessage = "The selected bank account does not have a linked GL account. Please configure it in Bank Accounts master data.";
+                Snackbar.Add(errorMessage, Severity.Error);
+                return;
+            }
+            
+            // Valid selection - update both IDs
+            selectedBankAccountId = bankAccountId;
+            transaction.BankAccountId = bankAccountId;
+            transaction.SourceAccountId = selectedBankAccount.ChartOfAccountId;
+        }
+    }
+
+    private void AddLine()
+    {
+        lines.Add(new TransactionLine());
+    }
+
+    private void RemoveLine(TransactionLine line)
+    {
+        if (lines.Count > 1 || !Id.HasValue)
+        {
+            lines.Remove(line);
+        }
+    }
+
+    private void OnGrossAmountChanged(TransactionLine line, decimal value)
+    {
+        line.GrossAmount = value;
+        CalculateTax(line);
+    }
+
+    private void OnTaxRateChanged(TransactionLine line, decimal value)
+    {
+        line.TaxRate = value;
+        CalculateTax(line);
+    }
+
+    private void OnTaxInclusiveChanged(TransactionLine line, bool value)
+    {
+        line.IsTaxInclusive = value;
+        CalculateTax(line);
+    }
+
+    private void CalculateTax(TransactionLine line)
+    {
+        if (line.IsTaxInclusive)
+        {
+            line.NetAmount = line.GrossAmount / (1 + line.TaxRate / 100);
+            line.TaxAmount = line.GrossAmount - line.NetAmount;
+        }
+        else
+        {
+            line.NetAmount = line.GrossAmount;
+            line.TaxAmount = line.GrossAmount * (line.TaxRate / 100);
+        }
+        
+        StateHasChanged();
+    }
+
+    private void CheckPDC()
+    {
+        if (transaction.TransactionType == TransactionType.Bank && 
+            transaction.ChequeDate.HasValue && 
+            transaction.ChequeDate.Value > transaction.VoucherDate)
+        {
+            transaction.IsPDC = true;
+            // Auto-set deposit status for PDC
+            transaction.DepositStatus = DepositStatus.PendingDeposit;
+        }
+        else
+        {
+            transaction.IsPDC = false;
+            transaction.DepositStatus = DepositStatus.NotApplicable;
+            transaction.ClearanceStatus = ClearanceStatus.NotApplicable;
+        }
+    }
+
+    private void OnDepositStatusChanged(DepositStatus newStatus)
+    {
+        transaction.DepositStatus = newStatus;
+        
+        // Auto-initialize clearance status when deposited
+        if (newStatus == DepositStatus.Deposited)
+        {
+            if (transaction.ClearanceStatus == ClearanceStatus.NotApplicable)
+            {
+                transaction.ClearanceStatus = ClearanceStatus.PendingClearance;
+            }
+            
+            // Auto-set deposit date if not already set
+            if (!transaction.ActualDepositDate.HasValue)
+            {
+                transaction.ActualDepositDate = DateTime.UtcNow.Date;
+            }
+        }
+        else
+        {
+            // Reset clearance status if no longer deposited
+            transaction.ClearanceStatus = ClearanceStatus.NotApplicable;
+            transaction.ActualDepositDate = null;
+            transaction.ClearanceDate = null;
+            transaction.BouncedReason = null;
+        }
+        
+        StateHasChanged();
+    }
+
+    private async Task OnTransactionCategoryChanged(TransactionCategory newCategory)
+    {
+        transaction.TransactionCategory = newCategory;
+        
+        // Auto-set RecPayType for Party categories, keep user's choice for GL
+        if (newCategory == TransactionCategory.PartyReceipt)
+        {
+            transaction.RecPayType = RecPayType.Receipt;
+        }
+        else if (newCategory == TransactionCategory.PartyPayment)
+        {
+            transaction.RecPayType = RecPayType.Payment;
+        }
+        // For GL category, RecPayType is controlled by the user via the Receipt/Payment toggle
+        
+        // Clear party-specific data when changing category
+        transaction.CustomerId = null;
+        transaction.VendorId = null;
+        transaction.ReceiptType = ReceiptType.General;
+        outstandingInvoices.Clear();
+        invoiceAllocations.Clear();
+        allocatedInvoiceIds.Clear();
+        outstandingBills.Clear();
+        billAllocations.Clear();
+        allocatedBillIds.Clear();
+        
+        StateHasChanged();
+        await Task.CompletedTask;
+    }
+
+    private async Task OnCustomerSelected(Guid? customerId)
+    {
+        transaction.CustomerId = customerId;
+        
+        if (customerId.HasValue)
+        {
+            transaction.ReceiptType = ReceiptType.CustomerReceipt;
+            await LoadOutstandingInvoices(customerId.Value);
+        }
+        else
+        {
+            transaction.ReceiptType = ReceiptType.General;
+            outstandingInvoices.Clear();
+            invoiceAllocations.Clear();
+            allocatedInvoiceIds.Clear();
+        }
+        
+        StateHasChanged();
+    }
+
+    private async Task LoadOutstandingInvoices(Guid customerId)
+    {
+        try
+        {
+            var tenantId = GetTenantId();
+            var platformInvoices = await PaymentAllocationService.GetOutstandingInvoicesAsync(tenantId, customerId);
+            outstandingInvoices = platformInvoices.Select(inv => new InvoiceForAllocation
+            {
+                Id = inv.Id,
+                InvoiceNumber = inv.InvoiceNo,
+                InvoiceDate = inv.InvoiceDate,
+                TotalAmount = inv.TotalAmount,
+                BalanceAmount = inv.AmountDue
+            }).ToList();
+            
+            // Initialize allocation grid
+            invoiceAllocations = outstandingInvoices.Select(inv => new CashBankInvoiceAllocation
+            {
+                SalesInvoiceId = inv.Id,
+                InvoiceNumber = inv.InvoiceNumber,
+                InvoiceDate = inv.InvoiceDate,
+                InvoiceTotal = inv.TotalAmount,
+                InvoiceOutstanding = inv.BalanceAmount,
+                AllocationAmount = 0
+            }).ToList();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Failed to load outstanding invoices: {ex.Message}", Severity.Error);
+            outstandingInvoices.Clear();
+            invoiceAllocations.Clear();
+        }
+    }
+
+    private void OnAllocationAmountChanged(CashBankInvoiceAllocation allocation, decimal value)
+    {
+        allocation.AllocationAmount = Math.Min(value, allocation.InvoiceOutstanding);
+        StateHasChanged();
+    }
+
+    private void AddAllocation(CashBankInvoiceAllocation allocation)
+    {
+        if (allocation.AllocationAmount <= 0)
+        {
+            Snackbar.Add("Allocation amount must be greater than zero", Severity.Warning);
+            return;
+        }
+
+        if (allocation.AllocationAmount > allocation.InvoiceOutstanding)
+        {
+            Snackbar.Add("Allocation amount cannot exceed invoice outstanding balance", Severity.Warning);
+            return;
+        }
+
+        if (TotalAllocated + allocation.AllocationAmount > TotalAmount)
+        {
+            Snackbar.Add("Total allocations cannot exceed receipt amount", Severity.Warning);
+            return;
+        }
+
+        allocatedInvoiceIds.Add(allocation.SalesInvoiceId);
+        Snackbar.Add($"Allocated {allocation.AllocationAmount:N2} to invoice {allocation.InvoiceNumber}", Severity.Success);
+        StateHasChanged();
+    }
+
+    private void RemoveAllocation(CashBankInvoiceAllocation allocation)
+    {
+        allocatedInvoiceIds.Remove(allocation.SalesInvoiceId);
+        allocation.AllocationAmount = 0;
+        Snackbar.Add($"Removed allocation from invoice {allocation.InvoiceNumber}", Severity.Info);
+        StateHasChanged();
+    }
+    
+    private async Task OnVendorSelected(Guid? vendorId)
+    {
+        transaction.VendorId = vendorId;
+        
+        if (vendorId.HasValue)
+        {
+            transaction.ReceiptType = ReceiptType.VendorPayment;
+            await LoadOutstandingBills(vendorId.Value);
+        }
+        else
+        {
+            transaction.ReceiptType = ReceiptType.General;
+            outstandingBills.Clear();
+            billAllocations.Clear();
+            allocatedBillIds.Clear();
+        }
+        
+        StateHasChanged();
+    }
+
+    private async Task LoadOutstandingBills(Guid vendorId)
+    {
+        try
+        {
+            var tenantId = GetTenantId();
+            var platformBills = await PaymentAllocationService.GetOutstandingBillsAsync(tenantId, vendorId);
+            outstandingBills = platformBills.Select(bill => new BillForAllocation
+            {
+                Id = bill.Id,
+                BillNumber = bill.BillNo,
+                BillDate = bill.BillDate,
+                DueDate = null,
+                TotalAmount = bill.TotalAmount,
+                BalanceAmount = bill.AmountDue
+            }).ToList();
+            
+            // Initialize allocation grid
+            billAllocations = outstandingBills.Select(bill => new CashBankBillAllocation
+            {
+                PurchaseBillId = bill.Id,
+                BillNumber = bill.BillNumber,
+                BillDate = bill.BillDate,
+                DueDate = bill.DueDate,
+                BillTotal = bill.TotalAmount,
+                BillOutstanding = bill.BalanceAmount,
+                AllocationAmount = 0
+            }).ToList();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Failed to load outstanding bills: {ex.Message}", Severity.Error);
+            outstandingBills.Clear();
+            billAllocations.Clear();
+        }
+    }
+
+    private void OnBillAllocationAmountChanged(CashBankBillAllocation allocation, decimal value)
+    {
+        allocation.AllocationAmount = Math.Min(value, allocation.BillOutstanding);
+        StateHasChanged();
+    }
+
+    private void AddBillAllocation(CashBankBillAllocation allocation)
+    {
+        if (allocation.AllocationAmount <= 0)
+        {
+            Snackbar.Add("Allocation amount must be greater than zero", Severity.Warning);
+            return;
+        }
+
+        if (allocation.AllocationAmount > allocation.BillOutstanding)
+        {
+            Snackbar.Add("Allocation amount cannot exceed bill outstanding balance", Severity.Warning);
+            return;
+        }
+
+        if (TotalBillAllocated + allocation.AllocationAmount > TotalAmount)
+        {
+            Snackbar.Add("Total allocations cannot exceed payment amount", Severity.Warning);
+            return;
+        }
+
+        allocatedBillIds.Add(allocation.PurchaseBillId);
+        Snackbar.Add($"Allocated {allocation.AllocationAmount:N2} to bill {allocation.BillNumber}", Severity.Success);
+        StateHasChanged();
+    }
+
+    private void RemoveBillAllocation(CashBankBillAllocation allocation)
+    {
+        allocatedBillIds.Remove(allocation.PurchaseBillId);
+        allocation.AllocationAmount = 0;
+        Snackbar.Add($"Removed allocation from bill {allocation.BillNumber}", Severity.Info);
+        StateHasChanged();
+    }
+
+    private async Task SaveAllocations(Guid transactionId)
+    {
+        try
+        {
+            var tenantId = GetTenantId();
+            
+            // Get existing allocations for this receipt
+            var existingAllocations = await PaymentAllocationService.GetInvoiceAllocationsByReceiptAsync(tenantId, transactionId);
+            
+            // Delete removed allocations
+            if (existingAllocations != null)
+            {
+                foreach (var existing in existingAllocations)
+                {
+                    if (!allocatedInvoiceIds.Contains(existing.SalesInvoiceId))
+                    {
+                        await PaymentAllocationService.DeleteInvoiceAllocationAsync(tenantId, existing.Id);
+                    }
+                }
+            }
+
+            // Save new/updated allocations
+            foreach (var allocation in invoiceAllocations.Where(a => allocatedInvoiceIds.Contains(a.SalesInvoiceId) && a.AllocationAmount > 0))
+            {
+                var request = new PlatformBankDTOs.CreateInvoiceAllocationRequest(
+                    CashBankTransactionId: transactionId,
+                    SalesInvoiceId: allocation.SalesInvoiceId,
+                    AllocatedAmount: allocation.AllocationAmount
+                );
+
+                // Check if allocation already exists
+                var existingAllocation = existingAllocations?.FirstOrDefault(e => e.SalesInvoiceId == allocation.SalesInvoiceId);
+                if (existingAllocation != null)
+                {
+                    // Update existing allocation
+                    if (existingAllocation.AllocatedAmount != allocation.AllocationAmount)
+                    {
+                        await PaymentAllocationService.DeleteInvoiceAllocationAsync(tenantId, existingAllocation.Id);
+                        await PaymentAllocationService.CreateInvoiceAllocationAsync(tenantId, request);
+                    }
+                }
+                else
+                {
+                    // Create new allocation
+                    await PaymentAllocationService.CreateInvoiceAllocationAsync(tenantId, request);
+                }
+            }
+            
+            Snackbar.Add($"Saved {allocatedInvoiceIds.Count} invoice allocation(s)", Severity.Success);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Warning: Failed to save allocations: {ex.Message}", Severity.Warning);
+        }
+    }
+    
+    private async Task SaveBillAllocations(Guid transactionId)
+    {
+        try
+        {
+            var tenantId = GetTenantId();
+            
+            // Get existing allocations for this payment
+            var existingAllocations = await PaymentAllocationService.GetBillAllocationsByPaymentAsync(tenantId, transactionId);
+            
+            // Delete removed allocations
+            if (existingAllocations != null)
+            {
+                foreach (var existing in existingAllocations)
+                {
+                    if (!allocatedBillIds.Contains(existing.PurchaseBillId))
+                    {
+                        await PaymentAllocationService.DeleteBillAllocationAsync(tenantId, existing.Id);
+                    }
+                }
+            }
+
+            // Save new/updated allocations
+            foreach (var allocation in billAllocations.Where(a => allocatedBillIds.Contains(a.PurchaseBillId) && a.AllocationAmount > 0))
+            {
+                var request = new PlatformBankDTOs.CreateBillAllocationRequest(
+                    CashBankTransactionId: transactionId,
+                    PurchaseBillId: allocation.PurchaseBillId,
+                    AllocatedAmount: allocation.AllocationAmount
+                );
+
+                // Check if allocation already exists
+                var existingAllocation = existingAllocations?.FirstOrDefault(e => e.PurchaseBillId == allocation.PurchaseBillId);
+                if (existingAllocation != null)
+                {
+                    // Update existing allocation
+                    if (existingAllocation.AllocatedAmount != allocation.AllocationAmount)
+                    {
+                        await PaymentAllocationService.DeleteBillAllocationAsync(tenantId, existingAllocation.Id);
+                        await PaymentAllocationService.CreateBillAllocationAsync(tenantId, request);
+                    }
+                }
+                else
+                {
+                    // Create new allocation
+                    await PaymentAllocationService.CreateBillAllocationAsync(tenantId, request);
+                }
+            }
+            
+            Snackbar.Add($"Saved {allocatedBillIds.Count} bill allocation(s)", Severity.Success);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Warning: Failed to save bill allocations: {ex.Message}", Severity.Warning);
+        }
+    }
+
+    private async Task SaveDraft()
+    {
+        // Ensure proper state before validation
+        if (transaction.TransactionType == TransactionType.Cash)
+        {
+            // Force clear bank account for cash transactions
+            transaction.BankAccountId = null;
+            selectedBankAccountId = Guid.Empty;
+        }
+        
+        // Detailed validation
+        if (transaction.TransactionType == TransactionType.Bank && selectedBankAccountId == Guid.Empty)
+        {
+            Snackbar.Add("Please select a Bank Account", Severity.Warning);
+            return;
+        }
+        
+        if (transaction.SourceAccountId == Guid.Empty)
+        {
+            Snackbar.Add("Please select a Source Account", Severity.Warning);
+            return;
+        }
+
+        if (lines.Count == 0)
+        {
+            Snackbar.Add("Please add at least one transaction line", Severity.Warning);
+            return;
+        }
+
+        // Check if any line has invalid destination account
+        if (lines.Any(l => l.DestinationAccountId == Guid.Empty))
+        {
+            Snackbar.Add("Please select Destination Account for all lines", Severity.Warning);
+            return;
+        }
+
+        // Check if any line has zero gross amount
+        if (lines.Any(l => l.GrossAmount <= 0))
+        {
+            Snackbar.Add("All transaction lines must have a gross amount greater than zero", Severity.Warning);
+            return;
+        }
+
+        // Validate form to ensure all required fields are filled
+        if (form != null)
+        {
+            await form.Validate();
+        }
+
+        if (!formIsValid)
+        {
+            Snackbar.Add("Please fill all required fields correctly", Severity.Warning);
+            return;
+        }
+
+        // Check for duplicate values
+        var excludeId = Id.HasValue ? Id : null;
+        
+        // Check duplicate voucher number (only if manually entered)
+        var tenantId = GetTenantId();
+        if (!string.IsNullOrWhiteSpace(transaction.VoucherNo))
+        {
+            var voucherExists = await CashBankTransactionService.VoucherNoExistsAsync(tenantId, transaction.VoucherNo, excludeId);
+            if (voucherExists)
+            {
+                Snackbar.Add("Voucher Number already exists. Please use a unique voucher number.", Severity.Warning);
+                return;
+            }
+        }
+        
+        // Check duplicate reference number
+        if (!string.IsNullOrWhiteSpace(transaction.ReferenceNo))
+        {
+            var referenceExists = await CashBankTransactionService.ReferenceNoExistsAsync(tenantId, transaction.ReferenceNo, excludeId);
+            if (referenceExists)
+            {
+                Snackbar.Add("Reference Number already exists. Please use a unique reference number.", Severity.Warning);
+                return;
+            }
+        }
+        
+        // Check duplicate cheque number (only for bank transactions)
+        if (transaction.TransactionType == TransactionType.Bank && !string.IsNullOrWhiteSpace(transaction.ChequeNo))
+        {
+            var chequeExists = await CashBankTransactionService.ChequeNoExistsAsync(tenantId, transaction.ChequeNo, excludeId);
+            if (chequeExists)
+            {
+                Snackbar.Add("Cheque Number already exists. Please use a unique cheque number.", Severity.Warning);
+                return;
+            }
+        }
+
+        errorMessage = "";
+        isLoading = true;
+
+        try
+        {
+            transaction.TotalAmount = TotalAmount;
+            transaction.BranchId = selectedBranchIdForTxn;
+            transaction.DepartmentId = selectedDepartmentIdForTxn;
+            transaction.Lines = lines.Select((l, index) => new CashBankTransactionLine
+            {
+                Id = l.Id,
+                DestinationAccountId = l.DestinationAccountId,
+                GrossAmount = l.GrossAmount,
+                TaxRate = l.TaxRate,
+                IsTaxInclusive = l.IsTaxInclusive,
+                NetAmount = l.NetAmount,
+                TaxAmount = l.TaxAmount,
+                ProjectId = l.ProjectId,
+                LineNumber = index + 1,
+                Description = l.Description
+            }).ToList();
+
+            Guid transactionId;
+            
+            if (Id.HasValue)
+            {
+                var updateRequest = MapToUpdateRequest(transaction, lines);
+                await CashBankTransactionService.UpdateAsync(tenantId, Id.Value, updateRequest);
+                transactionId = Id.Value;
+                Snackbar.Add("Transaction updated successfully", Severity.Success);
+            }
+            else
+            {
+                var createRequest = MapToCreateRequest(transaction, lines);
+                transactionId = await CashBankTransactionService.CreateAsync(tenantId, createRequest);
+                
+                // Reload the transaction to get the server-generated voucher number
+                var savedTransaction = await CashBankTransactionService.GetByIdAsync(tenantId, transactionId);
+                if (savedTransaction != null)
+                {
+                    Snackbar.Add($"Your transaction has been successfully saved with VOUCHER NUMBER: {savedTransaction.VoucherNo}", Severity.Success);
+                }
+                else
+                {
+                    Snackbar.Add("Transaction saved successfully", Severity.Success);
+                }
+            }
+
+            // Save allocations if customer receipt
+            if (transaction.TransactionCategory == TransactionCategory.PartyReceipt && transaction.CustomerId.HasValue && allocatedInvoiceIds.Count > 0)
+            {
+                await SaveAllocations(transactionId);
+            }
+            
+            // Save bill allocations if vendor payment
+            if (transaction.TransactionCategory == TransactionCategory.PartyPayment && transaction.VendorId.HasValue && allocatedBillIds.Count > 0)
+            {
+                await SaveBillAllocations(transactionId);
+            }
+
+            // Navigate back to transaction list after successful save
+            Navigation.NavigateTo("/cash-bank-transactions");
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Error: {ex.Message}";
+            Snackbar.Add($"Failed to save transaction: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private async Task PostTransaction()
+    {
+        if (!Id.HasValue)
+        {
+            Snackbar.Add("Please save the transaction first", Severity.Warning);
+            return;
+        }
+
+        errorMessage = "";
+        isLoading = true;
+
+        try
+        {
+            var tenantId = GetTenantId();
+            await CashBankTransactionService.PostAsync(tenantId, Id.Value);
+            Snackbar.Add("Transaction posted successfully", Severity.Success);
+            Navigation.NavigateTo("/cash-bank-transactions");
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Error: {ex.Message}";
+            Snackbar.Add($"Failed to post transaction: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private void Cancel()
+    {
+        Navigation.NavigateTo("/cash-bank-transactions");
+    }
+
+    private class TransactionLine
+    {
+        public Guid Id { get; set; }
+        public Guid DestinationAccountId { get; set; }
+        public decimal GrossAmount { get; set; }
+        public decimal TaxRate { get; set; }
+        public bool IsTaxInclusive { get; set; }
+        public decimal NetAmount { get; set; }
+        public decimal TaxAmount { get; set; }
+        public Guid? ProjectId { get; set; }
+        public string Description { get; set; } = "";
+    }
+
+    private class BankAccountModel
+    {
+        public Guid Id { get; set; }
+        public string AccountNumber { get; set; } = string.Empty;
+        public string AccountName { get; set; } = string.Empty;
+        public string BankName { get; set; } = string.Empty;
+        public Guid ChartOfAccountId { get; set; }
+        public bool IsActive { get; set; }
+    }
+
+    private CashBankTransaction MapPlatformDtoToLegacyTransaction(PlatformDTOs.CashBankTransactionDto dto)
+    {
+        return new CashBankTransaction
+        {
+            Id = dto.Id,
+            VoucherNo = dto.VoucherNo,
+            VoucherDate = dto.VoucherDate,
+            TransactionType = (TransactionType)dto.TransactionType,
+            RecPayType = (RecPayType)dto.RecPayType,
+            TransactionCategory = (TransactionCategory)dto.TransactionCategory,
+            SourceAccountId = dto.SourceAccountId,
+            BankAccountId = dto.BankAccountId,
+            TotalAmount = dto.TotalAmount,
+            ChequeNo = dto.ChequeNo,
+            ChequeDate = dto.ChequeDate,
+            IsPDC = dto.IsPDC,
+            BankName = dto.BankName,
+            BranchName = dto.BranchName,
+            ReferenceNo = dto.ReferenceNo,
+            Status = (CashBankStatus)dto.Status,
+            ReceiptType = (ReceiptType)dto.ReceiptType,
+            CustomerId = dto.CustomerId,
+            VendorId = dto.VendorId,
+            DepositStatus = (DepositStatus)dto.DepositStatus,
+            ActualDepositDate = dto.ActualDepositDate,
+            ClearanceStatus = (ClearanceStatus)dto.ClearanceStatus,
+            ClearanceDate = dto.ClearanceDate,
+            BouncedReason = dto.BouncedReason,
+            IsVoided = dto.IsVoided,
+            BranchId = dto.BranchId,
+            DepartmentId = dto.DepartmentId
+        };
+    }
+
+    private PlatformDTOs.CreateCashBankTransactionRequest MapToCreateRequest(CashBankTransaction txn, List<TransactionLine> txnLines)
+    {
+        return new PlatformDTOs.CreateCashBankTransactionRequest(
+            VoucherNo: string.IsNullOrEmpty(txn.VoucherNo) ? null : txn.VoucherNo,
+            VoucherDate: txn.VoucherDate,
+            TransactionType: (int)txn.TransactionType,
+            RecPayType: (int)txn.RecPayType,
+            TransactionCategory: (int)txn.TransactionCategory,
+            SourceAccountId: txn.SourceAccountId,
+            BankAccountId: txn.BankAccountId,
+            TotalAmount: txn.TotalAmount,
+            ChequeNo: txn.ChequeNo,
+            ChequeDate: txn.ChequeDate,
+            IsPDC: txn.IsPDC,
+            BankName: txn.BankName,
+            BranchName: txn.BranchName,
+            ReferenceNo: txn.ReferenceNo,
+            ReceiptType: (int)txn.ReceiptType,
+            CustomerId: txn.CustomerId,
+            VendorId: txn.VendorId,
+            BranchId: txn.BranchId,
+            DepartmentId: txn.DepartmentId,
+            Lines: txnLines.Select((l, index) => new PlatformDTOs.CreateCashBankTransactionLineRequest(
+                DestinationAccountId: l.DestinationAccountId,
+                GrossAmount: l.GrossAmount,
+                TaxRate: l.TaxRate,
+                IsTaxInclusive: l.IsTaxInclusive,
+                NetAmount: l.NetAmount,
+                TaxAmount: l.TaxAmount,
+                ProjectId: l.ProjectId,
+                LineNumber: index + 1,
+                Description: l.Description
+            )).ToList()
+        );
+    }
+
+    private PlatformDTOs.UpdateCashBankTransactionRequest MapToUpdateRequest(CashBankTransaction txn, List<TransactionLine> txnLines)
+    {
+        return new PlatformDTOs.UpdateCashBankTransactionRequest(
+            Id: txn.Id,
+            VoucherDate: txn.VoucherDate,
+            TransactionType: (int)txn.TransactionType,
+            RecPayType: (int)txn.RecPayType,
+            TransactionCategory: (int)txn.TransactionCategory,
+            SourceAccountId: txn.SourceAccountId,
+            BankAccountId: txn.BankAccountId,
+            TotalAmount: txn.TotalAmount,
+            ChequeNo: txn.ChequeNo,
+            ChequeDate: txn.ChequeDate,
+            IsPDC: txn.IsPDC,
+            BankName: txn.BankName,
+            BranchName: txn.BranchName,
+            ReferenceNo: txn.ReferenceNo,
+            ReceiptType: (int)txn.ReceiptType,
+            CustomerId: txn.CustomerId,
+            VendorId: txn.VendorId,
+            BranchId: txn.BranchId,
+            DepartmentId: txn.DepartmentId,
+            Lines: txnLines.Select((l, index) => new PlatformDTOs.CreateCashBankTransactionLineRequest(
+                DestinationAccountId: l.DestinationAccountId,
+                GrossAmount: l.GrossAmount,
+                TaxRate: l.TaxRate,
+                IsTaxInclusive: l.IsTaxInclusive,
+                NetAmount: l.NetAmount,
+                TaxAmount: l.TaxAmount,
+                ProjectId: l.ProjectId,
+                LineNumber: index + 1,
+                Description: l.Description
+            )).ToList()
+        );
+    }
+
+    // Attachment-related properties and methods
+    private List<VoucherAttachmentDto> attachments = new();
+    private bool isUploading = false;
+
+    private async Task LoadAttachments()
+    {
+        if (!Id.HasValue) return;
+
+        try
+        {
+            var tenantId = GetTenantId();
+            var platformAttachments = await VoucherAttachmentService.GetByTransactionIdAsync(tenantId, Id.Value);
+            attachments = platformAttachments.Select(a => new VoucherAttachmentDto
+            {
+                Id = a.Id,
+                FileName = a.FileName,
+                ContentType = a.ContentType ?? "",
+                FileSize = a.FileSize,
+                UploadedAt = a.UploadedAt
+            }).ToList();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error loading attachments: {ex.Message}", Severity.Warning);
+        }
+    }
+
+    private async Task OnFileSelected(IBrowserFile file)
+    {
+        if (file == null || !Id.HasValue) return;
+
+        if (file.Size > 5 * 1024 * 1024)
+        {
+            Snackbar.Add("File size exceeds 5MB limit", Severity.Error);
+            return;
+        }
+
+        isUploading = true;
+        StateHasChanged();
+
+        try
+        {
+            var tenantId = GetTenantId();
+            using var stream = file.OpenReadStream(5 * 1024 * 1024);
+            using var memoryStream = new MemoryStream();
+            await stream.CopyToAsync(memoryStream);
+            var fileBytes = memoryStream.ToArray();
+
+            var result = await VoucherAttachmentService.UploadAsync(tenantId, Id.Value, file.Name, file.ContentType, fileBytes);
+
+            if (result != null)
+            {
+                Snackbar.Add("Attachment uploaded successfully", Severity.Success);
+                await LoadAttachments();
+            }
+            else
+            {
+                Snackbar.Add("Upload failed", Severity.Error);
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Upload error: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            isUploading = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task PreviewAttachment(VoucherAttachmentDto attachment)
+    {
+        try
+        {
+            var tenantId = GetTenantId();
+            var content = await VoucherAttachmentService.DownloadAsync(tenantId, attachment.Id);
+            if (content != null)
+            {
+                var base64 = Convert.ToBase64String(content);
+                var mimeType = attachment.ContentType;
+                var dataUrl = $"data:{mimeType};base64,{base64}";
+                await JSRuntime.InvokeVoidAsync("open", dataUrl, "_blank");
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Preview error: {ex.Message}", Severity.Error);
+        }
+    }
+
+    private async Task DownloadAttachment(VoucherAttachmentDto attachment)
+    {
+        try
+        {
+            var tenantId = GetTenantId();
+            var content = await VoucherAttachmentService.DownloadAsync(tenantId, attachment.Id);
+            if (content != null)
+            {
+                var base64 = Convert.ToBase64String(content);
+                var mimeType = attachment.ContentType;
+                var dataUrl = $"data:{mimeType};base64,{base64}";
+                await JSRuntime.InvokeVoidAsync("downloadFile", attachment.FileName, dataUrl);
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Download error: {ex.Message}", Severity.Error);
+        }
+    }
+
+    private async Task DeleteAttachment(VoucherAttachmentDto attachment)
+    {
+        var confirm = await JSRuntime.InvokeAsync<bool>("confirm", $"Are you sure you want to delete {attachment.FileName}?");
+        if (!confirm) return;
+
+        try
+        {
+            var tenantId = GetTenantId();
+            var success = await VoucherAttachmentService.DeleteAsync(tenantId, attachment.Id);
+            if (success)
+            {
+                Snackbar.Add("Attachment deleted", Severity.Success);
+                await LoadAttachments();
+            }
+            else
+            {
+                Snackbar.Add("Failed to delete attachment", Severity.Error);
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Delete error: {ex.Message}", Severity.Error);
+        }
+    }
+
+    private string GetFileIcon(string contentType) => contentType.ToLower() switch
+    {
+        "application/pdf" => Icons.Material.Filled.PictureAsPdf,
+        "image/jpeg" or "image/jpg" or "image/png" => Icons.Material.Filled.Image,
+        _ => Icons.Material.Filled.InsertDriveFile
+    };
+
+    private string GetFileTypeLabel(string contentType) => contentType.ToLower() switch
+    {
+        "application/pdf" => "PDF",
+        "image/jpeg" or "image/jpg" => "JPEG",
+        "image/png" => "PNG",
+        _ => "File"
+    };
+
+    private string FormatFileSize(long bytes)
+    {
+        if (bytes < 1024) return $"{bytes} B";
+        if (bytes < 1024 * 1024) return $"{bytes / 1024.0:F1} KB";
+        return $"{bytes / (1024.0 * 1024.0):F1} MB";
+    }
+
+    private class VoucherAttachmentDto
+    {
+        public Guid Id { get; set; }
+        public string FileName { get; set; } = string.Empty;
+        public string ContentType { get; set; } = string.Empty;
+        public long FileSize { get; set; }
+        public int DisplayOrder { get; set; }
+        public DateTime UploadedAt { get; set; }
+    }
+}

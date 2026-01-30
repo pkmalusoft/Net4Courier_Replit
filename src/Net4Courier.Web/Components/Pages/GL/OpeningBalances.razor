@@ -1,0 +1,257 @@
+@page "/gl/opening-balances"
+@using Net4Courier.Web.Services
+@using Net4Courier.Finance.Entities
+@inject IFinancialYearService FinancialYearService
+@inject NavigationManager Navigation
+@inject ISnackbar Snackbar
+@inject IDialogService DialogService
+
+<PageTitle>Opening Balances</PageTitle>
+
+<MudGrid Class="mb-4">
+    <MudItem xs="12" sm="6">
+        <MudText Typo="Typo.h4">Opening Balances</MudText>
+        <MudText Typo="Typo.body2" Color="Color.Secondary">
+            Manage opening balance entries for GL accounts, customers, and suppliers
+        </MudText>
+    </MudItem>
+    <MudItem xs="12" sm="6" Class="d-flex justify-end gap-2">
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add" OnClick="CreateNewBatch">
+            New Batch
+        </MudButton>
+    </MudItem>
+</MudGrid>
+
+@if (isLoading)
+{
+    <MudProgressLinear Indeterminate="true" Color="Color.Primary" />
+}
+
+<MudPaper Class="pa-4" Elevation="2">
+    <MudGrid Class="mb-4">
+        <MudItem xs="12" sm="3">
+            <MudSelect @bind-Value="filterModule" Label="Source Module" Variant="Variant.Outlined" Clearable="true">
+                <MudSelectItem Value="@("")">All Modules</MudSelectItem>
+                <MudSelectItem Value="@("GL")">General Ledger</MudSelectItem>
+                <MudSelectItem Value="@("AR")">Accounts Receivable</MudSelectItem>
+                <MudSelectItem Value="@("AP")">Accounts Payable</MudSelectItem>
+            </MudSelect>
+        </MudItem>
+        <MudItem xs="12" sm="3">
+            <MudSelect @bind-Value="filterStatus" Label="Status" Variant="Variant.Outlined" Clearable="true">
+                <MudSelectItem Value="@("")">All Statuses</MudSelectItem>
+                <MudSelectItem Value="@("Draft")">Draft</MudSelectItem>
+                <MudSelectItem Value="@("Posted")">Posted</MudSelectItem>
+            </MudSelect>
+        </MudItem>
+        <MudItem xs="12" sm="3">
+            <MudNumericField @bind-Value="filterFiscalYear" Label="Fiscal Year" Variant="Variant.Outlined" />
+        </MudItem>
+        <MudItem xs="12" sm="3" Class="d-flex align-end">
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="LoadBatches">
+                Search
+            </MudButton>
+        </MudItem>
+    </MudGrid>
+
+    <MudTable Items="@batches" Dense="true" Hover="true" Bordered="true" Loading="@isLoading">
+        <HeaderContent>
+            <MudTh>Batch #</MudTh>
+            <MudTh>Module</MudTh>
+            <MudTh>Effective Date</MudTh>
+            <MudTh>Fiscal Year</MudTh>
+            <MudTh>Lines</MudTh>
+            <MudTh Style="text-align: right;">Total Debit</MudTh>
+            <MudTh Style="text-align: right;">Total Credit</MudTh>
+            <MudTh>Status</MudTh>
+            <MudTh>Actions</MudTh>
+        </HeaderContent>
+        <RowTemplate>
+            <MudTd DataLabel="Batch #">@context.BatchNumber</MudTd>
+            <MudTd DataLabel="Module">
+                <MudChip T="string" Size="MudBlazor.Size.Small" Color="@GetModuleColor(context.SourceModule)">@context.SourceModule</MudChip>
+            </MudTd>
+            <MudTd DataLabel="Effective Date">@context.EffectiveDate.ToString("yyyy-MM-dd")</MudTd>
+            <MudTd DataLabel="Fiscal Year">@context.FiscalYear</MudTd>
+            <MudTd DataLabel="Lines">@context.LineCount</MudTd>
+            <MudTd DataLabel="Total Debit" Style="text-align: right;">@context.TotalDebit.ToString("N2")</MudTd>
+            <MudTd DataLabel="Total Credit" Style="text-align: right;">@context.TotalCredit.ToString("N2")</MudTd>
+            <MudTd DataLabel="Status">
+                <MudChip T="string" Size="MudBlazor.Size.Small" Color="@GetStatusColor(context.Status)">@context.Status</MudChip>
+            </MudTd>
+            <MudTd DataLabel="Actions">
+                <MudButtonGroup Size="MudBlazor.Size.Small">
+                    @if (context.Status == "Draft")
+                    {
+                        <MudIconButton Icon="@Icons.Material.Filled.Edit" Size="MudBlazor.Size.Small" OnClick="@(() => EditBatch(context.Id))" />
+                        <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="MudBlazor.Size.Small" Color="Color.Error" OnClick="@(() => DeleteBatch(context))" />
+                    }
+                    else
+                    {
+                        <MudIconButton Icon="@Icons.Material.Filled.Visibility" Size="MudBlazor.Size.Small" OnClick="@(() => ViewBatch(context.Id))" />
+                    }
+                </MudButtonGroup>
+            </MudTd>
+        </RowTemplate>
+        <NoRecordsContent>
+            <MudText>No opening balance batches found.</MudText>
+        </NoRecordsContent>
+    </MudTable>
+</MudPaper>
+
+<MudDialog @bind-Visible="showNewBatchDialog">
+    <TitleContent>
+        <MudText Typo="Typo.h6">Create New Opening Balance Batch</MudText>
+    </TitleContent>
+    <DialogContent>
+        <MudGrid>
+            <MudItem xs="12">
+                <MudSelect @bind-Value="newBatchModule" Label="Source Module" Variant="Variant.Outlined" Required="true">
+                    <MudSelectItem Value="@("GL")">General Ledger (GL Accounts)</MudSelectItem>
+                    <MudSelectItem Value="@("AR")">Accounts Receivable (Customer Balances)</MudSelectItem>
+                    <MudSelectItem Value="@("AP")">Accounts Payable (Supplier Balances)</MudSelectItem>
+                </MudSelect>
+            </MudItem>
+            <MudItem xs="12">
+                <MudDatePicker @bind-Date="newBatchDate" Label="Effective Date" Required="true" />
+            </MudItem>
+            <MudItem xs="12">
+                <MudNumericField @bind-Value="newBatchFiscalYear" Label="Fiscal Year" Required="true" />
+            </MudItem>
+            <MudItem xs="12">
+                <MudTextField @bind-Value="newBatchNotes" Label="Notes" Lines="3" Variant="Variant.Outlined" />
+            </MudItem>
+        </MudGrid>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="@(() => showNewBatchDialog = false)">Cancel</MudButton>
+        <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="SaveNewBatch">Create</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    private List<OpeningBalanceBatchViewModel> batches = new();
+    private bool isLoading = true;
+    private string filterModule = "";
+    private string filterStatus = "";
+    private int? filterFiscalYear;
+    
+    private bool showNewBatchDialog = false;
+    private string newBatchModule = "GL";
+    private DateTime? newBatchDate;
+    private int newBatchFiscalYear = DateTime.Now.Year;
+    private string? newBatchNotes;
+
+    protected override async Task OnInitializedAsync()
+    {
+        filterFiscalYear = DateTime.Now.Year;
+        await LoadBatches();
+    }
+
+    private async Task LoadBatches()
+    {
+        isLoading = true;
+        try
+        {
+            await Task.Delay(100);
+            batches = new List<OpeningBalanceBatchViewModel>();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error loading batches: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private void CreateNewBatch()
+    {
+        newBatchModule = "GL";
+        newBatchDate = DateTime.Today;
+        newBatchFiscalYear = DateTime.Now.Year;
+        newBatchNotes = null;
+        showNewBatchDialog = true;
+    }
+
+    private async Task SaveNewBatch()
+    {
+        if (!newBatchDate.HasValue)
+        {
+            Snackbar.Add("Please select an effective date.", Severity.Warning);
+            return;
+        }
+
+        try
+        {
+            Snackbar.Add("Opening Balance batch creation - Feature coming soon", Severity.Info);
+            showNewBatchDialog = false;
+            await LoadBatches();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error: {ex.Message}", Severity.Error);
+        }
+    }
+
+    private void EditBatch(long id)
+    {
+        Navigation.NavigateTo($"/gl/opening-balance/edit/{id}");
+    }
+
+    private void ViewBatch(long id)
+    {
+        Navigation.NavigateTo($"/gl/opening-balance/view/{id}");
+    }
+
+    private async Task DeleteBatch(OpeningBalanceBatchViewModel batch)
+    {
+        var result = await DialogService.ShowMessageBox(
+            "Delete Batch",
+            $"Are you sure you want to delete batch {batch.BatchNumber}?",
+            yesText: "Delete", cancelText: "Cancel");
+
+        if (result == true)
+        {
+            Snackbar.Add("Batch deleted.", Severity.Success);
+            await LoadBatches();
+        }
+    }
+
+    private Color GetModuleColor(string module)
+    {
+        return module switch
+        {
+            "GL" => Color.Primary,
+            "AR" => Color.Success,
+            "AP" => Color.Warning,
+            _ => Color.Default
+        };
+    }
+
+    private Color GetStatusColor(string status)
+    {
+        return status switch
+        {
+            "Draft" => Color.Default,
+            "Submitted" => Color.Info,
+            "Posted" => Color.Success,
+            "Closed" => Color.Secondary,
+            _ => Color.Default
+        };
+    }
+
+    public class OpeningBalanceBatchViewModel
+    {
+        public long Id { get; set; }
+        public string BatchNumber { get; set; } = "";
+        public string SourceModule { get; set; } = "GL";
+        public DateTime EffectiveDate { get; set; }
+        public int FiscalYear { get; set; }
+        public int LineCount { get; set; }
+        public decimal TotalDebit { get; set; }
+        public decimal TotalCredit { get; set; }
+        public string Status { get; set; } = "Draft";
+    }
+}

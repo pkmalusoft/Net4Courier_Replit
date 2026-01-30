@@ -45,10 +45,11 @@ The application is built on .NET 8 Blazor Server, adopting a modular architectur
 - **API Integration**: Configuration and webhook endpoints for third-party booking websites.
 - **Knowledge Base**: Integrated documentation using Markdig for "How To Guides".
 - **Navigation Menu**: Restructured into 9 collapsible main sections.
-- **TrueBooks GL Module (Complete Migration)**: Full GL functionality now served exclusively from TrueBooks NuGet packages. All old local GL implementations have been removed and archived to `recycle_bin/old_gl_module/`. Uses fixed tenant ID '11111111-1111-1111-1111-111111111111' via SingleTenantContext.
-- **TrueBooks GL Routes**: All GL functionality uses TrueBooks package routes: `/gl/chart-of-accounts`, `/gl/journal-entry`, `/gl/journal-list`, `/reports/ledger`, `/reports/trial-balance`, `/reports/profit-loss`, `/reports/balance-sheet`.
-- **Cash & Bank Module**: Independent Cash & Bank transaction management at `/cash-bank-transactions` with stub services ready for persistence implementation. Bank Account management at `/bank-accounts`. GL Journal Entry functionality provided by TrueBooks NuGet package at `/gl/journal-entry`.
-- **TrueBooks NuGet Packages**: Located in `NuGet/packages/` - includes Truebooks.Platform.Core, Truebooks.Platform.Finance, Truebooks.Platform.Contracts, Truebooks.Shared.UI, Truebooks.AccountsFinance.GL.UI, and Truebooks.Reports.GL.UI.
+- **GL Module (Native Implementation)**: Full GL functionality now implemented natively in Net4Courier with long-based IDs and Net4Courier naming conventions. Key pages include Financial Periods, Year-End Closing Wizard, Opening Balances, GL Profile, GL Setup Guide, and GL Workflow. TrueBooks packages retained for backend services but UI pages now use Net4Courier's own Razor components.
+- **GL Routes**: Native GL pages at `/gl/financial-periods`, `/gl/year-end-closing`, `/gl/opening-balances`, `/gl/profile`, `/gl/setup`, `/gl/workflow`, `/gl/knowledge-base`, `/gl/deferred-revenue`, `/gl/financial-calendar`.
+- **GL Services**: IFinancialYearService, IAccountHeadService, IPartyService for GL module data operations.
+- **Cash & Bank Module**: Independent Cash & Bank transaction management at `/cash-bank-transactions` with stub services. Bank Account management at `/bank-accounts` using Net4Courier.Finance entities with long IDs.
+- **TrueBooks NuGet Packages**: Backend services from `NuGet/packages/` - Truebooks.Platform.Core, Truebooks.Platform.Finance, Truebooks.Platform.Contracts. UI pages now use Net4Courier native components.
 - **Error Handling**: Robust global error handling with `ErrorBoundary`, `PageErrorHandler`, and `MudBlazor Snackbar` integration.
 - **Demo Data Management**: Admin feature to create and delete demo data for training.
 - **Initial Setup Wizard**: Secure setup page for platform administrators to configure new client deployments.

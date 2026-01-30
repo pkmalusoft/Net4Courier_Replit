@@ -1,0 +1,234 @@
+@page "/gl/financial-periods"
+@using Net4Courier.Web.Services
+@using Net4Courier.Masters.Entities
+@inject IFinancialYearService FinancialYearService
+@inject ISnackbar Snackbar
+@inject IDialogService DialogService
+
+<PageTitle>Financial Periods</PageTitle>
+
+<MudContainer MaxWidth="MaxWidth.ExtraLarge" Class="mt-4">
+    <MudPaper Class="pa-4 mb-4">
+        <MudGrid>
+            <MudItem xs="12" md="8">
+                <MudText Typo="Typo.h4">Financial Periods</MudText>
+                <MudText Typo="Typo.body2" Color="Color.Secondary">
+                    Manage fiscal years and period status for financial reporting and transaction control.
+                </MudText>
+            </MudItem>
+            <MudItem xs="12" md="4" Class="d-flex justify-end align-center">
+                <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add"
+                           OnClick="OpenCreateFiscalYearDialog">
+                    Create Fiscal Year
+                </MudButton>
+            </MudItem>
+        </MudGrid>
+    </MudPaper>
+
+    @if (loading)
+    {
+        <MudProgressCircular Indeterminate="true" />
+    }
+    else
+    {
+        @foreach (var year in financialYears.OrderByDescending(y => y.StartDate))
+        {
+            <MudPaper Class="pa-4 mb-4">
+                <MudGrid>
+                    <MudItem xs="12" md="8">
+                        <MudText Typo="Typo.h5" Class="mb-3">
+                            <MudIcon Icon="@Icons.Material.Filled.CalendarMonth" Class="mr-2" />
+                            @year.Name
+                        </MudText>
+                    </MudItem>
+                    <MudItem xs="12" md="4" Class="d-flex justify-end">
+                        <MudChip T="string" Color="@(year.IsClosed ? Color.Secondary : Color.Success)" Size="Size.Small">
+                            @(year.IsClosed ? "Closed" : "Open")
+                        </MudChip>
+                    </MudItem>
+                </MudGrid>
+                <MudDivider Class="mb-3" />
+                <MudTable Items="@year.Periods.OrderBy(p => p.PeriodNumber)" Dense="true" Hover="true" Striped="true">
+                    <HeaderContent>
+                        <MudTh>Period</MudTh>
+                        <MudTh>Period Name</MudTh>
+                        <MudTh>Start Date</MudTh>
+                        <MudTh>End Date</MudTh>
+                        <MudTh>Status</MudTh>
+                        <MudTh>Actions</MudTh>
+                    </HeaderContent>
+                    <RowTemplate>
+                        <MudTd>@context.PeriodNumber</MudTd>
+                        <MudTd>@context.PeriodName</MudTd>
+                        <MudTd>@context.StartDate.ToString("MMM dd, yyyy")</MudTd>
+                        <MudTd>@context.EndDate.ToString("MMM dd, yyyy")</MudTd>
+                        <MudTd>
+                            <MudChip T="string" Color="@GetStatusColor(context.Status)" Size="Size.Small">
+                                @context.Status.ToString()
+                            </MudChip>
+                        </MudTd>
+                        <MudTd>
+                            @if (context.Status == PeriodStatus.Open)
+                            {
+                                <MudButton Variant="Variant.Text" Color="Color.Warning" Size="Size.Small"
+                                           OnClick="@(() => ClosePeriod(context))">Close</MudButton>
+                            }
+                            else if (context.Status == PeriodStatus.Closed)
+                            {
+                                <MudButton Variant="Variant.Text" Color="Color.Info" Size="Size.Small"
+                                           OnClick="@(() => ReopenPeriod(context))">Reopen</MudButton>
+                            }
+                        </MudTd>
+                    </RowTemplate>
+                </MudTable>
+            </MudPaper>
+        }
+
+        @if (!financialYears.Any())
+        {
+            <MudAlert Severity="Severity.Info">
+                No financial years found. Click "Create Fiscal Year" to set up your first fiscal year.
+            </MudAlert>
+        }
+    }
+</MudContainer>
+
+<MudDialog @bind-Visible="showCreateDialog" Options="dialogOptions">
+    <TitleContent>
+        <MudText Typo="Typo.h6">Create Fiscal Year</MudText>
+    </TitleContent>
+    <DialogContent>
+        <MudAlert Severity="Severity.Info" Class="mb-4">
+            Create a new fiscal year with 12 monthly periods. The system will automatically generate periods based on your date range.
+        </MudAlert>
+        <MudGrid>
+            <MudItem xs="12">
+                <MudTextField @bind-Value="newYearName" Label="Year Name" Variant="Variant.Outlined" Required="true"
+                              Placeholder="e.g., FY 2024-25" />
+            </MudItem>
+            <MudItem xs="12" md="6">
+                <MudDatePicker @bind-Date="fiscalYearStartDate" Label="Fiscal Year Start" Variant="Variant.Outlined" 
+                               HelperText="First day of first period" />
+            </MudItem>
+            <MudItem xs="12" md="6">
+                <MudDatePicker @bind-Date="fiscalYearEndDate" Label="Fiscal Year End" Variant="Variant.Outlined"
+                               HelperText="Last day of last period" />
+            </MudItem>
+        </MudGrid>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="@(() => showCreateDialog = false)">Cancel</MudButton>
+        <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="CreateFiscalYear" 
+                   Disabled="@(!CanCreateFiscalYear)">Create</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    private bool loading = true;
+    private List<FinancialYear> financialYears = new();
+    private bool showCreateDialog = false;
+    private string newYearName = "";
+    private DateTime? fiscalYearStartDate;
+    private DateTime? fiscalYearEndDate;
+    
+    private DialogOptions dialogOptions = new()
+    {
+        MaxWidth = MaxWidth.Medium,
+        FullWidth = true
+    };
+    
+    private bool CanCreateFiscalYear => !string.IsNullOrEmpty(newYearName) && 
+                                        fiscalYearStartDate.HasValue && 
+                                        fiscalYearEndDate.HasValue && 
+                                        fiscalYearEndDate.Value > fiscalYearStartDate.Value;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadPeriods();
+    }
+
+    private async Task LoadPeriods()
+    {
+        loading = true;
+        try
+        {
+            financialYears = await FinancialYearService.GetAllAsync();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error loading periods: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            loading = false;
+        }
+    }
+
+    private void OpenCreateFiscalYearDialog()
+    {
+        var today = DateTime.Today;
+        newYearName = $"FY {today.Year}-{(today.Year + 1) % 100:D2}";
+        fiscalYearStartDate = new DateTime(today.Year, 4, 1);
+        fiscalYearEndDate = new DateTime(today.Year + 1, 3, 31);
+        showCreateDialog = true;
+    }
+
+    private async Task CreateFiscalYear()
+    {
+        if (!fiscalYearStartDate.HasValue || !fiscalYearEndDate.HasValue || string.IsNullOrEmpty(newYearName))
+        {
+            Snackbar.Add("Please fill in all required fields", Severity.Warning);
+            return;
+        }
+
+        try
+        {
+            await FinancialYearService.CreateWithPeriodsAsync(newYearName, fiscalYearStartDate.Value, fiscalYearEndDate.Value);
+            Snackbar.Add($"Fiscal year created successfully", Severity.Success);
+            showCreateDialog = false;
+            await LoadPeriods();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error: {ex.Message}", Severity.Error);
+        }
+    }
+
+    private async Task ClosePeriod(FinancialPeriod period)
+    {
+        try
+        {
+            await FinancialYearService.ClosePeriodAsync(period.Id);
+            Snackbar.Add("Period closed successfully", Severity.Success);
+            await LoadPeriods();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error: {ex.Message}", Severity.Error);
+        }
+    }
+
+    private async Task ReopenPeriod(FinancialPeriod period)
+    {
+        try
+        {
+            await FinancialYearService.ReopenPeriodAsync(period.Id);
+            Snackbar.Add("Period reopened successfully", Severity.Success);
+            await LoadPeriods();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error: {ex.Message}", Severity.Error);
+        }
+    }
+
+    private Color GetStatusColor(PeriodStatus status)
+    {
+        return status switch
+        {
+            PeriodStatus.Open => Color.Success,
+            PeriodStatus.Closed => Color.Warning,
+            _ => Color.Default
+        };
+    }
+}

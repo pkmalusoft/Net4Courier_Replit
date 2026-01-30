@@ -1,0 +1,151 @@
+@page "/master-data/currencies"
+
+
+@inject HttpClient Http
+@inject LegacyServices.IAuthService AuthService
+@inject NavigationManager Navigation
+@inject ISnackbar Snackbar
+@inject IDialogService DialogService
+
+<PageTitle>Currencies</PageTitle>
+
+<MudContainer MaxWidth="MaxWidth.ExtraLarge" Class="mt-4">
+    <MudText Typo="Typo.h4" Class="mb-4">Currency Management</MudText>
+    
+    <MudPaper Class="pa-4">
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add" Class="mb-4" OnClick="CreateNew">
+            Add Currency
+        </MudButton>
+
+        <MudDataGrid T="CurrencyDto" Items="@currencies" Loading="@loading" Striped="true" Bordered="true" Dense="true">
+            <Columns>
+                <PropertyColumn Property="x => x.Code" Title="Code" />
+                <PropertyColumn Property="x => x.Name" Title="Name" />
+                <PropertyColumn Property="x => x.Symbol" Title="Symbol" />
+                <TemplateColumn Title="Exchange Rate">
+                    <CellTemplate>
+                        @context.Item.ExchangeRate.ToString("N4")
+                    </CellTemplate>
+                </TemplateColumn>
+                <PropertyColumn Property="x => x.DecimalPlaces" Title="Decimal Places" />
+                <TemplateColumn Title="Base Currency">
+                    <CellTemplate>
+                        @if (context.Item.IsBaseCurrency)
+                        {
+                            <MudChip Size="MudBlazor.Size.Small" Color="Color.Success" Icon="@Icons.Material.Filled.CheckCircle">Base</MudChip>
+                        }
+                        else
+                        {
+                            <MudText Typo="Typo.caption" Color="Color.Default">—</MudText>
+                        }
+                    </CellTemplate>
+                </TemplateColumn>
+                <TemplateColumn Title="Status">
+                    <CellTemplate>
+                        @if (context.Item.IsActive)
+                        {
+                            <MudChip Size="MudBlazor.Size.Small" Color="Color.Success" Variant="Variant.Outlined">Active</MudChip>
+                        }
+                        else
+                        {
+                            <MudChip Size="MudBlazor.Size.Small" Color="Color.Default" Variant="Variant.Outlined">Inactive</MudChip>
+                        }
+                    </CellTemplate>
+                </TemplateColumn>
+                <TemplateColumn Title="Actions">
+                    <CellTemplate>
+                        <MudIconButton Icon="@Icons.Material.Filled.Edit" Size="MudBlazor.Size.Small" Color="Color.Primary" OnClick="@(() => Edit(context.Item.Id))" />
+                        <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="MudBlazor.Size.Small" Color="Color.Error" OnClick="@(() => Delete(context.Item.Id))" Disabled="@context.Item.IsBaseCurrency" />
+                    </CellTemplate>
+                </TemplateColumn>
+            </Columns>
+        </MudDataGrid>
+    </MudPaper>
+</MudContainer>
+
+@code {
+    private List<CurrencyDto> currencies = new();
+    private bool loading = true;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadCurrencies();
+    }
+
+    private async Task LoadCurrencies()
+    {
+        loading = true;
+        try
+        {
+            var tenantId = AuthService.GetTenantId();
+            Http.DefaultRequestHeaders.Remove("X-Tenant-Id");
+            Http.DefaultRequestHeaders.Add("X-Tenant-Id", tenantId);
+
+            var response = await Http.GetFromJsonAsync<List<CurrencyDto>>("api/currency");
+            currencies = response ?? new List<CurrencyDto>();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error loading currencies: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            loading = false;
+        }
+    }
+
+    private void CreateNew()
+    {
+        Navigation.NavigateTo("/master-data/currencies/new");
+    }
+
+    private void Edit(Guid id)
+    {
+        Navigation.NavigateTo($"/master-data/currencies/edit/{id}");
+    }
+
+    private async Task Delete(Guid id)
+    {
+        bool? confirm = await DialogService.ShowMessageBox(
+            "Confirm Delete",
+            "Are you sure you want to delete this currency?",
+            yesText: "Delete", cancelText: "Cancel");
+
+        if (confirm == true)
+        {
+            try
+            {
+                var tenantId = AuthService.GetTenantId();
+                Http.DefaultRequestHeaders.Remove("X-Tenant-Id");
+                Http.DefaultRequestHeaders.Add("X-Tenant-Id", tenantId);
+
+                var response = await Http.DeleteAsync($"api/currency/{id}");
+                if (response.IsSuccessStatusCode)
+                {
+                    Snackbar.Add("Currency deleted successfully", Severity.Success);
+                    await LoadCurrencies();
+                }
+                else
+                {
+                    Snackbar.Add("Failed to delete currency", Severity.Error);
+                }
+            }
+            catch (Exception ex)
+            {
+                Snackbar.Add($"Error deleting currency: {ex.Message}", Severity.Error);
+            }
+        }
+    }
+
+    public class CurrencyDto
+    {
+        public Guid Id { get; set; }
+        public string Code { get; set; } = string.Empty;
+        public string Name { get; set; } = string.Empty;
+        public string Symbol { get; set; } = string.Empty;
+        public decimal ExchangeRate { get; set; }
+        public int DecimalPlaces { get; set; }
+        public bool IsBaseCurrency { get; set; }
+        public bool IsActive { get; set; }
+    }
+}

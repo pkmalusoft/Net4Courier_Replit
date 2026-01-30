@@ -1,0 +1,623 @@
+@page "/gl/journal-entry"
+@page "/gl/journal-entry/edit/{Id:guid}"
+@page "/gl/journal-entry/view/{Id:guid}"
+
+
+
+@using System.Text.Json
+@using System.Text.Json.Serialization
+@inject LegacyServices.IAuthService AuthService
+@inject IMasterDataService MasterDataService
+@inject LegacyServices.ITransactionService TransactionService
+@inject IBranchService BranchService
+@inject IDepartmentService DepartmentService
+@inject PlatformServices.IJournalEntryService JournalEntryService
+@inject NavigationManager Navigation
+@inject ISnackbar Snackbar
+@inject IWorkingPeriodStateProvider WorkingPeriodState
+
+<MudGrid Class="mb-4">
+    <MudItem xs="12" sm="6">
+        <MudText Typo="Typo.h4">@GetPageTitle()</MudText>
+    </MudItem>
+    <MudItem xs="12" sm="6" Class="d-flex justify-end">
+        <MudButton Variant="Variant.Text" Color="Color.Primary" StartIcon="@Icons.Material.Filled.ArrowBack" OnClick="GoBack">
+            Back to List
+        </MudButton>
+    </MudItem>
+</MudGrid>
+
+@if (isLoadingEntry)
+{
+    <MudProgressLinear Indeterminate="true" Color="Color.Primary" />
+}
+
+<MudPaper Class="pa-6" Elevation="2">
+    <MudForm @ref="form" @bind-IsValid="@formIsValid">
+        <MudGrid>
+            @if (IsEditMode || IsViewMode)
+            {
+                <MudItem xs="12" md="4">
+                    <MudTextField @bind-Value="entryNumber" Label="Entry Number" ReadOnly="true" Variant="Variant.Outlined" />
+                </MudItem>
+            }
+            <MudItem xs="12" md="4">
+                <MudDatePicker Label="Entry Date" @bind-Date="entryDate" Required="true" RequiredError="Entry date is required"
+                               MinDate="@WorkingPeriodState.GetPeriodMinDate()" MaxDate="@WorkingPeriodState.GetPeriodMaxDate()"
+                               HelperText="@GetPeriodHelperText()" Disabled="@IsViewMode" />
+            </MudItem>
+            <MudItem xs="12" md="4">
+                <MudTextField @bind-Value="referenceNumber" Label="Reference Number" Disabled="@IsViewMode" />
+            </MudItem>
+            <MudItem xs="12" md="4">
+                <MudTextField @bind-Value="description" Label="Description" Required="true" RequiredError="Description is required" Disabled="@IsViewMode" />
+            </MudItem>
+            <MudItem xs="12" md="4">
+                <MudSelect Value="selectedBranchId" Label="Branch" Variant="Variant.Outlined" 
+                           Clearable="true" T="Guid?" ValueChanged="OnBranchChanged"
+                           ValueExpression="@(() => selectedBranchId)" Disabled="@IsViewMode">
+                    @foreach (var branch in branches)
+                    {
+                        <MudSelectItem Value="@((Guid?)branch.Id)">@branch.Code - @branch.Name</MudSelectItem>
+                    }
+                </MudSelect>
+            </MudItem>
+            <MudItem xs="12" md="4">
+                <MudSelect @bind-Value="selectedDepartmentId" Label="Department" Variant="Variant.Outlined" 
+                           Clearable="true" T="Guid?" Disabled="@(IsViewMode || (!selectedBranchId.HasValue && branches.Any()))">
+                    @foreach (var dept in filteredDepartments)
+                    {
+                        <MudSelectItem Value="@((Guid?)dept.Id)">@dept.Code - @dept.Name</MudSelectItem>
+                    }
+                </MudSelect>
+            </MudItem>
+            @if (IsViewMode && !string.IsNullOrEmpty(entryStatus))
+            {
+                <MudItem xs="12" md="4">
+                    <MudChip T="string" Color="@GetStatusColor(entryStatus)" Size="MudBlazor.Size.Large">@entryStatus</MudChip>
+                </MudItem>
+            }
+        </MudGrid>
+
+    <MudDivider Class="my-6" />
+
+    <MudText Typo="Typo.h6" Class="mb-4">Journal Lines</MudText>
+
+    <MudTable Items="@lines" Dense="true" Hover="true" Bordered="true">
+        <HeaderContent>
+            <MudTh>Account</MudTh>
+            <MudTh>Description</MudTh>
+            <MudTh Style="text-align: right;">Debit</MudTh>
+            <MudTh Style="text-align: right;">Credit</MudTh>
+            @if (!IsViewMode)
+            {
+                <MudTh>Actions</MudTh>
+            }
+        </HeaderContent>
+        <RowTemplate>
+            <MudTd DataLabel="Account">
+                @if (IsViewMode)
+                {
+                    @(GetAccountDisplay(context.AccountId))
+                }
+                else
+                {
+                    <MudSelect @bind-Value="context.AccountId" Variant="Variant.Outlined" Margin="Margin.Dense" T="Guid" Required="true">
+                        @foreach (var account in accounts)
+                        {
+                            <MudSelectItem Value="@account.Id">@account.AccountCode - @account.AccountName</MudSelectItem>
+                        }
+                    </MudSelect>
+                }
+            </MudTd>
+            <MudTd DataLabel="Description">
+                @if (IsViewMode)
+                {
+                    <MudText>@context.Description</MudText>
+                }
+                else
+                {
+                    <MudTextField @bind-Value="context.Description" Variant="Variant.Outlined" Margin="Margin.Dense" />
+                }
+            </MudTd>
+            <MudTd DataLabel="Debit" Style="text-align: right;">
+                @if (IsViewMode)
+                {
+                    <MudText>@context.Debit.ToString("N2")</MudText>
+                }
+                else
+                {
+                    <MudNumericField @bind-Value="context.Debit" Variant="Variant.Outlined" Margin="Margin.Dense" Format="N2" Min="0" />
+                }
+            </MudTd>
+            <MudTd DataLabel="Credit" Style="text-align: right;">
+                @if (IsViewMode)
+                {
+                    <MudText>@context.Credit.ToString("N2")</MudText>
+                }
+                else
+                {
+                    <MudNumericField @bind-Value="context.Credit" Variant="Variant.Outlined" Margin="Margin.Dense" Format="N2" Min="0" />
+                }
+            </MudTd>
+            @if (!IsViewMode)
+            {
+                <MudTd DataLabel="Actions">
+                    <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="MudBlazor.Size.Small" OnClick="@(() => RemoveLine(context))" />
+                </MudTd>
+            }
+        </RowTemplate>
+    </MudTable>
+
+    @if (!IsViewMode)
+    {
+        <MudButton StartIcon="@Icons.Material.Filled.Add" Color="Color.Primary" Class="mt-4" OnClick="AddLine">
+            Add Line
+        </MudButton>
+    }
+
+    <MudDivider Class="my-6" />
+
+    <MudGrid>
+        <MudItem xs="12" md="6">
+            <MudText Typo="Typo.h6">Total Debit: <MudChip T="string" Color="Color.Success">@TotalDebit.ToString("C")</MudChip></MudText>
+        </MudItem>
+        <MudItem xs="12" md="6">
+            <MudText Typo="Typo.h6">Total Credit: <MudChip T="string" Color="Color.Error">@TotalCredit.ToString("C")</MudChip></MudText>
+        </MudItem>
+        <MudItem xs="12">
+            @if (Math.Abs(TotalDebit - TotalCredit) > 0.01m)
+            {
+                <MudAlert Severity="Severity.Warning">Entry is not balanced. Debit and Credit totals must match.</MudAlert>
+            }
+            else if (lines.Count > 0)
+            {
+                <MudAlert Severity="Severity.Success">Entry is balanced.</MudAlert>
+            }
+        </MudItem>
+    </MudGrid>
+
+    <MudDivider Class="my-6" />
+
+    @if (!string.IsNullOrEmpty(errorMessage))
+    {
+        <MudAlert Severity="Severity.Error" Class="mb-4">@errorMessage</MudAlert>
+    }
+
+        @if (!IsViewMode)
+        {
+            <MudGrid>
+                <MudItem xs="12" sm="6" md="3">
+                    <MudButton Variant="Variant.Filled" Color="Color.Primary" FullWidth="true" OnClick="SaveDraft" Disabled="isLoading || lines.Count == 0">
+                        @(IsEditMode ? "Update Draft" : "Save Draft")
+                    </MudButton>
+                </MudItem>
+                <MudItem xs="12" sm="6" md="3">
+                    <MudButton Variant="Variant.Filled" Color="Color.Success" FullWidth="true" OnClick="PostEntry" Disabled="isLoading || !IsBalanced || lines.Count == 0 || !formIsValid">
+                        Post Entry
+                    </MudButton>
+                </MudItem>
+                <MudItem xs="12" sm="6" md="3">
+                    <MudButton Variant="Variant.Outlined" Color="Color.Secondary" FullWidth="true" OnClick="Clear" Disabled="isLoading">
+                        Clear
+                    </MudButton>
+                </MudItem>
+                <MudItem xs="12" sm="6" md="3">
+                    <MudButton Variant="Variant.Text" Color="Color.Default" FullWidth="true" OnClick="GoBack">
+                        Cancel
+                    </MudButton>
+                </MudItem>
+            </MudGrid>
+        }
+        else
+        {
+            <MudGrid>
+                <MudItem xs="12" sm="6" md="3">
+                    <MudButton Variant="Variant.Filled" Color="Color.Primary" FullWidth="true" OnClick="GoBack">
+                        Back to List
+                    </MudButton>
+                </MudItem>
+                @if (entryStatus == "Draft")
+                {
+                    <MudItem xs="12" sm="6" md="3">
+                        <MudButton Variant="Variant.Outlined" Color="Color.Secondary" FullWidth="true" OnClick="@(() => EditEntry())">
+                            Edit Entry
+                        </MudButton>
+                    </MudItem>
+                }
+            </MudGrid>
+        }
+    </MudForm>
+</MudPaper>
+
+@code {
+    [Parameter] public Guid? Id { get; set; }
+    
+    private MudForm? form;
+    private bool formIsValid;
+    private DateTime? entryDate;
+    private string entryNumber = "";
+    private string referenceNumber = "";
+    private string description = "";
+    private string entryStatus = "";
+    private List<JournalLine> lines = new();
+    private string errorMessage = "";
+    private bool isLoading = false;
+    private bool isLoadingEntry = false;
+    private List<ChartOfAccount> accounts = new();
+    private List<BranchDto> branches = new();
+    private List<DepartmentDto> departments = new();
+    private Guid? selectedBranchId;
+    private Guid? selectedDepartmentId;
+    private Guid? existingEntryId;
+
+    private bool IsEditMode => Id.HasValue && Navigation.Uri.Contains("/edit/");
+    private bool IsViewMode => Id.HasValue && Navigation.Uri.Contains("/view/");
+    private bool IsNewMode => !Id.HasValue;
+
+    private static readonly JsonSerializerOptions _jsonOptions = new()
+    {
+        PropertyNameCaseInsensitive = true,
+        Converters = { new JsonStringEnumConverter() }
+    };
+
+    private IEnumerable<DepartmentDto> filteredDepartments => selectedBranchId.HasValue 
+        ? departments.Where(d => d.BranchId == selectedBranchId || d.BranchId == null)
+        : departments;
+
+    private decimal TotalDebit => lines.Sum(l => l.Debit);
+    private decimal TotalCredit => lines.Sum(l => l.Credit);
+    private bool IsBalanced => Math.Abs(TotalDebit - TotalCredit) < 0.01m;
+
+    private string GetPageTitle()
+    {
+        if (IsViewMode) return "View Journal Entry";
+        if (IsEditMode) return "Edit Journal Entry";
+        return "New Journal Entry";
+    }
+
+    private void GoBack()
+    {
+        Navigation.NavigateTo("/gl/journal-vouchers");
+    }
+
+    private void EditEntry()
+    {
+        if (Id.HasValue)
+        {
+            Navigation.NavigateTo($"/gl/journal-entry/edit/{Id.Value}");
+        }
+    }
+
+    private Color GetStatusColor(string status)
+    {
+        return status switch
+        {
+            "Draft" => Color.Warning,
+            "Posted" => Color.Success,
+            "Cancelled" => Color.Error,
+            _ => Color.Default
+        };
+    }
+
+    private string GetAccountDisplay(Guid accountId)
+    {
+        var account = accounts.FirstOrDefault(a => a.Id == accountId);
+        return account != null ? $"{account.AccountCode} - {account.AccountName}" : "-";
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (string.IsNullOrEmpty(AuthService.GetAccessToken()))
+        {
+            Navigation.NavigateTo("/login");
+            return;
+        }
+
+        try
+        {
+            var accountsTask = MasterDataService.GetChartOfAccountsAsync();
+            var branchesTask = BranchService.GetActiveAsync();
+            var departmentsTask = DepartmentService.GetActiveAsync();
+
+            await Task.WhenAll(accountsTask, branchesTask, departmentsTask);
+
+            accounts = accountsTask.Result;
+            branches = branchesTask.Result;
+            departments = departmentsTask.Result;
+
+            if (branches.Count == 1)
+            {
+                selectedBranchId = branches[0].Id;
+            }
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Failed to load data: {ex.Message}";
+        }
+
+        if (Id.HasValue)
+        {
+            await LoadJournalEntry(Id.Value);
+        }
+        else
+        {
+            entryDate = WorkingPeriodState.GetDefaultTransactionDate();
+            AddLine();
+            AddLine();
+        }
+    }
+
+    private async Task LoadJournalEntry(Guid id)
+    {
+        isLoadingEntry = true;
+        try
+        {
+            var tenantId = Guid.TryParse(AuthService.GetTenantId(), out var parsedId) ? parsedId : Guid.Empty;
+            var entry = await JournalEntryService.GetByIdAsync(tenantId, id);
+            
+            if (entry != null)
+            {
+                existingEntryId = entry.Id;
+                entryNumber = entry.EntryNumber;
+                entryDate = entry.EntryDate;
+                description = entry.Description ?? "";
+                entryStatus = entry.Status.ToString();
+                selectedBranchId = entry.BranchId;
+                selectedDepartmentId = entry.DepartmentId;
+                
+                lines = entry.Lines?.Select(l => new JournalLine
+                {
+                    AccountId = l.AccountId,
+                    Description = l.Description ?? "",
+                    Debit = l.Debit,
+                    Credit = l.Credit
+                }).ToList() ?? new List<JournalLine>();
+                
+                if (lines.Count == 0)
+                {
+                    AddLine();
+                    AddLine();
+                }
+            }
+            else
+            {
+                Snackbar.Add("Failed to load journal entry.", Severity.Error);
+                Navigation.NavigateTo("/gl/journal-vouchers");
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error loading entry: {ex.Message}", Severity.Error);
+            Navigation.NavigateTo("/gl/journal-vouchers");
+        }
+        finally
+        {
+            isLoadingEntry = false;
+        }
+    }
+
+    public class JournalEntryApiDto
+    {
+        public Guid Id { get; set; }
+        public string EntryNumber { get; set; } = string.Empty;
+        public DateTime EntryDate { get; set; }
+        public string Description { get; set; } = string.Empty;
+        public JournalEntryStatusEnum Status { get; set; }
+        public Guid? BranchId { get; set; }
+        public Guid? DepartmentId { get; set; }
+        public List<JournalEntryLineApiDto>? Lines { get; set; }
+    }
+
+    public class JournalEntryLineApiDto
+    {
+        public Guid AccountId { get; set; }
+        public decimal Debit { get; set; }
+        public decimal Credit { get; set; }
+        public string? Description { get; set; }
+    }
+
+    public enum JournalEntryStatusEnum
+    {
+        Draft,
+        Posted,
+        Cancelled
+    }
+
+    private void OnBranchChanged(Guid? newBranchId)
+    {
+        selectedBranchId = newBranchId;
+        if (!newBranchId.HasValue || !filteredDepartments.Any(d => d.Id == selectedDepartmentId))
+        {
+            selectedDepartmentId = null;
+        }
+    }
+    
+    private string GetPeriodHelperText()
+    {
+        var period = WorkingPeriodState.CurrentPeriod;
+        if (period == null) return "No working period selected";
+        return $"Period: {period.PeriodName} ({period.StartDate:dd MMM} - {period.EndDate:dd MMM yyyy})";
+    }
+
+    private void AddLine()
+    {
+        lines.Add(new JournalLine());
+    }
+
+    private void RemoveLine(JournalLine line)
+    {
+        if (lines.Count > 1)
+        {
+            lines.Remove(line);
+        }
+    }
+
+    private async Task SaveDraft()
+    {
+        await form.Validate();
+        if (!formIsValid)
+        {
+            errorMessage = "Please fill all required fields before saving.";
+            Snackbar.Add("Please fill all required fields.", Severity.Warning);
+            return;
+        }
+
+        errorMessage = "";
+        isLoading = true;
+
+        try
+        {
+            var entry = new JournalEntryDto
+            {
+                EntryDate = entryDate ?? DateTime.Today,
+                Description = description,
+                BranchId = selectedBranchId,
+                DepartmentId = selectedDepartmentId,
+                Lines = lines.Select(l => new JournalEntryLineDto
+                {
+                    AccountId = l.AccountId,
+                    Debit = l.Debit,
+                    Credit = l.Credit,
+                    Description = l.Description
+                }).ToList()
+            };
+
+            if (IsEditMode && existingEntryId.HasValue)
+            {
+                entry.Id = existingEntryId;
+                entry.EntryNumber = entryNumber;
+                await TransactionService.UpdateJournalEntryAsync(existingEntryId.Value, entry);
+                Snackbar.Add($"Draft updated successfully. Entry Number: {entryNumber}", Severity.Success);
+                Navigation.NavigateTo("/gl/journal-vouchers");
+            }
+            else
+            {
+                var result = await TransactionService.CreateJournalEntryAsync(entry);
+                Snackbar.Add($"Draft saved successfully. Entry Number: {result.EntryNumber}", Severity.Success);
+                Navigation.NavigateTo("/gl/journal-vouchers");
+            }
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Error: {ex.Message}";
+            Snackbar.Add($"Failed to save draft: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private async Task PostEntry()
+    {
+        await form.Validate();
+        if (!formIsValid)
+        {
+            errorMessage = "Please fill all required fields before posting.";
+            Snackbar.Add("Please fill all required fields.", Severity.Warning);
+            return;
+        }
+
+        if (!IsBalanced)
+        {
+            errorMessage = "Cannot post an unbalanced entry.";
+            Snackbar.Add("Cannot post an unbalanced entry. Debits must equal credits.", Severity.Warning);
+            return;
+        }
+
+        errorMessage = "";
+        isLoading = true;
+
+        try
+        {
+            Guid entryIdToPost;
+            
+            if (IsEditMode && existingEntryId.HasValue)
+            {
+                var entry = new JournalEntryDto
+                {
+                    Id = existingEntryId,
+                    EntryNumber = entryNumber,
+                    EntryDate = entryDate ?? DateTime.Today,
+                    Description = description,
+                    BranchId = selectedBranchId,
+                    DepartmentId = selectedDepartmentId,
+                    Lines = lines.Select(l => new JournalEntryLineDto
+                    {
+                        AccountId = l.AccountId,
+                        Debit = l.Debit,
+                        Credit = l.Credit,
+                        Description = l.Description
+                    }).ToList()
+                };
+                await TransactionService.UpdateJournalEntryAsync(existingEntryId.Value, entry);
+                entryIdToPost = existingEntryId.Value;
+            }
+            else
+            {
+                var entry = new JournalEntryDto
+                {
+                    EntryDate = entryDate ?? DateTime.Today,
+                    Description = description,
+                    BranchId = selectedBranchId,
+                    DepartmentId = selectedDepartmentId,
+                    Lines = lines.Select(l => new JournalEntryLineDto
+                    {
+                        AccountId = l.AccountId,
+                        Debit = l.Debit,
+                        Credit = l.Credit,
+                        Description = l.Description
+                    }).ToList()
+                };
+                var result = await TransactionService.CreateJournalEntryAsync(entry);
+                if (!result.Id.HasValue)
+                {
+                    throw new Exception("Failed to create journal entry.");
+                }
+                entryIdToPost = result.Id.Value;
+            }
+            
+            var posted = await TransactionService.PostJournalEntryAsync(entryIdToPost);
+            Snackbar.Add($"Entry posted successfully. Entry Number: {posted.EntryNumber}", Severity.Success);
+            Navigation.NavigateTo("/gl/journal-vouchers");
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Error: {ex.Message}";
+            Snackbar.Add($"Failed to post entry: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private void Clear()
+    {
+        entryDate = DateTime.UtcNow.Date;
+        referenceNumber = "";
+        description = "";
+        lines.Clear();
+        AddLine();
+        AddLine();
+        errorMessage = "";
+        if (branches.Count == 1)
+        {
+            selectedBranchId = branches[0].Id;
+        }
+        else
+        {
+            selectedBranchId = null;
+        }
+        selectedDepartmentId = null;
+    }
+
+    private class JournalLine
+    {
+        public Guid AccountId { get; set; }
+        public string Description { get; set; } = "";
+        public decimal Debit { get; set; }
+        public decimal Credit { get; set; }
+    }
+}

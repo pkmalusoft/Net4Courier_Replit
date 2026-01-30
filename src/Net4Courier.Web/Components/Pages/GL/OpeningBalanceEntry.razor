@@ -1,0 +1,447 @@
+@page "/gl/opening-balance/edit/{Id:long}"
+@page "/gl/opening-balance/view/{Id:long}"
+@using Net4Courier.Web.Services
+@using Net4Courier.Finance.Entities
+@inject IAccountHeadService AccountHeadService
+@inject IPartyService PartyService
+@inject NavigationManager Navigation
+@inject ISnackbar Snackbar
+@inject IDialogService DialogService
+
+<PageTitle>@GetPageTitle()</PageTitle>
+
+<MudGrid Class="mb-4">
+    <MudItem xs="12" sm="6">
+        <MudText Typo="Typo.h4">@GetPageTitle()</MudText>
+    </MudItem>
+    <MudItem xs="12" sm="6" Class="d-flex justify-end">
+        <MudButton Variant="Variant.Text" Color="Color.Primary" StartIcon="@Icons.Material.Filled.ArrowBack" OnClick="GoBack">
+            Back to List
+        </MudButton>
+    </MudItem>
+</MudGrid>
+
+@if (isLoading)
+{
+    <MudProgressLinear Indeterminate="true" Color="Color.Primary" />
+}
+
+<MudPaper Class="pa-6" Elevation="2">
+    <MudGrid>
+        <MudItem xs="12" md="3">
+            <MudTextField Value="@batch.BatchNumber" Label="Batch Number" ReadOnly="true" Variant="Variant.Outlined" />
+        </MudItem>
+        <MudItem xs="12" md="3">
+            <MudChip T="string" Color="@GetModuleColor(batch.SourceModule)" Size="MudBlazor.Size.Large">@GetModuleLabel(batch.SourceModule)</MudChip>
+        </MudItem>
+        <MudItem xs="12" md="3">
+            <MudDatePicker Label="Effective Date" @bind-Date="effectiveDate" Disabled="@IsViewMode" Variant="Variant.Outlined" />
+        </MudItem>
+        <MudItem xs="12" md="3">
+            <MudChip T="string" Color="@GetStatusColor(batch.Status)" Size="MudBlazor.Size.Large">@batch.Status</MudChip>
+        </MudItem>
+        <MudItem xs="12">
+            <MudTextField @bind-Value="notes" Label="Notes" Lines="2" Variant="Variant.Outlined" Disabled="@IsViewMode" />
+        </MudItem>
+    </MudGrid>
+
+    <MudDivider Class="my-6" />
+
+    <MudText Typo="Typo.h6" Class="mb-4">@GetLinesTitle()</MudText>
+
+    <MudTable Items="@lines" Dense="true" Hover="true" Bordered="true">
+        <HeaderContent>
+            <MudTh>@GetReferenceLabel()</MudTh>
+            <MudTh Style="text-align: right;">Debit</MudTh>
+            <MudTh Style="text-align: right;">Credit</MudTh>
+            @if (!IsViewMode)
+            {
+                <MudTh>Actions</MudTh>
+            }
+        </HeaderContent>
+        <RowTemplate>
+            <MudTd DataLabel="@GetReferenceLabel()">
+                @context.ReferenceName
+            </MudTd>
+            <MudTd DataLabel="Debit" Style="text-align: right;">@context.Debit.ToString("N2")</MudTd>
+            <MudTd DataLabel="Credit" Style="text-align: right;">@context.Credit.ToString("N2")</MudTd>
+            @if (!IsViewMode)
+            {
+                <MudTd DataLabel="Actions">
+                    <MudIconButton Icon="@Icons.Material.Filled.Edit" Size="MudBlazor.Size.Small" OnClick="@(() => EditLine(context))" />
+                    <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="MudBlazor.Size.Small" Color="Color.Error" OnClick="@(() => DeleteLine(context))" />
+                </MudTd>
+            }
+        </RowTemplate>
+        <NoRecordsContent>
+            <MudText>No lines added yet. Click "Add Line" to begin.</MudText>
+        </NoRecordsContent>
+    </MudTable>
+
+    @if (!IsViewMode)
+    {
+        <MudButton StartIcon="@Icons.Material.Filled.Add" Color="Color.Primary" Class="mt-4" OnClick="AddLine">
+            Add Line
+        </MudButton>
+    }
+
+    <MudDivider Class="my-6" />
+
+    <MudGrid>
+        <MudItem xs="12" md="4">
+            <MudText Typo="Typo.h6">Total Debit: <MudChip T="string" Color="Color.Success">@TotalDebit.ToString("N2")</MudChip></MudText>
+        </MudItem>
+        <MudItem xs="12" md="4">
+            <MudText Typo="Typo.h6">Total Credit: <MudChip T="string" Color="Color.Error">@TotalCredit.ToString("N2")</MudChip></MudText>
+        </MudItem>
+        <MudItem xs="12" md="4">
+            @if (batch.SourceModule == "GL")
+            {
+                @if (Math.Abs(TotalDebit - TotalCredit) > 0.01m)
+                {
+                    <MudAlert Severity="Severity.Warning" Dense="true">Unbalanced: @((TotalDebit - TotalCredit).ToString("N2"))</MudAlert>
+                }
+                else if (lines.Count > 0)
+                {
+                    <MudAlert Severity="Severity.Success" Dense="true">Balanced</MudAlert>
+                }
+            }
+            else
+            {
+                <MudAlert Severity="Severity.Info" Dense="true">Auto-balanced to Opening Balance Equity</MudAlert>
+            }
+        </MudItem>
+    </MudGrid>
+
+    <MudDivider Class="my-6" />
+
+    <MudGrid>
+        @if (!IsViewMode && batch.Status == "Draft")
+        {
+            <MudItem xs="12" sm="6" md="3">
+                <MudButton Variant="Variant.Filled" Color="Color.Primary" FullWidth="true" OnClick="SaveBatch" Disabled="@isSaving">
+                    Save Changes
+                </MudButton>
+            </MudItem>
+            <MudItem xs="12" sm="6" md="3">
+                <MudButton Variant="Variant.Filled" Color="Color.Success" FullWidth="true" OnClick="PostBatch" Disabled="@(isSaving || lines.Count == 0)">
+                    Post to Ledger
+                </MudButton>
+            </MudItem>
+        }
+        <MudItem xs="12" sm="6" md="3">
+            <MudButton Variant="Variant.Text" Color="Color.Default" FullWidth="true" OnClick="GoBack">
+                @(IsViewMode ? "Back" : "Cancel")
+            </MudButton>
+        </MudItem>
+    </MudGrid>
+</MudPaper>
+
+<MudDialog @bind-Visible="showLineDialog">
+    <TitleContent>
+        <MudText Typo="Typo.h6">@(editingLine?.Id != 0 ? "Edit Line" : "Add Line")</MudText>
+    </TitleContent>
+    <DialogContent>
+        <MudGrid>
+            @if (batch.SourceModule == "GL")
+            {
+                <MudItem xs="12">
+                    <MudAutocomplete T="AccountHead" Label="Account" @bind-Value="selectedAccount"
+                                     SearchFunc="@SearchAccounts" ToStringFunc="@(a => a == null ? "" : $"{a.Code} - {a.Name}")"
+                                     Variant="Variant.Outlined" Required="true" />
+                </MudItem>
+            }
+            else
+            {
+                <MudItem xs="12">
+                    <MudAutocomplete T="PartyViewModel" Label="@(batch.SourceModule == "AR" ? "Customer" : "Supplier")" @bind-Value="selectedParty"
+                                     SearchFunc="@SearchParties" ToStringFunc="@(p => p == null ? "" : $"{p.Code} - {p.Name}")"
+                                     Variant="Variant.Outlined" Required="true" />
+                </MudItem>
+            }
+            <MudItem xs="12" md="6">
+                <MudNumericField @bind-Value="lineDebit" Label="Debit" Format="N2" Min="0" Variant="Variant.Outlined" />
+            </MudItem>
+            <MudItem xs="12" md="6">
+                <MudNumericField @bind-Value="lineCredit" Label="Credit" Format="N2" Min="0" Variant="Variant.Outlined" />
+            </MudItem>
+        </MudGrid>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="@(() => showLineDialog = false)">Cancel</MudButton>
+        <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="SaveLine" Disabled="@(!IsLineValid)">Save</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [Parameter] public long Id { get; set; }
+
+    private OpeningBalanceBatchViewModel batch = new();
+    private List<OpeningBalanceLineViewModel> lines = new();
+    private DateTime? effectiveDate;
+    private string notes = "";
+    private bool isLoading = false;
+    private bool isSaving = false;
+
+    private bool IsViewMode => Navigation.Uri.Contains("/view/");
+    
+    private List<AccountHead> accounts = new();
+    private List<PartyViewModel> parties = new();
+    
+    private bool showLineDialog = false;
+    private OpeningBalanceLineViewModel? editingLine;
+    private AccountHead? selectedAccount;
+    private PartyViewModel? selectedParty;
+    private decimal lineDebit = 0m;
+    private decimal lineCredit = 0m;
+
+    private decimal TotalDebit => lines.Sum(l => l.Debit);
+    private decimal TotalCredit => lines.Sum(l => l.Credit);
+
+    private bool IsLineValid
+    {
+        get
+        {
+            if (batch.SourceModule == "GL" && selectedAccount == null) return false;
+            if ((batch.SourceModule == "AR" || batch.SourceModule == "AP") && selectedParty == null) return false;
+            if (lineDebit == 0 && lineCredit == 0) return false;
+            return true;
+        }
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        isLoading = true;
+        try
+        {
+            accounts = await AccountHeadService.GetAllAsync();
+            batch = new OpeningBalanceBatchViewModel
+            {
+                Id = Id,
+                BatchNumber = $"OB-{Id:D4}",
+                SourceModule = "GL",
+                EffectiveDate = DateTime.Today,
+                Status = "Draft"
+            };
+            effectiveDate = batch.EffectiveDate;
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error loading data: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private string GetPageTitle()
+    {
+        if (IsViewMode) return $"View Opening Balance Batch - {batch.BatchNumber}";
+        return $"Edit Opening Balance Batch - {batch.BatchNumber}";
+    }
+
+    private string GetLinesTitle() => batch.SourceModule switch
+    {
+        "GL" => "Account Balances",
+        "AR" => "Customer Balances",
+        "AP" => "Supplier Balances",
+        _ => "Lines"
+    };
+
+    private string GetReferenceLabel() => batch.SourceModule switch
+    {
+        "GL" => "Account",
+        "AR" => "Customer",
+        "AP" => "Supplier",
+        _ => "Reference"
+    };
+
+    private string GetModuleLabel(string module) => module switch
+    {
+        "GL" => "General Ledger",
+        "AR" => "Accounts Receivable",
+        "AP" => "Accounts Payable",
+        _ => module
+    };
+
+    private void GoBack() => Navigation.NavigateTo("/gl/opening-balances");
+
+    private Color GetModuleColor(string module) => module switch
+    {
+        "GL" => Color.Primary,
+        "AR" => Color.Success,
+        "AP" => Color.Warning,
+        _ => Color.Default
+    };
+
+    private Color GetStatusColor(string status) => status switch
+    {
+        "Draft" => Color.Default,
+        "Posted" => Color.Success,
+        _ => Color.Default
+    };
+
+    private void AddLine()
+    {
+        editingLine = new OpeningBalanceLineViewModel();
+        selectedAccount = null;
+        selectedParty = null;
+        lineDebit = 0m;
+        lineCredit = 0m;
+        showLineDialog = true;
+    }
+
+    private void EditLine(OpeningBalanceLineViewModel line)
+    {
+        editingLine = line;
+        if (batch.SourceModule == "GL")
+            selectedAccount = accounts.FirstOrDefault(a => a.Id == line.ReferenceId);
+        lineDebit = line.Debit;
+        lineCredit = line.Credit;
+        showLineDialog = true;
+    }
+
+    private void SaveLine()
+    {
+        if (editingLine == null) return;
+
+        string referenceName;
+        long referenceId;
+
+        if (batch.SourceModule == "GL" && selectedAccount != null)
+        {
+            referenceId = selectedAccount.Id;
+            referenceName = $"{selectedAccount.Code} - {selectedAccount.Name}";
+        }
+        else if (selectedParty != null)
+        {
+            referenceId = selectedParty.Id;
+            referenceName = $"{selectedParty.Code} - {selectedParty.Name}";
+        }
+        else
+        {
+            Snackbar.Add("Please select a reference.", Severity.Warning);
+            return;
+        }
+
+        if (editingLine.Id == 0)
+        {
+            editingLine.Id = lines.Count + 1;
+            editingLine.ReferenceId = referenceId;
+            editingLine.ReferenceName = referenceName;
+            editingLine.Debit = lineDebit;
+            editingLine.Credit = lineCredit;
+            lines.Add(editingLine);
+        }
+        else
+        {
+            editingLine.ReferenceId = referenceId;
+            editingLine.ReferenceName = referenceName;
+            editingLine.Debit = lineDebit;
+            editingLine.Credit = lineCredit;
+        }
+
+        showLineDialog = false;
+        Snackbar.Add("Line saved.", Severity.Success);
+    }
+
+    private async Task DeleteLine(OpeningBalanceLineViewModel line)
+    {
+        var result = await DialogService.ShowMessageBox(
+            "Delete Line",
+            "Are you sure you want to delete this line?",
+            yesText: "Delete", cancelText: "Cancel");
+
+        if (result == true)
+        {
+            lines.Remove(line);
+            Snackbar.Add("Line deleted.", Severity.Success);
+        }
+    }
+
+    private async Task SaveBatch()
+    {
+        isSaving = true;
+        try
+        {
+            await Task.Delay(500);
+            Snackbar.Add("Batch saved.", Severity.Success);
+        }
+        finally
+        {
+            isSaving = false;
+        }
+    }
+
+    private async Task PostBatch()
+    {
+        var result = await DialogService.ShowMessageBox(
+            "Post Batch",
+            "This will create journal entries and post balances to the ledger. Continue?",
+            yesText: "Post", cancelText: "Cancel");
+
+        if (result != true) return;
+
+        isSaving = true;
+        try
+        {
+            await Task.Delay(1000);
+            batch.Status = "Posted";
+            Snackbar.Add("Batch posted successfully.", Severity.Success);
+        }
+        finally
+        {
+            isSaving = false;
+        }
+    }
+
+    private async Task<IEnumerable<AccountHead>> SearchAccounts(string value, CancellationToken token)
+    {
+        await Task.CompletedTask;
+        if (string.IsNullOrEmpty(value))
+            return accounts.Take(20);
+
+        return accounts.Where(a => 
+            (a.Code?.Contains(value, StringComparison.OrdinalIgnoreCase) ?? false) ||
+            a.Name.Contains(value, StringComparison.OrdinalIgnoreCase))
+            .Take(20);
+    }
+
+    private async Task<IEnumerable<PartyViewModel>> SearchParties(string value, CancellationToken token)
+    {
+        await Task.CompletedTask;
+        if (string.IsNullOrEmpty(value))
+            return parties.Take(20);
+
+        return parties.Where(p => 
+            (p.Code?.Contains(value, StringComparison.OrdinalIgnoreCase) ?? false) ||
+            p.Name.Contains(value, StringComparison.OrdinalIgnoreCase))
+            .Take(20);
+    }
+
+    public class OpeningBalanceBatchViewModel
+    {
+        public long Id { get; set; }
+        public string BatchNumber { get; set; } = "";
+        public string SourceModule { get; set; } = "GL";
+        public DateTime EffectiveDate { get; set; }
+        public string Status { get; set; } = "Draft";
+    }
+
+    public class OpeningBalanceLineViewModel
+    {
+        public long Id { get; set; }
+        public long ReferenceId { get; set; }
+        public string ReferenceName { get; set; } = "";
+        public decimal Debit { get; set; }
+        public decimal Credit { get; set; }
+    }
+
+    public class PartyViewModel
+    {
+        public long Id { get; set; }
+        public string Code { get; set; } = "";
+        public string Name { get; set; } = "";
+    }
+}

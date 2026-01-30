@@ -178,6 +178,11 @@ builder.Services.AddScoped<Net4Courier.Web.Services.CashBank.IPaymentAllocationS
 builder.Services.AddScoped<Net4Courier.Web.Services.CashBank.IVoucherAttachmentService, Net4Courier.Web.Services.CashBank.VoucherAttachmentService>();
 builder.Services.AddScoped<Net4Courier.Web.Services.CashBank.IJournalEntryService, Net4Courier.Web.Services.CashBank.JournalEntryService>();
 
+// GL Module Services
+builder.Services.AddScoped<Net4Courier.Web.Services.IFinancialYearService, Net4Courier.Web.Services.FinancialYearService>();
+builder.Services.AddScoped<Net4Courier.Web.Services.IAccountHeadService, Net4Courier.Web.Services.AccountHeadService>();
+builder.Services.AddScoped<Net4Courier.Web.Services.IPartyService, Net4Courier.Web.Services.PartyService>();
+
 builder.Services.AddAuthentication(options =>
 {
     options.DefaultScheme = "Cookies";

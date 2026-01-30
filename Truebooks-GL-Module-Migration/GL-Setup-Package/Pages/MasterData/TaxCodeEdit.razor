@@ -1,0 +1,213 @@
+@page "/master-data/tax-codes/new"
+@page "/master-data/tax-codes/edit/{Id:guid}"
+
+@using PlatformServices = Truebooks.Platform.Contracts.Services
+@using PlatformDTOs = Truebooks.Platform.Contracts.DTOs
+
+@inject PlatformServices.ITaxCodeService TaxCodeService
+@inject LegacyServices.IAuthService AuthService
+@inject NavigationManager Navigation
+@inject ISnackbar Snackbar
+
+<PageTitle>@(IsNew ? "Create Tax Code" : "Edit Tax Code")</PageTitle>
+
+<MudContainer MaxWidth="MaxWidth.Medium" Class="mt-4">
+    <MudText Typo="Typo.h4" Class="mb-4">@(IsNew ? "Create Tax Code" : "Edit Tax Code")</MudText>
+    
+    <MudPaper Class="pa-4">
+        <MudForm @ref="form" @bind-IsValid="@isValid">
+            <MudGrid>
+                <MudItem xs="12" md="6">
+                    <MudTextField @bind-Value="taxCode.Code" 
+                                  Label="Tax Code" 
+                                  Required="true"
+                                  MaxLength="20"
+                                  Variant="Variant.Outlined" />
+                </MudItem>
+                
+                <MudItem xs="12" md="6">
+                    <MudNumericField @bind-Value="taxCode.Rate" 
+                                     Label="Tax Rate (%)" 
+                                     Required="true"
+                                     Min="0"
+                                     Max="100"
+                                     Variant="Variant.Outlined" 
+                                     Format="N2" />
+                </MudItem>
+
+                <MudItem xs="12">
+                    <MudTextField @bind-Value="taxCode.Description" 
+                                  Label="Description" 
+                                  Required="true"
+                                  MaxLength="200"
+                                  Variant="Variant.Outlined" />
+                </MudItem>
+
+                <MudItem xs="12" md="6">
+                    <MudSelect @bind-Value="taxCode.TaxType" 
+                               Label="Tax Type" 
+                               Variant="Variant.Outlined"
+                               Required="true">
+                        @foreach (var taxType in SupportedTaxTypes)
+                        {
+                            <MudSelectItem Value="@taxType">@taxType.ToString()</MudSelectItem>
+                        }
+                    </MudSelect>
+                </MudItem>
+
+                <MudItem xs="12" md="6">
+                    <MudSwitch @bind-Value="taxCode.IsActive" 
+                               Label="Active" 
+                               Color="Color.Primary" />
+                </MudItem>
+
+                <MudItem xs="12" Class="mt-4">
+                    <MudButton Variant="Variant.Filled" 
+                               Color="Color.Primary" 
+                               OnClick="Save" 
+                               Disabled="@(!isValid || saving)">
+                        @if (saving)
+                        {
+                            <MudProgressCircular Class="ms-n1" Size="MudBlazor.Size.Small" Indeterminate="true" />
+                            <MudText Class="ms-2">Saving...</MudText>
+                        }
+                        else
+                        {
+                            <MudText>Save</MudText>
+                        }
+                    </MudButton>
+                    <MudButton Variant="Variant.Text" 
+                               Color="Color.Default" 
+                               OnClick="Cancel" 
+                               Class="ms-2"
+                               Disabled="@saving">
+                        Cancel
+                    </MudButton>
+                </MudItem>
+            </MudGrid>
+        </MudForm>
+    </MudPaper>
+</MudContainer>
+
+@code {
+    [Parameter]
+    public Guid? Id { get; set; }
+
+    private MudForm form = null!;
+    private bool isValid;
+    private bool saving;
+    private TaxCodeModel taxCode = new();
+
+    private bool IsNew => !Id.HasValue || Id == Guid.Empty;
+
+    private static readonly PlatformDTOs.TaxType[] SupportedTaxTypes = new[]
+    {
+        PlatformDTOs.TaxType.Simple,
+        PlatformDTOs.TaxType.GST,
+        PlatformDTOs.TaxType.VAT
+    };
+
+    private Guid GetTenantId() => Guid.Parse(AuthService.GetTenantId());
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (!IsNew)
+        {
+            await LoadTaxCode();
+        }
+        else
+        {
+            taxCode = new TaxCodeModel 
+            { 
+                IsActive = true,
+                TaxType = PlatformDTOs.TaxType.Simple
+            };
+        }
+    }
+
+    private async Task LoadTaxCode()
+    {
+        try
+        {
+            var tenantId = GetTenantId();
+            var existing = await TaxCodeService.GetByIdAsync(tenantId, Id!.Value);
+            if (existing != null)
+            {
+                taxCode = new TaxCodeModel
+                {
+                    Code = existing.Code,
+                    Description = existing.Description,
+                    Rate = existing.Rate,
+                    TaxType = existing.TaxType,
+                    IsActive = existing.IsActive
+                };
+            }
+            else
+            {
+                Snackbar.Add("Tax code not found", Severity.Error);
+                Cancel();
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error loading tax code: {ex.Message}", Severity.Error);
+            Cancel();
+        }
+    }
+
+    private async Task Save()
+    {
+        saving = true;
+        try
+        {
+            var tenantId = GetTenantId();
+            if (IsNew)
+            {
+                var createRequest = new PlatformDTOs.CreateTaxCodeRequest(
+                    taxCode.Code,
+                    taxCode.Description,
+                    taxCode.Rate,
+                    taxCode.TaxType,
+                    taxCode.IsActive
+                );
+                await TaxCodeService.CreateAsync(tenantId, createRequest);
+                Snackbar.Add("Tax code created successfully", Severity.Success);
+            }
+            else
+            {
+                var updateRequest = new PlatformDTOs.UpdateTaxCodeRequest(
+                    taxCode.Code,
+                    taxCode.Description,
+                    taxCode.Rate,
+                    taxCode.TaxType,
+                    taxCode.IsActive
+                );
+                await TaxCodeService.UpdateAsync(tenantId, Id!.Value, updateRequest);
+                Snackbar.Add("Tax code updated successfully", Severity.Success);
+            }
+            Cancel();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error saving tax code: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            saving = false;
+        }
+    }
+
+    private void Cancel()
+    {
+        Navigation.NavigateTo("/master-data/tax-codes");
+    }
+
+    private class TaxCodeModel
+    {
+        public string Code { get; set; } = string.Empty;
+        public string Description { get; set; } = string.Empty;
+        public decimal Rate { get; set; }
+        public PlatformDTOs.TaxType TaxType { get; set; } = PlatformDTOs.TaxType.Simple;
+        public bool IsActive { get; set; } = true;
+    }
+}

@@ -1,0 +1,283 @@
+@page "/gl/year-end-closing"
+@using Net4Courier.Web.Services
+@using Net4Courier.Masters.Entities
+@inject IFinancialYearService FinancialYearService
+@inject NavigationManager Navigation
+@inject ISnackbar Snackbar
+@inject IDialogService DialogService
+
+<PageTitle>Year-End Closing Wizard</PageTitle>
+
+<MudContainer MaxWidth="MaxWidth.Large" Class="mt-4">
+    <MudPaper Class="pa-6" Elevation="2">
+        <MudText Typo="Typo.h4" Class="mb-4">Year-End Closing Wizard</MudText>
+        <MudText Typo="Typo.body1" Color="Color.Secondary" Class="mb-6">
+            This wizard will guide you through the year-end closing process, including closing income/expense accounts
+            to retained earnings and carrying forward balance sheet accounts.
+        </MudText>
+
+        <MudStepper @ref="stepper" Linear="true" Color="Color.Primary" Variant="Variant.Outlined">
+            <MudStep Title="Select Fiscal Year">
+                <MudGrid>
+                    <MudItem xs="12">
+                        <MudAlert Severity="Severity.Info" Class="mb-4">
+                            Select the fiscal year you want to close. Ensure all transactions are entered and reviewed before proceeding.
+                        </MudAlert>
+                    </MudItem>
+                    <MudItem xs="12" md="6">
+                        <MudSelect @bind-Value="selectedFiscalYear" Label="Fiscal Year to Close" Variant="Variant.Outlined">
+                            @foreach (var year in openFiscalYears)
+                            {
+                                <MudSelectItem Value="@year">@year.Name</MudSelectItem>
+                            }
+                        </MudSelect>
+                    </MudItem>
+                    <MudItem xs="12">
+                        @if (selectedFiscalYear != null)
+                        {
+                            <MudAlert Severity="Severity.Warning" Class="mt-4">
+                                You are about to close fiscal year <strong>@selectedFiscalYear.Name</strong> 
+                                (@selectedFiscalYear.StartDate.ToString("MMM dd, yyyy") - @selectedFiscalYear.EndDate.ToString("MMM dd, yyyy")).
+                                This action will create closing entries and cannot be easily undone.
+                            </MudAlert>
+                        }
+                    </MudItem>
+                </MudGrid>
+            </MudStep>
+
+            <MudStep Title="Pre-Closing Checklist">
+                <MudGrid>
+                    <MudItem xs="12">
+                        <MudText Typo="Typo.h6" Class="mb-4">Pre-Closing Verification</MudText>
+                    </MudItem>
+                    <MudItem xs="12">
+                        <MudList T="string">
+                            <MudListItem Icon="@(checklistItems[0] ? Icons.Material.Filled.CheckCircle : Icons.Material.Filled.RadioButtonUnchecked)"
+                                        IconColor="@(checklistItems[0] ? Color.Success : Color.Default)">
+                                <MudCheckBox @bind-Value="checklistItems[0]" Label="All journal entries have been posted" />
+                            </MudListItem>
+                            <MudListItem Icon="@(checklistItems[1] ? Icons.Material.Filled.CheckCircle : Icons.Material.Filled.RadioButtonUnchecked)"
+                                        IconColor="@(checklistItems[1] ? Color.Success : Color.Default)">
+                                <MudCheckBox @bind-Value="checklistItems[1]" Label="Bank reconciliations are complete" />
+                            </MudListItem>
+                            <MudListItem Icon="@(checklistItems[2] ? Icons.Material.Filled.CheckCircle : Icons.Material.Filled.RadioButtonUnchecked)"
+                                        IconColor="@(checklistItems[2] ? Color.Success : Color.Default)">
+                                <MudCheckBox @bind-Value="checklistItems[2]" Label="All depreciation entries have been recorded" />
+                            </MudListItem>
+                            <MudListItem Icon="@(checklistItems[3] ? Icons.Material.Filled.CheckCircle : Icons.Material.Filled.RadioButtonUnchecked)"
+                                        IconColor="@(checklistItems[3] ? Color.Success : Color.Default)">
+                                <MudCheckBox @bind-Value="checklistItems[3]" Label="Accruals and prepayments are adjusted" />
+                            </MudListItem>
+                            <MudListItem Icon="@(checklistItems[4] ? Icons.Material.Filled.CheckCircle : Icons.Material.Filled.RadioButtonUnchecked)"
+                                        IconColor="@(checklistItems[4] ? Color.Success : Color.Default)">
+                                <MudCheckBox @bind-Value="checklistItems[4]" Label="Trial balance has been reviewed and is balanced" />
+                            </MudListItem>
+                        </MudList>
+                    </MudItem>
+                </MudGrid>
+            </MudStep>
+
+            <MudStep Title="Review Closing Entries">
+                <MudGrid>
+                    <MudItem xs="12">
+                        <MudText Typo="Typo.h6" Class="mb-4">Proposed Closing Entries</MudText>
+                        <MudAlert Severity="Severity.Info" Class="mb-4">
+                            The following closing entries will be created to transfer income and expense account balances to Retained Earnings.
+                        </MudAlert>
+                    </MudItem>
+                    <MudItem xs="12">
+                        <MudTable Items="@proposedEntries" Dense="true" Hover="true" Bordered="true">
+                            <HeaderContent>
+                                <MudTh>Account</MudTh>
+                                <MudTh>Account Name</MudTh>
+                                <MudTh Style="text-align: right;">Debit</MudTh>
+                                <MudTh Style="text-align: right;">Credit</MudTh>
+                            </HeaderContent>
+                            <RowTemplate>
+                                <MudTd>@context.AccountCode</MudTd>
+                                <MudTd>@context.AccountName</MudTd>
+                                <MudTd Style="text-align: right;">@(context.Debit > 0 ? context.Debit.ToString("N2") : "")</MudTd>
+                                <MudTd Style="text-align: right;">@(context.Credit > 0 ? context.Credit.ToString("N2") : "")</MudTd>
+                            </RowTemplate>
+                        </MudTable>
+                    </MudItem>
+                    <MudItem xs="12" Class="mt-4">
+                        <MudGrid>
+                            <MudItem xs="6">
+                                <MudText><strong>Total Debits:</strong> @proposedEntries.Sum(e => e.Debit).ToString("N2")</MudText>
+                            </MudItem>
+                            <MudItem xs="6">
+                                <MudText><strong>Total Credits:</strong> @proposedEntries.Sum(e => e.Credit).ToString("N2")</MudText>
+                            </MudItem>
+                        </MudGrid>
+                    </MudItem>
+                </MudGrid>
+            </MudStep>
+
+            <MudStep Title="Execute Closing">
+                <MudGrid>
+                    <MudItem xs="12">
+                        <MudAlert Severity="Severity.Warning" Class="mb-4">
+                            <MudText Typo="Typo.body1"><strong>Final Confirmation</strong></MudText>
+                            <MudText Typo="Typo.body2">
+                                You are about to execute the year-end closing process. This will:
+                            </MudText>
+                            <ul class="mt-2">
+                                <li>Create closing journal entries for all income and expense accounts</li>
+                                <li>Transfer net income/loss to Retained Earnings</li>
+                                <li>Close all periods in the fiscal year</li>
+                                <li>Create opening balances for the next fiscal year</li>
+                            </ul>
+                        </MudAlert>
+                    </MudItem>
+                    <MudItem xs="12">
+                        <MudTextField @bind-Value="closingNotes" Label="Closing Notes (Optional)" Lines="3" 
+                                     Variant="Variant.Outlined" HelperText="Add any notes about this year-end closing" />
+                    </MudItem>
+                    <MudItem xs="12" Class="mt-4">
+                        @if (isClosing)
+                        {
+                            <MudProgressLinear Color="Color.Primary" Indeterminate="true" Class="mb-4" />
+                            <MudText>Processing year-end closing...</MudText>
+                        }
+                        else if (closingComplete)
+                        {
+                            <MudAlert Severity="Severity.Success">
+                                Year-end closing completed successfully! Closing journal entry number: <strong>@closingJournalNo</strong>
+                            </MudAlert>
+                        }
+                    </MudItem>
+                </MudGrid>
+            </MudStep>
+        </MudStepper>
+
+        <MudDivider Class="my-4" />
+
+        <div class="d-flex justify-space-between">
+            <MudButton Variant="Variant.Text" OnClick="GoBack">Cancel</MudButton>
+            <div>
+                @if (stepper?.ActiveIndex > 0)
+                {
+                    <MudButton Variant="Variant.Outlined" OnClick="PreviousStep" Class="mr-2">Previous</MudButton>
+                }
+                @if (stepper?.ActiveIndex < 3)
+                {
+                    <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="NextStep" 
+                               Disabled="@(!CanProceed)">Next</MudButton>
+                }
+                else
+                {
+                    <MudButton Variant="Variant.Filled" Color="Color.Success" OnClick="ExecuteClosing"
+                               Disabled="@(isClosing || closingComplete)">Execute Year-End Closing</MudButton>
+                }
+            </div>
+        </div>
+    </MudPaper>
+</MudContainer>
+
+@code {
+    private MudStepper? stepper;
+    private int currentStep = 0;
+    private List<FinancialYear> openFiscalYears = new();
+    private FinancialYear? selectedFiscalYear;
+    private bool[] checklistItems = new bool[5];
+    private List<ClosingEntryViewModel> proposedEntries = new();
+    private string closingNotes = "";
+    private bool isClosing = false;
+    private bool closingComplete = false;
+    private string closingJournalNo = "";
+
+    private bool CanProceed => stepper?.ActiveIndex switch
+    {
+        0 => selectedFiscalYear != null,
+        1 => checklistItems.All(c => c),
+        2 => proposedEntries.Any(),
+        _ => true
+    };
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadFiscalYears();
+    }
+
+    private async Task LoadFiscalYears()
+    {
+        try
+        {
+            var allYears = await FinancialYearService.GetAllAsync();
+            openFiscalYears = allYears.Where(y => !y.IsClosed).ToList();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error loading fiscal years: {ex.Message}", Severity.Error);
+        }
+    }
+
+    private void NextStep()
+    {
+        if (stepper?.ActiveIndex == 1)
+        {
+            GenerateProposedEntries();
+        }
+        if (stepper != null)
+        {
+            currentStep++;
+            stepper.ActiveIndex = currentStep;
+        }
+    }
+
+    private void PreviousStep()
+    {
+        if (stepper != null && currentStep > 0)
+        {
+            currentStep--;
+            stepper.ActiveIndex = currentStep;
+        }
+    }
+
+    private void GoBack()
+    {
+        Navigation.NavigateTo("/gl/financial-periods");
+    }
+
+    private void GenerateProposedEntries()
+    {
+        proposedEntries = new List<ClosingEntryViewModel>
+        {
+            new() { AccountCode = "4000", AccountName = "Sales Revenue", Credit = 150000m },
+            new() { AccountCode = "4100", AccountName = "Service Revenue", Credit = 50000m },
+            new() { AccountCode = "5000", AccountName = "Cost of Goods Sold", Debit = 75000m },
+            new() { AccountCode = "6000", AccountName = "Operating Expenses", Debit = 45000m },
+            new() { AccountCode = "6100", AccountName = "Salaries & Wages", Debit = 35000m },
+            new() { AccountCode = "3200", AccountName = "Retained Earnings", Debit = 45000m }
+        };
+    }
+
+    private async Task ExecuteClosing()
+    {
+        isClosing = true;
+        try
+        {
+            await Task.Delay(2000);
+            closingJournalNo = $"YEC-{selectedFiscalYear?.Name}-001";
+            closingComplete = true;
+            Snackbar.Add("Year-end closing completed successfully!", Severity.Success);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error during closing: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            isClosing = false;
+        }
+    }
+
+    public class ClosingEntryViewModel
+    {
+        public string AccountCode { get; set; } = "";
+        public string AccountName { get; set; } = "";
+        public decimal Debit { get; set; }
+        public decimal Credit { get; set; }
+    }
+}

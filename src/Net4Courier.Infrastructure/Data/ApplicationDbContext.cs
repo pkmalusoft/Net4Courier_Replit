@@ -83,7 +83,12 @@ public class ApplicationDbContext : DbContext
     public DbSet<DebitNote> DebitNotes => Set<DebitNote>();
     public DbSet<TaxRate> TaxRates => Set<TaxRate>();
     
-    // BankAccount DbSet removed during Cash/Bank module migration (entity not migrated)
+    // Cash & Bank Module Entities
+    public DbSet<BankAccount> BankAccounts => Set<BankAccount>();
+    public DbSet<CashBankTransaction> CashBankTransactions => Set<CashBankTransaction>();
+    public DbSet<CashBankTransactionLine> CashBankTransactionLines => Set<CashBankTransactionLine>();
+    public DbSet<VoucherAttachment> VoucherAttachments => Set<VoucherAttachment>();
+    
     public DbSet<BankReconciliation> BankReconciliations => Set<BankReconciliation>();
     public DbSet<BankStatementImport> BankStatementImports => Set<BankStatementImport>();
     public DbSet<BankStatementLine> BankStatementLines => Set<BankStatementLine>();
