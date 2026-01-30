@@ -1,0 +1,174 @@
+@using MudBlazor
+@using Microsoft.EntityFrameworkCore
+@using Net4Courier.Infrastructure.Data
+@using Net4Courier.Finance.Entities
+@inject IDbContextFactory<ApplicationDbContext> DbContextFactory
+
+<MudAutocomplete T="long?"
+                 Label="@Label"
+                 Value="@Value"
+                 ValueChanged="OnValueChanged"
+                 SearchFunc="@SearchAccounts"
+                 ToStringFunc="@GetAccountDisplay"
+                 Variant="Variant.Outlined"
+                 Clearable="true"
+                 Dense="@Dense"
+                 Disabled="@Disabled"
+                 Required="@Required"
+                 ShowProgressIndicator="true"
+                 ResetValueOnEmptyText="true"
+                 CoerceText="true"
+                 CoerceValue="true"
+                 MaxItems="50"
+                 DebounceInterval="300"
+                 MinCharacters="0"
+                 Placeholder="@Placeholder"
+                 Class="@Class" />
+
+@code {
+    [Parameter] public long? Value { get; set; }
+    [Parameter] public EventCallback<long?> ValueChanged { get; set; }
+    [Parameter] public string Label { get; set; } = "Account";
+    [Parameter] public string Placeholder { get; set; } = "Search account...";
+    [Parameter] public string Class { get; set; } = "";
+    [Parameter] public bool Dense { get; set; } = true;
+    [Parameter] public bool Disabled { get; set; } = false;
+    [Parameter] public bool Required { get; set; } = false;
+    [Parameter] public AccountNature? AccountNatureFilter { get; set; }
+    [Parameter] public AccountClassification? ClassificationFilter { get; set; }
+    [Parameter] public bool ExcludeGroups { get; set; } = true;
+    [Parameter] public bool OnlyGroups { get; set; } = false;
+    [Parameter] public List<long>? ExcludeIds { get; set; }
+
+    private List<AccountHead> accounts = new();
+    private bool isLoaded = false;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadAccounts();
+    }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (!isLoaded)
+        {
+            await LoadAccounts();
+        }
+    }
+
+    private async Task LoadAccounts()
+    {
+        if (isLoaded) return;
+        
+        try
+        {
+            using var context = await DbContextFactory.CreateDbContextAsync();
+            
+            var query = context.AccountHeads
+                .Where(a => a.IsActive && !a.IsDeleted)
+                .AsQueryable();
+            
+            if (AccountNatureFilter.HasValue)
+            {
+                query = query.Where(a => a.AccountNature == AccountNatureFilter.Value);
+            }
+            
+            if (ClassificationFilter.HasValue)
+            {
+                query = query.Where(a => a.Classification == ClassificationFilter.Value);
+            }
+            
+            if (ExcludeGroups)
+            {
+                query = query.Where(a => !a.IsGroup);
+            }
+            
+            if (OnlyGroups)
+            {
+                query = query.Where(a => a.IsGroup);
+            }
+            
+            accounts = await query
+                .OrderBy(a => a.Classification)
+                .ThenBy(a => a.Code)
+                .ToListAsync();
+            
+            isLoaded = true;
+            Console.WriteLine($"AccountAutocomplete: Loaded {accounts.Count} accounts");
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"AccountAutocomplete: Error loading accounts - {ex.Message}");
+        }
+    }
+
+    private async Task<IEnumerable<long?>> SearchAccounts(string searchText)
+    {
+        if (!isLoaded)
+        {
+            await LoadAccounts();
+        }
+
+        var filtered = accounts.AsEnumerable();
+        
+        if (ExcludeIds != null && ExcludeIds.Any())
+        {
+            filtered = filtered.Where(a => !ExcludeIds.Contains(a.Id));
+        }
+
+        if (string.IsNullOrWhiteSpace(searchText))
+        {
+            return filtered
+                .OrderBy(a => a.Classification)
+                .ThenBy(a => a.Code)
+                .Take(50)
+                .Select(a => (long?)a.Id);
+        }
+
+        var search = searchText.ToLowerInvariant();
+        return filtered
+            .Where(a => 
+                a.Code.ToLowerInvariant().Contains(search) ||
+                a.Name.ToLowerInvariant().Contains(search))
+            .OrderBy(a => a.Code)
+            .Take(50)
+            .Select(a => (long?)a.Id);
+    }
+
+    private string GetAccountDisplay(long? id)
+    {
+        if (!id.HasValue) return "";
+        var account = accounts.FirstOrDefault(a => a.Id == id.Value);
+        return account != null ? $"{account.Code} - {account.Name}" : "";
+    }
+
+    private async Task OnValueChanged(long? value)
+    {
+        Value = value;
+        await ValueChanged.InvokeAsync(value);
+    }
+
+    public async Task RefreshAsync()
+    {
+        isLoaded = false;
+        accounts.Clear();
+        await LoadAccounts();
+        StateHasChanged();
+    }
+
+    public AccountHead? GetSelectedAccount()
+    {
+        if (!Value.HasValue) return null;
+        return accounts.FirstOrDefault(a => a.Id == Value.Value);
+    }
+
+    public string? GetSelectedAccountName()
+    {
+        return GetSelectedAccount()?.Name;
+    }
+
+    public string? GetSelectedAccountCode()
+    {
+        return GetSelectedAccount()?.Code;
+    }
+}

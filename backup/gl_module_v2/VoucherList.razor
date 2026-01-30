@@ -4,7 +4,6 @@
 @using Microsoft.EntityFrameworkCore
 @using Net4Courier.Infrastructure.Data
 @using Net4Courier.Finance.Entities
-@using Net4Courier.Web.Components.Shared
 @using ClosedXML.Excel
 
 <MudStack Class="mt-4">
@@ -17,12 +16,19 @@
     <MudStack Row="true" Spacing="3" Class="mb-2">
         <MudDatePicker @bind-Date="_fromDate" Label="From Date" DateFormat="dd-MMM-yyyy" AnchorOrigin="Origin.BottomCenter" TransformOrigin="Origin.TopCenter" />
         <MudDatePicker @bind-Date="_toDate" Label="To Date" DateFormat="dd-MMM-yyyy" AnchorOrigin="Origin.BottomCenter" TransformOrigin="Origin.TopCenter" />
-        <div style="width: 250px;">
-            <AccountAutocomplete @bind-Value="_filterAccountId"
-                                Label="Account"
-                                AccountNatureFilter="@AccountNature"
-                                Placeholder="Filter by account..." />
-        </div>
+        <MudAutocomplete T="AccountHead"
+                         @bind-Value="_filterAccount"
+                         SearchFunc="@SearchAccounts"
+                         ToStringFunc="@(acc => acc == null ? "" : $"{acc.Code} - {acc.Name}")"
+                         Label="Account"
+                         Variant="Variant.Text"
+                         Clearable="true"
+                         Style="width: 250px;"
+                         Dense="true"
+                         ShowProgressIndicator="true"
+                         MinCharacters="0"
+                         MaxItems="50"
+                         ResetValueOnEmptyText="true" />
         <MudTextField @bind-Value="_searchText" Label="Search" Immediate="true" 
                       Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Filled.Search" />
         <MudButton Variant="Variant.Outlined" Color="Color.Primary" OnClick="LoadVouchers">Filter</MudButton>
@@ -99,7 +105,22 @@
     private DateTime? _fromDate = DateTime.SpecifyKind(DateTime.Today.AddMonths(-1), DateTimeKind.Utc);
     private DateTime? _toDate = DateTime.SpecifyKind(DateTime.Today, DateTimeKind.Utc);
     private string _searchText = "";
-    private long? _filterAccountId;
+    private AccountHead? _filterAccount;
+    private long? _filterAccountId => _filterAccount?.Id;
+
+    private Task<IEnumerable<AccountHead>> SearchAccounts(string searchText)
+    {
+        if (string.IsNullOrWhiteSpace(searchText))
+        {
+            return Task.FromResult(_accounts.Take(50).AsEnumerable());
+        }
+        
+        var results = _accounts
+            .Where(a => a.Code.Contains(searchText, StringComparison.OrdinalIgnoreCase) ||
+                       a.Name.Contains(searchText, StringComparison.OrdinalIgnoreCase))
+            .Take(50);
+        return Task.FromResult(results);
+    }
 
     private IEnumerable<Journal> _filteredVouchers => string.IsNullOrEmpty(_searchText)
         ? _vouchers
@@ -127,6 +148,11 @@
             .ToListAsync();
         
         Console.WriteLine($"VoucherList: Loaded {_accounts.Count} accounts");
+        foreach (var acc in _accounts)
+        {
+            Console.WriteLine($"  Account: {acc.Code} - {acc.Name}");
+        }
+        StateHasChanged();
     }
 
     private async Task LoadVouchers()

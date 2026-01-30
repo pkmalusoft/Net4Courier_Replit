@@ -1,0 +1,168 @@
+@page "/control-accounts"
+@inject ApplicationDbContext DbContext
+@inject ISnackbar Snackbar
+@using Microsoft.EntityFrameworkCore
+@using Net4Courier.Infrastructure.Data
+@using Net4Courier.Finance.Entities
+
+<PageTitle>Control Account Settings - Net4Courier</PageTitle>
+
+<MudContainer MaxWidth="MaxWidth.Medium" Class="mt-4">
+    <MudPaper Class="pa-4" Elevation="2">
+        <MudToolBar Dense="true" Class="pl-0">
+            <MudText Typo="Typo.h6">Control Account Settings</MudText>
+            <MudSpacer />
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="SaveAll" Disabled="!_hasChanges">
+                Save Changes
+            </MudButton>
+        </MudToolBar>
+
+        <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mt-2 mb-4">
+            Map each control account type to the appropriate Chart of Accounts entry.
+        </MudText>
+
+        <MudSimpleTable Dense="true" Hover="true" Bordered="true" Class="mt-4">
+            <thead>
+                <tr>
+                    <th style="width: 200px;">Account Type</th>
+                    <th>Mapped Account</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var setting in _settings)
+                {
+                    <tr>
+                        <td><MudText Typo="Typo.body2">@GetAccountTypeLabel(setting.AccountType)</MudText></td>
+                        <td>
+                            <MudSelect T="long?" Value="@setting.AccountHeadId" ValueChanged="@(v => OnAccountChanged(setting, v))" 
+                                       Dense="true" Variant="Variant.Outlined" Margin="Margin.Dense"
+                                       AnchorOrigin="Origin.BottomCenter" TransformOrigin="Origin.TopCenter" Clearable="true">
+                                @foreach (var acc in GetFilteredAccounts(setting.AccountType))
+                                {
+                                    <MudSelectItem T="long?" Value="@acc.Id">@acc.Name (@acc.Code)</MudSelectItem>
+                                }
+                            </MudSelect>
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </MudSimpleTable>
+    </MudPaper>
+</MudContainer>
+
+@code {
+    private List<ControlAccountSettingVM> _settings = new();
+    private List<AccountHead> _accounts = new();
+    private bool _hasChanges;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _accounts = await DbContext.AccountHeads
+            .Where(a => a.IsActive && !a.IsDeleted && !a.IsGroup)
+            .OrderBy(a => a.Name)
+            .ToListAsync();
+
+        var existingSettings = await DbContext.ControlAccountSettings
+            .Where(s => !s.IsDeleted)
+            .ToListAsync();
+
+        foreach (ControlAccountType accountType in Enum.GetValues<ControlAccountType>())
+        {
+            var existing = existingSettings.FirstOrDefault(s => s.AccountType == accountType);
+            _settings.Add(new ControlAccountSettingVM
+            {
+                AccountType = accountType,
+                AccountHeadId = existing?.AccountHeadId,
+                ExistingId = existing?.Id
+            });
+        }
+    }
+
+    private void OnAccountChanged(ControlAccountSettingVM setting, long? accountId)
+    {
+        setting.AccountHeadId = accountId;
+        _hasChanges = true;
+        StateHasChanged();
+    }
+
+    private async Task SaveAll()
+    {
+        foreach (var setting in _settings)
+        {
+            if (setting.ExistingId.HasValue)
+            {
+                var existing = await DbContext.ControlAccountSettings.FindAsync(setting.ExistingId.Value);
+                if (existing != null)
+                {
+                    if (setting.AccountHeadId.HasValue)
+                    {
+                        existing.AccountHeadId = setting.AccountHeadId.Value;
+                        existing.ModifiedAt = DateTime.UtcNow;
+                    }
+                    else
+                    {
+                        existing.IsDeleted = true;
+                        existing.ModifiedAt = DateTime.UtcNow;
+                    }
+                }
+            }
+            else if (setting.AccountHeadId.HasValue)
+            {
+                var newSetting = new ControlAccountSetting
+                {
+                    CompanyId = 1,
+                    AccountType = setting.AccountType,
+                    AccountHeadId = setting.AccountHeadId.Value,
+                    CreatedAt = DateTime.UtcNow
+                };
+                DbContext.ControlAccountSettings.Add(newSetting);
+            }
+        }
+
+        await DbContext.SaveChangesAsync();
+        _hasChanges = false;
+        Snackbar.Add("Control account settings saved successfully", Severity.Success);
+    }
+
+    private string GetAccountTypeLabel(ControlAccountType type) => type switch
+    {
+        ControlAccountType.CashAccount => "Cash Account (Default)",
+        ControlAccountType.CODControl => "COD Control Account",
+        ControlAccountType.PrepaidControl => "Prepaid Control Account",
+        ControlAccountType.CADControl => "CAD Control Account",
+        ControlAccountType.FreightReceivable => "Freight Receivable",
+        ControlAccountType.FreightPayable => "Freight Payable",
+        ControlAccountType.TDSPayable => "TDS Payable",
+        ControlAccountType.GSTPayable => "GST Payable",
+        ControlAccountType.GSTReceivable => "GST Receivable (Input Credit)",
+        ControlAccountType.RoundOff => "Round Off Account",
+        ControlAccountType.Discount => "Discount Account",
+        ControlAccountType.BankAccount => "Bank Account (Default)",
+        _ => type.ToString()
+    };
+
+    private IEnumerable<AccountHead> GetFilteredAccounts(ControlAccountType type)
+    {
+        return type switch
+        {
+            ControlAccountType.CashAccount => _accounts.Where(a => a.AccountNature == AccountNature.CashAccount),
+            ControlAccountType.BankAccount => _accounts.Where(a => a.AccountNature == AccountNature.BankAccount),
+            ControlAccountType.CODControl or ControlAccountType.PrepaidControl or ControlAccountType.CADControl 
+                => _accounts.Where(a => a.AccountNature == AccountNature.ControlAccount || a.AccountNature == AccountNature.Receivable),
+            ControlAccountType.FreightReceivable => _accounts.Where(a => a.AccountNature == AccountNature.Receivable || a.AccountNature == AccountNature.ControlAccount),
+            ControlAccountType.FreightPayable or ControlAccountType.TDSPayable or ControlAccountType.GSTPayable 
+                => _accounts.Where(a => a.AccountNature == AccountNature.Payable || a.AccountNature == AccountNature.TaxAccount),
+            ControlAccountType.GSTReceivable => _accounts.Where(a => a.AccountNature == AccountNature.TaxAccount || a.Classification == AccountClassification.Assets),
+            ControlAccountType.RoundOff => _accounts.Where(a => a.AccountNature == AccountNature.RoundOffAccount || a.Classification == AccountClassification.Expenditure),
+            ControlAccountType.Discount => _accounts.Where(a => a.AccountNature == AccountNature.DiscountAccount || a.Classification == AccountClassification.Expenditure),
+            _ => _accounts
+        };
+    }
+
+    private class ControlAccountSettingVM
+    {
+        public ControlAccountType AccountType { get; set; }
+        public long? AccountHeadId { get; set; }
+        public long? ExistingId { get; set; }
+    }
+}

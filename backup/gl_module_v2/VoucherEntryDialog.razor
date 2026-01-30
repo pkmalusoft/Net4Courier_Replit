@@ -3,7 +3,6 @@
 @using Microsoft.EntityFrameworkCore
 @using Net4Courier.Infrastructure.Data
 @using Net4Courier.Finance.Entities
-@using Net4Courier.Web.Components.Shared
 
 <MudDialog>
     <TitleContent>
@@ -36,11 +35,21 @@
                     </MudSelect>
                 </MudItem>
                 <MudItem xs="12" sm="3">
-                    <AccountAutocomplete @bind-Value="_primaryAccountId"
-                                        Label="@($"{VoucherTypeName} Account")"
-                                        AccountNatureFilter="@AccountNature"
-                                        Required="true"
-                                        Disabled="@IsReadOnly" />
+                    <MudAutocomplete T="AccountHead"
+                                     Label="@($"{VoucherTypeName} Account")"
+                                     @bind-Value="_selectedPrimaryAccount"
+                                     SearchFunc="@SearchPrimaryAccounts"
+                                     ToStringFunc="@(acc => acc == null ? "" : $"{acc.Code} - {acc.Name}")"
+                                     Variant="Variant.Outlined"
+                                     Required="true"
+                                     Disabled="@IsReadOnly"
+                                     Dense="true"
+                                     ShowProgressIndicator="true"
+                                     MinCharacters="0"
+                                     MaxItems="50"
+                                     ResetValueOnEmptyText="false"
+                                     CoerceText="false"
+                                     CoerceValue="false" />
                 </MudItem>
                 <MudItem xs="12" sm="8">
                     <MudTextField @bind-Value="_narration" Label="Narration"
@@ -83,10 +92,20 @@
                         }
                         else
                         {
-                            <AccountAutocomplete Value="@(context.AccountId > 0 ? (long?)context.AccountId : null)"
-                                                ValueChanged="@(id => OnEntryAccountChanged(context, id))"
-                                                Label=""
-                                                Placeholder="Select account..." />
+                            <MudAutocomplete T="AccountHead"
+                                             Value="@GetAccountById(context.AccountHeadId)"
+                                             ValueChanged="@(acc => OnAccountSelected(context, acc))"
+                                             SearchFunc="@SearchAllAccounts"
+                                             ToStringFunc="@(acc => acc == null ? "" : $"{acc.Code} - {acc.Name}")"
+                                             Variant="Variant.Text"
+                                             Dense="true"
+                                             Margin="Margin.Dense"
+                                             ShowProgressIndicator="true"
+                                             MinCharacters="0"
+                                             MaxItems="50"
+                                             ResetValueOnEmptyText="false"
+                                             CoerceText="false"
+                                             CoerceValue="false" />
                         }
                     </MudTd>
                     <MudTd>
@@ -181,135 +200,154 @@
     private string _voucherNo = "";
     private DateTime? _voucherDate = DateTime.Today;
     private VoucherDirection _direction = VoucherDirection.Receipt;
-    private long? _primaryAccountId;
+    private AccountHead? _selectedPrimaryAccount;
     private string? _narration;
     private string? _reference;
-    private List<VoucherEntryItem> _entries = new();
-    private Dictionary<long, AccountHead> _accountCache = new();
+    private List<JournalEntry> _entries = new();
+    private List<AccountHead> _primaryAccounts = new();
+    private List<AccountHead> _allAccounts = new();
 
-    private decimal TotalAmount => _entries.Sum(e => e.Amount);
-    private bool CanSave => _primaryAccountId.HasValue && _primaryAccountId.Value > 0 && 
-                            _entries.Any(e => e.AccountId > 0 && e.Amount > 0) && TotalAmount > 0;
+    private long _primaryAccountId => _selectedPrimaryAccount?.Id ?? 0;
+    private decimal TotalAmount => _entries.Sum(e => GetEntryAmount(e));
+    private bool CanSave => _primaryAccountId > 0 && _entries.Any(e => e.AccountHeadId > 0 && GetEntryAmount(e) > 0) && TotalAmount > 0;
 
-    private class VoucherEntryItem
+    private Task<IEnumerable<AccountHead>> SearchPrimaryAccounts(string searchText)
     {
-        public long AccountId { get; set; }
-        public string? AccountCode { get; set; }
-        public string? AccountName { get; set; }
-        public string? Narration { get; set; }
-        public decimal Amount { get; set; }
-        public long? PartyId { get; set; }
-        public string? CostCentre { get; set; }
-    }
-
-    private List<long> GetExcludedAccountIds()
-    {
-        var excludeIds = new List<long>();
-        if (_primaryAccountId.HasValue && _primaryAccountId.Value > 0)
+        if (string.IsNullOrWhiteSpace(searchText))
         {
-            excludeIds.Add(_primaryAccountId.Value);
+            return Task.FromResult(_primaryAccounts.Take(50).AsEnumerable());
         }
-        return excludeIds;
+        
+        var results = _primaryAccounts
+            .Where(a => a.Code.Contains(searchText, StringComparison.OrdinalIgnoreCase) ||
+                       a.Name.Contains(searchText, StringComparison.OrdinalIgnoreCase))
+            .Take(50);
+        return Task.FromResult(results);
     }
 
-    private async void OnEntryAccountChanged(VoucherEntryItem entry, long? accountId)
+    private Task<IEnumerable<AccountHead>> SearchAllAccounts(string searchText)
     {
-        entry.AccountId = accountId ?? 0;
-        if (accountId.HasValue && accountId.Value > 0)
+        if (string.IsNullOrWhiteSpace(searchText))
         {
-            var account = await GetAccountFromCache(accountId.Value);
-            if (account != null)
-            {
-                entry.AccountCode = account.Code;
-                entry.AccountName = account.Name;
-            }
+            return Task.FromResult(_allAccounts.Take(50).AsEnumerable());
+        }
+        
+        var results = _allAccounts
+            .Where(a => a.Code.Contains(searchText, StringComparison.OrdinalIgnoreCase) ||
+                       a.Name.Contains(searchText, StringComparison.OrdinalIgnoreCase))
+            .Take(50);
+        return Task.FromResult(results);
+    }
+
+    private AccountHead? GetAccountById(long accountId)
+    {
+        if (accountId == 0) return null;
+        return _allAccounts.FirstOrDefault(a => a.Id == accountId);
+    }
+
+    private void OnAccountSelected(JournalEntry entry, AccountHead? account)
+    {
+        if (account != null)
+        {
+            entry.AccountHeadId = account.Id;
+            entry.AccountCode = account.Code;
+            entry.AccountName = account.Name;
         }
         else
         {
+            entry.AccountHeadId = 0;
             entry.AccountCode = null;
             entry.AccountName = null;
         }
-        StateHasChanged();
     }
 
-    private async Task<AccountHead?> GetAccountFromCache(long accountId)
+    private decimal GetEntryAmount(JournalEntry entry)
     {
-        if (_accountCache.TryGetValue(accountId, out var cached))
+        return _direction == VoucherDirection.Receipt ? (entry.Credit ?? 0) : (entry.Debit ?? 0);
+    }
+
+    private void SetEntryAmount(JournalEntry entry, decimal amount)
+    {
+        if (_direction == VoucherDirection.Receipt)
         {
-            return cached;
+            entry.Credit = amount;
+            entry.Debit = null;
         }
-
-        await using var context = await DbContextFactory.CreateDbContextAsync();
-        var account = await context.AccountHeads.FirstOrDefaultAsync(a => a.Id == accountId);
-        if (account != null)
+        else
         {
-            _accountCache[accountId] = account;
+            entry.Debit = amount;
+            entry.Credit = null;
         }
-        return account;
-    }
-
-    private decimal GetEntryAmount(VoucherEntryItem entry)
-    {
-        return entry.Amount;
-    }
-
-    private void SetEntryAmount(VoucherEntryItem entry, decimal amount)
-    {
-        entry.Amount = amount;
     }
 
     protected override async Task OnInitializedAsync()
     {
-        Console.WriteLine($"VoucherEntryDialog: Initializing with AccountNature={AccountNature}");
-        
+        await LoadAccounts();
+
         if (Journal != null)
         {
-            await LoadExistingJournal();
+            _voucherNo = Journal.VoucherNo;
+            _voucherDate = Journal.VoucherDate;
+            _narration = Journal.Narration;
+            _reference = Journal.Reference;
+            
+            var primaryEntry = Journal.Entries.FirstOrDefault(e => 
+                _primaryAccounts.Any(a => a.Id == e.AccountHeadId));
+            
+            if (primaryEntry != null)
+            {
+                _selectedPrimaryAccount = _primaryAccounts.FirstOrDefault(a => a.Id == primaryEntry.AccountHeadId);
+                _direction = (primaryEntry.Debit ?? 0) > 0 ? VoucherDirection.Receipt : VoucherDirection.Payment;
+            }
+            
+            _entries = Journal.Entries
+                .Where(e => !_primaryAccounts.Any(a => a.Id == e.AccountHeadId))
+                .Select(e => new JournalEntry
+                {
+                    AccountHeadId = e.AccountHeadId,
+                    AccountCode = e.AccountCode,
+                    AccountName = e.AccountName,
+                    Debit = e.Debit,
+                    Credit = e.Credit,
+                    Narration = e.Narration,
+                    PartyId = e.PartyId,
+                    CostCentre = e.CostCentre
+                })
+                .ToList();
         }
         else
         {
             _voucherNo = await GenerateVoucherNo();
-            _entries.Add(new VoucherEntryItem());
+            _entries.Add(new JournalEntry());
         }
 
         _isLoading = false;
     }
 
-    private async Task LoadExistingJournal()
+    private async Task LoadAccounts()
     {
-        await using var context = await DbContextFactory.CreateDbContextAsync();
+        await using var dbContext = await DbContextFactory.CreateDbContextAsync();
         
-        _voucherNo = Journal!.VoucherNo;
-        _voucherDate = Journal.VoucherDate;
-        _narration = Journal.Narration;
-        _reference = Journal.Reference;
+        var accountNatureValue = (int)AccountNature;
+        Console.WriteLine($"VoucherEntryDialog: Loading accounts with AccountNature={(int)AccountNature} ({AccountNature})");
         
-        var primaryAccounts = await context.AccountHeads
-            .Where(a => a.AccountNature == AccountNature && a.IsActive && !a.IsGroup && !a.IsDeleted)
+        _primaryAccounts = await dbContext.AccountHeads
+            .Where(a => (int)a.AccountNature == accountNatureValue && a.IsActive && !a.IsGroup && !a.IsDeleted)
+            .OrderBy(a => a.Name)
             .ToListAsync();
 
-        var primaryEntry = Journal.Entries.FirstOrDefault(e => 
-            primaryAccounts.Any(a => a.Id == e.AccountHeadId));
-
-        if (primaryEntry != null)
+        _allAccounts = await dbContext.AccountHeads
+            .Where(a => a.IsActive && !a.IsGroup && (int)a.AccountNature != accountNatureValue && !a.IsDeleted)
+            .OrderBy(a => a.Classification)
+            .ThenBy(a => a.Code)
+            .ToListAsync();
+        
+        Console.WriteLine($"VoucherEntryDialog: Loaded {_primaryAccounts.Count} primary accounts, {_allAccounts.Count} other accounts");
+        foreach (var acc in _primaryAccounts)
         {
-            _primaryAccountId = primaryEntry.AccountHeadId;
-            _direction = (primaryEntry.Debit ?? 0) > 0 ? VoucherDirection.Receipt : VoucherDirection.Payment;
+            Console.WriteLine($"  Primary: {acc.Code} - {acc.Name} (AccountNature={acc.AccountNature})");
         }
-
-        _entries = Journal.Entries
-            .Where(e => !primaryAccounts.Any(a => a.Id == e.AccountHeadId))
-            .Select(e => new VoucherEntryItem
-            {
-                AccountId = e.AccountHeadId,
-                AccountCode = e.AccountCode,
-                AccountName = e.AccountName,
-                Amount = (e.Debit ?? 0) > 0 ? e.Debit.Value : (e.Credit ?? 0),
-                Narration = e.Narration,
-                PartyId = e.PartyId,
-                CostCentre = e.CostCentre
-            })
-            .ToList();
+        StateHasChanged();
     }
 
     private async Task<string> GenerateVoucherNo()
@@ -339,26 +377,32 @@
         return $"{prefix}-{year}{month:D2}-{nextNum:D5}";
     }
 
+    private void OnAccountChanged(JournalEntry entry, long accountId)
+    {
+        entry.AccountHeadId = accountId;
+        var account = _allAccounts.FirstOrDefault(a => a.Id == accountId);
+        if (account != null)
+        {
+            entry.AccountCode = account.Code;
+            entry.AccountName = account.Name;
+        }
+    }
+
     private void AddEntry()
     {
-        _entries.Add(new VoucherEntryItem());
+        _entries.Add(new JournalEntry());
     }
 
-    private void RemoveEntry(VoucherEntryItem entry)
+    private void RemoveEntry(JournalEntry entry)
     {
         _entries.Remove(entry);
-    }
-
-    private void Cancel()
-    {
-        MudDialog.Cancel();
     }
 
     private async Task Save()
     {
         if (!CanSave)
         {
-            Snackbar.Add("Please fill in all required fields", Severity.Warning);
+            Snackbar.Add("Please add at least one entry with an account and amount", Severity.Warning);
             return;
         }
 
@@ -366,10 +410,10 @@
         {
             await using var dbContext = await DbContextFactory.CreateDbContextAsync();
             
-            var primaryAccount = await dbContext.AccountHeads.FirstOrDefaultAsync(a => a.Id == _primaryAccountId);
+            var primaryAccount = _primaryAccounts.FirstOrDefault(a => a.Id == _primaryAccountId);
             if (primaryAccount == null)
             {
-                Snackbar.Add("Primary account not found", Severity.Error);
+                Snackbar.Add($"Please select a {VoucherTypeName} account", Severity.Warning);
                 return;
             }
 
@@ -383,12 +427,8 @@
                     VoucherType = VoucherType,
                     Narration = _narration,
                     Reference = _reference,
-                    TotalDebit = TotalAmount,
-                    TotalCredit = TotalAmount,
-                    IsPosted = true,
-                    PostedAt = DateTime.UtcNow,
-                    CreatedAt = DateTime.UtcNow,
-                    Entries = new List<JournalEntry>()
+                    IsPosted = false,
+                    CreatedAt = DateTime.UtcNow
                 };
                 dbContext.Journals.Add(journal);
             }
@@ -397,60 +437,82 @@
                 journal = await dbContext.Journals
                     .Include(j => j.Entries)
                     .FirstOrDefaultAsync(j => j.Id == Journal.Id);
-                
+                    
                 if (journal == null)
                 {
-                    Snackbar.Add("Journal not found", Severity.Error);
+                    Snackbar.Add("Voucher not found", Severity.Error);
                     return;
                 }
-
+                
                 journal.VoucherDate = _voucherDate ?? DateTime.Today;
                 journal.Narration = _narration;
                 journal.Reference = _reference;
-                journal.TotalDebit = TotalAmount;
-                journal.TotalCredit = TotalAmount;
                 journal.ModifiedAt = DateTime.UtcNow;
-
+                
                 dbContext.JournalEntries.RemoveRange(journal.Entries);
                 journal.Entries.Clear();
             }
 
-            journal.Entries.Add(new JournalEntry
+            var primaryEntry = new JournalEntry
             {
                 AccountHeadId = primaryAccount.Id,
                 AccountCode = primaryAccount.Code,
                 AccountName = primaryAccount.Name,
-                Debit = _direction == VoucherDirection.Receipt ? TotalAmount : null,
-                Credit = _direction == VoucherDirection.Payment ? TotalAmount : null,
-                Narration = _narration,
-                CreatedAt = DateTime.UtcNow
-            });
+                Narration = _narration
+            };
 
-            foreach (var entry in _entries.Where(e => e.AccountId > 0 && e.Amount > 0))
+            if (_direction == VoucherDirection.Receipt)
             {
-                journal.Entries.Add(new JournalEntry
+                primaryEntry.Debit = TotalAmount;
+                primaryEntry.Credit = null;
+            }
+            else
+            {
+                primaryEntry.Debit = null;
+                primaryEntry.Credit = TotalAmount;
+            }
+            journal.Entries.Add(primaryEntry);
+
+            foreach (var entry in _entries.Where(e => e.AccountHeadId > 0 && GetEntryAmount(e) > 0))
+            {
+                var newEntry = new JournalEntry
                 {
-                    AccountHeadId = entry.AccountId,
+                    AccountHeadId = entry.AccountHeadId,
                     AccountCode = entry.AccountCode,
                     AccountName = entry.AccountName,
-                    Debit = _direction == VoucherDirection.Payment ? entry.Amount : null,
-                    Credit = _direction == VoucherDirection.Receipt ? entry.Amount : null,
-                    Narration = entry.Narration,
+                    Narration = entry.Narration ?? _narration,
                     PartyId = entry.PartyId,
-                    CostCentre = entry.CostCentre,
-                    CreatedAt = DateTime.UtcNow
-                });
+                    CostCentre = entry.CostCentre
+                };
+                
+                if (_direction == VoucherDirection.Receipt)
+                {
+                    newEntry.Credit = GetEntryAmount(entry);
+                    newEntry.Debit = null;
+                }
+                else
+                {
+                    newEntry.Debit = GetEntryAmount(entry);
+                    newEntry.Credit = null;
+                }
+                journal.Entries.Add(newEntry);
             }
 
-            await dbContext.SaveChangesAsync();
+            journal.TotalDebit = journal.Entries.Sum(e => e.Debit ?? 0);
+            journal.TotalCredit = journal.Entries.Sum(e => e.Credit ?? 0);
 
-            Snackbar.Add($"{VoucherTypeName} Voucher saved successfully", Severity.Success);
+            await dbContext.SaveChangesAsync();
+            Snackbar.Add($"{VoucherTypeName} voucher saved successfully", Severity.Success);
             MudDialog.Close(DialogResult.Ok(true));
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"Error saving voucher: {ex.Message}");
             Snackbar.Add($"Error saving voucher: {ex.Message}", Severity.Error);
         }
+    }
+
+    private void Cancel()
+    {
+        MudDialog.Cancel();
     }
 }
