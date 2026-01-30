@@ -45,10 +45,10 @@ The application is built on .NET 8 Blazor Server, adopting a modular architectur
 - **API Integration**: Configuration and webhook endpoints for third-party booking websites.
 - **Knowledge Base**: Integrated documentation using Markdig for "How To Guides".
 - **Navigation Menu**: Restructured into 9 collapsible main sections.
-- **General Ledger Module**: Full GL implementation with Chart of Accounts, Control Accounts, Financial Years, Tax Setup, Vouchers, Bank Reconciliation, Journal Vouchers, and comprehensive Financial Reports.
-- **TrueBooks GL Integration**: Migrated GL module to TrueBooks ERP platform, adapted for single-tenant operation with UUIDs.
-- **TrueBooks GL Setup Pages**: Integrated GL Setup pages from TrueBooks platform including Chart of Accounts, Currencies, Voucher Numbering, and Control Accounts settings. Pages use fixed tenant ID '11111111-1111-1111-1111-111111111111' via SingleTenantContext. Routes use `/gl/` prefix (e.g., `/gl/chart-of-accounts`, `/gl/currencies`, `/gl/voucher-numbering`, `/gl/control-accounts`).
-- **TrueBooks GL Services**: Local service implementations for GL module including ChartOfAccountsService, CurrencyService, TaxCodeService, VoucherNumberingService, and AccountClassificationService. Services located in `Net4Courier.Web/Services/GL/` with interfaces in `Net4Courier.Web/Interfaces/`. Services use PlatformDbContext from TrueBooks NuGet packages.
+- **TrueBooks GL Module (Complete Migration)**: Full GL functionality now served exclusively from TrueBooks NuGet packages. All old local GL implementations have been removed and archived to `recycle_bin/old_gl_module/`. Uses fixed tenant ID '11111111-1111-1111-1111-111111111111' via SingleTenantContext.
+- **TrueBooks GL Routes**: All GL functionality uses TrueBooks package routes: `/gl/chart-of-accounts`, `/gl/journal-entry`, `/gl/journal-list`, `/reports/ledger`, `/reports/trial-balance`, `/reports/profit-loss`, `/reports/balance-sheet`.
+- **Cash & Bank Landing Page**: Navigation page at `/cash-bank` that links to TrueBooks GL journal entry for voucher management.
+- **TrueBooks NuGet Packages**: Located in `NuGet/packages/` - includes Truebooks.Platform.Core, Truebooks.Platform.Finance, Truebooks.Platform.Contracts, Truebooks.Shared.UI, Truebooks.AccountsFinance.GL.UI, and Truebooks.Reports.GL.UI.
 - **Error Handling**: Robust global error handling with `ErrorBoundary`, `PageErrorHandler`, and `MudBlazor Snackbar` integration.
 - **Demo Data Management**: Admin feature to create and delete demo data for training.
 - **Initial Setup Wizard**: Secure setup page for platform administrators to configure new client deployments.
