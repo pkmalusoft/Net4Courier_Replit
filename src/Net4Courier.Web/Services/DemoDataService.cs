@@ -24,7 +24,13 @@ public interface IDemoDataService
 
 public class AllDataStats
 {
-    // Transaction Data (will be deleted)
+    // Business Data (will be deleted)
+    public int Parties { get; set; }
+    public int Employees { get; set; }
+    public int Vehicles { get; set; }
+    public int AWBStocks { get; set; }
+    public int PrepaidDocuments { get; set; }
+    public int BankAccounts { get; set; }
     public int PickupRequests { get; set; }
     public int AWBs { get; set; }
     public int DRS { get; set; }
@@ -35,13 +41,12 @@ public class AllDataStats
     public int BankReconciliations { get; set; }
     public int Tickets { get; set; }
     
-    // Master Data (will be preserved)
-    public int Parties { get; set; }
-    public int Employees { get; set; }
-    public int Vehicles { get; set; }
-    public int AWBStocks { get; set; }
-    public int PrepaidDocuments { get; set; }
-    public int BankAccounts { get; set; }
+    // System Configuration (will be preserved)
+    public int Companies { get; set; }
+    public int Branches { get; set; }
+    public int Ports { get; set; }
+    public int Countries { get; set; }
+    public int ChartOfAccounts { get; set; }
 }
 
 public class DemoDataStats
@@ -1523,11 +1528,13 @@ public class DemoDataService : IDemoDataService
 
         return new AllDataStats
         {
+            // Business Data (will be deleted)
             Parties = await context.Parties.CountAsync(),
             Employees = await context.Employees.CountAsync(),
             Vehicles = await context.Vehicles.CountAsync(),
             AWBStocks = await context.AWBStocks.CountAsync(),
             PrepaidDocuments = await context.PrepaidDocuments.CountAsync(),
+            BankAccounts = await context.BankAccounts.CountAsync(),
             Tickets = ticketCount,
             PickupRequests = await context.PickupRequests.CountAsync(),
             AWBs = await context.InscanMasters.CountAsync(),
@@ -1535,9 +1542,14 @@ public class DemoDataService : IDemoDataService
             Invoices = await context.Invoices.CountAsync(),
             Receipts = await context.Receipts.CountAsync(),
             Journals = await context.Journals.CountAsync(),
-            BankAccounts = await context.BankAccounts.CountAsync(),
             BankReconciliations = await context.BankReconciliations.CountAsync(),
-            CashBankTransactions = await context.CashBankTransactions.CountAsync()
+            CashBankTransactions = await context.CashBankTransactions.CountAsync(),
+            // System Configuration (will be preserved)
+            Companies = await context.Companies.CountAsync(),
+            Branches = await context.Branches.CountAsync(),
+            Ports = await context.Ports.CountAsync(),
+            Countries = await context.Countries.CountAsync(),
+            ChartOfAccounts = await context.AccountHeads.CountAsync()
         };
     }
 
@@ -1715,15 +1727,94 @@ public class DemoDataService : IDemoDataService
         }
         catch { }
 
-        // NOTE: The following MASTER DATA is preserved:
-        // - Parties (Customers, Vendors, Agents, Couriers)
-        // - Employees
-        // - Vehicles  
-        // - AWB Stocks
-        // - Prepaid Documents
-        // - Bank Accounts
-        // - Ticket Categories
-        // - Service Types, Shipment Modes, Zones, Rate Cards, etc.
+        // Ticket Categories
+        try
+        {
+            var ticketCategories = await context.TicketCategories.ToListAsync();
+            context.TicketCategories.RemoveRange(ticketCategories);
+            await context.SaveChangesAsync();
+        }
+        catch { }
+
+        // Prepaid Documents
+        try
+        {
+            var prepaidAwbs = await context.PrepaidAWBs.ToListAsync();
+            context.PrepaidAWBs.RemoveRange(prepaidAwbs);
+            await context.SaveChangesAsync();
+
+            var prepaidDocs = await context.PrepaidDocuments.ToListAsync();
+            context.PrepaidDocuments.RemoveRange(prepaidDocs);
+            await context.SaveChangesAsync();
+        }
+        catch { }
+
+        // AWB Stocks
+        try
+        {
+            var awbStocks = await context.AWBStocks.ToListAsync();
+            context.AWBStocks.RemoveRange(awbStocks);
+            await context.SaveChangesAsync();
+        }
+        catch { }
+
+        // Bank Accounts
+        try
+        {
+            var bankAccounts = await context.BankAccounts.ToListAsync();
+            context.BankAccounts.RemoveRange(bankAccounts);
+            await context.SaveChangesAsync();
+        }
+        catch { }
+
+        // Vehicles
+        try
+        {
+            var vehicles = await context.Vehicles.ToListAsync();
+            context.Vehicles.RemoveRange(vehicles);
+            await context.SaveChangesAsync();
+        }
+        catch { }
+
+        // Employees
+        try
+        {
+            var employees = await context.Employees.ToListAsync();
+            context.Employees.RemoveRange(employees);
+            await context.SaveChangesAsync();
+        }
+        catch { }
+
+        // Parties and related data
+        try
+        {
+            var slaAgreements = await context.SLAAgreements.ToListAsync();
+            context.SLAAgreements.RemoveRange(slaAgreements);
+            await context.SaveChangesAsync();
+
+            var customerBranches = await context.CustomerBranches.ToListAsync();
+            context.CustomerBranches.RemoveRange(customerBranches);
+            await context.SaveChangesAsync();
+
+            var partyAddresses = await context.PartyAddresses.ToListAsync();
+            context.PartyAddresses.RemoveRange(partyAddresses);
+            await context.SaveChangesAsync();
+
+            var parties = await context.Parties.ToListAsync();
+            context.Parties.RemoveRange(parties);
+            await context.SaveChangesAsync();
+        }
+        catch { }
+
+        // NOTE: The following SYSTEM CONFIGURATION is preserved:
+        // - Company, Branch
+        // - Ports, Currency
+        // - Country, State, City, Location (geographic data)
+        // - Designation, Departments
+        // - Chart of Accounts, Account Types, Account Classification
+        // - Service Types, Shipment Modes, Zones, Rate Cards
+        // - Shipment Statuses, Status Groups
+        // - Users, Roles
 
         return true;
     }
