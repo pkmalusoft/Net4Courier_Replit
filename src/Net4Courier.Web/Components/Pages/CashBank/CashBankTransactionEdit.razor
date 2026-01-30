@@ -3,9 +3,11 @@
 
 @using Net4Courier.Web.Services.CashBank
 @using Net4Courier.Web.DTOs
+@using Net4Courier.Web.Interfaces
 
 @inject ICashBankTransactionService CashBankTransactionService
 @inject IBankAccountService BankAccountService
+@inject IChartOfAccountsService ChartOfAccountsService
 @inject NavigationManager Navigation
 @inject ISnackbar Snackbar
 
@@ -40,7 +42,7 @@
                     <MudTextField @bind-Value="referenceNo" Label="Reference No" />
                 </MudItem>
                 <MudItem xs="12" sm="6">
-                    <MudNumericField @bind-Value="totalAmount" Label="Amount" Format="N2" Required="true" />
+                    <MudNumericField @bind-Value="totalAmount" Label="Total Amount" Format="N2" ReadOnly="true" />
                 </MudItem>
             </MudGrid>
 
@@ -66,16 +68,59 @@
 
             <MudDivider Class="my-4" />
 
-            <MudText Typo="Typo.h6" Class="mb-2">Transaction Lines</MudText>
-            <MudAlert Severity="Severity.Info" Class="mb-4">
-                This is a placeholder for transaction lines. Full functionality will be available after TrueBooks integration is complete.
-            </MudAlert>
+            <div class="d-flex justify-space-between align-center mb-2">
+                <MudText Typo="Typo.h6">Transaction Lines</MudText>
+                <MudButton Variant="Variant.Filled" Color="Color.Primary" Size="Size.Small" StartIcon="@Icons.Material.Filled.Add" OnClick="AddLine" Disabled="@(!accountsLoaded)">
+                    Add Line
+                </MudButton>
+            </div>
+
+            @if (!string.IsNullOrEmpty(accountsLoadError))
+            {
+                <MudAlert Severity="Severity.Error" Class="mb-4">
+                    @accountsLoadError
+                </MudAlert>
+            }
+            else if (transactionLines.Count == 0)
+            {
+                <MudAlert Severity="Severity.Info" Class="mb-4">
+                    No transaction lines added. Click "Add Line" to add account entries.
+                </MudAlert>
+            }
+            else
+            {
+                <MudTable Items="@transactionLines" Dense="true" Hover="true" Striped="true" Class="mb-4">
+                    <HeaderContent>
+                        <MudTh Style="width: 50px;">#</MudTh>
+                        <MudTh>Account</MudTh>
+                        <MudTh Style="width: 150px;">Amount</MudTh>
+                        <MudTh>Description</MudTh>
+                        <MudTh Style="width: 100px;">Actions</MudTh>
+                    </HeaderContent>
+                    <RowTemplate>
+                        <MudTd DataLabel="#">@context.LineNumber</MudTd>
+                        <MudTd DataLabel="Account">@context.AccountDisplay</MudTd>
+                        <MudTd DataLabel="Amount">@context.GrossAmount.ToString("N2")</MudTd>
+                        <MudTd DataLabel="Description">@context.Description</MudTd>
+                        <MudTd DataLabel="Actions">
+                            <MudIconButton Icon="@Icons.Material.Filled.Edit" Size="Size.Small" OnClick="@(() => EditLine(context))" />
+                            <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" Color="Color.Error" OnClick="@(() => DeleteLine(context))" />
+                        </MudTd>
+                    </RowTemplate>
+                </MudTable>
+
+                <MudGrid>
+                    <MudItem xs="12" Class="d-flex justify-end">
+                        <MudText Typo="Typo.subtitle1"><strong>Total: @totalAmount.ToString("N2")</strong></MudText>
+                    </MudItem>
+                </MudGrid>
+            }
 
             <MudDivider Class="my-4" />
 
             <div class="d-flex justify-end gap-2">
                 <MudButton Variant="Variant.Text" Color="Color.Secondary" OnClick="Cancel">Cancel</MudButton>
-                <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="Save" Disabled="@(!formIsValid || isSaving)">
+                <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="Save" Disabled="@(!formIsValid || isSaving || transactionLines.Count == 0)">
                     @if (isSaving)
                     {
                         <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" />
@@ -86,6 +131,36 @@
         </MudForm>
     </MudPaper>
 </MudContainer>
+
+<MudDialog @bind-Visible="lineDialogVisible" Options="new DialogOptions { MaxWidth = MaxWidth.Small, FullWidth = true }">
+    <TitleContent>
+        <MudText Typo="Typo.h6">@(editingLine != null ? "Edit" : "Add") Transaction Line</MudText>
+    </TitleContent>
+    <DialogContent>
+        <MudGrid>
+            <MudItem xs="12">
+                <MudSelect @bind-Value="lineAccountId" Label="Account" Required="true" Dense="true"
+                           ToStringFunc="@((Guid id) => accounts.FirstOrDefault(a => a.Id == id)?.FullAccountDisplay ?? "")"
+                           Placeholder="Select an account">
+                    @foreach (var account in accounts)
+                    {
+                        <MudSelectItem Value="@account.Id">@account.FullAccountDisplay</MudSelectItem>
+                    }
+                </MudSelect>
+            </MudItem>
+            <MudItem xs="12">
+                <MudNumericField @bind-Value="lineAmount" Label="Amount" Required="true" Format="N2" />
+            </MudItem>
+            <MudItem xs="12">
+                <MudTextField @bind-Value="lineDescription" Label="Description" />
+            </MudItem>
+        </MudGrid>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="CloseLineDialog">Cancel</MudButton>
+        <MudButton Color="Color.Primary" OnClick="SaveLine" Disabled="@(lineAccountId == Guid.Empty || lineAmount <= 0)">Save</MudButton>
+    </DialogActions>
+</MudDialog>
 
 @code {
     [Parameter]
@@ -106,10 +181,23 @@
     private string? bankName;
     private string? branchName;
 
+    private List<TransactionLineViewModel> transactionLines = new();
+    private List<Truebooks.Platform.Contracts.DTOs.ChartOfAccountDto> accounts = new();
+    private bool accountsLoaded;
+    private string? accountsLoadError;
+    
+    private bool lineDialogVisible;
+    private TransactionLineViewModel? editingLine;
+    private Guid lineAccountId;
+    private decimal lineAmount;
+    private string lineDescription = "";
+
     private static readonly Guid TenantId = Guid.Parse("11111111-1111-1111-1111-111111111111");
 
     protected override async Task OnInitializedAsync()
     {
+        await LoadAccounts();
+        
         if (Id.HasValue)
         {
             var transaction = await CashBankTransactionService.GetByIdAsync(TenantId, Id.Value);
@@ -125,6 +213,19 @@
                 chequeDate = transaction.ChequeDate;
                 bankName = transaction.BankName;
                 branchName = transaction.BranchName;
+                
+                foreach (var line in transaction.Lines)
+                {
+                    transactionLines.Add(new TransactionLineViewModel
+                    {
+                        LineNumber = line.LineNumber,
+                        AccountId = line.DestinationAccountId,
+                        AccountDisplay = $"{line.DestinationAccountCode} - {line.DestinationAccountName}",
+                        GrossAmount = line.GrossAmount,
+                        Description = line.Description
+                    });
+                }
+                CalculateTotal();
             }
         }
         else
@@ -133,14 +234,116 @@
         }
     }
 
+    private async Task LoadAccounts()
+    {
+        try
+        {
+            var allAccounts = await ChartOfAccountsService.GetAllAsync(TenantId);
+            accounts = allAccounts.Where(a => a.AllowPosting).ToList();
+            accountsLoaded = accounts.Count > 0;
+            accountsLoadError = null;
+        }
+        catch (Exception ex)
+        {
+            accounts = new List<Truebooks.Platform.Contracts.DTOs.ChartOfAccountDto>();
+            accountsLoaded = false;
+            accountsLoadError = "Failed to load accounts. Please try again.";
+            Snackbar.Add($"Error loading accounts: {ex.Message}", Severity.Error);
+        }
+    }
+
+    private void AddLine()
+    {
+        editingLine = null;
+        lineAccountId = Guid.Empty;
+        lineAmount = 0;
+        lineDescription = "";
+        lineDialogVisible = true;
+    }
+
+    private void EditLine(TransactionLineViewModel line)
+    {
+        editingLine = line;
+        lineAccountId = line.AccountId;
+        lineAmount = line.GrossAmount;
+        lineDescription = line.Description;
+        lineDialogVisible = true;
+    }
+
+    private void DeleteLine(TransactionLineViewModel line)
+    {
+        transactionLines.Remove(line);
+        RenumberLines();
+        CalculateTotal();
+    }
+
+    private void SaveLine()
+    {
+        var account = accounts.FirstOrDefault(a => a.Id == lineAccountId);
+        if (account == null) return;
+
+        if (editingLine != null)
+        {
+            editingLine.AccountId = lineAccountId;
+            editingLine.AccountDisplay = account.FullAccountDisplay;
+            editingLine.GrossAmount = lineAmount;
+            editingLine.Description = lineDescription;
+        }
+        else
+        {
+            transactionLines.Add(new TransactionLineViewModel
+            {
+                LineNumber = transactionLines.Count + 1,
+                AccountId = lineAccountId,
+                AccountDisplay = account.FullAccountDisplay,
+                GrossAmount = lineAmount,
+                Description = lineDescription
+            });
+        }
+
+        CalculateTotal();
+        CloseLineDialog();
+    }
+
+    private void CloseLineDialog()
+    {
+        lineDialogVisible = false;
+        editingLine = null;
+    }
+
+    private void RenumberLines()
+    {
+        for (int i = 0; i < transactionLines.Count; i++)
+        {
+            transactionLines[i].LineNumber = i + 1;
+        }
+    }
+
+    private void CalculateTotal()
+    {
+        totalAmount = transactionLines.Sum(l => l.GrossAmount);
+    }
+
     private async Task Save()
     {
         await form.Validate();
-        if (!formIsValid) return;
+        if (!formIsValid || transactionLines.Count == 0) return;
 
         isSaving = true;
         try
         {
+            var lines = transactionLines.Select(l => new CreateCashBankTransactionLineRequest(
+                l.AccountId,
+                l.GrossAmount,
+                0,
+                false,
+                l.GrossAmount,
+                0,
+                null,
+                l.LineNumber,
+                l.Description
+            )).ToList();
+
             if (Id.HasValue)
             {
                 await CashBankTransactionService.UpdateAsync(TenantId, Id.Value, new UpdateCashBankTransactionRequest(
@@ -163,7 +366,7 @@
                     null,
                     null,
                     null,
-                    new List<CreateCashBankTransactionLineRequest>()
+                    lines
                 ));
                 Snackbar.Add("Transaction updated successfully", Severity.Success);
             }
@@ -189,7 +392,7 @@
                     null,
                     null,
                     null,
-                    new List<CreateCashBankTransactionLineRequest>()
+                    lines
                 ));
                 Snackbar.Add("Transaction created successfully", Severity.Success);
             }
@@ -208,5 +411,14 @@
     private void Cancel()
     {
         Navigation.NavigateTo("/cash-bank-transactions");
+    }
+
+    private class TransactionLineViewModel
+    {
+        public int LineNumber { get; set; }
+        public Guid AccountId { get; set; }
+        public string AccountDisplay { get; set; } = "";
+        public decimal GrossAmount { get; set; }
+        public string Description { get; set; } = "";
     }
 }
