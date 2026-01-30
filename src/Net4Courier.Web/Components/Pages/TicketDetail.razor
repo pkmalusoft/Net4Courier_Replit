@@ -2,8 +2,9 @@
 @inject ApplicationDbContext DbContext
 @inject ISnackbar Snackbar
 @inject NavigationManager NavigationManager
-@inject AuthenticationService AuthService
+@inject AuthenticationStateProvider AuthStateProvider
 @using Microsoft.EntityFrameworkCore
+@using Microsoft.AspNetCore.Components.Authorization
 @using Net4Courier.Infrastructure.Data
 @using Net4Courier.Operations.Entities
 @using Net4Courier.Web.Services
@@ -172,10 +173,21 @@ else
     private bool _loading = true;
     private string? _newComment;
     private bool _isInternalNote;
+    private long? _currentUserId;
+    private string? _currentUserName;
 
     protected override async Task OnInitializedAsync()
     {
+        await LoadCurrentUser();
         await LoadTicket();
+    }
+
+    private async Task LoadCurrentUser()
+    {
+        var authProvider = (AppAuthStateProvider)AuthStateProvider;
+        _currentUserId = authProvider.CurrentUser?.Id;
+        _currentUserName = authProvider.CurrentUser?.FullName;
+        await Task.CompletedTask;
     }
 
     private async Task LoadTicket()
@@ -216,8 +228,8 @@ else
             TicketId = _ticket.Id,
             Comment = $"Status changed from {GetStatusText(oldStatus)} to {GetStatusText(newStatus)}",
             IsInternal = true,
-            UserName = AuthService.CurrentUser?.FullName ?? "System",
-            UserId = AuthService.CurrentUser?.Id,
+            UserName = _currentUserName ?? "System",
+            UserId = _currentUserId,
             CreatedAt = DateTime.UtcNow
         };
         DbContext.TicketComments.Add(comment);
@@ -237,8 +249,8 @@ else
             Comment = _newComment,
             IsInternal = _isInternalNote,
             IsFromCustomer = false,
-            UserName = AuthService.CurrentUser?.FullName ?? "Staff",
-            UserId = AuthService.CurrentUser?.Id,
+            UserName = _currentUserName ?? "Staff",
+            UserId = _currentUserId,
             CreatedAt = DateTime.UtcNow
         };
 
