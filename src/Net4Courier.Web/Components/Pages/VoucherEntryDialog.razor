@@ -35,23 +35,15 @@
                     </MudSelect>
                 </MudItem>
                 <MudItem xs="12" sm="3">
-                    @if (_primaryAccounts.Any())
-                    {
-                        <MudSelect T="long?" @bind-Value="_primaryAccountId" Label="@($"{VoucherTypeName} Account")"
-                                   Variant="Variant.Outlined" Required="true" Disabled="@IsReadOnly">
-                            @foreach (var acc in _primaryAccounts)
-                            {
-                                <MudSelectItem Value="@((long?)acc.Id)">@acc.Code - @acc.Name</MudSelectItem>
-                            }
-                        </MudSelect>
-                    }
-                    else
-                    {
-                        <MudSelect T="long?" Label="@($"{VoucherTypeName} Account")"
-                                   Variant="Variant.Outlined" Disabled="true">
-                            <MudSelectItem Value="@((long?)0)">Loading accounts...</MudSelectItem>
-                        </MudSelect>
-                    }
+                    <MudSelect @key="@($"primaryselect_{VoucherType}_{_primaryAccounts.Count}")"
+                               T="long" @bind-Value="_primaryAccountId" Label="@($"{VoucherTypeName} Account")"
+                               Variant="Variant.Outlined" Required="true" Disabled="@IsReadOnly"
+                               HelperText="@(_primaryAccounts.Count == 0 ? "No accounts found" : "")">
+                        @foreach (var acc in _primaryAccounts)
+                        {
+                            <MudSelectItem Value="@acc.Id">@acc.Code - @acc.Name</MudSelectItem>
+                        }
+                    </MudSelect>
                 </MudItem>
                 <MudItem xs="12" sm="8">
                     <MudTextField @bind-Value="_narration" Label="Narration"
@@ -94,11 +86,12 @@
                         }
                         else
                         {
-                            <MudSelect T="long?" Value="@context.AccountHeadId" ValueChanged="@((val) => OnAccountChanged(context, val))"
+                            <MudSelect @key="@($"entryaccount_{context.GetHashCode()}_{_allAccounts.Count}")"
+                                       T="long" Value="@context.AccountHeadId" ValueChanged="@((val) => OnAccountChanged(context, val))"
                                        Variant="Variant.Text" Dense="true" Margin="Margin.Dense">
                                 @foreach (var acc in _allAccounts)
                                 {
-                                    <MudSelectItem Value="@((long?)acc.Id)">@acc.Code - @acc.Name</MudSelectItem>
+                                    <MudSelectItem Value="@acc.Id">@acc.Code - @acc.Name</MudSelectItem>
                                 }
                             </MudSelect>
                         }
@@ -195,7 +188,7 @@
     private string _voucherNo = "";
     private DateTime? _voucherDate = DateTime.Today;
     private VoucherDirection _direction = VoucherDirection.Receipt;
-    private long? _primaryAccountId;
+    private long _primaryAccountId;
     private string? _narration;
     private string? _reference;
     private List<JournalEntry> _entries = new();
@@ -203,7 +196,7 @@
     private List<AccountHead> _allAccounts = new();
 
     private decimal TotalAmount => _entries.Sum(e => GetEntryAmount(e));
-    private bool CanSave => _primaryAccountId.HasValue && _entries.Any(e => e.AccountHeadId > 0 && GetEntryAmount(e) > 0) && TotalAmount > 0;
+    private bool CanSave => _primaryAccountId > 0 && _entries.Any(e => e.AccountHeadId > 0 && GetEntryAmount(e) > 0) && TotalAmount > 0;
 
     private decimal GetEntryAmount(JournalEntry entry)
     {
@@ -321,9 +314,9 @@
         return $"{prefix}-{year}{month:D2}-{nextNum:D5}";
     }
 
-    private void OnAccountChanged(JournalEntry entry, long? accountId)
+    private void OnAccountChanged(JournalEntry entry, long accountId)
     {
-        entry.AccountHeadId = accountId ?? 0;
+        entry.AccountHeadId = accountId;
         var account = _allAccounts.FirstOrDefault(a => a.Id == accountId);
         if (account != null)
         {
