@@ -1,0 +1,256 @@
+@inject ApplicationDbContext DbContext
+@inject ISnackbar Snackbar
+@using Microsoft.EntityFrameworkCore
+@using Net4Courier.Infrastructure.Data
+@using Net4Courier.Operations.Entities
+@using Net4Courier.Masters.Entities
+
+<MudDialog>
+    <TitleContent>
+        <MudText Typo="Typo.h6">@(Ticket.Id == 0 ? "Create Ticket" : "Edit Ticket")</MudText>
+    </TitleContent>
+    <DialogContent>
+        <MudGrid Spacing="2">
+            <MudItem xs="12" sm="6">
+                <MudAutocomplete T="Party" @bind-Value="_selectedParty" Label="Customer*" Variant="Variant.Outlined"
+                                 SearchFunc="SearchCustomers" ToStringFunc="@(p => p?.Name ?? "")"
+                                 Dense="true" Required="true" />
+            </MudItem>
+            <MudItem xs="12" sm="6">
+                <MudSelect T="long" @bind-Value="Ticket.CategoryId" Label="Category*" Variant="Variant.Outlined" Required="true">
+                    @foreach (var cat in Categories)
+                    {
+                        <MudSelectItem T="long" Value="@cat.Id">@cat.Name</MudSelectItem>
+                    }
+                </MudSelect>
+            </MudItem>
+            <MudItem xs="12">
+                <MudTextField @bind-Value="Ticket.Subject" Label="Subject*" Variant="Variant.Outlined" Required="true" />
+            </MudItem>
+            <MudItem xs="12">
+                <MudTextField @bind-Value="Ticket.Description" Label="Description*" Variant="Variant.Outlined" Lines="4" Required="true" />
+            </MudItem>
+            <MudItem xs="12" sm="6">
+                <MudAutocomplete T="InscanMaster" @bind-Value="_selectedAWB" Label="Related AWB (Optional)" Variant="Variant.Outlined"
+                                 SearchFunc="SearchAWBs" ToStringFunc="@(a => a?.AWBNo ?? "")"
+                                 Dense="true" Clearable="true" />
+            </MudItem>
+            <MudItem xs="12" sm="6">
+                <MudSelect T="TicketPriority" @bind-Value="Ticket.Priority" Label="Priority" Variant="Variant.Outlined">
+                    <MudSelectItem T="TicketPriority" Value="@TicketPriority.Low">Low</MudSelectItem>
+                    <MudSelectItem T="TicketPriority" Value="@TicketPriority.Medium">Medium</MudSelectItem>
+                    <MudSelectItem T="TicketPriority" Value="@TicketPriority.High">High</MudSelectItem>
+                    <MudSelectItem T="TicketPriority" Value="@TicketPriority.Urgent">Urgent</MudSelectItem>
+                </MudSelect>
+            </MudItem>
+            @if (Ticket.Id > 0)
+            {
+                <MudItem xs="12" sm="6">
+                    <MudSelect T="TicketStatus" @bind-Value="Ticket.Status" Label="Status" Variant="Variant.Outlined">
+                        <MudSelectItem T="TicketStatus" Value="@TicketStatus.Open">Open</MudSelectItem>
+                        <MudSelectItem T="TicketStatus" Value="@TicketStatus.InProgress">In Progress</MudSelectItem>
+                        <MudSelectItem T="TicketStatus" Value="@TicketStatus.PendingCustomer">Pending Customer</MudSelectItem>
+                        <MudSelectItem T="TicketStatus" Value="@TicketStatus.Resolved">Resolved</MudSelectItem>
+                        <MudSelectItem T="TicketStatus" Value="@TicketStatus.Closed">Closed</MudSelectItem>
+                        <MudSelectItem T="TicketStatus" Value="@TicketStatus.Cancelled">Cancelled</MudSelectItem>
+                    </MudSelect>
+                </MudItem>
+                <MudItem xs="12" sm="6">
+                    <MudAutocomplete T="User" @bind-Value="_assignedUser" Label="Assigned To" Variant="Variant.Outlined"
+                                     SearchFunc="SearchUsers" ToStringFunc="@(u => u?.FullName ?? "")"
+                                     Dense="true" Clearable="true" />
+                </MudItem>
+            }
+        </MudGrid>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Cancel">Cancel</MudButton>
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="Save">Save</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] IMudDialogInstance MudDialog { get; set; } = default!;
+    [Parameter] public Ticket Ticket { get; set; } = new();
+    [Parameter] public List<TicketCategory> Categories { get; set; } = new();
+
+    private Party? _selectedParty;
+    private InscanMaster? _selectedAWB;
+    private User? _assignedUser;
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (Ticket.Id > 0)
+        {
+            if (Ticket.PartyId > 0)
+            {
+                _selectedParty = await DbContext.Parties.FirstOrDefaultAsync(p => p.Id == Ticket.PartyId);
+            }
+            if (Ticket.AWBId > 0)
+            {
+                _selectedAWB = await DbContext.InscanMasters.FirstOrDefaultAsync(a => a.Id == Ticket.AWBId);
+            }
+            if (Ticket.AssignedToUserId > 0)
+            {
+                _assignedUser = await DbContext.Users.FirstOrDefaultAsync(u => u.Id == Ticket.AssignedToUserId);
+            }
+        }
+    }
+
+    private async Task<IEnumerable<Party>> SearchCustomers(string value, CancellationToken token)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return await DbContext.Parties
+                .Where(p => !p.IsDeleted && p.IsActive && p.PartyType == PartyType.Customer)
+                .Take(20)
+                .ToListAsync(token);
+
+        return await DbContext.Parties
+            .Where(p => !p.IsDeleted && p.IsActive && p.PartyType == PartyType.Customer &&
+                       (EF.Functions.ILike(p.Name, $"%{value}%") || EF.Functions.ILike(p.Code, $"%{value}%")))
+            .Take(20)
+            .ToListAsync(token);
+    }
+
+    private async Task<IEnumerable<InscanMaster>> SearchAWBs(string value, CancellationToken token)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return Enumerable.Empty<InscanMaster>();
+
+        var customerId = _selectedParty?.Id;
+        var query = DbContext.InscanMasters.Where(a => !a.IsDeleted);
+        
+        if (customerId.HasValue)
+            query = query.Where(a => a.CustomerId == customerId.Value);
+
+        return await query
+            .Where(a => EF.Functions.ILike(a.AWBNo, $"%{value}%"))
+            .OrderByDescending(a => a.TransactionDate)
+            .Take(20)
+            .ToListAsync(token);
+    }
+
+    private async Task<IEnumerable<User>> SearchUsers(string value, CancellationToken token)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return await DbContext.Users
+                .Where(u => !u.IsDeleted && u.IsActive)
+                .Take(20)
+                .ToListAsync(token);
+
+        return await DbContext.Users
+            .Where(u => !u.IsDeleted && u.IsActive &&
+                       (EF.Functions.ILike(u.FullName, $"%{value}%") || EF.Functions.ILike(u.Username, $"%{value}%")))
+            .Take(20)
+            .ToListAsync(token);
+    }
+
+    private void Cancel() => MudDialog.Cancel();
+
+    private async Task Save()
+    {
+        if (_selectedParty == null)
+        {
+            Snackbar.Add("Please select a customer", Severity.Warning);
+            return;
+        }
+
+        if (Ticket.CategoryId == 0)
+        {
+            Snackbar.Add("Please select a category", Severity.Warning);
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(Ticket.Subject) || string.IsNullOrWhiteSpace(Ticket.Description))
+        {
+            Snackbar.Add("Subject and Description are required", Severity.Warning);
+            return;
+        }
+
+        try
+        {
+            Ticket.PartyId = _selectedParty.Id;
+            Ticket.PartyName = _selectedParty.Name;
+            
+            var category = Categories.FirstOrDefault(c => c.Id == Ticket.CategoryId);
+            Ticket.CategoryName = category?.Name;
+
+            if (_selectedAWB != null)
+            {
+                Ticket.AWBId = _selectedAWB.Id;
+                Ticket.AWBNo = _selectedAWB.AWBNo;
+            }
+            else
+            {
+                Ticket.AWBId = null;
+                Ticket.AWBNo = null;
+            }
+
+            if (_assignedUser != null)
+            {
+                Ticket.AssignedToUserId = _assignedUser.Id;
+                Ticket.AssignedToUserName = _assignedUser.FullName;
+            }
+
+            if (Ticket.Id == 0)
+            {
+                Ticket.TicketNo = await GenerateTicketNo();
+                Ticket.CreatedAt = DateTime.UtcNow;
+                Ticket.Status = TicketStatus.Open;
+                DbContext.Tickets.Add(Ticket);
+            }
+            else
+            {
+                var existing = await DbContext.Tickets.FindAsync(Ticket.Id);
+                if (existing != null)
+                {
+                    existing.PartyId = Ticket.PartyId;
+                    existing.PartyName = Ticket.PartyName;
+                    existing.CategoryId = Ticket.CategoryId;
+                    existing.CategoryName = Ticket.CategoryName;
+                    existing.Subject = Ticket.Subject;
+                    existing.Description = Ticket.Description;
+                    existing.AWBId = Ticket.AWBId;
+                    existing.AWBNo = Ticket.AWBNo;
+                    existing.Priority = Ticket.Priority;
+                    existing.Status = Ticket.Status;
+                    existing.AssignedToUserId = Ticket.AssignedToUserId;
+                    existing.AssignedToUserName = Ticket.AssignedToUserName;
+                    existing.ModifiedAt = DateTime.UtcNow;
+
+                    if (Ticket.Status == TicketStatus.Resolved && existing.ResolvedAt == null)
+                        existing.ResolvedAt = DateTime.UtcNow;
+                    if (Ticket.Status == TicketStatus.Closed && existing.ClosedAt == null)
+                        existing.ClosedAt = DateTime.UtcNow;
+                }
+            }
+
+            await DbContext.SaveChangesAsync();
+            Snackbar.Add("Ticket saved successfully", Severity.Success);
+            MudDialog.Close(DialogResult.Ok(Ticket));
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error saving ticket: {ex.Message}", Severity.Error);
+        }
+    }
+
+    private async Task<string> GenerateTicketNo()
+    {
+        var today = DateTime.UtcNow;
+        var prefix = $"TKT{today:yyMM}";
+        var lastTicket = await DbContext.Tickets
+            .Where(t => t.TicketNo.StartsWith(prefix))
+            .OrderByDescending(t => t.TicketNo)
+            .FirstOrDefaultAsync();
+
+        int nextNum = 1;
+        if (lastTicket != null && lastTicket.TicketNo.Length > prefix.Length)
+        {
+            if (int.TryParse(lastTicket.TicketNo.Substring(prefix.Length), out int lastNum))
+                nextNum = lastNum + 1;
+        }
+
+        return $"{prefix}{nextNum:D4}";
+    }
+}

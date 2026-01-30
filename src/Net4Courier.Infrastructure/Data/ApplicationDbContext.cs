@@ -61,6 +61,10 @@ public class ApplicationDbContext : DbContext
     public DbSet<ShipmentNote> ShipmentNotes => Set<ShipmentNote>();
     public DbSet<ShipmentNoteMention> ShipmentNoteMentions => Set<ShipmentNoteMention>();
     
+    public DbSet<TicketCategory> TicketCategories => Set<TicketCategory>();
+    public DbSet<Ticket> Tickets => Set<Ticket>();
+    public DbSet<TicketComment> TicketComments => Set<TicketComment>();
+    
     public DbSet<AWBStock> AWBStocks => Set<AWBStock>();
     public DbSet<PrepaidDocument> PrepaidDocuments => Set<PrepaidDocument>();
     public DbSet<PrepaidAWB> PrepaidAWBs => Set<PrepaidAWB>();

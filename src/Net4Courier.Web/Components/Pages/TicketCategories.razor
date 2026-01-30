@@ -1,0 +1,220 @@
+@page "/ticket-categories"
+@inject ApplicationDbContext DbContext
+@inject ISnackbar Snackbar
+@using Microsoft.EntityFrameworkCore
+@using Net4Courier.Infrastructure.Data
+@using Net4Courier.Operations.Entities
+
+<PageTitle>Ticket Categories - Net4Courier</PageTitle>
+
+<MudPaper Class="pa-4" Elevation="0">
+    <MudToolBar Dense="true" Class="pl-0">
+        <MudText Typo="Typo.h6">Ticket Categories</MudText>
+        <MudSpacer />
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add" OnClick="OpenAddDialog">
+            Add Category
+        </MudButton>
+    </MudToolBar>
+
+    <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-3">
+        Configure categories for customer complaints and support tickets (Delay, Damage, Lost, etc.)
+    </MudText>
+
+    <MudTable Items="_categories" Hover="true" Dense="true" Loading="_loading">
+        <HeaderContent>
+            <MudTh>Name</MudTh>
+            <MudTh>Description</MudTh>
+            <MudTh>Icon</MudTh>
+            <MudTh>Color</MudTh>
+            <MudTh>Sort Order</MudTh>
+            <MudTh>Status</MudTh>
+            <MudTh Style="width: 120px;">Actions</MudTh>
+        </HeaderContent>
+        <RowTemplate>
+            <MudTd>@context.Name</MudTd>
+            <MudTd>@(context.Description ?? "-")</MudTd>
+            <MudTd>
+                @if (!string.IsNullOrEmpty(context.Icon))
+                {
+                    <MudIcon Icon="@context.Icon" Size="Size.Small" />
+                }
+            </MudTd>
+            <MudTd>
+                @if (!string.IsNullOrEmpty(context.Color))
+                {
+                    <MudChip T="string" Size="Size.Small" Style="@($"background-color: {context.Color}; color: white;")">
+                        @context.Color
+                    </MudChip>
+                }
+            </MudTd>
+            <MudTd>@context.SortOrder</MudTd>
+            <MudTd>
+                <MudChip T="string" Size="Size.Small" Color="@(context.IsActive ? Color.Success : Color.Default)">
+                    @(context.IsActive ? "Active" : "Inactive")
+                </MudChip>
+            </MudTd>
+            <MudTd>
+                <MudIconButton Icon="@Icons.Material.Filled.Edit" Size="Size.Small" OnClick="@(() => OpenEditDialog(context))" />
+                <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" Color="Color.Error" OnClick="@(() => DeleteCategory(context))" />
+            </MudTd>
+        </RowTemplate>
+        <NoRecordsContent>
+            <MudText>No categories found. Click "Add Category" to create one.</MudText>
+        </NoRecordsContent>
+    </MudTable>
+</MudPaper>
+
+<MudDialog @bind-Visible="_dialogVisible">
+    <TitleContent>
+        <MudText Typo="Typo.h6">@(_editingCategory.Id == 0 ? "Add Category" : "Edit Category")</MudText>
+    </TitleContent>
+    <DialogContent>
+        <MudGrid Spacing="2">
+            <MudItem xs="12">
+                <MudTextField @bind-Value="_editingCategory.Name" Label="Name*" Variant="Variant.Outlined" Required="true" />
+            </MudItem>
+            <MudItem xs="12">
+                <MudTextField @bind-Value="_editingCategory.Description" Label="Description" Variant="Variant.Outlined" Lines="2" />
+            </MudItem>
+            <MudItem xs="6">
+                <MudSelect @bind-Value="_editingCategory.Icon" Label="Icon" Variant="Variant.Outlined">
+                    <MudSelectItem Value="@Icons.Material.Filled.AccessTime">Access Time</MudSelectItem>
+                    <MudSelectItem Value="@Icons.Material.Filled.BrokenImage">Damage</MudSelectItem>
+                    <MudSelectItem Value="@Icons.Material.Filled.SearchOff">Lost</MudSelectItem>
+                    <MudSelectItem Value="@Icons.Material.Filled.WrongLocation">Wrong Delivery</MudSelectItem>
+                    <MudSelectItem Value="@Icons.Material.Filled.AttachMoney">Billing</MudSelectItem>
+                    <MudSelectItem Value="@Icons.Material.Filled.Support">General Support</MudSelectItem>
+                    <MudSelectItem Value="@Icons.Material.Filled.Feedback">Feedback</MudSelectItem>
+                    <MudSelectItem Value="@Icons.Material.Filled.Help">Other</MudSelectItem>
+                </MudSelect>
+            </MudItem>
+            <MudItem xs="6">
+                <MudSelect @bind-Value="_editingCategory.Color" Label="Color" Variant="Variant.Outlined">
+                    <MudSelectItem Value="@("#f44336")">Red</MudSelectItem>
+                    <MudSelectItem Value="@("#ff9800")">Orange</MudSelectItem>
+                    <MudSelectItem Value="@("#ffc107")">Yellow</MudSelectItem>
+                    <MudSelectItem Value="@("#4caf50")">Green</MudSelectItem>
+                    <MudSelectItem Value="@("#2196f3")">Blue</MudSelectItem>
+                    <MudSelectItem Value="@("#9c27b0")">Purple</MudSelectItem>
+                    <MudSelectItem Value="@("#607d8b")">Gray</MudSelectItem>
+                </MudSelect>
+            </MudItem>
+            <MudItem xs="6">
+                <MudNumericField @bind-Value="_editingCategory.SortOrder" Label="Sort Order" Variant="Variant.Outlined" Min="0" />
+            </MudItem>
+            <MudItem xs="6">
+                <MudCheckBox @bind-Value="_editingCategory.IsActive" Label="Active" Color="Color.Success" />
+            </MudItem>
+        </MudGrid>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="CloseDialog">Cancel</MudButton>
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="SaveCategory">Save</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    private List<TicketCategory> _categories = new();
+    private bool _loading = true;
+    private bool _dialogVisible;
+    private TicketCategory _editingCategory = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadData();
+    }
+
+    private async Task LoadData()
+    {
+        _loading = true;
+        _categories = await DbContext.TicketCategories
+            .Where(c => !c.IsDeleted)
+            .OrderBy(c => c.SortOrder)
+            .ThenBy(c => c.Name)
+            .ToListAsync();
+        _loading = false;
+    }
+
+    private void OpenAddDialog()
+    {
+        _editingCategory = new TicketCategory { IsActive = true, SortOrder = _categories.Count + 1 };
+        _dialogVisible = true;
+    }
+
+    private void OpenEditDialog(TicketCategory category)
+    {
+        _editingCategory = new TicketCategory
+        {
+            Id = category.Id,
+            Name = category.Name,
+            Description = category.Description,
+            Icon = category.Icon,
+            Color = category.Color,
+            SortOrder = category.SortOrder,
+            IsActive = category.IsActive
+        };
+        _dialogVisible = true;
+    }
+
+    private void CloseDialog()
+    {
+        _dialogVisible = false;
+    }
+
+    private async Task SaveCategory()
+    {
+        if (string.IsNullOrWhiteSpace(_editingCategory.Name))
+        {
+            Snackbar.Add("Name is required", Severity.Warning);
+            return;
+        }
+
+        try
+        {
+            if (_editingCategory.Id == 0)
+            {
+                _editingCategory.CreatedAt = DateTime.UtcNow;
+                DbContext.TicketCategories.Add(_editingCategory);
+            }
+            else
+            {
+                var existing = await DbContext.TicketCategories.FindAsync(_editingCategory.Id);
+                if (existing != null)
+                {
+                    existing.Name = _editingCategory.Name;
+                    existing.Description = _editingCategory.Description;
+                    existing.Icon = _editingCategory.Icon;
+                    existing.Color = _editingCategory.Color;
+                    existing.SortOrder = _editingCategory.SortOrder;
+                    existing.IsActive = _editingCategory.IsActive;
+                    existing.ModifiedAt = DateTime.UtcNow;
+                }
+            }
+
+            await DbContext.SaveChangesAsync();
+            Snackbar.Add("Category saved successfully", Severity.Success);
+            _dialogVisible = false;
+            await LoadData();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error saving category: {ex.Message}", Severity.Error);
+        }
+    }
+
+    private async Task DeleteCategory(TicketCategory category)
+    {
+        var ticketCount = await DbContext.Tickets.CountAsync(t => t.CategoryId == category.Id && !t.IsDeleted);
+        if (ticketCount > 0)
+        {
+            Snackbar.Add($"Cannot delete category with {ticketCount} associated tickets", Severity.Warning);
+            return;
+        }
+
+        category.IsDeleted = true;
+        category.ModifiedAt = DateTime.UtcNow;
+        await DbContext.SaveChangesAsync();
+        Snackbar.Add("Category deleted successfully", Severity.Success);
+        await LoadData();
+    }
+}

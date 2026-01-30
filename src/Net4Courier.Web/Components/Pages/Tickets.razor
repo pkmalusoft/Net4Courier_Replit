@@ -1,0 +1,244 @@
+@page "/tickets"
+@inject ApplicationDbContext DbContext
+@inject ISnackbar Snackbar
+@inject IDialogService DialogService
+@inject NavigationManager NavigationManager
+@using Microsoft.EntityFrameworkCore
+@using Net4Courier.Infrastructure.Data
+@using Net4Courier.Operations.Entities
+@using Net4Courier.Masters.Entities
+
+<PageTitle>Complaints & Tickets - Net4Courier</PageTitle>
+
+<MudPaper Class="pa-4" Elevation="0">
+    <MudToolBar Dense="true" Class="pl-0">
+        <MudText Typo="Typo.h6">Complaints & Tickets</MudText>
+        <MudSpacer />
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add" OnClick="OpenCreateDialog">
+            Create Ticket
+        </MudButton>
+    </MudToolBar>
+
+    <MudGrid Class="mb-3">
+        <MudItem xs="12" sm="3">
+            <MudTextField @bind-Value="_searchText" Label="Search" Variant="Variant.Outlined" Margin="Margin.Dense"
+                          Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Filled.Search"
+                          Immediate="true" DebounceInterval="300" OnDebounceIntervalElapsed="LoadData" />
+        </MudItem>
+        <MudItem xs="12" sm="2">
+            <MudSelect T="TicketStatus?" @bind-Value="_statusFilter" Label="Status" Variant="Variant.Outlined" Margin="Margin.Dense" Clearable="true">
+                <MudSelectItem T="TicketStatus?" Value="@TicketStatus.Open">Open</MudSelectItem>
+                <MudSelectItem T="TicketStatus?" Value="@TicketStatus.InProgress">In Progress</MudSelectItem>
+                <MudSelectItem T="TicketStatus?" Value="@TicketStatus.PendingCustomer">Pending Customer</MudSelectItem>
+                <MudSelectItem T="TicketStatus?" Value="@TicketStatus.Resolved">Resolved</MudSelectItem>
+                <MudSelectItem T="TicketStatus?" Value="@TicketStatus.Closed">Closed</MudSelectItem>
+            </MudSelect>
+        </MudItem>
+        <MudItem xs="12" sm="2">
+            <MudSelect T="TicketPriority?" @bind-Value="_priorityFilter" Label="Priority" Variant="Variant.Outlined" Margin="Margin.Dense" Clearable="true">
+                <MudSelectItem T="TicketPriority?" Value="@TicketPriority.Low">Low</MudSelectItem>
+                <MudSelectItem T="TicketPriority?" Value="@TicketPriority.Medium">Medium</MudSelectItem>
+                <MudSelectItem T="TicketPriority?" Value="@TicketPriority.High">High</MudSelectItem>
+                <MudSelectItem T="TicketPriority?" Value="@TicketPriority.Urgent">Urgent</MudSelectItem>
+            </MudSelect>
+        </MudItem>
+        <MudItem xs="12" sm="2">
+            <MudSelect T="long?" @bind-Value="_categoryFilter" Label="Category" Variant="Variant.Outlined" Margin="Margin.Dense" Clearable="true">
+                @foreach (var cat in _categories)
+                {
+                    <MudSelectItem T="long?" Value="@cat.Id">@cat.Name</MudSelectItem>
+                }
+            </MudSelect>
+        </MudItem>
+        <MudItem xs="12" sm="3" Class="d-flex align-center">
+            <MudButton Variant="Variant.Outlined" StartIcon="@Icons.Material.Filled.FilterAlt" OnClick="LoadData" Class="mr-2">Filter</MudButton>
+            <MudButton Variant="Variant.Text" OnClick="ClearFilters">Clear</MudButton>
+        </MudItem>
+    </MudGrid>
+
+    <MudTable Items="_tickets" Hover="true" Dense="true" Loading="_loading" OnRowClick="@((TableRowClickEventArgs<Ticket> args) => ViewTicket(args.Item))">
+        <HeaderContent>
+            <MudTh Style="width: 100px;">Actions</MudTh>
+            <MudTh>Ticket No</MudTh>
+            <MudTh>Subject</MudTh>
+            <MudTh>Customer</MudTh>
+            <MudTh>Category</MudTh>
+            <MudTh>Priority</MudTh>
+            <MudTh>Status</MudTh>
+            <MudTh>Assigned To</MudTh>
+            <MudTh>Created</MudTh>
+        </HeaderContent>
+        <RowTemplate>
+            <MudTd>
+                <MudIconButton Icon="@Icons.Material.Filled.Visibility" Size="Size.Small" OnClick="@(() => ViewTicket(context))" OnClick:StopPropagation="true" Title="View" />
+                <MudIconButton Icon="@Icons.Material.Filled.Edit" Size="Size.Small" OnClick="@(() => EditTicket(context))" OnClick:StopPropagation="true" Title="Edit" />
+            </MudTd>
+            <MudTd>
+                <MudText Typo="Typo.body2" Style="font-weight: 600;">@context.TicketNo</MudText>
+            </MudTd>
+            <MudTd>@context.Subject</MudTd>
+            <MudTd>@context.PartyName</MudTd>
+            <MudTd>
+                <MudChip T="string" Size="Size.Small" Style="@GetCategoryStyle(context.CategoryId)">
+                    @context.CategoryName
+                </MudChip>
+            </MudTd>
+            <MudTd>
+                <MudChip T="string" Size="Size.Small" Color="@GetPriorityColor(context.Priority)">
+                    @context.Priority.ToString()
+                </MudChip>
+            </MudTd>
+            <MudTd>
+                <MudChip T="string" Size="Size.Small" Color="@GetStatusColor(context.Status)">
+                    @GetStatusText(context.Status)
+                </MudChip>
+            </MudTd>
+            <MudTd>@(context.AssignedToUserName ?? "-")</MudTd>
+            <MudTd>@context.CreatedAt.ToString("dd MMM yyyy")</MudTd>
+        </RowTemplate>
+        <NoRecordsContent>
+            <MudText>No tickets found.</MudText>
+        </NoRecordsContent>
+    </MudTable>
+</MudPaper>
+
+@code {
+    private List<Ticket> _tickets = new();
+    private List<TicketCategory> _categories = new();
+    private bool _loading = true;
+    private string? _searchText;
+    private TicketStatus? _statusFilter;
+    private TicketPriority? _priorityFilter;
+    private long? _categoryFilter;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadCategories();
+        await LoadData();
+    }
+
+    private async Task LoadCategories()
+    {
+        _categories = await DbContext.TicketCategories
+            .Where(c => !c.IsDeleted && c.IsActive)
+            .OrderBy(c => c.SortOrder)
+            .ToListAsync();
+    }
+
+    private async Task LoadData()
+    {
+        _loading = true;
+        var query = DbContext.Tickets.Where(t => !t.IsDeleted);
+
+        if (!string.IsNullOrWhiteSpace(_searchText))
+        {
+            query = query.Where(t => 
+                EF.Functions.ILike(t.TicketNo, $"%{_searchText}%") ||
+                EF.Functions.ILike(t.Subject, $"%{_searchText}%") ||
+                (t.PartyName != null && EF.Functions.ILike(t.PartyName, $"%{_searchText}%")) ||
+                (t.AWBNo != null && EF.Functions.ILike(t.AWBNo, $"%{_searchText}%")));
+        }
+
+        if (_statusFilter.HasValue)
+            query = query.Where(t => t.Status == _statusFilter.Value);
+
+        if (_priorityFilter.HasValue)
+            query = query.Where(t => t.Priority == _priorityFilter.Value);
+
+        if (_categoryFilter.HasValue)
+            query = query.Where(t => t.CategoryId == _categoryFilter.Value);
+
+        _tickets = await query
+            .OrderByDescending(t => t.CreatedAt)
+            .Take(100)
+            .ToListAsync();
+
+        _loading = false;
+        StateHasChanged();
+    }
+
+    private void ClearFilters()
+    {
+        _searchText = null;
+        _statusFilter = null;
+        _priorityFilter = null;
+        _categoryFilter = null;
+        _ = LoadData();
+    }
+
+    private async Task OpenCreateDialog()
+    {
+        var parameters = new DialogParameters<TicketDialog>
+        {
+            { x => x.Ticket, new Ticket() },
+            { x => x.Categories, _categories }
+        };
+        var options = new DialogOptions { MaxWidth = MaxWidth.Medium, FullWidth = true };
+        var dialog = await DialogService.ShowAsync<TicketDialog>("Create Ticket", parameters, options);
+        var result = await dialog.Result;
+        if (result != null && !result.Canceled)
+        {
+            await LoadData();
+        }
+    }
+
+    private async Task EditTicket(Ticket ticket)
+    {
+        var parameters = new DialogParameters<TicketDialog>
+        {
+            { x => x.Ticket, ticket },
+            { x => x.Categories, _categories }
+        };
+        var options = new DialogOptions { MaxWidth = MaxWidth.Medium, FullWidth = true };
+        var dialog = await DialogService.ShowAsync<TicketDialog>("Edit Ticket", parameters, options);
+        var result = await dialog.Result;
+        if (result != null && !result.Canceled)
+        {
+            await LoadData();
+        }
+    }
+
+    private void ViewTicket(Ticket ticket)
+    {
+        NavigationManager.NavigateTo($"/ticket/{ticket.Id}");
+    }
+
+    private string GetCategoryStyle(long categoryId)
+    {
+        var category = _categories.FirstOrDefault(c => c.Id == categoryId);
+        if (category?.Color != null)
+            return $"background-color: {category.Color}; color: white;";
+        return "";
+    }
+
+    private Color GetPriorityColor(TicketPriority priority) => priority switch
+    {
+        TicketPriority.Urgent => Color.Error,
+        TicketPriority.High => Color.Warning,
+        TicketPriority.Medium => Color.Info,
+        TicketPriority.Low => Color.Default,
+        _ => Color.Default
+    };
+
+    private Color GetStatusColor(TicketStatus status) => status switch
+    {
+        TicketStatus.Open => Color.Primary,
+        TicketStatus.InProgress => Color.Info,
+        TicketStatus.PendingCustomer => Color.Warning,
+        TicketStatus.Resolved => Color.Success,
+        TicketStatus.Closed => Color.Default,
+        TicketStatus.Cancelled => Color.Error,
+        _ => Color.Default
+    };
+
+    private string GetStatusText(TicketStatus status) => status switch
+    {
+        TicketStatus.Open => "Open",
+        TicketStatus.InProgress => "In Progress",
+        TicketStatus.PendingCustomer => "Pending Customer",
+        TicketStatus.Resolved => "Resolved",
+        TicketStatus.Closed => "Closed",
+        TicketStatus.Cancelled => "Cancelled",
+        _ => status.ToString()
+    };
+}

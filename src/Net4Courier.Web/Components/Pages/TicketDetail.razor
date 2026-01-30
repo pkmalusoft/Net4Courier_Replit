@@ -1,0 +1,299 @@
+@page "/ticket/{Id:long}"
+@inject ApplicationDbContext DbContext
+@inject ISnackbar Snackbar
+@inject NavigationManager NavigationManager
+@inject AuthenticationService AuthService
+@using Microsoft.EntityFrameworkCore
+@using Net4Courier.Infrastructure.Data
+@using Net4Courier.Operations.Entities
+@using Net4Courier.Web.Services
+
+<PageTitle>Ticket @(_ticket?.TicketNo ?? "") - Net4Courier</PageTitle>
+
+@if (_loading)
+{
+    <MudProgressCircular Indeterminate="true" Class="ma-4" />
+}
+else if (_ticket == null)
+{
+    <MudAlert Severity="Severity.Error">Ticket not found</MudAlert>
+}
+else
+{
+    <MudPaper Class="pa-4 mb-4" Elevation="0">
+        <div class="d-flex justify-space-between align-center mb-3">
+            <div>
+                <MudButton Variant="Variant.Text" StartIcon="@Icons.Material.Filled.ArrowBack" OnClick="GoBack">Back to Tickets</MudButton>
+            </div>
+            <div class="d-flex gap-2">
+                <MudChip T="string" Color="@GetPriorityColor(_ticket.Priority)" Size="Size.Small">@_ticket.Priority.ToString()</MudChip>
+                <MudChip T="string" Color="@GetStatusColor(_ticket.Status)" Size="Size.Small">@GetStatusText(_ticket.Status)</MudChip>
+            </div>
+        </div>
+
+        <MudGrid>
+            <MudItem xs="12" md="8">
+                <MudText Typo="Typo.h5" Class="mb-2">@_ticket.Subject</MudText>
+                <MudText Typo="Typo.body2" Color="Color.Secondary">
+                    <MudIcon Icon="@Icons.Material.Filled.ConfirmationNumber" Size="Size.Small" Class="mr-1" />
+                    @_ticket.TicketNo
+                    <span class="mx-2">|</span>
+                    Created @_ticket.CreatedAt.ToString("dd MMM yyyy HH:mm")
+                </MudText>
+            </MudItem>
+            <MudItem xs="12" md="4" Class="text-right">
+                <MudSelect T="TicketStatus" Value="_ticket.Status" ValueChanged="UpdateStatus" Label="Update Status" Variant="Variant.Outlined" Margin="Margin.Dense">
+                    <MudSelectItem T="TicketStatus" Value="@TicketStatus.Open">Open</MudSelectItem>
+                    <MudSelectItem T="TicketStatus" Value="@TicketStatus.InProgress">In Progress</MudSelectItem>
+                    <MudSelectItem T="TicketStatus" Value="@TicketStatus.PendingCustomer">Pending Customer</MudSelectItem>
+                    <MudSelectItem T="TicketStatus" Value="@TicketStatus.Resolved">Resolved</MudSelectItem>
+                    <MudSelectItem T="TicketStatus" Value="@TicketStatus.Closed">Closed</MudSelectItem>
+                </MudSelect>
+            </MudItem>
+        </MudGrid>
+    </MudPaper>
+
+    <MudGrid>
+        <MudItem xs="12" md="8">
+            <MudPaper Class="pa-4 mb-4" Elevation="0">
+                <MudText Typo="Typo.subtitle1" Class="mb-2" Style="font-weight: 600;">Description</MudText>
+                <MudText Typo="Typo.body1" Style="white-space: pre-wrap;">@_ticket.Description</MudText>
+            </MudPaper>
+
+            <MudPaper Class="pa-4" Elevation="0">
+                <MudText Typo="Typo.subtitle1" Class="mb-3" Style="font-weight: 600;">
+                    <MudIcon Icon="@Icons.Material.Filled.Comment" Size="Size.Small" Class="mr-1" />
+                    Comments (@_comments.Count)
+                </MudText>
+
+                @foreach (var comment in _comments)
+                {
+                    <MudPaper Class="pa-3 mb-2" Elevation="1" Style="@(comment.IsFromCustomer ? "background-color: #e3f2fd;" : (comment.IsInternal ? "background-color: #fff3e0;" : ""))">
+                        <div class="d-flex justify-space-between align-center mb-2">
+                            <div class="d-flex align-center gap-2">
+                                <MudAvatar Size="Size.Small" Color="@(comment.IsFromCustomer ? Color.Primary : Color.Secondary)">
+                                    @(comment.UserName?.Substring(0, 1).ToUpper() ?? "?")
+                                </MudAvatar>
+                                <MudText Typo="Typo.body2" Style="font-weight: 600;">@(comment.UserName ?? "Unknown")</MudText>
+                                @if (comment.IsInternal)
+                                {
+                                    <MudChip T="string" Size="Size.Small" Color="Color.Warning" Variant="Variant.Outlined">Internal Note</MudChip>
+                                }
+                                @if (comment.IsFromCustomer)
+                                {
+                                    <MudChip T="string" Size="Size.Small" Color="Color.Primary" Variant="Variant.Outlined">Customer</MudChip>
+                                }
+                            </div>
+                            <MudText Typo="Typo.caption" Color="Color.Secondary">@comment.CreatedAt.ToString("dd MMM yyyy HH:mm")</MudText>
+                        </div>
+                        <MudText Typo="Typo.body2" Style="white-space: pre-wrap;">@comment.Comment</MudText>
+                    </MudPaper>
+                }
+
+                <MudDivider Class="my-4" />
+
+                <MudText Typo="Typo.subtitle2" Class="mb-2">Add Response</MudText>
+                <MudTextField @bind-Value="_newComment" Label="Your comment" Variant="Variant.Outlined" Lines="3" />
+                <div class="d-flex justify-space-between align-center mt-2">
+                    <MudCheckBox @bind-Value="_isInternalNote" Label="Internal Note (not visible to customer)" Color="Color.Warning" Dense="true" />
+                    <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="AddComment" Disabled="@string.IsNullOrWhiteSpace(_newComment)">
+                        Add Comment
+                    </MudButton>
+                </div>
+            </MudPaper>
+        </MudItem>
+
+        <MudItem xs="12" md="4">
+            <MudPaper Class="pa-4 mb-4" Elevation="0">
+                <MudText Typo="Typo.subtitle1" Class="mb-3" Style="font-weight: 600;">Details</MudText>
+                
+                <MudSimpleTable Dense="true" Bordered="false" Striped="false">
+                    <tbody>
+                        <tr>
+                            <td><MudText Typo="Typo.body2" Color="Color.Secondary">Customer</MudText></td>
+                            <td><MudText Typo="Typo.body2">@_ticket.PartyName</MudText></td>
+                        </tr>
+                        <tr>
+                            <td><MudText Typo="Typo.body2" Color="Color.Secondary">Category</MudText></td>
+                            <td><MudText Typo="Typo.body2">@_ticket.CategoryName</MudText></td>
+                        </tr>
+                        @if (!string.IsNullOrEmpty(_ticket.AWBNo))
+                        {
+                            <tr>
+                                <td><MudText Typo="Typo.body2" Color="Color.Secondary">Related AWB</MudText></td>
+                                <td>
+                                    <MudLink Href="@($"/tracking/{_ticket.AWBNo}")" Target="_blank">
+                                        @_ticket.AWBNo
+                                    </MudLink>
+                                </td>
+                            </tr>
+                        }
+                        <tr>
+                            <td><MudText Typo="Typo.body2" Color="Color.Secondary">Assigned To</MudText></td>
+                            <td><MudText Typo="Typo.body2">@(_ticket.AssignedToUserName ?? "-")</MudText></td>
+                        </tr>
+                        @if (_ticket.FirstResponseAt.HasValue)
+                        {
+                            <tr>
+                                <td><MudText Typo="Typo.body2" Color="Color.Secondary">First Response</MudText></td>
+                                <td><MudText Typo="Typo.body2">@_ticket.FirstResponseAt.Value.ToString("dd MMM yyyy HH:mm")</MudText></td>
+                            </tr>
+                        }
+                        @if (_ticket.ResolvedAt.HasValue)
+                        {
+                            <tr>
+                                <td><MudText Typo="Typo.body2" Color="Color.Secondary">Resolved</MudText></td>
+                                <td><MudText Typo="Typo.body2">@_ticket.ResolvedAt.Value.ToString("dd MMM yyyy HH:mm")</MudText></td>
+                            </tr>
+                        }
+                    </tbody>
+                </MudSimpleTable>
+            </MudPaper>
+
+            @if (_ticket.Status == TicketStatus.Resolved || _ticket.Status == TicketStatus.Closed)
+            {
+                <MudPaper Class="pa-4" Elevation="0">
+                    <MudText Typo="Typo.subtitle1" Class="mb-3" Style="font-weight: 600;">Resolution</MudText>
+                    <MudTextField @bind-Value="_ticket.ResolutionNotes" Label="Resolution Notes" Variant="Variant.Outlined" Lines="3" />
+                    <MudButton Variant="Variant.Filled" Color="Color.Primary" Size="Size.Small" Class="mt-2" OnClick="SaveResolution">
+                        Save Notes
+                    </MudButton>
+                </MudPaper>
+            }
+        </MudItem>
+    </MudGrid>
+}
+
+@code {
+    [Parameter] public long Id { get; set; }
+
+    private Ticket? _ticket;
+    private List<TicketComment> _comments = new();
+    private bool _loading = true;
+    private string? _newComment;
+    private bool _isInternalNote;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadTicket();
+    }
+
+    private async Task LoadTicket()
+    {
+        _loading = true;
+        _ticket = await DbContext.Tickets.FirstOrDefaultAsync(t => t.Id == Id && !t.IsDeleted);
+        
+        if (_ticket != null)
+        {
+            _comments = await DbContext.TicketComments
+                .Where(c => c.TicketId == Id && !c.IsDeleted)
+                .OrderBy(c => c.CreatedAt)
+                .ToListAsync();
+        }
+        
+        _loading = false;
+    }
+
+    private void GoBack() => NavigationManager.NavigateTo("/tickets");
+
+    private async Task UpdateStatus(TicketStatus newStatus)
+    {
+        if (_ticket == null) return;
+
+        var oldStatus = _ticket.Status;
+        _ticket.Status = newStatus;
+        _ticket.ModifiedAt = DateTime.UtcNow;
+
+        if (newStatus == TicketStatus.Resolved && _ticket.ResolvedAt == null)
+            _ticket.ResolvedAt = DateTime.UtcNow;
+        if (newStatus == TicketStatus.Closed && _ticket.ClosedAt == null)
+            _ticket.ClosedAt = DateTime.UtcNow;
+
+        await DbContext.SaveChangesAsync();
+
+        var comment = new TicketComment
+        {
+            TicketId = _ticket.Id,
+            Comment = $"Status changed from {GetStatusText(oldStatus)} to {GetStatusText(newStatus)}",
+            IsInternal = true,
+            UserName = AuthService.CurrentUser?.FullName ?? "System",
+            UserId = AuthService.CurrentUser?.Id,
+            CreatedAt = DateTime.UtcNow
+        };
+        DbContext.TicketComments.Add(comment);
+        await DbContext.SaveChangesAsync();
+
+        _comments.Add(comment);
+        Snackbar.Add("Status updated", Severity.Success);
+    }
+
+    private async Task AddComment()
+    {
+        if (_ticket == null || string.IsNullOrWhiteSpace(_newComment)) return;
+
+        var comment = new TicketComment
+        {
+            TicketId = _ticket.Id,
+            Comment = _newComment,
+            IsInternal = _isInternalNote,
+            IsFromCustomer = false,
+            UserName = AuthService.CurrentUser?.FullName ?? "Staff",
+            UserId = AuthService.CurrentUser?.Id,
+            CreatedAt = DateTime.UtcNow
+        };
+
+        DbContext.TicketComments.Add(comment);
+
+        if (_ticket.FirstResponseAt == null)
+        {
+            _ticket.FirstResponseAt = DateTime.UtcNow;
+        }
+
+        await DbContext.SaveChangesAsync();
+
+        _comments.Add(comment);
+        _newComment = null;
+        _isInternalNote = false;
+        Snackbar.Add("Comment added", Severity.Success);
+    }
+
+    private async Task SaveResolution()
+    {
+        if (_ticket == null) return;
+        
+        _ticket.ModifiedAt = DateTime.UtcNow;
+        await DbContext.SaveChangesAsync();
+        Snackbar.Add("Resolution notes saved", Severity.Success);
+    }
+
+    private Color GetPriorityColor(TicketPriority priority) => priority switch
+    {
+        TicketPriority.Urgent => Color.Error,
+        TicketPriority.High => Color.Warning,
+        TicketPriority.Medium => Color.Info,
+        TicketPriority.Low => Color.Default,
+        _ => Color.Default
+    };
+
+    private Color GetStatusColor(TicketStatus status) => status switch
+    {
+        TicketStatus.Open => Color.Primary,
+        TicketStatus.InProgress => Color.Info,
+        TicketStatus.PendingCustomer => Color.Warning,
+        TicketStatus.Resolved => Color.Success,
+        TicketStatus.Closed => Color.Default,
+        TicketStatus.Cancelled => Color.Error,
+        _ => Color.Default
+    };
+
+    private string GetStatusText(TicketStatus status) => status switch
+    {
+        TicketStatus.Open => "Open",
+        TicketStatus.InProgress => "In Progress",
+        TicketStatus.PendingCustomer => "Pending Customer",
+        TicketStatus.Resolved => "Resolved",
+        TicketStatus.Closed => "Closed",
+        TicketStatus.Cancelled => "Cancelled",
+        _ => status.ToString()
+    };
+}
