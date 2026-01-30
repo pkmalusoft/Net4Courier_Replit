@@ -1,15 +1,10 @@
 @page "/gl/control-accounts"
 @attribute [Authorize]
 
-@using PlatformDTOs = Truebooks.Platform.Contracts.DTOs
 @using Microsoft.AspNetCore.Authorization
 @using Truebooks.Platform.Core.MultiTenancy
-@using PlatformServices = Truebooks.Platform.Contracts.Services
-@using PlatformEnums = Truebooks.Platform.Contracts.Enums
-@using LegacyServices = Truebooks.Shared.UI.Services.Legacy
 
-@inject PlatformServices.IChartOfAccountsService ChartOfAccountsService
-@inject Truebooks.Platform.Core.MultiTenancy.ITenantContext TenantContext
+@inject ITenantContext TenantContext
 @inject ISnackbar Snackbar
 
 <PageTitle>Control Account Configuration</PageTitle>
@@ -20,578 +15,92 @@
         Configure which Chart of Accounts are designated as control accounts for financial period management and reconciliation.
     </MudText>
     
-    @if (loading)
-    {
-        <MudProgressCircular Indeterminate="true" />
-    }
-    else
-    {
-        <MudGrid>
-            <MudItem xs="12" md="6">
-                <MudPaper Class="pa-4">
-                    <MudText Typo="Typo.h6" Class="mb-3">
-                        <MudIcon Icon="@Icons.Material.Filled.AccountBalanceWallet" Class="mr-2" />
-                        Accounts Receivable
-                    </MudText>
-                    <MudDivider Class="mb-3" />
-                    <MudAutocomplete T="ChartOfAccountDto"
-                                     Label="AR Control Account"
-                                     Value="@arControlAccount"
-                                     ValueChanged="@(async (account) => await SetControlAccount(PlatformEnums.ControlAccountType.AccountsReceivable, account))"
-                                     SearchFunc="@SearchAssetAccounts"
-                                     ToStringFunc="@(a => a == null ? string.Empty : $"{a.AccountCode} - {a.AccountName}")"
-                                     Variant="Variant.Outlined"
-                                     Clearable="true"
-                                     OnClearButtonClick="@(async () => await RemoveControlAccount(PlatformEnums.ControlAccountType.AccountsReceivable))"
-                                     HelperText="Select the asset account that tracks total customer receivables" />
-                    @if (arControlAccount != null)
-                    {
-                        <MudAlert Severity="Severity.Info" Class="mt-2" Dense="true">
-                            Current: @arControlAccount.AccountCode - @arControlAccount.AccountName
-                        </MudAlert>
-                    }
-                </MudPaper>
-            </MudItem>
-            
-            <MudItem xs="12" md="6">
-                <MudPaper Class="pa-4">
-                    <MudText Typo="Typo.h6" Class="mb-3">
-                        <MudIcon Icon="@Icons.Material.Filled.CreditCard" Class="mr-2" />
-                        Accounts Payable
-                    </MudText>
-                    <MudDivider Class="mb-3" />
-                    <MudAutocomplete T="ChartOfAccountDto"
-                                     Label="AP Control Account"
-                                     Value="@apControlAccount"
-                                     ValueChanged="@(async (account) => await SetControlAccount(PlatformEnums.ControlAccountType.AccountsPayable, account))"
-                                     SearchFunc="@SearchLiabilityAccounts"
-                                     ToStringFunc="@(a => a == null ? string.Empty : $"{a.AccountCode} - {a.AccountName}")"
-                                     Variant="Variant.Outlined"
-                                     Clearable="true"
-                                     OnClearButtonClick="@(async () => await RemoveControlAccount(PlatformEnums.ControlAccountType.AccountsPayable))"
-                                     HelperText="Select the liability account that tracks total supplier payables" />
-                    @if (apControlAccount != null)
-                    {
-                        <MudAlert Severity="Severity.Info" Class="mt-2" Dense="true">
-                            Current: @apControlAccount.AccountCode - @apControlAccount.AccountName
-                        </MudAlert>
-                    }
-                </MudPaper>
-            </MudItem>
-            
-            <MudItem xs="12" md="6">
-                <MudPaper Class="pa-4">
-                    <MudText Typo="Typo.h6" Class="mb-3">
-                        <MudIcon Icon="@Icons.Material.Filled.Inventory" Class="mr-2" />
-                        Inventory
-                    </MudText>
-                    <MudDivider Class="mb-3" />
-                    <MudAutocomplete T="ChartOfAccountDto"
-                                     Label="Inventory Control Account"
-                                     Value="@inventoryControlAccount"
-                                     ValueChanged="@(async (account) => await SetControlAccount(PlatformEnums.ControlAccountType.Inventory, account))"
-                                     SearchFunc="@SearchAssetAccounts"
-                                     ToStringFunc="@(a => a == null ? string.Empty : $"{a.AccountCode} - {a.AccountName}")"
-                                     Variant="Variant.Outlined"
-                                     Clearable="true"
-                                     OnClearButtonClick="@(async () => await RemoveControlAccount(PlatformEnums.ControlAccountType.Inventory))"
-                                     HelperText="Select the asset account that tracks total inventory value" />
-                    @if (inventoryControlAccount != null)
-                    {
-                        <MudAlert Severity="Severity.Info" Class="mt-2" Dense="true">
-                            Current: @inventoryControlAccount.AccountCode - @inventoryControlAccount.AccountName
-                        </MudAlert>
-                    }
-                </MudPaper>
-            </MudItem>
-            
-            <MudItem xs="12" md="6">
-                <MudPaper Class="pa-4">
-                    <MudText Typo="Typo.h6" Class="mb-3">
-                        <MudIcon Icon="@Icons.Material.Filled.ShoppingCart" Class="mr-2" />
-                        Cost of Goods Sold
-                    </MudText>
-                    <MudDivider Class="mb-3" />
-                    <MudAutocomplete T="ChartOfAccountDto"
-                                     Label="COGS Account"
-                                     Value="@cogsAccount"
-                                     ValueChanged="@(async (account) => await SetControlAccount(PlatformEnums.ControlAccountType.CostOfGoodsSold, account))"
-                                     SearchFunc="@SearchExpenseAccounts"
-                                     ToStringFunc="@(a => a == null ? string.Empty : $"{a.AccountCode} - {a.AccountName}")"
-                                     Variant="Variant.Outlined"
-                                     Clearable="true"
-                                     OnClearButtonClick="@(async () => await RemoveControlAccount(PlatformEnums.ControlAccountType.CostOfGoodsSold))"
-                                     HelperText="Select the expense account for cost of goods sold" />
-                    @if (cogsAccount != null)
-                    {
-                        <MudAlert Severity="Severity.Info" Class="mt-2" Dense="true">
-                            Current: @cogsAccount.AccountCode - @cogsAccount.AccountName
-                        </MudAlert>
-                    }
-                </MudPaper>
-            </MudItem>
-            
-            <MudItem xs="12" md="6">
-                <MudPaper Class="pa-4">
-                    <MudText Typo="Typo.h6" Class="mb-3">
-                        <MudIcon Icon="@Icons.Material.Filled.Savings" Class="mr-2" />
-                        Retained Earnings
-                    </MudText>
-                    <MudDivider Class="mb-3" />
-                    <MudAutocomplete T="ChartOfAccountDto"
-                                     Label="Retained Earnings Account"
-                                     Value="@retainedEarningsAccount"
-                                     ValueChanged="@(async (account) => await SetControlAccount(PlatformEnums.ControlAccountType.RetainedEarnings, account))"
-                                     SearchFunc="@SearchEquityAccounts"
-                                     ToStringFunc="@(a => a == null ? string.Empty : $"{a.AccountCode} - {a.AccountName}")"
-                                     Variant="Variant.Outlined"
-                                     Clearable="true"
-                                     OnClearButtonClick="@(async () => await RemoveControlAccount(PlatformEnums.ControlAccountType.RetainedEarnings))"
-                                     HelperText="Select the equity account for retained earnings (year-end closing)" />
-                    @if (retainedEarningsAccount != null)
-                    {
-                        <MudAlert Severity="Severity.Info" Class="mt-2" Dense="true">
-                            Current: @retainedEarningsAccount.AccountCode - @retainedEarningsAccount.AccountName
-                        </MudAlert>
-                    }
-                </MudPaper>
-            </MudItem>
-            
-            <MudItem xs="12" md="6">
-                <MudPaper Class="pa-4">
-                    <MudText Typo="Typo.h6" Class="mb-3">
-                        <MudIcon Icon="@Icons.Material.Filled.AccountBalance" Class="mr-2" />
-                        Opening Balance Equity
-                    </MudText>
-                    <MudDivider Class="mb-3" />
-                    <MudAutocomplete T="ChartOfAccountDto"
-                                     Label="Opening Balance Equity Account"
-                                     Value="@openingBalanceEquityAccount"
-                                     ValueChanged="@(async (account) => await SetControlAccount(PlatformEnums.ControlAccountType.OpeningBalanceEquity, account))"
-                                     SearchFunc="@SearchEquityAccounts"
-                                     ToStringFunc="@(a => a == null ? string.Empty : $"{a.AccountCode} - {a.AccountName}")"
-                                     Variant="Variant.Outlined"
-                                     Clearable="true"
-                                     OnClearButtonClick="@(async () => await RemoveControlAccount(PlatformEnums.ControlAccountType.OpeningBalanceEquity))"
-                                     HelperText="Select the equity account for opening balance adjustments" />
-                    @if (openingBalanceEquityAccount != null)
-                    {
-                        <MudAlert Severity="Severity.Info" Class="mt-2" Dense="true">
-                            Current: @openingBalanceEquityAccount.AccountCode - @openingBalanceEquityAccount.AccountName
-                        </MudAlert>
-                    }
-                </MudPaper>
-            </MudItem>
-        </MudGrid>
+    <MudAlert Severity="Severity.Info" Class="mb-4">
+        Control account configuration is managed through the Chart of Accounts. 
+        Use the <MudLink Href="/gl/chart-of-accounts">Chart of Accounts</MudLink> page to designate accounts as control accounts.
+    </MudAlert>
+    
+    <MudGrid>
+        <MudItem xs="12" md="6">
+            <MudPaper Class="pa-4">
+                <MudText Typo="Typo.h6" Class="mb-3">
+                    <MudIcon Icon="@Icons.Material.Filled.AccountBalanceWallet" Class="mr-2" />
+                    Accounts Receivable (AR)
+                </MudText>
+                <MudDivider Class="mb-3" />
+                <MudText Typo="Typo.body2" Color="Color.Secondary">
+                    Asset account that tracks total customer receivables. Set this in the Chart of Accounts by marking an asset account as a control account.
+                </MudText>
+            </MudPaper>
+        </MudItem>
         
-        <MudText Typo="Typo.h5" Class="mt-6 mb-4">Job Module Control Accounts</MudText>
-        <MudGrid>
-            <MudItem xs="12" md="6">
-                <MudPaper Class="pa-4">
-                    <MudText Typo="Typo.h6" Class="mb-3">
-                        <MudIcon Icon="@Icons.Material.Filled.PendingActions" Class="mr-2" />
-                        Provisional Cost
-                    </MudText>
-                    <MudDivider Class="mb-3" />
-                    <MudAutocomplete T="ChartOfAccountDto"
-                                     Label="Provisional Cost Account"
-                                     Value="@provisionalCostAccount"
-                                     ValueChanged="@(async (account) => await SetControlAccount(PlatformEnums.ControlAccountType.ProvisionalCost, account))"
-                                     SearchFunc="@SearchAssetAccounts"
-                                     ToStringFunc="@(a => a == null ? string.Empty : $"{a.AccountCode} - {a.AccountName}")"
-                                     Variant="Variant.Outlined"
-                                     Clearable="true"
-                                     OnClearButtonClick="@(async () => await RemoveControlAccount(PlatformEnums.ControlAccountType.ProvisionalCost))"
-                                     HelperText="Asset account for estimated vendor costs pending invoice" />
-                    @if (provisionalCostAccount != null)
-                    {
-                        <MudAlert Severity="Severity.Info" Class="mt-2" Dense="true">
-                            Current: @provisionalCostAccount.AccountCode - @provisionalCostAccount.AccountName
-                        </MudAlert>
-                    }
-                </MudPaper>
-            </MudItem>
-            
-            <MudItem xs="12" md="6">
-                <MudPaper Class="pa-4">
-                    <MudText Typo="Typo.h6" Class="mb-3">
-                        <MudIcon Icon="@Icons.Material.Filled.Schedule" Class="mr-2" />
-                        Accrued Cost Payable
-                    </MudText>
-                    <MudDivider Class="mb-3" />
-                    <MudAutocomplete T="ChartOfAccountDto"
-                                     Label="Accrued Cost Payable Account"
-                                     Value="@accruedCostPayableAccount"
-                                     ValueChanged="@(async (account) => await SetControlAccount(PlatformEnums.ControlAccountType.AccruedCostPayable, account))"
-                                     SearchFunc="@SearchLiabilityAccounts"
-                                     ToStringFunc="@(a => a == null ? string.Empty : $"{a.AccountCode} - {a.AccountName}")"
-                                     Variant="Variant.Outlined"
-                                     Clearable="true"
-                                     OnClearButtonClick="@(async () => await RemoveControlAccount(PlatformEnums.ControlAccountType.AccruedCostPayable))"
-                                     HelperText="Liability account for accrued vendor costs" />
-                    @if (accruedCostPayableAccount != null)
-                    {
-                        <MudAlert Severity="Severity.Info" Class="mt-2" Dense="true">
-                            Current: @accruedCostPayableAccount.AccountCode - @accruedCostPayableAccount.AccountName
-                        </MudAlert>
-                    }
-                </MudPaper>
-            </MudItem>
-            
-            <MudItem xs="12" md="6">
-                <MudPaper Class="pa-4">
-                    <MudText Typo="Typo.h6" Class="mb-3">
-                        <MudIcon Icon="@Icons.Material.Filled.EventBusy" Class="mr-2" />
-                        Deferred Revenue
-                    </MudText>
-                    <MudDivider Class="mb-3" />
-                    <MudAutocomplete T="ChartOfAccountDto"
-                                     Label="Deferred Revenue Account"
-                                     Value="@deferredRevenueAccount"
-                                     ValueChanged="@(async (account) => await SetControlAccount(PlatformEnums.ControlAccountType.DeferredRevenue, account))"
-                                     SearchFunc="@SearchLiabilityAccounts"
-                                     ToStringFunc="@(a => a == null ? string.Empty : $"{a.AccountCode} - {a.AccountName}")"
-                                     Variant="Variant.Outlined"
-                                     Clearable="true"
-                                     OnClearButtonClick="@(async () => await RemoveControlAccount(PlatformEnums.ControlAccountType.DeferredRevenue))"
-                                     HelperText="Liability account for customer invoices not yet recognized as revenue" />
-                    @if (deferredRevenueAccount != null)
-                    {
-                        <MudAlert Severity="Severity.Info" Class="mt-2" Dense="true">
-                            Current: @deferredRevenueAccount.AccountCode - @deferredRevenueAccount.AccountName
-                        </MudAlert>
-                    }
-                </MudPaper>
-            </MudItem>
-            
-            <MudItem xs="12" md="6">
-                <MudPaper Class="pa-4">
-                    <MudText Typo="Typo.h6" Class="mb-3">
-                        <MudIcon Icon="@Icons.Material.Filled.Paid" Class="mr-2" />
-                        Job Revenue
-                    </MudText>
-                    <MudDivider Class="mb-3" />
-                    <MudAutocomplete T="ChartOfAccountDto"
-                                     Label="Job Revenue Account"
-                                     Value="@jobRevenueAccount"
-                                     ValueChanged="@(async (account) => await SetControlAccount(PlatformEnums.ControlAccountType.JobRevenue, account))"
-                                     SearchFunc="@SearchIncomeAccounts"
-                                     ToStringFunc="@(a => a == null ? string.Empty : $"{a.AccountCode} - {a.AccountName}")"
-                                     Variant="Variant.Outlined"
-                                     Clearable="true"
-                                     OnClearButtonClick="@(async () => await RemoveControlAccount(PlatformEnums.ControlAccountType.JobRevenue))"
-                                     HelperText="Income account for recognized freight/logistics revenue" />
-                    @if (jobRevenueAccount != null)
-                    {
-                        <MudAlert Severity="Severity.Info" Class="mt-2" Dense="true">
-                            Current: @jobRevenueAccount.AccountCode - @jobRevenueAccount.AccountName
-                        </MudAlert>
-                    }
-                </MudPaper>
-            </MudItem>
-            
-            <MudItem xs="12" md="6">
-                <MudPaper Class="pa-4">
-                    <MudText Typo="Typo.h6" Class="mb-3">
-                        <MudIcon Icon="@Icons.Material.Filled.LocalShipping" Class="mr-2" />
-                        Job Cost of Sales
-                    </MudText>
-                    <MudDivider Class="mb-3" />
-                    <MudAutocomplete T="ChartOfAccountDto"
-                                     Label="Job Cost of Sales Account"
-                                     Value="@jobCostOfSalesAccount"
-                                     ValueChanged="@(async (account) => await SetControlAccount(PlatformEnums.ControlAccountType.JobCostOfSales, account))"
-                                     SearchFunc="@SearchExpenseAccounts"
-                                     ToStringFunc="@(a => a == null ? string.Empty : $"{a.AccountCode} - {a.AccountName}")"
-                                     Variant="Variant.Outlined"
-                                     Clearable="true"
-                                     OnClearButtonClick="@(async () => await RemoveControlAccount(PlatformEnums.ControlAccountType.JobCostOfSales))"
-                                     HelperText="Expense account for direct job costs (freight, handling, etc.)" />
-                    @if (jobCostOfSalesAccount != null)
-                    {
-                        <MudAlert Severity="Severity.Info" Class="mt-2" Dense="true">
-                            Current: @jobCostOfSalesAccount.AccountCode - @jobCostOfSalesAccount.AccountName
-                        </MudAlert>
-                    }
-                </MudPaper>
-            </MudItem>
-        </MudGrid>
+        <MudItem xs="12" md="6">
+            <MudPaper Class="pa-4">
+                <MudText Typo="Typo.h6" Class="mb-3">
+                    <MudIcon Icon="@Icons.Material.Filled.Receipt" Class="mr-2" />
+                    Accounts Payable (AP)
+                </MudText>
+                <MudDivider Class="mb-3" />
+                <MudText Typo="Typo.body2" Color="Color.Secondary">
+                    Liability account that tracks total vendor payables. Set this in the Chart of Accounts by marking a liability account as a control account.
+                </MudText>
+            </MudPaper>
+        </MudItem>
         
-        <MudPaper Class="pa-4 mt-4">
-            <MudText Typo="Typo.h6" Class="mb-3">
-                <MudIcon Icon="@Icons.Material.Filled.Info" Class="mr-2" />
-                About Control Accounts
-            </MudText>
-            <MudDivider Class="mb-3" />
-            <MudText Typo="Typo.body2" Class="mb-2">
-                <strong>Control accounts</strong> are summary accounts in the general ledger that aggregate detailed subledger balances:
-            </MudText>
-            <MudList T="string" Dense="true">
-                <MudListItem Icon="@Icons.Material.Filled.ArrowRight">
-                    <strong>AR Control:</strong> Should equal the total of all individual customer balances
-                </MudListItem>
-                <MudListItem Icon="@Icons.Material.Filled.ArrowRight">
-                    <strong>AP Control:</strong> Should equal the total of all individual supplier balances
-                </MudListItem>
-                <MudListItem Icon="@Icons.Material.Filled.ArrowRight">
-                    <strong>Inventory Control:</strong> Should equal the total value of all inventory items
-                </MudListItem>
-                <MudListItem Icon="@Icons.Material.Filled.ArrowRight">
-                    <strong>COGS:</strong> Records the cost of inventory sold during the period
-                </MudListItem>
-                <MudListItem Icon="@Icons.Material.Filled.ArrowRight">
-                    <strong>Retained Earnings:</strong> Receives net income/loss during year-end closing
-                </MudListItem>
-                <MudListItem Icon="@Icons.Material.Filled.ArrowRight">
-                    <strong>Opening Balance Equity:</strong> Used for opening balance entries when starting a new period
-                </MudListItem>
-            </MudList>
-            <MudAlert Severity="Severity.Warning" Class="mt-3">
-                <strong>Important:</strong> Control accounts must be properly configured before performing year-end closing. 
-                The system will validate that control account balances reconcile with their respective subledgers.
-            </MudAlert>
-        </MudPaper>
-    }
+        <MudItem xs="12" md="6">
+            <MudPaper Class="pa-4">
+                <MudText Typo="Typo.h6" Class="mb-3">
+                    <MudIcon Icon="@Icons.Material.Filled.Inventory2" Class="mr-2" />
+                    Inventory
+                </MudText>
+                <MudDivider Class="mb-3" />
+                <MudText Typo="Typo.body2" Color="Color.Secondary">
+                    Asset account that tracks inventory value. Set this in the Chart of Accounts by marking an asset account as a control account.
+                </MudText>
+            </MudPaper>
+        </MudItem>
+        
+        <MudItem xs="12" md="6">
+            <MudPaper Class="pa-4">
+                <MudText Typo="Typo.h6" Class="mb-3">
+                    <MudIcon Icon="@Icons.Material.Filled.ShoppingCart" Class="mr-2" />
+                    Cost of Goods Sold
+                </MudText>
+                <MudDivider Class="mb-3" />
+                <MudText Typo="Typo.body2" Color="Color.Secondary">
+                    Expense account for cost of goods sold. Set this in the Chart of Accounts by marking an expense account as a control account.
+                </MudText>
+            </MudPaper>
+        </MudItem>
+        
+        <MudItem xs="12" md="6">
+            <MudPaper Class="pa-4">
+                <MudText Typo="Typo.h6" Class="mb-3">
+                    <MudIcon Icon="@Icons.Material.Filled.Savings" Class="mr-2" />
+                    Retained Earnings
+                </MudText>
+                <MudDivider Class="mb-3" />
+                <MudText Typo="Typo.body2" Color="Color.Secondary">
+                    Equity account for retained earnings. Set this in the Chart of Accounts by marking an equity account as a control account.
+                </MudText>
+            </MudPaper>
+        </MudItem>
+        
+        <MudItem xs="12" md="6">
+            <MudPaper Class="pa-4">
+                <MudText Typo="Typo.h6" Class="mb-3">
+                    <MudIcon Icon="@Icons.Material.Filled.PlayArrow" Class="mr-2" />
+                    Opening Balance Equity
+                </MudText>
+                <MudDivider Class="mb-3" />
+                <MudText Typo="Typo.body2" Color="Color.Secondary">
+                    Equity account for opening balance adjustments. Set this in the Chart of Accounts by marking an equity account as a control account.
+                </MudText>
+            </MudPaper>
+        </MudItem>
+    </MudGrid>
 </MudContainer>
 
 @code {
-    private bool loading = true;
-    private List<PlatformDTOs.ChartOfAccountDto> allAccounts = new();
-    
-    private ChartOfAccountDto? arControlAccount;
-    private ChartOfAccountDto? apControlAccount;
-    private ChartOfAccountDto? inventoryControlAccount;
-    private ChartOfAccountDto? cogsAccount;
-    private ChartOfAccountDto? retainedEarningsAccount;
-    private ChartOfAccountDto? openingBalanceEquityAccount;
-    private ChartOfAccountDto? provisionalCostAccount;
-    private ChartOfAccountDto? accruedCostPayableAccount;
-    private ChartOfAccountDto? deferredRevenueAccount;
-    private ChartOfAccountDto? jobRevenueAccount;
-    private ChartOfAccountDto? jobCostOfSalesAccount;
-
-    private Guid GetTenantId()
-    {
-        var tenantIdStr = AuthService.GetTenantId();
-        return Guid.TryParse(tenantIdStr, out var tenantId) ? tenantId : Guid.Empty;
-    }
-
-    private bool ValidateTenantId(Guid tenantId)
-    {
-        if (tenantId == Guid.Empty)
-        {
-            Snackbar.Add("Session error - invalid tenant. Please log in again.", Severity.Error);
-            return false;
-        }
-        return true;
-    }
-
-    protected override async Task OnInitializedAsync()
-    {
-        await LoadData();
-    }
-
-    private async Task LoadData()
-    {
-        loading = true;
-        try
-        {
-            await LoadAccounts();
-            await LoadControlAccountAssignments();
-        }
-        catch (Exception ex)
-        {
-            Snackbar.Add($"Error loading data: {ex.Message}", Severity.Error);
-        }
-        finally
-        {
-            loading = false;
-        }
-    }
-
-    private async Task LoadAccounts()
-    {
-        var tenantId = GetTenantId();
-        if (!ValidateTenantId(tenantId)) return;
-        
-        var accounts = await ChartOfAccountsService.GetAllAsync(tenantId);
-        allAccounts = accounts.ToList();
-    }
-
-    private async Task LoadControlAccountAssignments()
-    {
-        var tenantId = GetTenantId();
-        if (!ValidateTenantId(tenantId)) return;
-        
-        var assignments = await ChartOfAccountsService.GetControlAccountsAsync(tenantId);
-        
-        arControlAccount = MapAssignmentToAccount(assignments.GetValueOrDefault("AccountsReceivable"));
-        apControlAccount = MapAssignmentToAccount(assignments.GetValueOrDefault("AccountsPayable"));
-        inventoryControlAccount = MapAssignmentToAccount(assignments.GetValueOrDefault("Inventory"));
-        cogsAccount = MapAssignmentToAccount(assignments.GetValueOrDefault("CostOfGoodsSold"));
-        retainedEarningsAccount = MapAssignmentToAccount(assignments.GetValueOrDefault("RetainedEarnings"));
-        openingBalanceEquityAccount = MapAssignmentToAccount(assignments.GetValueOrDefault("OpeningBalanceEquity"));
-        provisionalCostAccount = MapAssignmentToAccount(assignments.GetValueOrDefault("ProvisionalCost"));
-        accruedCostPayableAccount = MapAssignmentToAccount(assignments.GetValueOrDefault("AccruedCostPayable"));
-        deferredRevenueAccount = MapAssignmentToAccount(assignments.GetValueOrDefault("DeferredRevenue"));
-        jobRevenueAccount = MapAssignmentToAccount(assignments.GetValueOrDefault("JobRevenue"));
-        jobCostOfSalesAccount = MapAssignmentToAccount(assignments.GetValueOrDefault("JobCostOfSales"));
-    }
-
-    private ChartOfAccountDto? MapAssignmentToAccount(PlatformDTOs.ControlAccountAssignmentDto? assignment)
-    {
-        if (assignment == null) return null;
-        return new ChartOfAccountDto
-        {
-            Id = assignment.AccountId,
-            AccountCode = assignment.AccountCode,
-            AccountName = assignment.AccountName
-        };
-    }
-
-    private async Task SetControlAccount(PlatformEnums.ControlAccountType type, ChartOfAccountDto? account)
-    {
-        if (account == null) return;
-
-        try
-        {
-            var tenantId = GetTenantId();
-            if (!ValidateTenantId(tenantId)) return;
-            
-            await ChartOfAccountsService.SetControlAccountAsync(tenantId, account.Id, (int)type);
-            UpdateLocalState(type, account);
-            Snackbar.Add($"{GetControlAccountTypeName(type)} set to {account.AccountCode} - {account.AccountName}", Severity.Success);
-        }
-        catch (Exception ex)
-        {
-            Snackbar.Add($"Error: {ex.Message}", Severity.Error);
-        }
-    }
-
-    private async Task RemoveControlAccount(PlatformEnums.ControlAccountType type)
-    {
-        try
-        {
-            var tenantId = GetTenantId();
-            if (!ValidateTenantId(tenantId)) return;
-            
-            await ChartOfAccountsService.RemoveControlAccountAsync(tenantId, (int)type);
-            UpdateLocalState(type, null);
-            Snackbar.Add($"{GetControlAccountTypeName(type)} has been cleared", Severity.Success);
-        }
-        catch (Exception ex)
-        {
-            Snackbar.Add($"Error: {ex.Message}", Severity.Error);
-        }
-    }
-
-    private void UpdateLocalState(PlatformEnums.ControlAccountType type, ChartOfAccountDto? account)
-    {
-        switch (type)
-        {
-            case PlatformEnums.ControlAccountType.AccountsReceivable:
-                arControlAccount = account;
-                break;
-            case PlatformEnums.ControlAccountType.AccountsPayable:
-                apControlAccount = account;
-                break;
-            case PlatformEnums.ControlAccountType.Inventory:
-                inventoryControlAccount = account;
-                break;
-            case PlatformEnums.ControlAccountType.CostOfGoodsSold:
-                cogsAccount = account;
-                break;
-            case PlatformEnums.ControlAccountType.RetainedEarnings:
-                retainedEarningsAccount = account;
-                break;
-            case PlatformEnums.ControlAccountType.OpeningBalanceEquity:
-                openingBalanceEquityAccount = account;
-                break;
-            case PlatformEnums.ControlAccountType.ProvisionalCost:
-                provisionalCostAccount = account;
-                break;
-            case PlatformEnums.ControlAccountType.AccruedCostPayable:
-                accruedCostPayableAccount = account;
-                break;
-            case PlatformEnums.ControlAccountType.DeferredRevenue:
-                deferredRevenueAccount = account;
-                break;
-            case PlatformEnums.ControlAccountType.JobRevenue:
-                jobRevenueAccount = account;
-                break;
-            case PlatformEnums.ControlAccountType.JobCostOfSales:
-                jobCostOfSalesAccount = account;
-                break;
-        }
-    }
-
-    private string GetControlAccountTypeName(PlatformEnums.ControlAccountType type) => type switch
-    {
-        PlatformEnums.ControlAccountType.AccountsReceivable => "AR Control Account",
-        PlatformEnums.ControlAccountType.AccountsPayable => "AP Control Account",
-        PlatformEnums.ControlAccountType.Inventory => "Inventory Control Account",
-        PlatformEnums.ControlAccountType.CostOfGoodsSold => "COGS Account",
-        PlatformEnums.ControlAccountType.RetainedEarnings => "Retained Earnings Account",
-        PlatformEnums.ControlAccountType.OpeningBalanceEquity => "Opening Balance Equity Account",
-        PlatformEnums.ControlAccountType.ProvisionalCost => "Provisional Cost Account",
-        PlatformEnums.ControlAccountType.AccruedCostPayable => "Accrued Cost Payable Account",
-        PlatformEnums.ControlAccountType.DeferredRevenue => "Deferred Revenue Account",
-        PlatformEnums.ControlAccountType.JobRevenue => "Job Revenue Account",
-        PlatformEnums.ControlAccountType.JobCostOfSales => "Job Cost of Sales Account",
-        _ => type.ToString()
-    };
-
-    private async Task<IEnumerable<ChartOfAccountDto>> SearchAssetAccounts(string searchText, CancellationToken token)
-    {
-        return await SearchAccounts(searchText, PlatformDTOs.AccountType.Asset);
-    }
-
-    private async Task<IEnumerable<ChartOfAccountDto>> SearchLiabilityAccounts(string searchText, CancellationToken token)
-    {
-        return await SearchAccounts(searchText, PlatformDTOs.AccountType.Liability);
-    }
-
-    private async Task<IEnumerable<ChartOfAccountDto>> SearchExpenseAccounts(string searchText, CancellationToken token)
-    {
-        return await SearchAccounts(searchText, PlatformDTOs.AccountType.Expense);
-    }
-
-    private async Task<IEnumerable<ChartOfAccountDto>> SearchEquityAccounts(string searchText, CancellationToken token)
-    {
-        return await SearchAccounts(searchText, PlatformDTOs.AccountType.Equity);
-    }
-
-    private async Task<IEnumerable<ChartOfAccountDto>> SearchIncomeAccounts(string searchText, CancellationToken token)
-    {
-        return await SearchAccounts(searchText, PlatformDTOs.AccountType.Revenue);
-    }
-
-    private Task<IEnumerable<ChartOfAccountDto>> SearchAccounts(string searchText, PlatformDTOs.AccountType accountType)
-    {
-        var filtered = allAccounts
-            .Where(a => a.AccountType == accountType && a.AllowPosting)
-            .Where(a => string.IsNullOrEmpty(searchText) || 
-                       (a.AccountCode?.Contains(searchText, StringComparison.OrdinalIgnoreCase) ?? false) ||
-                       a.AccountName.Contains(searchText, StringComparison.OrdinalIgnoreCase))
-            .OrderBy(a => a.AccountCode)
-            .Take(20)
-            .Select(a => new ChartOfAccountDto
-            {
-                Id = a.Id,
-                AccountCode = a.AccountCode ?? "",
-                AccountName = a.AccountName,
-                AccountType = a.AccountType.ToString(),
-                AllowPosting = a.AllowPosting
-            });
-        return Task.FromResult(filtered.AsEnumerable());
-    }
-
-    public class ChartOfAccountDto
-    {
-        public Guid Id { get; set; }
-        public string AccountCode { get; set; } = string.Empty;
-        public string AccountName { get; set; } = string.Empty;
-        public string AccountType { get; set; } = string.Empty;
-        public bool AllowPosting { get; set; }
-    }
+    private Guid GetTenantId() => TenantContext.TenantId ?? Guid.Parse("11111111-1111-1111-1111-111111111111");
 }
