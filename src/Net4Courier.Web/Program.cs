@@ -169,6 +169,19 @@ builder.Services.AddDbContextFactory<Truebooks.Platform.Core.Infrastructure.Plat
 // Register TrueBooks Platform Finance services
 Truebooks.Platform.Finance.Extensions.FinanceServiceExtensions.AddPlatformFinance(builder.Services);
 
+builder.Services.AddAuthentication(options =>
+{
+    options.DefaultScheme = "Cookies";
+    options.DefaultChallengeScheme = "Cookies";
+})
+.AddCookie("Cookies", options =>
+{
+    options.LoginPath = "/login";
+    options.LogoutPath = "/logout";
+    options.AccessDeniedPath = "/login";
+    options.ExpireTimeSpan = TimeSpan.FromDays(7);
+    options.SlidingExpiration = true;
+});
 builder.Services.AddAuthorizationCore();
 builder.Services.AddCascadingAuthenticationState();
 
@@ -238,6 +251,8 @@ if (!app.Environment.IsDevelopment())
 
 app.UseCookiePolicy();
 app.UseStaticFiles();
+app.UseAuthentication();
+app.UseAuthorization();
 app.UseAntiforgery();
 
 app.Use(async (context, next) =>
