@@ -1,0 +1,303 @@
+@page "/n4c-reports/balance-sheet/horizontal"
+@inject ApplicationDbContext DbContext
+@inject ISnackbar Snackbar
+@using Microsoft.EntityFrameworkCore
+@using Net4Courier.Infrastructure.Data
+@using Net4Courier.Finance.Entities
+
+<PageTitle>Balance Sheet (Horizontal) - Net4Courier</PageTitle>
+
+<MudContainer MaxWidth="MaxWidth.ExtraLarge" Class="mt-4">
+    <MudPaper Class="pa-4 mb-4" Elevation="2">
+        <MudText Typo="Typo.h5" Class="mb-4">Balance Sheet - Horizontal Format</MudText>
+
+        <MudGrid>
+            <MudItem xs="12" sm="3">
+                <MudDatePicker @bind-Date="_asAtDate" Label="As At Date" DateFormat="dd-MMM-yyyy" Variant="Variant.Outlined" AnchorOrigin="Origin.BottomCenter" TransformOrigin="Origin.TopCenter" />
+            </MudItem>
+            <MudItem xs="12" sm="2">
+                <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="LoadReport" 
+                           FullWidth="true" Class="mt-1" Disabled="_isLoading">
+                    @if (_isLoading)
+                    {
+                        <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" />
+                    }
+                    Generate
+                </MudButton>
+            </MudItem>
+            <MudItem xs="12" sm="2">
+                <MudButton Variant="Variant.Outlined" OnClick="ClearFilters" FullWidth="true" Class="mt-1">
+                    Clear
+                </MudButton>
+            </MudItem>
+        </MudGrid>
+    </MudPaper>
+
+    @if (_hasData)
+    {
+        <MudPaper Class="pa-4" Elevation="2">
+            <MudText Typo="Typo.subtitle1" Class="mb-4" Align="Align.Center">
+                <strong>Balance Sheet as at @_asAtDate?.ToString("dd MMMM yyyy")</strong>
+            </MudText>
+
+            <MudGrid>
+                <MudItem xs="12" md="6">
+                    <MudSimpleTable Dense="true" Hover="true" Bordered="true">
+                        <thead>
+                            <tr style="background: var(--mud-palette-success-lighten);">
+                                <th colspan="2"><strong>ASSETS</strong></th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @if (_currentAssets.Any())
+                            {
+                                <tr style="background: var(--mud-palette-grey-lighten-3);">
+                                    <td colspan="2"><strong>Current Assets</strong></td>
+                                </tr>
+                                @foreach (var asset in _currentAssets)
+                                {
+                                    <tr>
+                                        <td style="padding-left: 24px;">@asset.Code - @asset.Name</td>
+                                        <td style="text-align: right; width: 120px;">@asset.Balance.ToString("N2")</td>
+                                    </tr>
+                                }
+                                <tr style="font-weight: bold;">
+                                    <td style="padding-left: 12px;">Total Current Assets</td>
+                                    <td style="text-align: right;">@_currentAssets.Sum(a => a.Balance).ToString("N2")</td>
+                                </tr>
+                            }
+                            @if (_nonCurrentAssets.Any())
+                            {
+                                <tr style="background: var(--mud-palette-grey-lighten-3);">
+                                    <td colspan="2"><strong>Non-Current Assets</strong></td>
+                                </tr>
+                                @foreach (var asset in _nonCurrentAssets)
+                                {
+                                    <tr>
+                                        <td style="padding-left: 24px;">@asset.Code - @asset.Name</td>
+                                        <td style="text-align: right; width: 120px;">@asset.Balance.ToString("N2")</td>
+                                    </tr>
+                                }
+                                <tr style="font-weight: bold;">
+                                    <td style="padding-left: 12px;">Total Non-Current Assets</td>
+                                    <td style="text-align: right;">@_nonCurrentAssets.Sum(a => a.Balance).ToString("N2")</td>
+                                </tr>
+                            }
+                            <tr style="background: var(--mud-palette-success-lighten); font-weight: bold;">
+                                <td><strong>TOTAL ASSETS</strong></td>
+                                <td style="text-align: right;">@_totalAssets.ToString("N2")</td>
+                            </tr>
+                        </tbody>
+                    </MudSimpleTable>
+                </MudItem>
+
+                <MudItem xs="12" md="6">
+                    <MudSimpleTable Dense="true" Hover="true" Bordered="true">
+                        <thead>
+                            <tr style="background: var(--mud-palette-warning-lighten);">
+                                <th colspan="2"><strong>LIABILITIES & EQUITY</strong></th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @if (_currentLiabilities.Any())
+                            {
+                                <tr style="background: var(--mud-palette-grey-lighten-3);">
+                                    <td colspan="2"><strong>Current Liabilities</strong></td>
+                                </tr>
+                                @foreach (var liability in _currentLiabilities)
+                                {
+                                    <tr>
+                                        <td style="padding-left: 24px;">@liability.Code - @liability.Name</td>
+                                        <td style="text-align: right; width: 120px;">@liability.Balance.ToString("N2")</td>
+                                    </tr>
+                                }
+                                <tr style="font-weight: bold;">
+                                    <td style="padding-left: 12px;">Total Current Liabilities</td>
+                                    <td style="text-align: right;">@_currentLiabilities.Sum(l => l.Balance).ToString("N2")</td>
+                                </tr>
+                            }
+                            @if (_nonCurrentLiabilities.Any())
+                            {
+                                <tr style="background: var(--mud-palette-grey-lighten-3);">
+                                    <td colspan="2"><strong>Non-Current Liabilities</strong></td>
+                                </tr>
+                                @foreach (var liability in _nonCurrentLiabilities)
+                                {
+                                    <tr>
+                                        <td style="padding-left: 24px;">@liability.Code - @liability.Name</td>
+                                        <td style="text-align: right; width: 120px;">@liability.Balance.ToString("N2")</td>
+                                    </tr>
+                                }
+                                <tr style="font-weight: bold;">
+                                    <td style="padding-left: 12px;">Total Non-Current Liabilities</td>
+                                    <td style="text-align: right;">@_nonCurrentLiabilities.Sum(l => l.Balance).ToString("N2")</td>
+                                </tr>
+                            }
+                            <tr style="font-weight: bold;">
+                                <td>Total Liabilities</td>
+                                <td style="text-align: right;">@_totalLiabilities.ToString("N2")</td>
+                            </tr>
+                            <tr style="background: var(--mud-palette-grey-lighten-3);">
+                                <td colspan="2"><strong>Equity</strong></td>
+                            </tr>
+                            @foreach (var equity in _equity)
+                            {
+                                <tr>
+                                    <td style="padding-left: 24px;">@equity.Code - @equity.Name</td>
+                                    <td style="text-align: right; width: 120px;">@equity.Balance.ToString("N2")</td>
+                                </tr>
+                            }
+                            @if (_retainedEarnings != 0)
+                            {
+                                <tr>
+                                    <td style="padding-left: 24px;">Retained Earnings</td>
+                                    <td style="text-align: right;">@_retainedEarnings.ToString("N2")</td>
+                                </tr>
+                            }
+                            <tr style="font-weight: bold;">
+                                <td>Total Equity</td>
+                                <td style="text-align: right;">@(_totalEquity + _retainedEarnings).ToString("N2")</td>
+                            </tr>
+                            <tr style="background: var(--mud-palette-success-lighten); font-weight: bold;">
+                                <td><strong>TOTAL LIABILITIES & EQUITY</strong></td>
+                                <td style="text-align: right;">@(_totalLiabilities + _totalEquity + _retainedEarnings).ToString("N2")</td>
+                            </tr>
+                        </tbody>
+                    </MudSimpleTable>
+                </MudItem>
+            </MudGrid>
+
+            @{
+                var difference = _totalAssets - (_totalLiabilities + _totalEquity + _retainedEarnings);
+            }
+            @if (Math.Abs(difference) > 0.01m)
+            {
+                <MudAlert Severity="Severity.Warning" Class="mt-4">
+                    Balance Sheet does not balance. Difference: @Math.Abs(difference).ToString("N2")
+                </MudAlert>
+            }
+            else
+            {
+                <MudAlert Severity="Severity.Success" Class="mt-4">
+                    Balance Sheet is balanced. Assets = Liabilities + Equity
+                </MudAlert>
+            }
+        </MudPaper>
+    }
+    else if (!_isLoading)
+    {
+        <MudPaper Class="pa-4">
+            <MudAlert Severity="Severity.Info">
+                Select a date and click Generate to view the Horizontal Balance Sheet.
+            </MudAlert>
+        </MudPaper>
+    }
+</MudContainer>
+
+@code {
+    private DateTime? _asAtDate = DateTime.SpecifyKind(DateTime.Today, DateTimeKind.Utc);
+    private bool _isLoading;
+    private bool _hasData;
+
+    private List<BalanceSheetItem> _currentAssets = new();
+    private List<BalanceSheetItem> _nonCurrentAssets = new();
+    private List<BalanceSheetItem> _currentLiabilities = new();
+    private List<BalanceSheetItem> _nonCurrentLiabilities = new();
+    private List<BalanceSheetItem> _equity = new();
+    private decimal _totalAssets;
+    private decimal _totalLiabilities;
+    private decimal _totalEquity;
+    private decimal _retainedEarnings;
+
+    private async Task LoadReport()
+    {
+        _isLoading = true;
+        _currentAssets.Clear();
+        _nonCurrentAssets.Clear();
+        _currentLiabilities.Clear();
+        _nonCurrentLiabilities.Clear();
+        _equity.Clear();
+        _retainedEarnings = 0;
+
+        try
+        {
+            var asAtUtc = _asAtDate.HasValue 
+                ? DateTime.SpecifyKind(_asAtDate.Value.Date.AddDays(1).AddTicks(-1), DateTimeKind.Utc) 
+                : DateTime.UtcNow;
+
+            var accounts = await DbContext.AccountHeads
+                .Where(a => a.IsActive && !a.IsGroup)
+                .OrderBy(a => a.Code)
+                .ToListAsync();
+
+            var journalEntries = await DbContext.JournalEntries
+                .Include(e => e.Journal)
+                .Where(e => !e.IsDeleted && e.Journal.IsPosted && e.Journal.VoucherDate <= asAtUtc)
+                .ToListAsync();
+
+            var entriesByAccount = journalEntries.GroupBy(e => e.AccountHeadId)
+                .ToDictionary(g => g.Key, g => g.ToList());
+
+            foreach (var account in accounts)
+            {
+                var opening = account.OpeningBalance ?? 0;
+                var entries = entriesByAccount.GetValueOrDefault(account.Id, new List<JournalEntry>());
+                var balance = opening + entries.Sum(e => (e.Debit ?? 0) - (e.Credit ?? 0));
+                
+                if (balance == 0) continue;
+
+                var item = new BalanceSheetItem { Code = account.Code, Name = account.Name, Balance = Math.Abs(balance) };
+                var isCurrent = account.AccountGroup == Finance.Entities.AccountGroup.CurrentAssets || 
+                                account.AccountGroup == Finance.Entities.AccountGroup.CurrentLiabilities ||
+                                account.Code.StartsWith("1") || account.Code.StartsWith("2");
+
+                switch (account.Classification)
+                {
+                    case AccountClassification.Assets:
+                        if (isCurrent)
+                            _currentAssets.Add(item);
+                        else
+                            _nonCurrentAssets.Add(item);
+                        break;
+                    case AccountClassification.Liabilities:
+                        if (isCurrent)
+                            _currentLiabilities.Add(item);
+                        else
+                            _nonCurrentLiabilities.Add(item);
+                        break;
+                    case AccountClassification.Equity:
+                        _equity.Add(item);
+                        break;
+                    case AccountClassification.Income:
+                    case AccountClassification.Expenditure:
+                        _retainedEarnings += balance;
+                        break;
+                }
+            }
+
+            _totalAssets = _currentAssets.Sum(a => a.Balance) + _nonCurrentAssets.Sum(a => a.Balance);
+            _totalLiabilities = _currentLiabilities.Sum(l => l.Balance) + _nonCurrentLiabilities.Sum(l => l.Balance);
+            _totalEquity = _equity.Sum(e => e.Balance);
+            _hasData = true;
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error loading balance sheet: {ex.Message}", Severity.Error);
+        }
+
+        _isLoading = false;
+    }
+
+    private void ClearFilters()
+    {
+        _asAtDate = DateTime.SpecifyKind(DateTime.Today, DateTimeKind.Utc);
+        _hasData = false;
+    }
+
+    private class BalanceSheetItem
+    {
+        public string Code { get; set; } = "";
+        public string Name { get; set; } = "";
+        public decimal Balance { get; set; }
+    }
+}

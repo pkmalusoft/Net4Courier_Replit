@@ -1,0 +1,254 @@
+@page "/reports/profit-loss"
+@inject ApplicationDbContext DbContext
+@inject ISnackbar Snackbar
+@using Microsoft.EntityFrameworkCore
+@using Net4Courier.Infrastructure.Data
+@using Net4Courier.Finance.Entities
+
+<PageTitle>Profit & Loss Statement - Net4Courier</PageTitle>
+
+<MudContainer MaxWidth="MaxWidth.ExtraLarge" Class="mt-4">
+    <MudPaper Class="pa-4" Elevation="2">
+        <MudText Typo="Typo.h5" Class="mb-4">Profit & Loss Statement</MudText>
+        
+        <MudGrid>
+            <MudItem xs="12" sm="2">
+                <MudDatePicker @bind-Date="_fromDate" Label="From Date" DateFormat="dd-MMM-yyyy" Variant="Variant.Outlined" AnchorOrigin="Origin.BottomCenter" TransformOrigin="Origin.TopCenter" />
+            </MudItem>
+            <MudItem xs="12" sm="2">
+                <MudDatePicker @bind-Date="_toDate" Label="To Date" DateFormat="dd-MMM-yyyy" Variant="Variant.Outlined" AnchorOrigin="Origin.BottomCenter" TransformOrigin="Origin.TopCenter" />
+            </MudItem>
+            <MudItem xs="12" sm="2">
+                <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="LoadProfitLoss" 
+                           FullWidth="true" Class="mt-1">
+                    Generate
+                </MudButton>
+            </MudItem>
+        </MudGrid>
+    </MudPaper>
+
+    @if (_isLoading)
+    {
+        <MudPaper Class="pa-4 mt-4">
+            <MudProgressLinear Indeterminate="true" Color="Color.Primary" />
+        </MudPaper>
+    }
+    else if (_hasData)
+    {
+        <MudPaper Class="pa-4 mt-4" Elevation="2">
+            <MudText Typo="Typo.h6" Align="Align.Center" Class="mb-4">
+                Profit & Loss Statement for the period @_fromDate?.ToString("dd MMM yyyy") to @_toDate?.ToString("dd MMM yyyy")
+            </MudText>
+
+            <MudGrid>
+                <MudItem xs="12" md="6">
+                    <MudSimpleTable Dense="true" Hover="true" Bordered="true">
+                        <thead>
+                            <tr style="background: var(--mud-palette-success-lighten);">
+                                <th colspan="2"><strong>INCOME</strong></th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr style="background: var(--mud-palette-grey-lighten-4);">
+                                <td colspan="2"><strong>Direct Income</strong></td>
+                            </tr>
+                            @foreach (var item in _directIncome)
+                            {
+                                <tr>
+                                    <td style="padding-left: 24px;">@item.Code - @item.Name</td>
+                                    <td style="text-align: right; width: 120px;">@item.Balance.ToString("N2")</td>
+                                </tr>
+                            }
+                            <tr style="font-weight: 500;">
+                                <td style="padding-left: 12px;">Total Direct Income</td>
+                                <td style="text-align: right;">@_directIncome.Sum(i => i.Balance).ToString("N2")</td>
+                            </tr>
+                            <tr style="background: var(--mud-palette-grey-lighten-4);">
+                                <td colspan="2"><strong>Indirect Income</strong></td>
+                            </tr>
+                            @foreach (var item in _indirectIncome)
+                            {
+                                <tr>
+                                    <td style="padding-left: 24px;">@item.Code - @item.Name</td>
+                                    <td style="text-align: right; width: 120px;">@item.Balance.ToString("N2")</td>
+                                </tr>
+                            }
+                            <tr style="font-weight: 500;">
+                                <td style="padding-left: 12px;">Total Indirect Income</td>
+                                <td style="text-align: right;">@_indirectIncome.Sum(i => i.Balance).ToString("N2")</td>
+                            </tr>
+                            <tr style="background: var(--mud-palette-success-lighten); font-weight: bold;">
+                                <td><strong>Total Income</strong></td>
+                                <td style="text-align: right;"><strong>@_totalIncome.ToString("N2")</strong></td>
+                            </tr>
+                        </tbody>
+                    </MudSimpleTable>
+                </MudItem>
+
+                <MudItem xs="12" md="6">
+                    <MudSimpleTable Dense="true" Hover="true" Bordered="true">
+                        <thead>
+                            <tr style="background: var(--mud-palette-error-lighten);">
+                                <th colspan="2"><strong>EXPENSES</strong></th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr style="background: var(--mud-palette-grey-lighten-4);">
+                                <td colspan="2"><strong>Direct Expenses</strong></td>
+                            </tr>
+                            @foreach (var item in _directExpenses)
+                            {
+                                <tr>
+                                    <td style="padding-left: 24px;">@item.Code - @item.Name</td>
+                                    <td style="text-align: right; width: 120px;">@item.Balance.ToString("N2")</td>
+                                </tr>
+                            }
+                            <tr style="font-weight: 500;">
+                                <td style="padding-left: 12px;">Total Direct Expenses</td>
+                                <td style="text-align: right;">@_directExpenses.Sum(e => e.Balance).ToString("N2")</td>
+                            </tr>
+                            <tr style="background: var(--mud-palette-grey-lighten-4);">
+                                <td colspan="2"><strong>Indirect Expenses</strong></td>
+                            </tr>
+                            @foreach (var item in _indirectExpenses)
+                            {
+                                <tr>
+                                    <td style="padding-left: 24px;">@item.Code - @item.Name</td>
+                                    <td style="text-align: right; width: 120px;">@item.Balance.ToString("N2")</td>
+                                </tr>
+                            }
+                            <tr style="font-weight: 500;">
+                                <td style="padding-left: 12px;">Total Indirect Expenses</td>
+                                <td style="text-align: right;">@_indirectExpenses.Sum(e => e.Balance).ToString("N2")</td>
+                            </tr>
+                            <tr style="background: var(--mud-palette-error-lighten); font-weight: bold;">
+                                <td><strong>Total Expenses</strong></td>
+                                <td style="text-align: right;"><strong>@_totalExpenses.ToString("N2")</strong></td>
+                            </tr>
+                        </tbody>
+                    </MudSimpleTable>
+                </MudItem>
+            </MudGrid>
+
+            <MudPaper Class="pa-4 mt-4" Elevation="3" Style="@(_netProfitLoss >= 0 ? "background: var(--mud-palette-success-lighten);" : "background: var(--mud-palette-error-lighten);")">
+                <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
+                    <MudText Typo="Typo.h5"><strong>@(_netProfitLoss >= 0 ? "Net Profit" : "Net Loss")</strong></MudText>
+                    <MudText Typo="Typo.h5"><strong>@Math.Abs(_netProfitLoss).ToString("N2")</strong></MudText>
+                </MudStack>
+            </MudPaper>
+
+            <MudGrid Class="mt-4">
+                <MudItem xs="12" md="4">
+                    <MudPaper Class="pa-3" Elevation="1">
+                        <MudText Typo="Typo.caption">Gross Profit</MudText>
+                        <MudText Typo="Typo.h6" Color="@(_grossProfit >= 0 ? Color.Success : Color.Error)">
+                            @_grossProfit.ToString("N2")
+                        </MudText>
+                    </MudPaper>
+                </MudItem>
+                <MudItem xs="12" md="4">
+                    <MudPaper Class="pa-3" Elevation="1">
+                        <MudText Typo="Typo.caption">Gross Profit Margin</MudText>
+                        <MudText Typo="Typo.h6">@(_totalIncome > 0 ? (_grossProfit / _totalIncome * 100).ToString("N2") : "0")%</MudText>
+                    </MudPaper>
+                </MudItem>
+                <MudItem xs="12" md="4">
+                    <MudPaper Class="pa-3" Elevation="1">
+                        <MudText Typo="Typo.caption">Net Profit Margin</MudText>
+                        <MudText Typo="Typo.h6">@(_totalIncome > 0 ? (_netProfitLoss / _totalIncome * 100).ToString("N2") : "0")%</MudText>
+                    </MudPaper>
+                </MudItem>
+            </MudGrid>
+        </MudPaper>
+    }
+</MudContainer>
+
+@code {
+    private DateTime? _fromDate = DateTime.SpecifyKind(new DateTime(DateTime.Today.Year, 1, 1), DateTimeKind.Utc);
+    private DateTime? _toDate = DateTime.SpecifyKind(DateTime.Today, DateTimeKind.Utc);
+    private List<PLItem> _directIncome = new();
+    private List<PLItem> _indirectIncome = new();
+    private List<PLItem> _directExpenses = new();
+    private List<PLItem> _indirectExpenses = new();
+    private decimal _totalIncome;
+    private decimal _totalExpenses;
+    private decimal _grossProfit;
+    private decimal _netProfitLoss;
+    private bool _isLoading;
+    private bool _hasData;
+
+    private async Task LoadProfitLoss()
+    {
+        _isLoading = true;
+        _directIncome.Clear();
+        _indirectIncome.Clear();
+        _directExpenses.Clear();
+        _indirectExpenses.Clear();
+
+        try
+        {
+            var fromUtc = _fromDate.HasValue ? DateTime.SpecifyKind(_fromDate.Value.Date, DateTimeKind.Utc) : DateTime.MinValue;
+            var toUtc = _toDate.HasValue ? DateTime.SpecifyKind(_toDate.Value.Date.AddDays(1).AddTicks(-1), DateTimeKind.Utc) : DateTime.MaxValue;
+
+            var accounts = await DbContext.AccountHeads
+                .Where(a => a.IsActive && !a.IsGroup && 
+                       (a.Classification == AccountClassification.Income || a.Classification == AccountClassification.Expenditure))
+                .OrderBy(a => a.AccountGroup)
+                .ThenBy(a => a.Code)
+                .ToListAsync();
+
+            var journalEntries = await DbContext.JournalEntries
+                .Include(e => e.Journal)
+                .Where(e => !e.IsDeleted && e.Journal.IsPosted && 
+                       e.Journal.VoucherDate >= fromUtc && e.Journal.VoucherDate <= toUtc)
+                .ToListAsync();
+
+            var entriesByAccount = journalEntries.GroupBy(e => e.AccountHeadId)
+                .ToDictionary(g => g.Key, g => g.ToList());
+
+            foreach (var account in accounts)
+            {
+                var entries = entriesByAccount.GetValueOrDefault(account.Id, new List<JournalEntry>());
+                var balance = entries.Sum(e => (e.Credit ?? 0) - (e.Debit ?? 0));
+                
+                if (balance == 0) continue;
+
+                var item = new PLItem { Code = account.Code, Name = account.Name, Balance = Math.Abs(balance) };
+
+                if (account.Classification == AccountClassification.Income)
+                {
+                    if (account.AccountGroup == AccountGroup.DirectIncome)
+                        _directIncome.Add(item);
+                    else
+                        _indirectIncome.Add(item);
+                }
+                else
+                {
+                    if (account.AccountGroup == AccountGroup.DirectExpenses)
+                        _directExpenses.Add(item);
+                    else
+                        _indirectExpenses.Add(item);
+                }
+            }
+
+            _totalIncome = _directIncome.Sum(i => i.Balance) + _indirectIncome.Sum(i => i.Balance);
+            _totalExpenses = _directExpenses.Sum(e => e.Balance) + _indirectExpenses.Sum(e => e.Balance);
+            _grossProfit = _directIncome.Sum(i => i.Balance) - _directExpenses.Sum(e => e.Balance);
+            _netProfitLoss = _totalIncome - _totalExpenses;
+            _hasData = true;
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error loading P&L: {ex.Message}", Severity.Error);
+        }
+
+        _isLoading = false;
+    }
+
+    private class PLItem
+    {
+        public string Code { get; set; } = "";
+        public string Name { get; set; } = "";
+        public decimal Balance { get; set; }
+    }
+}

@@ -1,0 +1,92 @@
+@page "/bank-accounts"
+@inject ApplicationDbContext DbContext
+@inject NavigationManager Navigation
+@inject ISnackbar Snackbar
+@using Microsoft.EntityFrameworkCore
+@using Net4Courier.Infrastructure.Data
+@using Net4Courier.Finance.Entities
+
+<PageTitle>Bank Accounts</PageTitle>
+
+<MudContainer MaxWidth="MaxWidth.ExtraLarge" Class="mt-4">
+    <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center" Class="mb-4">
+        <MudText Typo="Typo.h5">Bank Accounts</MudText>
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add"
+                   OnClick="@(() => Navigation.NavigateTo("/bank-accounts/new"))">
+            Add Bank Account
+        </MudButton>
+    </MudStack>
+
+    <MudPaper Class="pa-4" Elevation="1">
+        <MudDataGrid T="BankAccount" Items="@_bankAccounts" Loading="@_loading" Dense="true" Hover="true" Striped="true">
+            <Columns>
+                <PropertyColumn Property="x => x.AccountNumber" Title="Account No" />
+                <PropertyColumn Property="x => x.AccountName" Title="Account Name" />
+                <PropertyColumn Property="x => x.BankName" Title="Bank Name" />
+                <PropertyColumn Property="x => x.BranchName" Title="Branch" />
+                <PropertyColumn Property="x => x.SwiftCode" Title="SWIFT" />
+                <PropertyColumn Property="x => x.IbanNumber" Title="IBAN" />
+                <TemplateColumn Title="Opening Balance" Sortable="true">
+                    <CellTemplate>
+                        <MudText Align="Align.End">@context.Item.OpeningBalance.ToString("N2")</MudText>
+                    </CellTemplate>
+                </TemplateColumn>
+                <TemplateColumn Title="Chart of Account">
+                    <CellTemplate>
+                        @context.Item.AccountHead?.Code - @context.Item.AccountHead?.Name
+                    </CellTemplate>
+                </TemplateColumn>
+                <TemplateColumn Title="Status">
+                    <CellTemplate>
+                        <MudChip T="string" Size="Size.Small" Color="@(context.Item.IsActive ? Color.Success : Color.Default)">
+                            @(context.Item.IsActive ? "Active" : "Inactive")
+                        </MudChip>
+                    </CellTemplate>
+                </TemplateColumn>
+                <TemplateColumn Title="Actions">
+                    <CellTemplate>
+                        <MudStack Row="true" Spacing="1">
+                            <MudIconButton Icon="@Icons.Material.Filled.Edit" Size="Size.Small" 
+                                           OnClick="@(() => Navigation.NavigateTo($"/bank-accounts/edit/{context.Item.Id}"))"
+                                           Title="Edit" />
+                        </MudStack>
+                    </CellTemplate>
+                </TemplateColumn>
+            </Columns>
+            <NoRecordsContent>
+                <MudText Align="Align.Center" Class="py-4">No bank accounts found. Click "Add Bank Account" to create one.</MudText>
+            </NoRecordsContent>
+        </MudDataGrid>
+    </MudPaper>
+</MudContainer>
+
+@code {
+    private List<BankAccount> _bankAccounts = new();
+    private bool _loading = true;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadData();
+    }
+
+    private async Task LoadData()
+    {
+        _loading = true;
+        try
+        {
+            _bankAccounts = await DbContext.BankAccounts
+                .Include(b => b.AccountHead)
+                .OrderBy(b => b.BankName)
+                .ThenBy(b => b.AccountName)
+                .ToListAsync();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error loading bank accounts: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+}

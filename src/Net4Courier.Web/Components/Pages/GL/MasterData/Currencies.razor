@@ -1,0 +1,129 @@
+@page "/gl/currencies"
+@using Microsoft.AspNetCore.Authorization
+@using Truebooks.Platform.Contracts.DTOs
+@attribute [Authorize]
+
+@inject Net4Courier.Web.Interfaces.ICurrencyService CurrencyService
+@inject Truebooks.Platform.Core.MultiTenancy.ITenantContext TenantContext
+@inject NavigationManager Navigation
+@inject ISnackbar Snackbar
+@inject IDialogService DialogService
+
+<PageTitle>Currencies</PageTitle>
+
+<MudContainer MaxWidth="MaxWidth.ExtraLarge" Class="mt-4">
+    <MudText Typo="Typo.h4" Class="mb-4">Currency Management</MudText>
+    
+    <MudPaper Class="pa-4">
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add" Class="mb-4" OnClick="CreateNew">
+            Add Currency
+        </MudButton>
+
+        <MudDataGrid T="CurrencyDto" Items="@currencies" Loading="@loading" Striped="true" Bordered="true" Dense="true">
+            <Columns>
+                <PropertyColumn Property="x => x.Code" Title="Code" />
+                <PropertyColumn Property="x => x.Name" Title="Name" />
+                <PropertyColumn Property="x => x.Symbol" Title="Symbol" />
+                <TemplateColumn Title="Base Currency">
+                    <CellTemplate>
+                        @if (context.Item.IsBaseCurrency)
+                        {
+                            <MudChip Size="MudBlazor.Size.Small" Color="Color.Success" Icon="@Icons.Material.Filled.CheckCircle">Base</MudChip>
+                        }
+                        else
+                        {
+                            <MudText Typo="Typo.caption" Color="Color.Default">—</MudText>
+                        }
+                    </CellTemplate>
+                </TemplateColumn>
+                <TemplateColumn Title="Status">
+                    <CellTemplate>
+                        @if (context.Item.IsActive)
+                        {
+                            <MudChip Size="MudBlazor.Size.Small" Color="Color.Success" Variant="Variant.Outlined">Active</MudChip>
+                        }
+                        else
+                        {
+                            <MudChip Size="MudBlazor.Size.Small" Color="Color.Default" Variant="Variant.Outlined">Inactive</MudChip>
+                        }
+                    </CellTemplate>
+                </TemplateColumn>
+                <TemplateColumn Title="Actions">
+                    <CellTemplate>
+                        <MudIconButton Icon="@Icons.Material.Filled.Edit" Size="MudBlazor.Size.Small" Color="Color.Primary" OnClick="@(() => Edit(context.Item.Id))" />
+                        <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="MudBlazor.Size.Small" Color="Color.Error" OnClick="@(() => Delete(context.Item))" Disabled="@context.Item.IsBaseCurrency" />
+                    </CellTemplate>
+                </TemplateColumn>
+            </Columns>
+        </MudDataGrid>
+    </MudPaper>
+</MudContainer>
+
+@code {
+    private List<CurrencyDto> currencies = new();
+    private bool loading = true;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadCurrencies();
+    }
+
+    private async Task LoadCurrencies()
+    {
+        loading = true;
+        try
+        {
+            var tenantId = TenantContext.TenantId ?? Guid.Empty;
+            var result = await CurrencyService.GetAllAsync(tenantId);
+            currencies = result.ToList();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error loading currencies: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            loading = false;
+        }
+    }
+
+    private void CreateNew()
+    {
+        Navigation.NavigateTo("/gl/currencies/new");
+    }
+
+    private void Edit(Guid id)
+    {
+        Navigation.NavigateTo($"/gl/currencies/edit/{id}");
+    }
+
+    private async Task Delete(CurrencyDto currency)
+    {
+        bool? confirm = await DialogService.ShowMessageBox(
+            "Confirm Delete",
+            $"Are you sure you want to delete currency '{currency.Code}'?",
+            yesText: "Delete", cancelText: "Cancel");
+
+        if (confirm == true)
+        {
+            try
+            {
+                var tenantId = TenantContext.TenantId ?? Guid.Empty;
+                var success = await CurrencyService.DeleteAsync(tenantId, currency.Id);
+                if (success)
+                {
+                    Snackbar.Add("Currency deleted successfully", Severity.Success);
+                    await LoadCurrencies();
+                }
+                else
+                {
+                    Snackbar.Add("Failed to delete currency", Severity.Error);
+                }
+            }
+            catch (Exception ex)
+            {
+                Snackbar.Add($"Error deleting currency: {ex.Message}", Severity.Error);
+            }
+        }
+    }
+}

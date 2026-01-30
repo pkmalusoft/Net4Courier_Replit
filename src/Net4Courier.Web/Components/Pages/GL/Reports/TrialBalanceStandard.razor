@@ -1,0 +1,188 @@
+@page "/n4c-reports/trial-balance-standard"
+@using Microsoft.EntityFrameworkCore
+@using Microsoft.AspNetCore.Components.Authorization
+@using Net4Courier.Infrastructure.Data
+@using Net4Courier.Finance.Entities
+@using Net4Courier.Masters.Entities
+@using Net4Courier.Web.Services
+@inject ApplicationDbContext DbContext
+@inject ISnackbar Snackbar
+@inject AuthenticationStateProvider AuthStateProvider
+
+<PageTitle>Trial Balance - Standard</PageTitle>
+
+<MudContainer MaxWidth="MaxWidth.ExtraLarge" Class="mt-4">
+    <MudPaper Class="pa-4">
+        <MudText Typo="Typo.h5" Class="mb-4">Trial Balance - Standard</MudText>
+
+        <MudGrid>
+            <MudItem xs="12" md="3">
+                <MudDatePicker Label="As on Date" @bind-Date="_asOnDate" DateFormat="dd/MM/yyyy" AnchorOrigin="Origin.BottomCenter" TransformOrigin="Origin.TopCenter" />
+            </MudItem>
+            <MudItem xs="12" md="3">
+                <MudSelect T="long?" Label="Branch" @bind-Value="_selectedBranchId" Clearable>
+                    @foreach (var branch in _branches)
+                    {
+                        <MudSelectItem Value="@((long?)branch.Id)">@branch.Name</MudSelectItem>
+                    }
+                </MudSelect>
+            </MudItem>
+            <MudItem xs="12" md="3">
+                <MudCheckBox @bind-Value="_showZeroBalances" Label="Show Zero Balances" />
+            </MudItem>
+            <MudItem xs="12" md="3" Class="d-flex align-end">
+                <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="LoadReport" Class="mr-2">
+                    <MudIcon Icon="@Icons.Material.Filled.Search" Class="mr-1" /> Generate
+                </MudButton>
+            </MudItem>
+        </MudGrid>
+
+        @if (_isLoading)
+        {
+            <MudProgressLinear Color="Color.Primary" Indeterminate="true" Class="my-4" />
+        }
+        else if (_reportData.Any())
+        {
+            <MudTable Items="@_reportData" Hover="true" Striped="true" Dense="true" Class="mt-4" 
+                      FixedHeader="true" Height="calc(100vh - 350px)">
+                <HeaderContent>
+                    @if (!_hideAccountCodes)
+                    {
+                        <MudTh>Account Code</MudTh>
+                    }
+                    <MudTh>Account Name</MudTh>
+                    <MudTh>Classification</MudTh>
+                    <MudTh Style="text-align: right">Debit</MudTh>
+                    <MudTh Style="text-align: right">Credit</MudTh>
+                </HeaderContent>
+                <RowTemplate>
+                    @if (!_hideAccountCodes)
+                    {
+                        <MudTd>@context.AccountCode</MudTd>
+                    }
+                    <MudTd>@context.AccountName</MudTd>
+                    <MudTd>@context.Classification</MudTd>
+                    <MudTd Style="text-align: right">@context.Debit.ToString("N2")</MudTd>
+                    <MudTd Style="text-align: right">@context.Credit.ToString("N2")</MudTd>
+                </RowTemplate>
+                <FooterContent>
+                    <MudTd colspan="@(_hideAccountCodes ? 2 : 3)"><strong>Total</strong></MudTd>
+                    <MudTd Style="text-align: right"><strong>@_reportData.Sum(x => x.Debit).ToString("N2")</strong></MudTd>
+                    <MudTd Style="text-align: right"><strong>@_reportData.Sum(x => x.Credit).ToString("N2")</strong></MudTd>
+                </FooterContent>
+            </MudTable>
+
+            <MudPaper Class="pa-3 mt-4" Elevation="0" Style="background-color: #f5f5f5;">
+                <MudGrid>
+                    <MudItem xs="6">
+                        <MudText><strong>Total Accounts:</strong> @_reportData.Count</MudText>
+                    </MudItem>
+                    <MudItem xs="6" Style="text-align: right">
+                        <MudText><strong>Difference:</strong> @((_reportData.Sum(x => x.Debit) - _reportData.Sum(x => x.Credit)).ToString("N2"))</MudText>
+                    </MudItem>
+                </MudGrid>
+            </MudPaper>
+        }
+        else if (!_isLoading)
+        {
+            <MudAlert Severity="Severity.Info" Class="mt-4">No data found for the selected criteria. Please generate the report.</MudAlert>
+        }
+    </MudPaper>
+</MudContainer>
+
+@code {
+    private DateTime? _asOnDate = DateTime.Today;
+    private long? _selectedBranchId;
+    private bool _showZeroBalances = false;
+    private bool _isLoading = false;
+    private bool _hideAccountCodes;
+    private List<TrialBalanceItem> _reportData = new();
+    private List<Branch> _branches = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        LoadBranchSettings();
+        _branches = await DbContext.Branches.Where(b => b.IsActive).OrderBy(b => b.Name).ToListAsync();
+    }
+
+    private void LoadBranchSettings()
+    {
+        var authProvider = (AppAuthStateProvider)AuthStateProvider;
+        _hideAccountCodes = authProvider.CurrentBranch?.HideAccountCodes ?? false;
+    }
+
+    private async Task LoadReport()
+    {
+        if (!_asOnDate.HasValue)
+        {
+            Snackbar.Add("Please select a date", Severity.Warning);
+            return;
+        }
+
+        _isLoading = true;
+        _reportData.Clear();
+        StateHasChanged();
+
+        try
+        {
+            var asOnDateUtc = DateTime.SpecifyKind(_asOnDate.Value.Date.AddDays(1).AddTicks(-1), DateTimeKind.Utc);
+            
+            var accountHeads = await DbContext.AccountHeads
+                .Where(a => a.IsActive)
+                .OrderBy(a => a.Code)
+                .ToListAsync();
+
+            var journalsQuery = DbContext.Journals
+                .Include(j => j.Entries)
+                .Where(j => j.VoucherDate <= asOnDateUtc);
+
+            if (_selectedBranchId.HasValue)
+            {
+                journalsQuery = journalsQuery.Where(j => j.BranchId == _selectedBranchId.Value);
+            }
+
+            var journals = await journalsQuery.ToListAsync();
+            var allEntries = journals.SelectMany(j => j.Entries).ToList();
+
+            foreach (var account in accountHeads)
+            {
+                var accountEntries = allEntries.Where(e => e.AccountHeadId == account.Id).ToList();
+                
+                var debitTotal = accountEntries.Sum(e => e.Debit ?? 0);
+                var creditTotal = accountEntries.Sum(e => e.Credit ?? 0);
+
+                var closingDebit = debitTotal > creditTotal ? debitTotal - creditTotal : 0;
+                var closingCredit = creditTotal > debitTotal ? creditTotal - debitTotal : 0;
+
+                if (!_showZeroBalances && closingDebit == 0 && closingCredit == 0)
+                    continue;
+
+                _reportData.Add(new TrialBalanceItem
+                {
+                    AccountCode = account.Code,
+                    AccountName = account.Name,
+                    Classification = account.Classification.ToString(),
+                    Debit = closingDebit,
+                    Credit = closingCredit
+                });
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error loading report: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _isLoading = false;
+        }
+    }
+
+    private class TrialBalanceItem
+    {
+        public string AccountCode { get; set; } = "";
+        public string AccountName { get; set; } = "";
+        public string Classification { get; set; } = "";
+        public decimal Debit { get; set; }
+        public decimal Credit { get; set; }
+    }
+}
