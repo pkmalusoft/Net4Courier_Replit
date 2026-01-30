@@ -29,7 +29,9 @@ This comprehensive knowledge base covers all aspects of Net4Courier - from picku
    - [Manage Departments](#how-to-manage-departments)
    - [Manage Designations](#how-to-manage-designations)
    - [Set Up Initial Administrator (First-Time Setup)](#how-to-set-up-initial-administrator)
+   - [Platform Administration (Tenant/Subscription Management)](#platform-administration-platform-admin-only)
    - [Create and Delete Demo Data](#how-to-create-and-delete-demo-data)
+   - [Delete All Business Data](#delete-all-business-data-platform-admin-only)
    
    **Operations Guides**
    - [Create a New Shipment (AWB)](#how-to-create-a-new-shipment-awb-entry)
@@ -692,6 +694,36 @@ New to Net4Courier? Follow these steps to set up your system:
 - Click **Edit** icon to modify existing currency
 - Click **Delete** icon to soft-delete (marks as deleted, not removed)
 
+**Branch Currency as Default:**
+
+The currency assigned to a branch is automatically used as the default throughout the system:
+
+| Feature | Currency Usage |
+|---------|----------------|
+| New AWB Entry | Default currency for shipment value |
+| Import Shipments | Default currency for charges |
+| Credit Limit Display | Shows currency code in numeric fields |
+| AR Settings | Uses branch currency for default values |
+| Rate Enquiry | Results shown in branch currency |
+| Tracking Page | Falls back to branch currency if not set |
+| GL Profile | Base currency initialized from branch |
+| Financial Reports | Currency based on branch settings |
+
+**Setting Branch Currency:**
+1. Go to **Masters & Settings → Organization → Branches**
+2. Edit the branch
+3. Select **Currency** from the dropdown
+4. Save changes
+5. All new transactions will use this currency
+
+**Setting Company Currency:**
+1. Go to **Masters & Settings → Organization → Company**
+2. Edit the company
+3. Select **Currency** from the dropdown
+4. Save changes
+
+> **Tip:** Set the branch currency before creating transactions. Existing transactions retain their original currency.
+
 **Common Currencies:**
 | Code | Name | Symbol | Decimals |
 |------|------|--------|----------|
@@ -828,6 +860,68 @@ New to Net4Courier? Follow these steps to set up your system:
 
 ---
 
+## Platform Administration (Platform Admin Only)
+
+**Navigation:** Platform Administration menu (visible only to PlatformAdmin role)
+
+**When to Use:** For managing tenant settings, subscriptions, and system-wide administrative tasks.
+
+**Prerequisites:** Must be logged in with the PlatformAdmin role.
+
+### Tenant Settings
+
+**Navigation:** Platform Administration → Tenant Settings
+
+Manage client/tenant configuration:
+
+| Setting | Description |
+|---------|-------------|
+| Company Name | Client's registered business name |
+| Contact Person | Primary contact for the tenant |
+| Contact Email | Main email for communications |
+| Contact Phone | Primary phone number |
+| Subscription Plan | Current subscription tier (Basic, Professional, Enterprise) |
+| Subscription Start | Date subscription began |
+| Subscription End | Date subscription expires |
+
+**Steps:**
+1. Navigate to **Platform Administration → Tenant Settings**
+2. View current tenant configuration
+3. Click **Edit** to modify settings
+4. Update required fields
+5. Click **Save**
+
+### Subscription Management
+
+**Navigation:** Platform Administration → Subscription Management
+
+Monitor and manage client subscriptions:
+
+| Feature | Description |
+|---------|-------------|
+| Current Plan | View active subscription tier |
+| Expiry Date | Track when subscription ends |
+| Usage Metrics | View AWB counts, user counts, storage usage |
+| Plan Comparison | Compare features across plans |
+
+**Actions:**
+- View subscription details
+- Track usage against limits
+- Review subscription history
+
+### Manage Demo Data
+
+**Navigation:** Platform Administration → Manage Demo Data
+
+Full demo data lifecycle management including:
+- **Create Demo Data** - Generate sample data for training
+- **Delete Demo Data** - Remove only demo-flagged records
+- **Delete All Business Data** - Complete data reset (preserves configuration)
+
+See [How to Create and Delete Demo Data](#how-to-create-and-delete-demo-data) for detailed instructions.
+
+---
+
 ## How to Create and Delete Demo Data
 
 **Navigation:** Masters & Settings → User & Security → Demo Data Management
@@ -875,11 +969,49 @@ New to Net4Courier? Follow these steps to set up your system:
    - All demo records removed
    - Real data unaffected
 
+### Delete All Business Data (Platform Admin Only)
+
+**Navigation:** Platform Administration → Manage Demo Data
+
+**When to Use:** When resetting the system for a fresh start while preserving configuration settings. This is a destructive operation for Platform Administrators only.
+
+**Prerequisites:** Must be logged in as Platform Administrator (role: PlatformAdmin).
+
+**What Gets Deleted:**
+
+| Category | Deleted Items |
+|----------|---------------|
+| **Master Data** | Parties (Customers, Agents, Vendors, Co-Loaders), Employees, Vehicles, Bank Accounts, AWB Stocks, Prepaid Documents, Ticket Categories |
+| **Transactions** | AWBs (Inscan), Pickup Requests, Import Masters, Import Shipments, DRS, Invoices, Receipts, Journals, COD Remittances, Transfer Orders, Complaints/Tickets, Rate Cards, Zones |
+
+**What Gets Preserved:**
+
+| Category | Preserved Items |
+|----------|-----------------|
+| **System Configuration** | Company, Branch, Ports, Currency, Country/State/City/Location |
+| **Organizational** | Designations, Departments, Financial Years |
+| **Accounting Structure** | Chart of Accounts (Account Heads), Account Types, Account Classification |
+| **Operations Config** | Service Types, Shipment Modes, Shipment Statuses |
+| **Security** | Users, Roles |
+
+**Steps to Delete All Business Data:**
+
+1. Log in as Platform Administrator
+2. Navigate to **Platform Administration → Manage Demo Data**
+3. Scroll to **Delete All Business Data** section (Red warning panel)
+4. Click **"Delete All Business Data"** button
+5. Type confirmation text exactly: `DELETE ALL DATA`
+6. Click **"Confirm Delete"**
+7. Wait for deletion to complete (may take a few seconds)
+
+> **Warning:** This action cannot be undone. All business transactions and master data will be permanently deleted. Only use this for resetting test/training environments.
+
 **Use Cases:**
 - Training new staff
 - Client demonstrations
 - Testing new features
 - UAT environments
+- Resetting system for new client deployment
 
 ---
 
@@ -4855,7 +4987,10 @@ status code, status ID, shipment status, tracking status, courier status, AWB st
 | Generate shipment invoice | AWB Entry → Shipment Invoice Button |
 | Email report to customer | Financial Reports → Email Button |
 | Manage currencies | Masters & Settings → Currencies |
+| Set branch currency | Masters & Settings → Branches → Edit → Currency |
 | Create demo data | Masters & Settings → Demo Data Management |
+| Delete all business data | Platform Administration → Manage Demo Data |
+| Manage tenant settings | Platform Administration → Tenant Settings |
 | Initial setup | /setup (first-time only) |
 
 ## New Features (January 2026)
@@ -4871,6 +5006,11 @@ status code, status ID, shipment status, tracking status, courier status, AWB st
 | Email Reports | Send financial reports via Gmail to customers/suppliers |
 | Initial Setup Wizard | Secure administrator setup for new deployments |
 | Demo Data Management | Create/delete demo records for training purposes |
+| **Branch Currency Default** | Branch currency automatically used throughout all transactions and dashboards |
+| **Currency Selection** | Company and Branch now have currency dropdown selection (linked to Currency master) |
+| **Delete All Business Data** | Platform Admin feature to reset all business data while preserving configuration |
+| **Platform Administration** | New admin section: Tenant Settings, Subscription Management, Demo Data Management |
+| **Three-Tier Security** | Server-side role authorization for sensitive admin features |
 
 ## Keyboard Shortcuts
 
@@ -4885,16 +5025,16 @@ status code, status ID, shipment status, tracking status, courier status, AWB st
 
 **Operations:** pickup, collection, inscan, AWB, shipment, manifest, MAWB, bag, DRS, outscan, dispatch, POD, delivery, RTS, return, tracking, import, warehouse, unified
 
-**Finance:** invoice, receipt, payment, journal, ledger, GL, AR, AP, tax, GST, aging, credit note, debit note, email report
+**Finance:** invoice, receipt, payment, journal, ledger, GL, AR, AP, tax, GST, aging, credit note, debit note, email report, branch currency, default currency
 
 **CRM:** customer, party, contract, SLA, complaint, ticket, department, designation
 
 **Pricing:** rate card, zone, slab, fuel surcharge, discount, charges, simulator, international zone, domestic zone
 
-**System:** company, branch, user, role, permission, status, service type, currency, movement type, AWB config, setup, demo data
+**System:** company, branch, user, role, permission, status, service type, currency, movement type, AWB config, setup, demo data, delete all data, platform admin, tenant, subscription
 
 ---
 
-*Last Updated: January 2026*
-*Version: 2.0*
+*Last Updated: January 30, 2026*
+*Version: 2.1*
 *Net4Courier - Linked To Deliver*

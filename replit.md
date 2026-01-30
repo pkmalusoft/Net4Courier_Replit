@@ -60,6 +60,8 @@ The application is built on .NET 8 Blazor Server, adopting a modular architectur
 - **Shipment Invoice**: AWB Entry page generates A4 commercial/customs invoices via API.
 - **Customer CRM - Complaints & Tickets**: Full ticket management system with status workflow, priority levels, and customer/AWB linking.
 - **Branch Display Settings**: Branch-level setting to hide account codes in financial views.
+- **Branch Currency as Default**: Both Company and Branch entities have CurrencyId foreign key to Currency table. Branch currency is automatically used as the default throughout all transactions, dashboards, and financial displays (AWB Entry, Import Shipments, Credit Limits, AR Settings, Rate Enquiry, Tracking, GL Profile).
+- **Delete All Business Data**: Platform Admin feature to reset all business transactions and master data while preserving system configuration (Company, Branch, Currency, Geographic data, Chart of Accounts, Service Types, Users, Roles). Three-tier security: role seeding, server-side [Authorize] attributes, and UI-level checks.
 
 ### Entity Property Reference
 Key entity property names used in reports:
