@@ -1,0 +1,197 @@
+@page "/tenant-settings"
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.EntityFrameworkCore
+@using Net4Courier.Infrastructure.Data
+@using Net4Courier.Infrastructure.Services
+@using Net4Courier.Masters.Entities
+@attribute [Authorize(Roles = "PlatformAdmin")]
+@inject IDbContextFactory<ApplicationDbContext> DbFactory
+@inject AuthService AuthService
+@inject AuthenticationStateProvider AuthStateProvider
+@inject NavigationManager Navigation
+@inject ISnackbar Snackbar
+
+<PageTitle>Tenant Settings - Net4Courier</PageTitle>
+
+<MudBreadcrumbs Items="_breadcrumbs" Class="mb-2" />
+
+<MudText Typo="Typo.h4" GutterBottom="true">Tenant Settings</MudText>
+<MudText Typo="Typo.subtitle1" Class="mb-4" Color="Color.Secondary">Manage company information and contact details</MudText>
+
+@if (_loading)
+{
+    <MudProgressLinear Color="Color.Primary" Indeterminate="true" />
+}
+else if (!_isPlatformAdmin)
+{
+    <MudAlert Severity="Severity.Error">Access Denied. This page is restricted to Platform Administrators only.</MudAlert>
+}
+else if (_company == null)
+{
+    <MudAlert Severity="Severity.Warning">No company found. Please set up a company first.</MudAlert>
+}
+else
+{
+    <MudGrid>
+        <MudItem xs="12" md="8">
+            <MudPaper Class="pa-4" Elevation="2">
+                <MudText Typo="Typo.h6" Class="mb-4">
+                    <MudIcon Icon="@Icons.Material.Filled.Business" Class="mr-2" />Company Information
+                </MudText>
+                
+                <MudForm @ref="_form" @bind-IsValid="_formValid">
+                    <MudGrid>
+                        <MudItem xs="12" md="6">
+                            <MudTextField @bind-Value="_company.Name" Label="Company Name" Required="true" Variant="Variant.Outlined" />
+                        </MudItem>
+                        <MudItem xs="12" md="6">
+                            <MudTextField @bind-Value="_company.Code" Label="Company Code" Variant="Variant.Outlined" />
+                        </MudItem>
+                        <MudItem xs="12">
+                            <MudTextField @bind-Value="_company.Address" Label="Address" Lines="2" Variant="Variant.Outlined" />
+                        </MudItem>
+                        <MudItem xs="12" md="6">
+                            <MudTextField @bind-Value="_company.PostalCode" Label="Postal Code" Variant="Variant.Outlined" />
+                        </MudItem>
+                        <MudItem xs="12" md="6">
+                            <MudTextField @bind-Value="_company.Website" Label="Website" Variant="Variant.Outlined" />
+                        </MudItem>
+                    </MudGrid>
+                </MudForm>
+                
+                <MudDivider Class="my-4" />
+                
+                <MudText Typo="Typo.h6" Class="mb-4">
+                    <MudIcon Icon="@Icons.Material.Filled.Person" Class="mr-2" />Contact Person
+                </MudText>
+                
+                <MudGrid>
+                    <MudItem xs="12" md="4">
+                        <MudTextField @bind-Value="_company.ContactPerson" Label="Contact Person Name" Variant="Variant.Outlined" />
+                    </MudItem>
+                    <MudItem xs="12" md="4">
+                        <MudTextField @bind-Value="_company.ContactPersonPhone" Label="Contact Person Phone" Variant="Variant.Outlined" />
+                    </MudItem>
+                    <MudItem xs="12" md="4">
+                        <MudTextField @bind-Value="_company.ContactPersonEmail" Label="Contact Person Email" InputType="InputType.Email" Variant="Variant.Outlined" />
+                    </MudItem>
+                </MudGrid>
+            </MudPaper>
+        </MudItem>
+        
+        <MudItem xs="12" md="4">
+            <MudPaper Class="pa-4" Elevation="2">
+                <MudText Typo="Typo.h6" Class="mb-4">
+                    <MudIcon Icon="@Icons.Material.Filled.ContactPhone" Class="mr-2" />Contact Details
+                </MudText>
+                
+                <MudTextField @bind-Value="_company.Email" Label="Email" InputType="InputType.Email" Variant="Variant.Outlined" Class="mb-3" />
+                <MudTextField @bind-Value="_company.Phone" Label="Phone" Variant="Variant.Outlined" Class="mb-3" />
+                <MudTextField @bind-Value="_company.TaxNumber" Label="Tax Number (TRN/VAT)" Variant="Variant.Outlined" Class="mb-3" />
+                <MudTextField @bind-Value="_company.RegistrationNumber" Label="Registration Number" Variant="Variant.Outlined" />
+            </MudPaper>
+        </MudItem>
+        
+        <MudItem xs="12">
+            <MudPaper Class="pa-4" Elevation="2">
+                <div class="d-flex justify-space-between align-center">
+                    <MudText Typo="Typo.body2" Color="Color.Secondary">
+                        Last modified: @(_company.ModifiedAt?.ToString("dd MMM yyyy HH:mm") ?? _company.CreatedAt.ToString("dd MMM yyyy HH:mm"))
+                    </MudText>
+                    <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Save" 
+                               OnClick="SaveChanges" Disabled="_saving">
+                        @if (_saving)
+                        {
+                            <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" />
+                        }
+                        Save Changes
+                    </MudButton>
+                </div>
+            </MudPaper>
+        </MudItem>
+    </MudGrid>
+}
+
+@code {
+    private bool _loading = true;
+    private bool _isPlatformAdmin = false;
+    private bool _saving = false;
+    private bool _formValid = false;
+    private MudForm? _form;
+    private Company? _company;
+    
+    private List<BreadcrumbItem> _breadcrumbs = new()
+    {
+        new BreadcrumbItem("Platform Administration", href: null, disabled: true),
+        new BreadcrumbItem("Tenant Settings", href: null, disabled: true)
+    };
+
+    protected override async Task OnInitializedAsync()
+    {
+        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+        var username = authState.User?.Identity?.Name;
+        
+        if (!string.IsNullOrEmpty(username))
+        {
+            _isPlatformAdmin = await AuthService.IsPlatformAdminByUsernameAsync(username);
+        }
+        
+        if (!_isPlatformAdmin)
+        {
+            Navigation.NavigateTo("/access-denied", replace: true);
+            return;
+        }
+        
+        await LoadCompany();
+        _loading = false;
+    }
+    
+    private async Task LoadCompany()
+    {
+        await using var context = await DbFactory.CreateDbContextAsync();
+        _company = await context.Companies
+            .Where(c => !c.IsDeleted)
+            .FirstOrDefaultAsync();
+    }
+    
+    private async Task SaveChanges()
+    {
+        if (_company == null) return;
+        
+        _saving = true;
+        try
+        {
+            await using var context = await DbFactory.CreateDbContextAsync();
+            var existing = await context.Companies.FindAsync(_company.Id);
+            
+            if (existing != null)
+            {
+                existing.Name = _company.Name;
+                existing.Code = _company.Code;
+                existing.Address = _company.Address;
+                existing.PostalCode = _company.PostalCode;
+                existing.Website = _company.Website;
+                existing.Email = _company.Email;
+                existing.Phone = _company.Phone;
+                existing.TaxNumber = _company.TaxNumber;
+                existing.RegistrationNumber = _company.RegistrationNumber;
+                existing.ContactPerson = _company.ContactPerson;
+                existing.ContactPersonPhone = _company.ContactPersonPhone;
+                existing.ContactPersonEmail = _company.ContactPersonEmail;
+                existing.ModifiedAt = DateTime.UtcNow;
+                
+                await context.SaveChangesAsync();
+                Snackbar.Add("Tenant settings updated successfully!", Severity.Success);
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error saving changes: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _saving = false;
+        }
+    }
+}

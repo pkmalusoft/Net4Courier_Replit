@@ -51,8 +51,9 @@ The application is built on .NET 8 Blazor Server, adopting a modular architectur
 - **Cash & Bank Module**: Independent Cash & Bank transaction management at `/cash-bank-transactions` with stub services. Bank Account management at `/bank-accounts` using Net4Courier.Finance entities with long IDs.
 - **TrueBooks NuGet Packages**: Backend services from `NuGet/packages/` - Truebooks.Platform.Core, Truebooks.Platform.Finance, Truebooks.Platform.Contracts. UI pages now use Net4Courier native components.
 - **Error Handling**: Robust global error handling with `ErrorBoundary`, `PageErrorHandler`, and `MudBlazor Snackbar` integration.
-- **Demo Data Management**: Admin feature to create and delete demo data for training.
+- **Demo Data Management**: Admin feature to create and delete demo data for training, secured with [Authorize(Roles="PlatformAdmin")] server-side authorization.
 - **Initial Setup Wizard**: Secure setup page for platform administrators to configure new client deployments.
+- **Platform Administration**: Dedicated admin section (PlatformAdmin role) with Tenant Settings, Subscription Management, and Manage Demo Data pages. Company entity includes ContactPerson, ContactPersonPhone, ContactPersonEmail, SubscriptionStartDate, SubscriptionEndDate, and SubscriptionPlan fields for full tenant management.
 - **Barcode Generation**: AWB barcodes generated using ZXing.Net.Bindings.ImageSharp for PNG images.
 - **Global Search**: Dashboard features a unified autocomplete search box across AWBs, Customers, and Invoices.
 - **Tracking Print Feature**: Tracking page generates professional A4 PDF reports via API.

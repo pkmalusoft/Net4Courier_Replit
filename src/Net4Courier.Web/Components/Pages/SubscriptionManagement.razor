@@ -1,0 +1,339 @@
+@page "/subscription-management"
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.EntityFrameworkCore
+@using Net4Courier.Infrastructure.Data
+@using Net4Courier.Infrastructure.Services
+@using Net4Courier.Masters.Entities
+@attribute [Authorize(Roles = "PlatformAdmin")]
+@inject IDbContextFactory<ApplicationDbContext> DbFactory
+@inject AuthService AuthService
+@inject AuthenticationStateProvider AuthStateProvider
+@inject NavigationManager Navigation
+@inject ISnackbar Snackbar
+@inject IDialogService DialogService
+
+<PageTitle>Subscription Management - Net4Courier</PageTitle>
+
+<MudBreadcrumbs Items="_breadcrumbs" Class="mb-2" />
+
+<MudText Typo="Typo.h4" GutterBottom="true">Subscription Management</MudText>
+<MudText Typo="Typo.subtitle1" Class="mb-4" Color="Color.Secondary">View and manage tenant subscription details</MudText>
+
+@if (_loading)
+{
+    <MudProgressLinear Color="Color.Primary" Indeterminate="true" />
+}
+else if (!_isPlatformAdmin)
+{
+    <MudAlert Severity="Severity.Error">Access Denied. This page is restricted to Platform Administrators only.</MudAlert>
+}
+else if (_company == null)
+{
+    <MudAlert Severity="Severity.Warning">No company found. Please set up a company first.</MudAlert>
+}
+else
+{
+    <MudGrid>
+        <MudItem xs="12" md="6">
+            <MudPaper Class="pa-4" Elevation="2">
+                <MudText Typo="Typo.h6" Class="mb-4">
+                    <MudIcon Icon="@Icons.Material.Filled.CardMembership" Class="mr-2" />Current Subscription
+                </MudText>
+                
+                <MudSimpleTable Dense="true" Hover="true">
+                    <tbody>
+                        <tr>
+                            <td><strong>Company</strong></td>
+                            <td>@_company.Name</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Status</strong></td>
+                            <td>
+                                @if (_subscriptionStatus == "Active")
+                                {
+                                    <MudChip T="string" Color="Color.Success" Size="Size.Small">Active</MudChip>
+                                }
+                                else if (_subscriptionStatus == "Expiring Soon")
+                                {
+                                    <MudChip T="string" Color="Color.Warning" Size="Size.Small">Expiring Soon</MudChip>
+                                }
+                                else
+                                {
+                                    <MudChip T="string" Color="Color.Error" Size="Size.Small">Expired</MudChip>
+                                }
+                            </td>
+                        </tr>
+                        <tr>
+                            <td><strong>Start Date</strong></td>
+                            <td>@(_subscriptionStart?.ToString("dd MMM yyyy") ?? "Not Set")</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Expiry Date</strong></td>
+                            <td>@(_subscriptionEnd?.ToString("dd MMM yyyy") ?? "Not Set")</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Days Remaining</strong></td>
+                            <td>
+                                @if (_daysRemaining > 30)
+                                {
+                                    <MudText Color="Color.Success">@_daysRemaining days</MudText>
+                                }
+                                else if (_daysRemaining > 0)
+                                {
+                                    <MudText Color="Color.Warning">@_daysRemaining days</MudText>
+                                }
+                                else
+                                {
+                                    <MudText Color="Color.Error">Expired</MudText>
+                                }
+                            </td>
+                        </tr>
+                        <tr>
+                            <td><strong>Active Users</strong></td>
+                            <td>@_activeUserCount</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Active Branches</strong></td>
+                            <td>@_activeBranchCount</td>
+                        </tr>
+                    </tbody>
+                </MudSimpleTable>
+            </MudPaper>
+        </MudItem>
+        
+        <MudItem xs="12" md="6">
+            <MudPaper Class="pa-4" Elevation="2">
+                <MudText Typo="Typo.h6" Class="mb-4">
+                    <MudIcon Icon="@Icons.Material.Filled.Extension" Class="mr-2" />Extend Subscription
+                </MudText>
+                
+                <MudText Typo="Typo.body2" Class="mb-4" Color="Color.Secondary">
+                    Extend the subscription period for this tenant. Select the number of months to add.
+                </MudText>
+                
+                <MudSelect @bind-Value="_extensionMonths" Label="Extension Period" Variant="Variant.Outlined" Class="mb-4">
+                    <MudSelectItem Value="1">1 Month</MudSelectItem>
+                    <MudSelectItem Value="3">3 Months</MudSelectItem>
+                    <MudSelectItem Value="6">6 Months</MudSelectItem>
+                    <MudSelectItem Value="12">12 Months (1 Year)</MudSelectItem>
+                    <MudSelectItem Value="24">24 Months (2 Years)</MudSelectItem>
+                </MudSelect>
+                
+                <MudText Typo="Typo.body2" Class="mb-4">
+                    <strong>New Expiry Date:</strong> @(_newExpiryDate?.ToString("dd MMM yyyy") ?? "N/A")
+                </MudText>
+                
+                <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add" 
+                           OnClick="ExtendSubscription" Disabled="_saving" FullWidth="true">
+                    @if (_saving)
+                    {
+                        <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" />
+                    }
+                    Extend Subscription
+                </MudButton>
+            </MudPaper>
+            
+            <MudPaper Class="pa-4 mt-4" Elevation="2">
+                <MudText Typo="Typo.h6" Class="mb-4">
+                    <MudIcon Icon="@Icons.Material.Filled.CalendarMonth" Class="mr-2" />Set Custom Dates
+                </MudText>
+                
+                <MudDatePicker @bind-Date="_customStartDate" Label="Start Date" Variant="Variant.Outlined" Class="mb-3" />
+                <MudDatePicker @bind-Date="_customEndDate" Label="End Date" Variant="Variant.Outlined" Class="mb-4" />
+                
+                <MudButton Variant="Variant.Outlined" Color="Color.Secondary" StartIcon="@Icons.Material.Filled.Edit" 
+                           OnClick="SetCustomDates" Disabled="_saving" FullWidth="true">
+                    Set Custom Dates
+                </MudButton>
+            </MudPaper>
+        </MudItem>
+        
+        <MudItem xs="12">
+            <MudPaper Class="pa-4" Elevation="2">
+                <MudText Typo="Typo.h6" Class="mb-4">
+                    <MudIcon Icon="@Icons.Material.Filled.History" Class="mr-2" />Subscription History
+                </MudText>
+                
+                <MudAlert Severity="Severity.Info" Class="mb-4">
+                    Subscription history tracking will be available in a future update.
+                </MudAlert>
+            </MudPaper>
+        </MudItem>
+    </MudGrid>
+}
+
+@code {
+    private bool _loading = true;
+    private bool _isPlatformAdmin = false;
+    private bool _saving = false;
+    private Company? _company;
+    private int _extensionMonths = 12;
+    private DateTime? _subscriptionStart;
+    private DateTime? _subscriptionEnd;
+    private DateTime? _newExpiryDate;
+    private DateTime? _customStartDate;
+    private DateTime? _customEndDate;
+    private int _daysRemaining = 0;
+    private int _activeUserCount = 0;
+    private int _activeBranchCount = 0;
+    private string _subscriptionStatus = "Active";
+    
+    private List<BreadcrumbItem> _breadcrumbs = new()
+    {
+        new BreadcrumbItem("Platform Administration", href: null, disabled: true),
+        new BreadcrumbItem("Subscription Management", href: null, disabled: true)
+    };
+
+    protected override async Task OnInitializedAsync()
+    {
+        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+        var username = authState.User?.Identity?.Name;
+        
+        if (!string.IsNullOrEmpty(username))
+        {
+            _isPlatformAdmin = await AuthService.IsPlatformAdminByUsernameAsync(username);
+        }
+        
+        if (!_isPlatformAdmin)
+        {
+            Navigation.NavigateTo("/access-denied", replace: true);
+            return;
+        }
+        
+        await LoadSubscriptionData();
+        _loading = false;
+    }
+    
+    private async Task LoadSubscriptionData()
+    {
+        await using var context = await DbFactory.CreateDbContextAsync();
+        
+        _company = await context.Companies
+            .Where(c => !c.IsDeleted)
+            .FirstOrDefaultAsync();
+            
+        _activeUserCount = await context.Users.CountAsync(u => u.IsActive && !u.IsDeleted);
+        _activeBranchCount = await context.Branches.CountAsync(b => b.IsActive && !b.IsDeleted);
+        
+        _subscriptionStart = _company?.SubscriptionStartDate ?? _company?.CreatedAt ?? DateTime.UtcNow;
+        _subscriptionEnd = _company?.SubscriptionEndDate ?? _subscriptionStart?.AddYears(1);
+        
+        if (_subscriptionEnd.HasValue)
+        {
+            _daysRemaining = Math.Max(0, (int)(_subscriptionEnd.Value - DateTime.UtcNow).TotalDays);
+            
+            if (_daysRemaining <= 0)
+                _subscriptionStatus = "Expired";
+            else if (_daysRemaining <= 30)
+                _subscriptionStatus = "Expiring Soon";
+            else
+                _subscriptionStatus = "Active";
+        }
+        
+        _customStartDate = _subscriptionStart;
+        _customEndDate = _subscriptionEnd;
+        
+        UpdateNewExpiryDate();
+    }
+    
+    private void UpdateNewExpiryDate()
+    {
+        var baseDate = _subscriptionEnd ?? DateTime.UtcNow;
+        if (baseDate < DateTime.UtcNow)
+            baseDate = DateTime.UtcNow;
+        
+        _newExpiryDate = baseDate.AddMonths(_extensionMonths);
+    }
+    
+    private async Task ExtendSubscription()
+    {
+        if (_company == null) return;
+        
+        var confirm = await DialogService.ShowMessageBox(
+            "Extend Subscription",
+            $"Are you sure you want to extend the subscription by {_extensionMonths} months? New expiry date will be {_newExpiryDate?.ToString("dd MMM yyyy")}.",
+            yesText: "Extend", cancelText: "Cancel");
+            
+        if (confirm != true) return;
+        
+        _saving = true;
+        try
+        {
+            await using var context = await DbFactory.CreateDbContextAsync();
+            var company = await context.Companies.FindAsync(_company.Id);
+            
+            if (company != null)
+            {
+                if (!company.SubscriptionStartDate.HasValue)
+                {
+                    company.SubscriptionStartDate = company.CreatedAt;
+                }
+                
+                var currentEnd = company.SubscriptionEndDate ?? company.CreatedAt.AddYears(1);
+                if (currentEnd < DateTime.UtcNow)
+                    currentEnd = DateTime.UtcNow;
+                    
+                company.SubscriptionEndDate = currentEnd.AddMonths(_extensionMonths);
+                company.ModifiedAt = DateTime.UtcNow;
+                
+                await context.SaveChangesAsync();
+                
+                Snackbar.Add($"Subscription extended by {_extensionMonths} months. New expiry date: {company.SubscriptionEndDate?.ToString("dd MMM yyyy")}", Severity.Success);
+            }
+            
+            await LoadSubscriptionData();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error extending subscription: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _saving = false;
+        }
+    }
+    
+    private async Task SetCustomDates()
+    {
+        if (_company == null || !_customStartDate.HasValue || !_customEndDate.HasValue) 
+        {
+            Snackbar.Add("Please select both start and end dates.", Severity.Warning);
+            return;
+        }
+        
+        if (_customEndDate <= _customStartDate)
+        {
+            Snackbar.Add("End date must be after start date.", Severity.Warning);
+            return;
+        }
+        
+        _saving = true;
+        try
+        {
+            await using var context = await DbFactory.CreateDbContextAsync();
+            var company = await context.Companies.FindAsync(_company.Id);
+            
+            if (company != null)
+            {
+                company.SubscriptionStartDate = _customStartDate;
+                company.SubscriptionEndDate = _customEndDate;
+                company.ModifiedAt = DateTime.UtcNow;
+                
+                await context.SaveChangesAsync();
+            }
+            
+            await LoadSubscriptionData();
+            
+            Snackbar.Add($"Custom subscription dates set: {_customStartDate?.ToString("dd MMM yyyy")} to {_customEndDate?.ToString("dd MMM yyyy")}", Severity.Success);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error setting dates: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _saving = false;
+        }
+    }
+}

@@ -107,11 +107,91 @@ public class AuthService
                     }
                 }
             }
+            
+            await SeedPlatformAdminAsync();
         }
         catch (Exception ex)
         {
             Console.WriteLine($"Warning: Could not seed admin role: {ex.Message}");
         }
+    }
+    
+    public async Task SeedPlatformAdminAsync()
+    {
+        try
+        {
+            var platformAdminRole = await _context.Roles.FirstOrDefaultAsync(r => r.Name == "PlatformAdmin");
+            
+            if (platformAdminRole == null)
+            {
+                platformAdminRole = new Role
+                {
+                    Name = "PlatformAdmin",
+                    Description = "Platform administrator with access to tenant management and demo data",
+                    IsActive = true
+                };
+                _context.Roles.Add(platformAdminRole);
+                await _context.SaveChangesAsync();
+                Console.WriteLine("PlatformAdmin role created");
+            }
+            
+            var platformAdminUser = await _context.Users.FirstOrDefaultAsync(u => u.Username == "platformadmin");
+            
+            if (platformAdminUser == null)
+            {
+                var defaultBranch = await _context.Branches.FirstOrDefaultAsync(b => b.IsActive);
+                
+                platformAdminUser = new User
+                {
+                    Username = "platformadmin",
+                    PasswordHash = BCrypt.Net.BCrypt.HashPassword("Admin@123"),
+                    Email = "platformadmin@net4courier.com",
+                    FullName = "Platform Administrator",
+                    Phone = "+971-000-0000",
+                    RoleId = platformAdminRole.Id,
+                    BranchId = defaultBranch?.Id,
+                    IsActive = true,
+                    CreatedAt = DateTime.UtcNow
+                };
+                _context.Users.Add(platformAdminUser);
+                await _context.SaveChangesAsync();
+                Console.WriteLine("Platform admin user created (username: platformadmin, password: Admin@123)");
+                
+                if (defaultBranch != null)
+                {
+                    var userBranch = new UserBranch
+                    {
+                        UserId = platformAdminUser.Id,
+                        BranchId = defaultBranch.Id,
+                        IsDefault = true
+                    };
+                    _context.UserBranches.Add(userBranch);
+                    await _context.SaveChangesAsync();
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Warning: Could not seed platform admin: {ex.Message}");
+        }
+    }
+    
+    public async Task<bool> IsPlatformAdminAsync(long userId)
+    {
+        var user = await _context.Users
+            .Include(u => u.Role)
+            .FirstOrDefaultAsync(u => u.Id == userId);
+        
+        return user?.Role?.Name == "PlatformAdmin";
+    }
+    
+    public async Task<bool> IsPlatformAdminByUsernameAsync(string username)
+    {
+        var user = await _context.Users
+            .Include(u => u.Role)
+            .FirstOrDefaultAsync(u => u.Username == username);
+        
+        return user?.Role?.Name == "PlatformAdmin";
     }
 
     public string HashPassword(string password)

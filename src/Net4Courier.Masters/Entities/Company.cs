@@ -16,6 +16,14 @@ public class Company : BaseEntity
     public string? Logo { get; set; }
     public bool IsActive { get; set; } = true;
     
+    public string? ContactPerson { get; set; }
+    public string? ContactPersonPhone { get; set; }
+    public string? ContactPersonEmail { get; set; }
+    
+    public DateTime? SubscriptionStartDate { get; set; }
+    public DateTime? SubscriptionEndDate { get; set; }
+    public string? SubscriptionPlan { get; set; }
+    
     public long? CountryId { get; set; }
     public virtual Country? Country { get; set; }
     

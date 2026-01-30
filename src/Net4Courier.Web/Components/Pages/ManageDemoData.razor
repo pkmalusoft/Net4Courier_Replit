@@ -1,12 +1,17 @@
 @page "/manage-demo-data"
 @using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
 @using Microsoft.EntityFrameworkCore
 @using Net4Courier.Infrastructure.Data
+@using Net4Courier.Infrastructure.Services
 @using Net4Courier.Web.Services
-@attribute [Authorize]
+@attribute [Authorize(Roles = "PlatformAdmin")]
 @inject IDemoDataService DemoDataService
 @inject ISnackbar Snackbar
 @inject IDialogService DialogService
+@inject AuthService AuthService
+@inject AuthenticationStateProvider AuthStateProvider
+@inject NavigationManager Navigation
 
 <PageTitle>Manage Demo Data - Net4Courier</PageTitle>
 
@@ -291,16 +296,31 @@ else
     private bool _loading = true;
     private bool _processing = false;
     private string _processingAction = "";
+    private bool _isPlatformAdmin = false;
     private DemoDataStats _stats = new();
     
     private List<BreadcrumbItem> _breadcrumbs = new()
     {
-        new BreadcrumbItem("Masters & Settings", href: null, disabled: true),
+        new BreadcrumbItem("Platform Administration", href: null, disabled: true),
         new BreadcrumbItem("Manage Demo Data", href: null, disabled: true)
     };
 
     protected override async Task OnInitializedAsync()
     {
+        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+        var username = authState.User?.Identity?.Name;
+        
+        if (!string.IsNullOrEmpty(username))
+        {
+            _isPlatformAdmin = await AuthService.IsPlatformAdminByUsernameAsync(username);
+        }
+        
+        if (!_isPlatformAdmin)
+        {
+            Navigation.NavigateTo("/access-denied", replace: true);
+            return;
+        }
+        
         await RefreshStats();
         _loading = false;
     }
