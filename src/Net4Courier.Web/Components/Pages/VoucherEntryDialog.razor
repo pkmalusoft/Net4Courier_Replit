@@ -35,13 +35,23 @@
                     </MudSelect>
                 </MudItem>
                 <MudItem xs="12" sm="3">
-                    <MudSelect T="long?" @bind-Value="_primaryAccountId" Label="@($"{VoucherTypeName} Account")"
-                               Variant="Variant.Outlined" Required="true" Disabled="@IsReadOnly">
-                        @foreach (var acc in _primaryAccounts)
-                        {
-                            <MudSelectItem Value="@((long?)acc.Id)">@acc.Code - @acc.Name</MudSelectItem>
-                        }
-                    </MudSelect>
+                    @if (_primaryAccounts.Any())
+                    {
+                        <MudSelect T="long?" @bind-Value="_primaryAccountId" Label="@($"{VoucherTypeName} Account")"
+                                   Variant="Variant.Outlined" Required="true" Disabled="@IsReadOnly">
+                            @foreach (var acc in _primaryAccounts)
+                            {
+                                <MudSelectItem Value="@((long?)acc.Id)">@acc.Code - @acc.Name</MudSelectItem>
+                            }
+                        </MudSelect>
+                    }
+                    else
+                    {
+                        <MudSelect T="long?" Label="@($"{VoucherTypeName} Account")"
+                                   Variant="Variant.Outlined" Disabled="true">
+                            <MudSelectItem Value="@((long?)0)">Loading accounts...</MudSelectItem>
+                        </MudSelect>
+                    }
                 </MudItem>
                 <MudItem xs="12" sm="8">
                     <MudTextField @bind-Value="_narration" Label="Narration"
@@ -262,16 +272,26 @@
     {
         await using var dbContext = await DbContextFactory.CreateDbContextAsync();
         
+        var accountNatureValue = (int)AccountNature;
+        Console.WriteLine($"VoucherEntryDialog: Loading accounts with AccountNature={(int)AccountNature} ({AccountNature})");
+        
         _primaryAccounts = await dbContext.AccountHeads
-            .Where(a => a.AccountNature == AccountNature && a.IsActive && !a.IsGroup && !a.IsDeleted)
+            .Where(a => (int)a.AccountNature == accountNatureValue && a.IsActive && !a.IsGroup && !a.IsDeleted)
             .OrderBy(a => a.Name)
             .ToListAsync();
 
         _allAccounts = await dbContext.AccountHeads
-            .Where(a => a.IsActive && !a.IsGroup && a.AccountNature != AccountNature && !a.IsDeleted)
+            .Where(a => a.IsActive && !a.IsGroup && (int)a.AccountNature != accountNatureValue && !a.IsDeleted)
             .OrderBy(a => a.Classification)
             .ThenBy(a => a.Code)
             .ToListAsync();
+        
+        Console.WriteLine($"VoucherEntryDialog: Loaded {_primaryAccounts.Count} primary accounts, {_allAccounts.Count} other accounts");
+        foreach (var acc in _primaryAccounts)
+        {
+            Console.WriteLine($"  Primary: {acc.Code} - {acc.Name} (AccountNature={acc.AccountNature})");
+        }
+        StateHasChanged();
     }
 
     private async Task<string> GenerateVoucherNo()
