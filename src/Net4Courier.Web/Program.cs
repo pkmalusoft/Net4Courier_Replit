@@ -169,12 +169,7 @@ builder.Services.AddDbContextFactory<Truebooks.Platform.Core.Infrastructure.Plat
 // Register TrueBooks Platform Finance services
 Truebooks.Platform.Finance.Extensions.FinanceServiceExtensions.AddPlatformFinance(builder.Services);
 
-// Register GL Services
-builder.Services.AddScoped<Net4Courier.Web.Interfaces.IChartOfAccountsService, Net4Courier.Web.Services.GL.ChartOfAccountsService>();
-builder.Services.AddScoped<Net4Courier.Web.Interfaces.ICurrencyService, Net4Courier.Web.Services.GL.CurrencyService>();
-builder.Services.AddScoped<Net4Courier.Web.Interfaces.ITaxCodeService, Net4Courier.Web.Services.GL.TaxCodeService>();
-builder.Services.AddScoped<Net4Courier.Web.Interfaces.IVoucherNumberingService, Net4Courier.Web.Services.GL.VoucherNumberingService>();
-builder.Services.AddScoped<Net4Courier.Web.Interfaces.IAccountClassificationService, Net4Courier.Web.Services.GL.AccountClassificationService>();
+// GL Services are provided by TrueBooks Platform Finance package (via AddPlatformFinance above)
 
 builder.Services.AddAuthentication(options =>
 {

@@ -1,0 +1,81 @@
+@page "/bank-accounts"
+
+@inject PlatformServices.IBankAccountService BankAccountService
+@inject LegacyServices.IAuthService AuthService
+@inject NavigationManager Navigation
+
+<PageTitle>Bank Accounts</PageTitle>
+
+<MudContainer MaxWidth="MaxWidth.ExtraExtraLarge" Class="mt-4">
+    <MudText Typo="Typo.h4" Class="mb-4">Bank Accounts</MudText>
+    
+    <MudPaper Class="pa-4">
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add" Class="mb-4" OnClick="CreateNew">
+            Add Bank Account
+        </MudButton>
+
+        <MudDataGrid T="PlatformBankDTOs.BankAccountListDto" Items="@bankAccounts" Loading="@loading" Striped="true" Bordered="true">
+            <Columns>
+                <PropertyColumn Property="x => x.AccountNumber" Title="Account Number" />
+                <PropertyColumn Property="x => x.AccountName" Title="Account Name" />
+                <PropertyColumn Property="x => x.BankName" Title="Bank Name" />
+                <PropertyColumn Property="x => x.CurrencyCode" Title="Currency" />
+                <TemplateColumn Title="Opening Balance">
+                    <CellTemplate>
+                        @context.Item.OpeningBalance.ToString("N2")
+                    </CellTemplate>
+                </TemplateColumn>
+                <TemplateColumn Title="Current Balance">
+                    <CellTemplate>
+                        @context.Item.CurrentBalance.ToString("N2")
+                    </CellTemplate>
+                </TemplateColumn>
+                <TemplateColumn Title="Actions">
+                    <CellTemplate>
+                        <MudIconButton Icon="@Icons.Material.Filled.Edit" Size="MudBlazor.Size.Small" OnClick="@(() => Edit(context.Item.Id))" />
+                    </CellTemplate>
+                </TemplateColumn>
+            </Columns>
+        </MudDataGrid>
+    </MudPaper>
+</MudContainer>
+
+@code {
+    private List<PlatformBankDTOs.BankAccountListDto> bankAccounts = new();
+    private bool loading = true;
+
+    private Guid GetTenantId() => Guid.TryParse(AuthService.GetTenantId(), out var parsedId) ? parsedId : Guid.Empty;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadBankAccounts();
+    }
+
+    private async Task LoadBankAccounts()
+    {
+        loading = true;
+        try
+        {
+            var tenantId = GetTenantId();
+            bankAccounts = await BankAccountService.GetAllAsync(tenantId);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error loading bank accounts: {ex.Message}");
+        }
+        finally
+        {
+            loading = false;
+        }
+    }
+
+    private void CreateNew()
+    {
+        Navigation.NavigateTo("/bank-accounts/new");
+    }
+
+    private void Edit(Guid id)
+    {
+        Navigation.NavigateTo($"/bank-accounts/edit/{id}");
+    }
+}
