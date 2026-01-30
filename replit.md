@@ -47,7 +47,7 @@ The application is built on .NET 8 Blazor Server, adopting a modular architectur
 - **Navigation Menu**: Restructured into 9 collapsible main sections.
 - **TrueBooks GL Module (Complete Migration)**: Full GL functionality now served exclusively from TrueBooks NuGet packages. All old local GL implementations have been removed and archived to `recycle_bin/old_gl_module/`. Uses fixed tenant ID '11111111-1111-1111-1111-111111111111' via SingleTenantContext.
 - **TrueBooks GL Routes**: All GL functionality uses TrueBooks package routes: `/gl/chart-of-accounts`, `/gl/journal-entry`, `/gl/journal-list`, `/reports/ledger`, `/reports/trial-balance`, `/reports/profit-loss`, `/reports/balance-sheet`.
-- **Cash & Bank Landing Page**: Navigation page at `/cash-bank` that links to TrueBooks GL journal entry for voucher management.
+- **Cash & Bank Module**: Independent Cash & Bank transaction management at `/cash-bank-transactions` with stub services ready for persistence implementation. Bank Account management at `/bank-accounts`. GL Journal Entry functionality provided by TrueBooks NuGet package at `/gl/journal-entry`.
 - **TrueBooks NuGet Packages**: Located in `NuGet/packages/` - includes Truebooks.Platform.Core, Truebooks.Platform.Finance, Truebooks.Platform.Contracts, Truebooks.Shared.UI, Truebooks.AccountsFinance.GL.UI, and Truebooks.Reports.GL.UI.
 - **Error Handling**: Robust global error handling with `ErrorBoundary`, `PageErrorHandler`, and `MudBlazor Snackbar` integration.
 - **Demo Data Management**: Admin feature to create and delete demo data for training.
