@@ -16,7 +16,7 @@ The application is built on .NET 8 Blazor Server, adopting a modular architectur
 ### Core Architectural Patterns
 - **Modular Design**: Organized into independent modules (`Net4Courier.Web`, `Net4Courier.Infrastructure`, `Net4Courier.Kernel`, `Net4Courier.Masters`, `Net4Courier.Operations`, `Net4Courier.Finance`) for clear separation of concerns.
 - **Data Persistence**: Utilizes Entity Framework Core with PostgreSQL.
-- **UI Framework**: MudBlazor for all user interface elements.
+- **UI Framework**: MudBlazor 7.16.0 for all user interface elements (upgraded from 6.11.2 on Jan 2026).
 - **Authentication**: Custom authentication system with BCrypt for password hashing.
 - **Database Partitioning**: PostgreSQL table partitioning implemented for `InscanMasters` based on `TransactionDate`.
 
