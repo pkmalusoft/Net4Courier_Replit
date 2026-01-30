@@ -15,6 +15,8 @@ public class AppAuthStateProvider : AuthenticationStateProvider
     public string CompanyName => _currentBranch?.Company?.Name ?? "";
     public string BranchName => _currentBranch?.Name ?? "";
     public string UserFullName => _currentUser?.FullName ?? _currentUser?.Username ?? "";
+    public string CurrencyCode => _currentBranch?.Currency?.Code ?? "USD";
+    public string CurrencySymbol => _currentBranch?.Currency?.Symbol ?? "$";
 
     public override Task<AuthenticationState> GetAuthenticationStateAsync()
     {
