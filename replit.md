@@ -1,7 +1,7 @@
 # Net4Courier - Blazor Server Migration
 
 ## Overview
-Net4Courier is a comprehensive logistics management system designed to streamline courier operations, including shipment management (AWB), customer relations, branch operations, financial transactions, and reporting. Its primary goal is to replace legacy systems with a modern, modular, and scalable platform that enhances operational efficiency and provides real-time insights for logistics companies.
+Net4Courier is a comprehensive logistics management system designed to streamline courier operations. Its primary purpose is to manage shipments (AWB), customer relations, branch operations, financial transactions, and reporting. The project aims to replace legacy systems with a modern, modular, and scalable platform to enhance operational efficiency and provide real-time insights for logistics companies. Key capabilities include financial management, operations workflow, prepaid AWB management, customer relationship management (CRM), and regulatory compliance.
 
 ## User Preferences
 - MudBlazor for all UI components
@@ -16,62 +16,61 @@ The application is built on .NET 8 Blazor Server, adopting a modular architectur
 ### Core Architectural Patterns
 - **Modular Design**: Organized into independent modules (`Net4Courier.Web`, `Net4Courier.Infrastructure`, `Net4Courier.Kernel`, `Net4Courier.Masters`, `Net4Courier.Operations`, `Net4Courier.Finance`) for clear separation of concerns.
 - **Data Persistence**: Utilizes Entity Framework Core with PostgreSQL.
-- **UI Framework**: MudBlazor 7.16.0 for all user interface elements (upgraded from 6.11.2 on Jan 2026).
+- **UI Framework**: MudBlazor for all user interface elements.
 - **Authentication**: Custom authentication system with BCrypt for password hashing.
-- **Database Partitioning**: PostgreSQL table partitioning implemented for `InscanMasters` based on `TransactionDate`.
+- **Database Partitioning**: PostgreSQL table partitioning for performance.
 
 ### UI/UX Decisions
 - **MudBlazor Components**: Ensures a consistent and responsive user experience.
 - **Layout**: Standard dashboard with `MainLayout`, `NavMenu`, and organized navigation.
 - **Responsive Design**: Key modules are optimized for mobile access.
-- **Login Page**: Modern split-screen design featuring a courier illustration and a compact login card.
+- **Login Page**: Modern split-screen design.
 
 ### Technical Implementations
-- **Entity Management**: Comprehensive CRUD operations for core entities such as Company, Branch, User, Role, Financial Year, Parties, AWB, Invoices, Receipts.
-- **Financial Features**: Includes invoice/receipt management, journaling, self-referential account heads, financial period management, dynamic other charges, Account Receivables, Account Payables, Cash and Bank Vouchers, and Bank Account Management.
-- **Financial Reports**: 23 comprehensive reports including Trial Balance (Standard, Grouped, Monthly, Detailed), Profit & Loss (Item Wise, Period Comparison), Customer Reports (Ledger, Aging, Statement), Chart of Accounts, Cash Flow Statement (Indirect and Direct Methods), Balance Sheet (Standard, GroupWise with collapsible hierarchy, Horizontal side-by-side, Vertical stacked), and Account Ledger (Standard, Detailed with running balance, Summary with opening/closing).
-- **Operations Workflow**: Covers AWB entry and generation, pickup management (request to inscan), outscan/DRS management, AWB tracking, Proof of Delivery (POD), Return to Shipper (RTS), Master Airwaybill (MAWB) processing, COD Remittance, Pickup Commitment, Pickup Incentive, and Transfer Order management.
-- **Prepaid AWB Management**: AWB Stock Management for tracking physical AWB inventory (books, stickers, rolls) with quantity, rate, and AWB number ranges. Prepaid AWB Sales module for selling prepaid AWBs to customers with automatic allocation from stock, payment mode selection (Cash/Bank/Cheque), and integrated accounting (Dr Cash/Bank, Cr Prepaid Control at sale; Dr Prepaid Control, Cr Revenue at usage).
-- **Enhanced Pickup Dashboard**: Unified dispatcher view with commitment status integration, showing committed pickups, expiring soon alerts, available pickups, courier performance metrics, countdown timers, and quick actions for commitment confirmation/override with 30-second auto-refresh.
-- **Import Shipment Charges**: Combined Duty/VAT Amount field, COD/Collection Amount field, and Shipper Name column in import shipment dialog, ImportEntry, and ImportInscan data grids. Excel import/export supports these columns with automatic mapping (DutyVatAmount → DutyAmount, CodCollectionAmount → CODAmount, ShipperName → ShipperName) and IsCOD flag auto-set when COD amount is entered. Import Bag dialog uses DialogService pattern for improved reliability.
-- **Unified Warehouse Inscan**: The Pickup Inscan page (AWB mode) handles both domestic AWBs and import shipments. When an import AWB is scanned, it updates the status to ReceivedAtWarehouse instead of InscanAtOrigin. The "Recently Received Today" grid displays both domestic AWBs and import shipments in a combined view using a ReceivedAWBDisplay record type, with import shipments indicated by an "Import" chip. The counter shows the total of both types. This provides a single scanning interface for warehouse staff receiving both domestic pickups and import shipments.
-- **Unified Shipment List**: The AWBList page (/awb-list) displays both domestic/export AWBs and import shipments in a single unified view. Features include: Type filter (All/Domestic/Import), Type column with Import/Domestic chip indicator, combined search across AWB number and party names, appropriate row actions based on shipment type (domestic has full actions, import has view/track/delete). Status filter applies only to domestic shipments since import shipments use a different status workflow. Excel export includes all shipments with type indicator.
-- **Branch AWB Configuration per Movement Type**: Separate AWB number series can be configured for each movement type (Domestic, Export, Import, Transhipment) per branch. The BranchAWBConfig entity stores AWBPrefix, StartingNumber, IncrementBy, and LastUsedNumber (read-only) for each movement type. The Branch dialog displays an inline-editable grid for all four movement types. AWBNumberService prioritizes movement-type-specific configs over branch defaults when generating AWB numbers.
-- **Master Data Management**: Includes configurable Rate Card Management with Excel import capability, Service Type Management, Shipment Mode Management, Port Master, Currency Management, and extensive Geographic Master Data.
-- **Zone Management**: Zones now have a Type field (International/Domestic). International zones allow selecting multiple countries via chips interface. Domestic zones allow selecting multiple cities. Zone details are stored in ZoneMatrixDetails with atomic transaction saves.
-- **Rate Card Excel Import**: Import rate cards from client Excel templates with dynamic header detection, zone category/zone/country parsing, weight-based slab rules extraction, preview with validation warnings, and batch processing.
-- **Enhanced Customer Master**: Configurable Account Types (Cash, Credit, Prepaid), Customer Branches/Departments management with contact details, Client Address tracking, tabbed Party dialog interface (General Info + Branches tabs), and improved visual layout with logo display and Account Type column.
-- **SLA Management**: Customer-specific Service Level Agreements with transit rules by zone/country/service type, credit terms, liability limits, volumetric settings, and status workflow (Draft→PendingApproval→Active→Expired/Terminated/Suspended) with approval tracking.
-- **Logo Management**: Company and Party logo upload with 2MB file limit, PNG/JPG/SVG/GIF validation, preview, and storage in /wwwroot/uploads/logos/.
-- **Regulatory Compliance**: Empost Regulatory Compliance Module for UAE courier licensing, advance payments, quarterly submissions, and royalty calculations.
-- **API Integration**: Provides configuration and webhook endpoints for third-party booking websites.
-- **Knowledge Base**: Integrated documentation using Markdig for "How To Guides" and operational flows, including Prepaid AWB guides, General Ledger documentation, Email Reports guide, and Import module field documentation.
-- **Navigation Menu**: Restructured into 9 collapsible main sections with bold headers: Dashboards, Shipments & Operations, Import/Export, Customers & CRM, Pricing & Billing, Finance & Accounting (with GL Masters/Transactions/Reports, AR, AP, Courier Reconciliation), Compliance & Audit (with Empost Regulatory), Masters & Settings (with Organization, Operations Masters, User & Security, Geography, Customer Settings), Knowledge & Tools.
-- **General Ledger Module**: Full GL implementation with Chart of Accounts, Control Accounts, Financial Years, Tax Setup, Cash & Bank Vouchers, Bank Accounts, Bank Reconciliation, Journal Vouchers, and comprehensive Financial Reports (Account Ledger, Day Book, Cash & Bank Book, Trial Balance, Profit & Loss, Balance Sheet, Cash Flow).
+- **Entity Management**: Comprehensive CRUD operations for core entities (Company, Branch, User, Role, Financial Year, Parties, AWB, Invoices, Receipts).
+- **Financial Features**: Includes invoice/receipt management, journaling, self-referential account heads, financial period management, dynamic other charges, AR/AP, Cash/Bank Vouchers, Bank Account Management, and 23 comprehensive financial reports.
+- **Operations Workflow**: Covers AWB entry/generation, pickup management, outscan/DRS, AWB tracking, POD, RTS, MAWB processing, COD Remittance, and Transfer Order management.
+- **Prepaid AWB Management**: AWB Stock Management and Prepaid AWB Sales module with integrated accounting.
+- **Enhanced Pickup Dashboard**: Unified dispatcher view with commitment status integration, performance metrics, and quick actions.
+- **Import Shipment Charges**: Combined Duty/VAT and COD/Collection amount fields, with Excel import/export support.
+- **Unified Warehouse Inscan**: Pickup Inscan page handles both domestic AWBs and import shipments, updating status accordingly and providing a combined view.
+- **Unified Shipment List**: AWBList page displays both domestic/export AWBs and import shipments in a single view with filtering and search capabilities.
+- **Branch AWB Configuration per Movement Type**: Separate AWB number series configuration for each movement type (Domestic, Export, Import, Transhipment) per branch.
+- **Master Data Management**: Configurable Rate Card Management (with Excel import), Service Type, Shipment Mode, Port Master, Currency, and extensive Geographic Master Data.
+- **Zone Management**: Zones have a Type field (International/Domestic), allowing selection of multiple countries/cities.
+- **Enhanced Customer Master**: Configurable Account Types (Cash, Credit, Prepaid), Customer Branches/Departments, Client Address tracking, and a tabbed Party dialog interface.
+- **SLA Management**: Customer-specific Service Level Agreements with transit rules, credit terms, liability limits, volumetric settings, and status workflow.
+- **Logo Management**: Company and Party logo upload with validation and storage.
+- **Regulatory Compliance**: Empost Regulatory Compliance Module for UAE courier licensing.
+- **API Integration**: Configuration and webhook endpoints for third-party booking websites.
+- **Knowledge Base**: Integrated documentation using Markdig for "How To Guides".
+- **Navigation Menu**: Restructured into 9 collapsible main sections.
+- **General Ledger Module**: Full GL implementation with Chart of Accounts, Control Accounts, Financial Years, Tax Setup, Vouchers, Bank Reconciliation, Journal Vouchers, and comprehensive Financial Reports.
+- **TrueBooks GL Integration**: Migrated GL module to TrueBooks ERP platform, adapted for single-tenant operation with UUIDs.
 - **Error Handling**: Robust global error handling with `ErrorBoundary`, `PageErrorHandler`, and `MudBlazor Snackbar` integration.
-- **Demo Data Management**: Admin feature to create and delete demo data for training purposes. Creates 5 demo customers (DEMO-CUST-001 to 005) with UAE addresses and 5 complete AWB workflows (DEMO-AWB-001 to 005) including pickup requests, inscans, tracking entries, and delivery completion. All demo records are flagged with IsDemo=true for easy identification and safe deletion. Located under Masters & Settings > User & Security menu.
-- **Initial Setup Wizard**: Platform administrators can configure new client deployments through a secure setup page (/setup). When no admin user exists in the database, users are automatically redirected to the setup page. The setup requires a SETUP_KEY environment variable for authentication before allowing administrator account creation. This replaces hardcoded admin creation for secure multi-client deployments.
-- **Barcode Generation**: AWB barcodes generated using ZXing.Net.Bindings.ImageSharp with SixLabors.ImageSharp for horizontal (300x80) and vertical (40x250, rotated 90°) PNG barcodes embedded in AWB labels.
-- **Global Search**: Dashboard features a unified autocomplete search box that searches across AWBs, Customers, and Invoices simultaneously. Uses GlobalSearchService with IDbContextFactory for Blazor Server scoping and EF.Functions.ILike for PostgreSQL-optimized case-insensitive search. Results are categorized with icons and status badges, navigating to tracking page for AWBs, customer master with search filter for customers, and invoice view for invoices.
-- **Tracking Print Feature**: Tracking page includes a print icon that generates a professional A4 PDF report via /api/report/tracking/{awbNo}. The report includes company logo header, AWB info section (number, booking date, status with color coding), shipper/consignee details in two-column layout, shipment details grid (pieces, weight, movement type, payment mode, COD), and a full tracking timeline with events, remarks, locations, and timestamps. Footer shows generation timestamp and page numbers.
-- **Shipment Invoice**: AWB Entry page includes a Shipment Invoice button that generates A4 commercial/customs invoice via /api/report/shipment-invoice/{id}. Includes company logo, shipper/consignee details, items table with HS code columns, and customs summary suitable for international shipments.
-- **Customer CRM - Complaints & Tickets**: Full ticket management system for customer complaints and support requests. Features include: Ticket entities (Ticket, TicketComment, TicketCategory) with status workflow (Open→InProgress→Resolved→Closed→Reopened), priority levels (Low/Medium/High/Urgent), auto-generated ticket numbers (TKT{YYMM}{0000}), customer and AWB linking, category management, internal notes vs customer-visible comments, and assignment to staff. Located under Customers & CRM menu.
-- **Branch Display Settings**: Branch-level setting "Hide Account Codes" that when enabled, hides account codes in Chart of Accounts pages, financial reports (Trial Balance, Chart of Accounts Report), and all financial grids. The setting is stored in the Branch entity and accessed via AppAuthStateProvider.CurrentBranch.
+- **Demo Data Management**: Admin feature to create and delete demo data for training.
+- **Initial Setup Wizard**: Secure setup page for platform administrators to configure new client deployments.
+- **Barcode Generation**: AWB barcodes generated using ZXing.Net.Bindings.ImageSharp for PNG images.
+- **Global Search**: Dashboard features a unified autocomplete search box across AWBs, Customers, and Invoices.
+- **Tracking Print Feature**: Tracking page generates professional A4 PDF reports via API.
+- **Shipment Invoice**: AWB Entry page generates A4 commercial/customs invoices via API.
+- **Customer CRM - Complaints & Tickets**: Full ticket management system with status workflow, priority levels, and customer/AWB linking.
+- **Branch Display Settings**: Branch-level setting to hide account codes in financial views.
 
-## Entity Property Reference
+### Entity Property Reference
 Key entity property names used in reports:
-- **Branch**: `Id`, `Name`, `Code` (not BranchId/BranchName)
-- **Party**: `Id`, `Name`, `Code` (not PartyId/PartyCode)
-- **AccountHead**: `Code`, `Name`, `Classification` (enum), `ParentId`, `Parent`, `AccountGroup`, `AccountNature`
-- **JournalEntry**: `Debit`, `Credit` (nullable decimals), `JournalId`, `AccountHeadId`, `PartyId`
-- **Journal**: `VoucherDate`, `VoucherNo`, `BranchId` (date/branch info on parent Journal, not JournalEntry)
+- **Branch**: `Id`, `Name`, `Code`
+- **Party**: `Id`, `Name`, `Code`
+- **AccountHead**: `Code`, `Name`, `Classification`, `ParentId`, `Parent`, `AccountGroup`, `AccountNature`
+- **JournalEntry**: `Debit`, `Credit`, `JournalId`, `AccountHeadId`, `PartyId`
+- **Journal**: `VoucherDate`, `VoucherNo`, `BranchId`
 
-## Email Integration
-- **Gmail API Integration**: Uses Replit Google Workspace connector for OAuth-based email sending via Gmail API
-- **GmailEmailService**: Service class implementing IGmailEmailService for sending emails with PDF attachments
-- **Report Email Feature**: Customer Ledger, Customer Statement, Supplier Ledger, and Supplier Statement reports have Email buttons to send PDF reports directly to customers/suppliers
-- **Email Pattern**: Branch email used as sender, Party email used as recipient; validates email addresses before sending
-- **Attachment Support**: Reports are generated as PDF attachments with professional HTML email body containing summary information
+### Email Integration
+- **Gmail API Integration**: Uses Replit Google Workspace connector for OAuth-based email sending.
+- **GmailEmailService**: Service class for sending emails with PDF attachments.
+- **Report Email Feature**: Reports can be emailed directly to customers/suppliers.
+- **Email Pattern**: Branch email as sender, Party email as recipient; validates email addresses.
+- **Attachment Support**: Reports generated as PDF attachments with professional HTML email body.
 
 ## External Dependencies
 - **Database**: PostgreSQL
