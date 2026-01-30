@@ -29,6 +29,9 @@ public class Branch : BaseEntity
     public int AWBIncrement { get; set; } = 1;
     public long AWBLastUsedNumber { get; set; } = 0;
     
+    // Display Settings
+    public bool HideAccountCodes { get; set; } = false;
+    
     public virtual Company Company { get; set; } = null!;
     public virtual Country? Country { get; set; }
     public virtual State? State { get; set; }

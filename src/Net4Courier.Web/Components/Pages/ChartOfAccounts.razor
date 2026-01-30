@@ -2,9 +2,12 @@
 @inject ApplicationDbContext DbContext
 @inject IDialogService DialogService
 @inject ISnackbar Snackbar
+@inject AuthenticationStateProvider AuthStateProvider
 @using Microsoft.EntityFrameworkCore
+@using Microsoft.AspNetCore.Components.Authorization
 @using Net4Courier.Infrastructure.Data
 @using Net4Courier.Finance.Entities
+@using Net4Courier.Web.Services
 
 <PageTitle>Chart of Accounts - Net4Courier</PageTitle>
 
@@ -33,7 +36,10 @@
         <MudTable Items="@FilteredAccounts" Dense="true" Hover="true" Bordered="true" Striped="true" Class="mt-4"
                   Loading="_loading" LoadingProgressColor="Color.Primary" GroupBy="@_groupDefinition" GroupHeaderStyle="background-color:var(--mud-palette-background-grey)">
             <HeaderContent>
-                <MudTh Style="width: 100px;">Code</MudTh>
+                @if (!_hideAccountCodes)
+                {
+                    <MudTh Style="width: 100px;">Code</MudTh>
+                }
                 <MudTh>Account Name</MudTh>
                 <MudTh Style="width: 120px;">Classification</MudTh>
                 <MudTh Style="width: 140px;">Group</MudTh>
@@ -42,12 +48,15 @@
                 <MudTh Style="width: 100px;">Actions</MudTh>
             </HeaderContent>
             <GroupHeaderTemplate>
-                <MudTh colspan="7">
+                <MudTh colspan="@(_hideAccountCodes ? 6 : 7)">
                     <MudText Typo="Typo.subtitle1"><b>@context.GroupName</b></MudText>
                 </MudTh>
             </GroupHeaderTemplate>
             <RowTemplate>
-                <MudTd DataLabel="Code"><MudText Typo="Typo.body2">@context.Code</MudText></MudTd>
+                @if (!_hideAccountCodes)
+                {
+                    <MudTd DataLabel="Code"><MudText Typo="Typo.body2">@context.Code</MudText></MudTd>
+                }
                 <MudTd DataLabel="Name">
                     @if (context.IsGroup)
                     {
@@ -79,6 +88,7 @@
     private string _searchText = string.Empty;
     private AccountClassification? _filterClassification;
     private bool _loading = true;
+    private bool _hideAccountCodes;
 
     private TableGroupDefinition<AccountHead> _groupDefinition = new()
     {
@@ -109,7 +119,14 @@
 
     protected override async Task OnInitializedAsync()
     {
+        LoadBranchSettings();
         await LoadAccounts();
+    }
+
+    private void LoadBranchSettings()
+    {
+        var authProvider = (AppAuthStateProvider)AuthStateProvider;
+        _hideAccountCodes = authProvider.CurrentBranch?.HideAccountCodes ?? false;
     }
 
     private async Task LoadAccounts()
