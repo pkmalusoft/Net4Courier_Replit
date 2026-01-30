@@ -24,21 +24,24 @@ public interface IDemoDataService
 
 public class AllDataStats
 {
-    public int Parties { get; set; }
-    public int Employees { get; set; }
-    public int Vehicles { get; set; }
-    public int AWBStocks { get; set; }
-    public int PrepaidDocuments { get; set; }
-    public int Tickets { get; set; }
+    // Transaction Data (will be deleted)
     public int PickupRequests { get; set; }
     public int AWBs { get; set; }
     public int DRS { get; set; }
     public int Invoices { get; set; }
     public int Receipts { get; set; }
     public int Journals { get; set; }
-    public int BankAccounts { get; set; }
-    public int BankReconciliations { get; set; }
     public int CashBankTransactions { get; set; }
+    public int BankReconciliations { get; set; }
+    public int Tickets { get; set; }
+    
+    // Master Data (will be preserved)
+    public int Parties { get; set; }
+    public int Employees { get; set; }
+    public int Vehicles { get; set; }
+    public int AWBStocks { get; set; }
+    public int PrepaidDocuments { get; set; }
+    public int BankAccounts { get; set; }
 }
 
 public class DemoDataStats
@@ -1542,8 +1545,10 @@ public class DemoDataService : IDemoDataService
     {
         await using var context = await _dbFactory.CreateDbContextAsync();
 
+        // Delete TRANSACTION DATA ONLY - Master data is preserved
         // Delete in correct order to respect foreign key constraints
-        // Finance - delete child records first
+        
+        // Finance - Bank Reconciliations
         try
         {
             var reconciliationAdjustments = await context.ReconciliationAdjustments.ToListAsync();
@@ -1560,6 +1565,7 @@ public class DemoDataService : IDemoDataService
         }
         catch { }
 
+        // Cash/Bank Transactions
         try
         {
             var voucherAttachments = await context.VoucherAttachments.ToListAsync();
@@ -1572,14 +1578,6 @@ public class DemoDataService : IDemoDataService
 
             var cashBankTxns = await context.CashBankTransactions.ToListAsync();
             context.CashBankTransactions.RemoveRange(cashBankTxns);
-            await context.SaveChangesAsync();
-        }
-        catch { }
-
-        try
-        {
-            var bankAccounts = await context.BankAccounts.ToListAsync();
-            context.BankAccounts.RemoveRange(bankAccounts);
             await context.SaveChangesAsync();
         }
         catch { }
@@ -1640,7 +1638,7 @@ public class DemoDataService : IDemoDataService
         }
         catch { }
 
-        // CRM - Tickets
+        // CRM - Tickets (but NOT Ticket Categories - they are master data)
         try
         {
             var ticketComments = await context.TicketComments.ToListAsync();
@@ -1649,10 +1647,6 @@ public class DemoDataService : IDemoDataService
 
             var tickets = await context.Tickets.ToListAsync();
             context.Tickets.RemoveRange(tickets);
-            await context.SaveChangesAsync();
-
-            var ticketCategories = await context.TicketCategories.ToListAsync();
-            context.TicketCategories.RemoveRange(ticketCategories);
             await context.SaveChangesAsync();
         }
         catch { }
@@ -1721,66 +1715,15 @@ public class DemoDataService : IDemoDataService
         }
         catch { }
 
-        // Prepaid Documents
-        try
-        {
-            var prepaidAwbs = await context.PrepaidAWBs.ToListAsync();
-            context.PrepaidAWBs.RemoveRange(prepaidAwbs);
-            await context.SaveChangesAsync();
-
-            var prepaidDocs = await context.PrepaidDocuments.ToListAsync();
-            context.PrepaidDocuments.RemoveRange(prepaidDocs);
-            await context.SaveChangesAsync();
-        }
-        catch { }
-
-        // AWB Stocks
-        try
-        {
-            var awbStocks = await context.AWBStocks.ToListAsync();
-            context.AWBStocks.RemoveRange(awbStocks);
-            await context.SaveChangesAsync();
-        }
-        catch { }
-
-        // Vehicles
-        try
-        {
-            var vehicles = await context.Vehicles.ToListAsync();
-            context.Vehicles.RemoveRange(vehicles);
-            await context.SaveChangesAsync();
-        }
-        catch { }
-
-        // Employees
-        try
-        {
-            var employees = await context.Employees.ToListAsync();
-            context.Employees.RemoveRange(employees);
-            await context.SaveChangesAsync();
-        }
-        catch { }
-
-        // Parties and related
-        try
-        {
-            var slaAgreements = await context.SLAAgreements.ToListAsync();
-            context.SLAAgreements.RemoveRange(slaAgreements);
-            await context.SaveChangesAsync();
-
-            var customerBranches = await context.CustomerBranches.ToListAsync();
-            context.CustomerBranches.RemoveRange(customerBranches);
-            await context.SaveChangesAsync();
-
-            var partyAddresses = await context.PartyAddresses.ToListAsync();
-            context.PartyAddresses.RemoveRange(partyAddresses);
-            await context.SaveChangesAsync();
-
-            var parties = await context.Parties.ToListAsync();
-            context.Parties.RemoveRange(parties);
-            await context.SaveChangesAsync();
-        }
-        catch { }
+        // NOTE: The following MASTER DATA is preserved:
+        // - Parties (Customers, Vendors, Agents, Couriers)
+        // - Employees
+        // - Vehicles  
+        // - AWB Stocks
+        // - Prepaid Documents
+        // - Bank Accounts
+        // - Ticket Categories
+        // - Service Types, Shipment Modes, Zones, Rate Cards, etc.
 
         return true;
     }
