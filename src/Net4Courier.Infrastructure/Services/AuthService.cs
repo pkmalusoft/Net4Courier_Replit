@@ -141,10 +141,14 @@ public class AuthService
             {
                 var defaultBranch = await _context.Branches.FirstOrDefaultAsync(b => b.IsActive);
                 
+                // Use SETUP_KEY environment variable for initial password, fallback to a generated secure password
+                var setupKey = Environment.GetEnvironmentVariable("SETUP_KEY");
+                var initialPassword = !string.IsNullOrEmpty(setupKey) ? setupKey : Guid.NewGuid().ToString("N")[..12];
+                
                 platformAdminUser = new User
                 {
                     Username = "platformadmin",
-                    PasswordHash = BCrypt.Net.BCrypt.HashPassword("Admin@123"),
+                    PasswordHash = BCrypt.Net.BCrypt.HashPassword(initialPassword),
                     Email = "platformadmin@net4courier.com",
                     FullName = "Platform Administrator",
                     Phone = "+971-000-0000",
@@ -155,7 +159,7 @@ public class AuthService
                 };
                 _context.Users.Add(platformAdminUser);
                 await _context.SaveChangesAsync();
-                Console.WriteLine("Platform admin user created (username: platformadmin, password: Admin@123)");
+                Console.WriteLine($"Platform admin user created (username: platformadmin, password: {(string.IsNullOrEmpty(setupKey) ? "check SETUP_KEY or use generated password" : "uses SETUP_KEY")})");
                 
                 if (defaultBranch != null)
                 {
