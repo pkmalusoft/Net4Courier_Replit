@@ -35,21 +35,15 @@
                     </MudSelect>
                 </MudItem>
                 <MudItem xs="12" sm="3">
-                    <MudAutocomplete T="AccountHead"
-                                     Label="@($"{VoucherTypeName} Account")"
-                                     @bind-Value="_selectedPrimaryAccount"
-                                     SearchFunc="@SearchPrimaryAccounts"
-                                     ToStringFunc="@(acc => acc == null ? "" : $"{acc.Code} - {acc.Name}")"
-                                     Variant="Variant.Outlined"
-                                     Required="true"
-                                     Disabled="@IsReadOnly"
-                                     Dense="true"
-                                     ShowProgressIndicator="true"
-                                     MinCharacters="0"
-                                     MaxItems="50"
-                                     ResetValueOnEmptyText="false"
-                                     CoerceText="false"
-                                     CoerceValue="false" />
+                    <MudSelect @key="@($"primaryselect_{VoucherType}_{_primaryAccounts.Count}")"
+                               T="long" @bind-Value="_primaryAccountId" Label="@($"{VoucherTypeName} Account")"
+                               Variant="Variant.Outlined" Required="true" Disabled="@IsReadOnly"
+                               HelperText="@(_primaryAccounts.Count == 0 ? "No accounts found" : "")">
+                        @foreach (var acc in _primaryAccounts)
+                        {
+                            <MudSelectItem Value="@acc.Id">@acc.Code - @acc.Name</MudSelectItem>
+                        }
+                    </MudSelect>
                 </MudItem>
                 <MudItem xs="12" sm="8">
                     <MudTextField @bind-Value="_narration" Label="Narration"
@@ -92,20 +86,14 @@
                         }
                         else
                         {
-                            <MudAutocomplete T="AccountHead"
-                                             Value="@GetAccountById(context.AccountHeadId)"
-                                             ValueChanged="@(acc => OnAccountSelected(context, acc))"
-                                             SearchFunc="@SearchAllAccounts"
-                                             ToStringFunc="@(acc => acc == null ? "" : $"{acc.Code} - {acc.Name}")"
-                                             Variant="Variant.Text"
-                                             Dense="true"
-                                             Margin="Margin.Dense"
-                                             ShowProgressIndicator="true"
-                                             MinCharacters="0"
-                                             MaxItems="50"
-                                             ResetValueOnEmptyText="false"
-                                             CoerceText="false"
-                                             CoerceValue="false" />
+                            <MudSelect @key="@($"entryaccount_{context.GetHashCode()}_{_allAccounts.Count}")"
+                                       T="long" Value="@context.AccountHeadId" ValueChanged="@((val) => OnAccountChanged(context, val))"
+                                       Variant="Variant.Text" Dense="true" Margin="Margin.Dense">
+                                @foreach (var acc in _allAccounts)
+                                {
+                                    <MudSelectItem Value="@acc.Id">@acc.Code - @acc.Name</MudSelectItem>
+                                }
+                            </MudSelect>
                         }
                     </MudTd>
                     <MudTd>
@@ -200,66 +188,15 @@
     private string _voucherNo = "";
     private DateTime? _voucherDate = DateTime.Today;
     private VoucherDirection _direction = VoucherDirection.Receipt;
-    private AccountHead? _selectedPrimaryAccount;
+    private long _primaryAccountId;
     private string? _narration;
     private string? _reference;
     private List<JournalEntry> _entries = new();
     private List<AccountHead> _primaryAccounts = new();
     private List<AccountHead> _allAccounts = new();
 
-    private long _primaryAccountId => _selectedPrimaryAccount?.Id ?? 0;
     private decimal TotalAmount => _entries.Sum(e => GetEntryAmount(e));
     private bool CanSave => _primaryAccountId > 0 && _entries.Any(e => e.AccountHeadId > 0 && GetEntryAmount(e) > 0) && TotalAmount > 0;
-
-    private Task<IEnumerable<AccountHead>> SearchPrimaryAccounts(string searchText)
-    {
-        if (string.IsNullOrWhiteSpace(searchText))
-        {
-            return Task.FromResult(_primaryAccounts.Take(50).AsEnumerable());
-        }
-        
-        var results = _primaryAccounts
-            .Where(a => a.Code.Contains(searchText, StringComparison.OrdinalIgnoreCase) ||
-                       a.Name.Contains(searchText, StringComparison.OrdinalIgnoreCase))
-            .Take(50);
-        return Task.FromResult(results);
-    }
-
-    private Task<IEnumerable<AccountHead>> SearchAllAccounts(string searchText)
-    {
-        if (string.IsNullOrWhiteSpace(searchText))
-        {
-            return Task.FromResult(_allAccounts.Take(50).AsEnumerable());
-        }
-        
-        var results = _allAccounts
-            .Where(a => a.Code.Contains(searchText, StringComparison.OrdinalIgnoreCase) ||
-                       a.Name.Contains(searchText, StringComparison.OrdinalIgnoreCase))
-            .Take(50);
-        return Task.FromResult(results);
-    }
-
-    private AccountHead? GetAccountById(long accountId)
-    {
-        if (accountId == 0) return null;
-        return _allAccounts.FirstOrDefault(a => a.Id == accountId);
-    }
-
-    private void OnAccountSelected(JournalEntry entry, AccountHead? account)
-    {
-        if (account != null)
-        {
-            entry.AccountHeadId = account.Id;
-            entry.AccountCode = account.Code;
-            entry.AccountName = account.Name;
-        }
-        else
-        {
-            entry.AccountHeadId = 0;
-            entry.AccountCode = null;
-            entry.AccountName = null;
-        }
-    }
 
     private decimal GetEntryAmount(JournalEntry entry)
     {
@@ -296,7 +233,7 @@
             
             if (primaryEntry != null)
             {
-                _selectedPrimaryAccount = _primaryAccounts.FirstOrDefault(a => a.Id == primaryEntry.AccountHeadId);
+                _primaryAccountId = primaryEntry.AccountHeadId;
                 _direction = (primaryEntry.Debit ?? 0) > 0 ? VoucherDirection.Receipt : VoucherDirection.Payment;
             }
             
