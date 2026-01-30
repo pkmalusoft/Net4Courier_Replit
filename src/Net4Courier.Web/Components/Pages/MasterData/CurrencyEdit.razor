@@ -1,0 +1,244 @@
+@page "/gl/currencies/new"
+@attribute [Authorize]
+@page "/gl/currencies/edit/{Id:guid}"
+
+
+@inject HttpClient Http
+@inject Truebooks.Platform.Core.MultiTenancy.ITenantContext TenantContext
+@inject ISnackbar Snackbar
+@inject NavigationManager Navigation
+
+<MudContainer MaxWidth="MaxWidth.Medium" Class="mt-4">
+    <MudText Typo="Typo.h4" Class="mb-4">@(Id.HasValue ? "Edit" : "New") Currency</MudText>
+
+    <MudPaper Class="pa-6" Elevation="2">
+        <MudForm @ref="form" @bind-IsValid="@formIsValid">
+            <MudGrid>
+                <MudItem xs="12" md="4">
+                    <MudTextField @bind-Value="currency.Code" 
+                                Label="Currency Code" 
+                                Required="true"
+                                Variant="Variant.Outlined"
+                                RequiredError="Currency code is required"
+                                MaxLength="3"
+                                HelperText="3-letter code (e.g., USD, EUR, GBP)"
+                                Disabled="@Id.HasValue" />
+                </MudItem>
+                <MudItem xs="12" md="8">
+                    <MudTextField @bind-Value="currency.Name" 
+                                Label="Currency Name" 
+                                Required="true"
+                                Variant="Variant.Outlined"
+                                RequiredError="Currency name is required"
+                                MaxLength="100"
+                                HelperText="Full name (e.g., US Dollar, Euro)" />
+                </MudItem>
+
+                <MudItem xs="12" md="4">
+                    <MudTextField @bind-Value="currency.Symbol" 
+                                Label="Symbol" 
+                                Variant="Variant.Outlined"
+                                MaxLength="10"
+                                HelperText="e.g., $, €, £" />
+                </MudItem>
+                <MudItem xs="12" md="4">
+                    <MudNumericField @bind-Value="currency.ExchangeRate" 
+                                   Label="Exchange Rate" 
+                                   Required="true"
+                                   Variant="Variant.Outlined"
+                                   Format="N4"
+                                   Min="0.0001m"
+                                   HelperText="Rate against base currency" />
+                </MudItem>
+                <MudItem xs="12" md="4">
+                    <MudNumericField @bind-Value="currency.DecimalPlaces" 
+                                   Label="Decimal Places" 
+                                   Required="true"
+                                   Variant="Variant.Outlined"
+                                   Min="0"
+                                   Max="4"
+                                   HelperText="0-4 (e.g., 2 for USD, 3 for OMR)" />
+                </MudItem>
+
+                <MudItem xs="12" md="6">
+                    <MudCheckBox @bind-Value="currency.IsBaseCurrency" 
+                               Label="Base Currency" 
+                               Color="Color.Primary"
+                               Disabled="@(Id.HasValue && existingIsBaseCurrency)" />
+                    <MudText Typo="Typo.caption" Color="Color.Default" Class="ml-8">
+                        Mark as the primary currency for your organization
+                    </MudText>
+                </MudItem>
+                <MudItem xs="12" md="6">
+                    <MudCheckBox @bind-Value="currency.IsActive" 
+                               Label="Active" 
+                               Color="Color.Primary" />
+                    <MudText Typo="Typo.caption" Color="Color.Default" Class="ml-8">
+                        Only active currencies are available for selection
+                    </MudText>
+                </MudItem>
+            </MudGrid>
+
+            @if (!string.IsNullOrEmpty(errorMessage))
+            {
+                <MudAlert Severity="Severity.Error" Class="mt-4">@errorMessage</MudAlert>
+            }
+
+            <MudDivider Class="my-6" />
+
+            <MudGrid>
+                <MudItem xs="12" sm="6" md="4">
+                    <MudButton Variant="Variant.Filled" 
+                              Color="Color.Primary" 
+                              FullWidth="true" 
+                              OnClick="Save" 
+                              Disabled="isLoading">
+                        Save
+                    </MudButton>
+                </MudItem>
+                <MudItem xs="12" sm="6" md="4">
+                    <MudButton Variant="Variant.Outlined" 
+                              Color="Color.Secondary" 
+                              FullWidth="true" 
+                              OnClick="Cancel" 
+                              Disabled="isLoading">
+                        Cancel
+                    </MudButton>
+                </MudItem>
+            </MudGrid>
+        </MudForm>
+    </MudPaper>
+</MudContainer>
+
+@code {
+    [Parameter]
+    public Guid? Id { get; set; }
+
+    private MudForm? form;
+    private bool formIsValid;
+    private CurrencyModel currency = new();
+    private string errorMessage = "";
+    private bool isLoading = false;
+    private bool existingIsBaseCurrency = false;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            if (Id.HasValue)
+            {
+                var tenantId = AuthService.GetTenantId();
+                Http.DefaultRequestHeaders.Remove("X-Tenant-Id");
+                Http.DefaultRequestHeaders.Add("X-Tenant-Id", tenantId);
+
+                var response = await Http.GetFromJsonAsync<CurrencyModel>($"api/currency/{Id.Value}");
+                if (response != null)
+                {
+                    currency = response;
+                    existingIsBaseCurrency = currency.IsBaseCurrency;
+                }
+            }
+            else
+            {
+                currency.IsActive = true;
+                currency.ExchangeRate = 1.0m;
+                currency.DecimalPlaces = 2;
+            }
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Failed to load currency: {ex.Message}";
+            Snackbar.Add(errorMessage, Severity.Error);
+        }
+    }
+
+    private async Task Save()
+    {
+        if (!formIsValid)
+        {
+            Snackbar.Add("Please fill all required fields correctly", Severity.Warning);
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(currency.Code) || currency.Code.Length != 3)
+        {
+            Snackbar.Add("Currency code must be exactly 3 characters", Severity.Warning);
+            return;
+        }
+
+        if (currency.DecimalPlaces < 0 || currency.DecimalPlaces > 4)
+        {
+            Snackbar.Add("Decimal places must be between 0 and 4", Severity.Warning);
+            return;
+        }
+
+        errorMessage = "";
+        isLoading = true;
+
+        try
+        {
+            var tenantId = AuthService.GetTenantId();
+            Http.DefaultRequestHeaders.Remove("X-Tenant-Id");
+            Http.DefaultRequestHeaders.Add("X-Tenant-Id", tenantId);
+
+            currency.Code = currency.Code.ToUpper();
+
+            if (Id.HasValue)
+            {
+                var response = await Http.PutAsJsonAsync($"api/currency/{Id.Value}", currency);
+                if (response.IsSuccessStatusCode)
+                {
+                    Snackbar.Add("Currency updated successfully", Severity.Success);
+                    Navigation.NavigateTo("/master-data/currencies");
+                }
+                else
+                {
+                    var error = await response.Content.ReadAsStringAsync();
+                    errorMessage = $"Failed to update currency: {error}";
+                    Snackbar.Add(errorMessage, Severity.Error);
+                }
+            }
+            else
+            {
+                var response = await Http.PostAsJsonAsync("api/currency", currency);
+                if (response.IsSuccessStatusCode)
+                {
+                    Snackbar.Add("Currency created successfully", Severity.Success);
+                    Navigation.NavigateTo("/master-data/currencies");
+                }
+                else
+                {
+                    var error = await response.Content.ReadAsStringAsync();
+                    errorMessage = $"Failed to create currency: {error}";
+                    Snackbar.Add(errorMessage, Severity.Error);
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Error: {ex.Message}";
+            Snackbar.Add(errorMessage, Severity.Error);
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private void Cancel()
+    {
+        Navigation.NavigateTo("/master-data/currencies");
+    }
+
+    public class CurrencyModel
+    {
+        public Guid Id { get; set; }
+        public string Code { get; set; } = string.Empty;
+        public string Name { get; set; } = string.Empty;
+        public string Symbol { get; set; } = string.Empty;
+        public decimal ExchangeRate { get; set; } = 1.0m;
+        public int DecimalPlaces { get; set; } = 2;
+        public bool IsBaseCurrency { get; set; }
+        public bool IsActive { get; set; } = true;
+    }
+}

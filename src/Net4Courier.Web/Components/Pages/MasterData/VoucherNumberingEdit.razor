@@ -1,0 +1,303 @@
+@page "/gl/voucher-numbering/new"
+@attribute [Authorize]
+@page "/gl/voucher-numbering/edit/{Id:guid}"
+
+@using PlatformServices = Truebooks.Platform.Contracts.Services
+@using PlatformDTOs = Truebooks.Platform.Contracts.DTOs
+@using Microsoft.AspNetCore.Authorization
+@using Truebooks.Platform.Core.MultiTenancy
+
+@inject PlatformServices.IVoucherNumberingService VoucherNumberingService
+@inject Truebooks.Platform.Core.MultiTenancy.ITenantContext TenantContext
+@inject NavigationManager Navigation
+@inject ISnackbar Snackbar
+
+<MudContainer MaxWidth="MaxWidth.Medium" Class="mt-4">
+    <MudText Typo="Typo.h4" Class="mb-4">@(Id == null ? "New Voucher Numbering" : "Edit Voucher Numbering")</MudText>
+
+    @if (isLoading)
+    {
+        <MudProgressCircular Indeterminate="true" />
+    }
+    else if (isLocked && Id != null)
+    {
+        <MudAlert Severity="Severity.Warning" Class="mb-4">
+            This configuration is locked because transactions already exist for this type. You cannot modify it.
+        </MudAlert>
+        
+        <MudPaper Class="pa-4">
+            <MudGrid>
+                <MudItem xs="12">
+                    <MudText Typo="Typo.h6">Transaction Type</MudText>
+                    <MudText>@voucher.TransactionTypeName</MudText>
+                </MudItem>
+                <MudItem xs="12" sm="6">
+                    <MudText Typo="Typo.h6">Prefix</MudText>
+                    <MudText>@voucher.Prefix</MudText>
+                </MudItem>
+                <MudItem xs="12" sm="6">
+                    <MudText Typo="Typo.h6">Next Number</MudText>
+                    <MudText>@voucher.NextNumber</MudText>
+                </MudItem>
+                <MudItem xs="12" sm="6">
+                    <MudText Typo="Typo.h6">Number Length</MudText>
+                    <MudText>@voucher.NumberLength</MudText>
+                </MudItem>
+                <MudItem xs="12" sm="6">
+                    <MudText Typo="Typo.h6">Separator</MudText>
+                    <MudText>@voucher.Separator</MudText>
+                </MudItem>
+                <MudItem xs="12">
+                    <MudAlert Severity="Severity.Info">
+                        Next Voucher: <strong>@previewVoucher</strong>
+                    </MudAlert>
+                </MudItem>
+            </MudGrid>
+            
+            <MudDivider Class="my-4" />
+            
+            <MudButton Variant="Variant.Outlined" OnClick="Cancel">Back to List</MudButton>
+        </MudPaper>
+    }
+    else
+    {
+        <MudPaper Class="pa-4">
+            <MudForm @ref="form" @bind-IsValid="@formIsValid">
+                <MudGrid>
+                    <MudItem xs="12">
+                        <MudSelect @bind-Value="voucher.TransactionType" 
+                                  Label="Transaction Type" 
+                                  T="PlatformDTOs.VoucherTransactionType"
+                                  Required="true"
+                                  RequiredError="Transaction Type is required"
+                                  Disabled="@(Id != null)">
+                            @foreach (PlatformDTOs.VoucherTransactionType type in Enum.GetValues(typeof(PlatformDTOs.VoucherTransactionType)))
+                            {
+                                <MudSelectItem Value="@type">@GetTransactionTypeName(type)</MudSelectItem>
+                            }
+                        </MudSelect>
+                        @if (Id != null)
+                        {
+                            <MudText Typo="Typo.caption" Class="mt-1">
+                                Transaction type cannot be changed after creation
+                            </MudText>
+                        }
+                    </MudItem>
+                    <MudItem xs="12" sm="6">
+                        <MudTextField @bind-Value="voucher.Prefix" 
+                                     Label="Prefix" 
+                                     Required="true"
+                                     RequiredError="Prefix is required"
+                                     MaxLength="10"
+                                     OnKeyUp="UpdatePreview" />
+                    </MudItem>
+                    <MudItem xs="12" sm="6">
+                        <MudNumericField @bind-Value="voucher.NextNumber" 
+                                        Label="Next Number" 
+                                        Required="true"
+                                        RequiredError="Next number is required"
+                                        Min="1"
+                                        OnKeyUp="UpdatePreview" />
+                    </MudItem>
+                    <MudItem xs="12" sm="6">
+                        <MudNumericField @bind-Value="voucher.NumberLength" 
+                                        Label="Number Length (Padding)" 
+                                        Required="true"
+                                        RequiredError="Number length is required"
+                                        Min="1"
+                                        Max="10"
+                                        OnKeyUp="UpdatePreview" />
+                        <MudText Typo="Typo.caption" Class="mt-1">
+                            Numbers will be padded with leading zeros to this length (e.g., 6 -> 000001)
+                        </MudText>
+                    </MudItem>
+                    <MudItem xs="12" sm="6">
+                        <MudTextField @bind-Value="voucher.Separator" 
+                                     Label="Separator" 
+                                     Required="true"
+                                     RequiredError="Separator is required"
+                                     MaxLength="5"
+                                     OnKeyUp="UpdatePreview" />
+                        <MudText Typo="Typo.caption" Class="mt-1">
+                            Character(s) between prefix and number (e.g., "-", "/", "_")
+                        </MudText>
+                    </MudItem>
+                    <MudItem xs="12">
+                        <MudCheckBox @bind-Value="voucher.IsActive" 
+                                    Label="Active"
+                                    Color="Color.Primary" />
+                    </MudItem>
+                    
+                    <MudItem xs="12">
+                        <MudAlert Severity="Severity.Info">
+                            <strong>Preview:</strong> Next voucher will be: <strong>@previewVoucher</strong>
+                        </MudAlert>
+                        <MudText Typo="Typo.caption" Class="mt-2">
+                            Example: If prefix="CBT", separator="-", next number=1, length=6 -> Result: CBT-000001
+                        </MudText>
+                    </MudItem>
+                </MudGrid>
+
+                <MudDivider Class="my-4" />
+
+                <div class="d-flex justify-end gap-2">
+                    <MudButton Variant="Variant.Outlined" OnClick="Cancel">Cancel</MudButton>
+                    <MudButton Variant="Variant.Filled" 
+                              Color="Color.Primary" 
+                              OnClick="Save"
+                              Disabled="@(!formIsValid || isSaving)">
+                        @if (isSaving)
+                        {
+                            <MudProgressCircular Size="MudBlazor.Size.Small" Indeterminate="true" />
+                        }
+                        else
+                        {
+                            <text>Save</text>
+                        }
+                    </MudButton>
+                </div>
+            </MudForm>
+        </MudPaper>
+    }
+</MudContainer>
+
+@code {
+    [Parameter]
+    public Guid? Id { get; set; }
+
+    private VoucherNumberingModel voucher = new() { IsActive = true };
+    private MudForm form = null!;
+    private bool formIsValid;
+    private bool isLoading = false;
+    private bool isSaving = false;
+    private bool isLocked = false;
+    private string previewVoucher = "";
+
+    private Guid GetTenantId() => Guid.Parse(AuthService.GetTenantId());
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadData();
+        UpdatePreview();
+    }
+
+    private async Task LoadData()
+    {
+        isLoading = true;
+        try
+        {
+            if (Id.HasValue)
+            {
+                var tenantId = GetTenantId();
+                var existing = await VoucherNumberingService.GetByIdAsync(tenantId, Id.Value);
+                if (existing != null)
+                {
+                    voucher = new VoucherNumberingModel
+                    {
+                        TransactionType = existing.TransactionType,
+                        Prefix = existing.Prefix,
+                        NextNumber = existing.NextNumber,
+                        NumberLength = existing.NumberLength,
+                        Separator = existing.Separator,
+                        IsActive = existing.IsActive
+                    };
+                    isLocked = existing.IsLocked;
+                }
+                else
+                {
+                    Snackbar.Add("Configuration not found", Severity.Error);
+                    Navigation.NavigateTo("/master-data/voucher-numbering");
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error loading data: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private void UpdatePreview()
+    {
+        var paddedNumber = voucher.NextNumber.ToString().PadLeft(voucher.NumberLength, '0');
+        previewVoucher = $"{voucher.Prefix}{voucher.Separator}{paddedNumber}";
+        StateHasChanged();
+    }
+
+    private string GetTransactionTypeName(PlatformDTOs.VoucherTransactionType type)
+    {
+        return type.ToString().Replace("Transaction", "").Replace("Note", " Note");
+    }
+
+    private async Task Save()
+    {
+        await form.Validate();
+        
+        if (!formIsValid)
+        {
+            Snackbar.Add("Please fix validation errors", Severity.Warning);
+            return;
+        }
+
+        isSaving = true;
+        try
+        {
+            var tenantId = GetTenantId();
+            if (Id == null)
+            {
+                var createRequest = new PlatformDTOs.CreateVoucherNumberingRequest(
+                    voucher.TransactionType,
+                    voucher.Prefix,
+                    voucher.NextNumber,
+                    voucher.NumberLength,
+                    voucher.Separator,
+                    voucher.IsActive
+                );
+                await VoucherNumberingService.CreateAsync(tenantId, createRequest);
+                Snackbar.Add("Configuration created successfully", Severity.Success);
+            }
+            else
+            {
+                var updateRequest = new PlatformDTOs.UpdateVoucherNumberingRequest(
+                    voucher.Prefix,
+                    voucher.NextNumber,
+                    voucher.NumberLength,
+                    voucher.Separator,
+                    voucher.IsActive
+                );
+                await VoucherNumberingService.UpdateAsync(tenantId, Id.Value, updateRequest);
+                Snackbar.Add("Configuration updated successfully", Severity.Success);
+            }
+
+            Navigation.NavigateTo("/master-data/voucher-numbering");
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error saving configuration: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            isSaving = false;
+        }
+    }
+
+    private void Cancel()
+    {
+        Navigation.NavigateTo("/master-data/voucher-numbering");
+    }
+
+    private class VoucherNumberingModel
+    {
+        public PlatformDTOs.VoucherTransactionType TransactionType { get; set; }
+        public string Prefix { get; set; } = string.Empty;
+        public int NextNumber { get; set; } = 1;
+        public int NumberLength { get; set; } = 6;
+        public string Separator { get; set; } = "-";
+        public bool IsActive { get; set; } = true;
+
+        public string TransactionTypeName => TransactionType.ToString().Replace("Transaction", "").Replace("Note", " Note");
+    }
+}

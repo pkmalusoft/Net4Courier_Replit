@@ -1,0 +1,137 @@
+@page "/gl/tax-codes"
+@attribute [Authorize]
+
+@using PlatformServices = Truebooks.Platform.Contracts.Services
+@using PlatformDTOs = Truebooks.Platform.Contracts.DTOs
+@using Microsoft.AspNetCore.Authorization
+@using Truebooks.Platform.Core.MultiTenancy
+
+@inject PlatformServices.ITaxCodeService TaxCodeService
+@inject Truebooks.Platform.Core.MultiTenancy.ITenantContext TenantContext
+@inject NavigationManager Navigation
+@inject ISnackbar Snackbar
+@inject IDialogService DialogService
+
+<PageTitle>Tax Codes</PageTitle>
+
+<MudContainer MaxWidth="MaxWidth.ExtraLarge" Class="mt-4">
+    <MudText Typo="Typo.h4" Class="mb-4">Tax Code Management</MudText>
+    
+    <MudPaper Class="pa-4">
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add" Class="mb-4" OnClick="CreateNew">
+            Add Tax Code
+        </MudButton>
+
+        <MudDataGrid T="PlatformDTOs.TaxCodeDto" Items="@taxCodes" Loading="@loading" Striped="true" Bordered="true" Dense="true">
+            <Columns>
+                <PropertyColumn Property="x => x.Code" Title="Code" />
+                <PropertyColumn Property="x => x.Description" Title="Description" />
+                <TemplateColumn Title="Rate (%)">
+                    <CellTemplate>
+                        @context.Item.Rate.ToString("N2")%
+                    </CellTemplate>
+                </TemplateColumn>
+                <TemplateColumn Title="Tax Type">
+                    <CellTemplate>
+                        <MudChip Size="MudBlazor.Size.Small" Color="@GetTaxTypeColor(context.Item.TaxType)" Variant="Variant.Text">
+                            @context.Item.TaxTypeDisplay
+                        </MudChip>
+                    </CellTemplate>
+                </TemplateColumn>
+                <TemplateColumn Title="Status">
+                    <CellTemplate>
+                        @if (context.Item.IsActive)
+                        {
+                            <MudChip Size="MudBlazor.Size.Small" Color="Color.Success" Variant="Variant.Outlined">Active</MudChip>
+                        }
+                        else
+                        {
+                            <MudChip Size="MudBlazor.Size.Small" Color="Color.Default" Variant="Variant.Outlined">Inactive</MudChip>
+                        }
+                    </CellTemplate>
+                </TemplateColumn>
+                <TemplateColumn Title="Actions">
+                    <CellTemplate>
+                        <MudIconButton Icon="@Icons.Material.Filled.Edit" Size="MudBlazor.Size.Small" Color="Color.Primary" OnClick="@(() => Edit(context.Item.Id))" />
+                        <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="MudBlazor.Size.Small" Color="Color.Error" OnClick="@(() => Delete(context.Item))" />
+                    </CellTemplate>
+                </TemplateColumn>
+            </Columns>
+        </MudDataGrid>
+    </MudPaper>
+</MudContainer>
+
+@code {
+    private List<PlatformDTOs.TaxCodeDto> taxCodes = new();
+    private bool loading = true;
+
+    private Guid GetTenantId() => Guid.Parse(AuthService.GetTenantId());
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadTaxCodes();
+    }
+
+    private async Task LoadTaxCodes()
+    {
+        loading = true;
+        try
+        {
+            var tenantId = GetTenantId();
+            var result = await TaxCodeService.GetAllAsync(tenantId);
+            taxCodes = result.ToList();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error loading tax codes: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            loading = false;
+        }
+    }
+
+    private void CreateNew()
+    {
+        Navigation.NavigateTo("/master-data/tax-codes/new");
+    }
+
+    private void Edit(Guid id)
+    {
+        Navigation.NavigateTo($"/master-data/tax-codes/edit/{id}");
+    }
+
+    private async Task Delete(PlatformDTOs.TaxCodeDto taxCode)
+    {
+        bool? confirm = await DialogService.ShowMessageBox(
+            "Confirm Delete",
+            "Are you sure you want to delete this tax code?",
+            yesText: "Delete", cancelText: "Cancel");
+
+        if (confirm == true)
+        {
+            try
+            {
+                var tenantId = GetTenantId();
+                await TaxCodeService.DeleteAsync(tenantId, taxCode.Id);
+                Snackbar.Add("Tax code deleted successfully", Severity.Success);
+                await LoadTaxCodes();
+            }
+            catch (Exception ex)
+            {
+                Snackbar.Add($"Error deleting tax code: {ex.Message}", Severity.Error);
+            }
+        }
+    }
+
+    private Color GetTaxTypeColor(PlatformDTOs.TaxType taxType)
+    {
+        return taxType switch
+        {
+            PlatformDTOs.TaxType.GST => Color.Info,
+            PlatformDTOs.TaxType.VAT => Color.Warning,
+            PlatformDTOs.TaxType.Simple => Color.Default,
+            _ => Color.Default
+        };
+    }
+}

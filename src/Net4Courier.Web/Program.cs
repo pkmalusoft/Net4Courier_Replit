@@ -166,6 +166,9 @@ builder.Services.AddScoped<Truebooks.Platform.Core.MultiTenancy.ITenantContext, 
 builder.Services.AddDbContextFactory<Truebooks.Platform.Core.Infrastructure.PlatformDbContext>(options =>
     options.UseNpgsql(connectionString), ServiceLifetime.Scoped);
 
+// Register TrueBooks Platform Finance services
+Truebooks.Platform.Finance.Extensions.FinanceServiceExtensions.AddPlatformFinance(builder.Services);
+
 builder.Services.AddAuthorizationCore();
 builder.Services.AddCascadingAuthenticationState();
 

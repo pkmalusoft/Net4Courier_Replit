@@ -1,0 +1,390 @@
+@page "/master-data/chart-of-accounts/new"
+@page "/master-data/chart-of-accounts/edit/{Id:guid}"
+
+@using PlatformDTOs = Truebooks.Platform.Contracts.DTOs
+@using PlatformServices = Truebooks.Platform.Contracts.Services
+@inject PlatformServices.IChartOfAccountsService ChartOfAccountsService
+@inject PlatformServices.IAccountClassificationService AccountClassificationService
+@inject Truebooks.Shared.UI.Services.Legacy.IAuthService AuthService
+@inject NavigationManager Navigation
+@inject ISnackbar Snackbar
+
+<MudContainer MaxWidth="MaxWidth.Medium" Class="mt-4">
+    <MudText Typo="Typo.h4" Class="mb-4">@(Id == null ? "New Account" : "Edit Account")</MudText>
+
+    @if (isLoading)
+    {
+        <MudProgressCircular Indeterminate="true" />
+    }
+    else
+    {
+        <MudPaper Class="pa-4">
+            <MudForm @ref="form" @bind-IsValid="@formIsValid">
+                <MudGrid>
+                    <MudItem xs="12" md="6">
+                        <MudTextField @bind-Value="account.AccountCode" 
+                                     Label="Account Code (Optional)" 
+                                     Required="false"
+                                     Immediate="true"
+                                     DebounceInterval="300"
+                                     Validation="@(new Func<string, Task<string?>>(ValidateCodeAsync))"
+                                     MaxLength="20" />
+                    </MudItem>
+                    <MudItem xs="12" md="6">
+                        <MudSelect @bind-Value="account.AccountType" 
+                                  Label="Account Type" 
+                                  T="string"
+                                  Required="true"
+                                  RequiredError="Type is required">
+                            <MudSelectItem Value="@("Asset")">Asset</MudSelectItem>
+                            <MudSelectItem Value="@("Liability")">Liability</MudSelectItem>
+                            <MudSelectItem Value="@("Equity")">Equity</MudSelectItem>
+                            <MudSelectItem Value="@("Revenue")">Revenue</MudSelectItem>
+                            <MudSelectItem Value="@("Expense")">Expense</MudSelectItem>
+                        </MudSelect>
+                    </MudItem>
+                    <MudItem xs="12">
+                        <MudTextField @bind-Value="account.AccountName" 
+                                     Label="Account Name" 
+                                     Required="true"
+                                     RequiredError="Name is required"
+                                     Immediate="true"
+                                     DebounceInterval="300"
+                                     Validation="@(new Func<string, Task<string?>>(ValidateNameAsync))"
+                                     MaxLength="200" />
+                    </MudItem>
+                    <MudItem xs="12">
+                        <MudSelect @bind-Value="account.ParentAccountId" 
+                                  Label="Parent Account" 
+                                  T="Guid?"
+                                  Clearable="true"
+                                  ToStringFunc="@(id => GetAccountDisplayName(id))">
+                            <MudSelectItem Value="@((Guid?)null)">-- None (Root Account) --</MudSelectItem>
+                            @foreach (var acc in GetSelectableAccounts())
+                            {
+                                <MudSelectItem Value="@((Guid?)acc.Id)">
+                                    @GetIndentedName(acc)
+                                </MudSelectItem>
+                            }
+                        </MudSelect>
+                    </MudItem>
+                    @if (account.ParentAccountId.HasValue)
+                    {
+                        <MudItem xs="12">
+                            <MudAlert Severity="Severity.Info" Dense="true">
+                                <MudText Typo="Typo.caption">Path: @GetAccountPath(account.ParentAccountId.Value)</MudText>
+                            </MudAlert>
+                        </MudItem>
+                    }
+                    <MudItem xs="12">
+                        <MudSelect @bind-Value="account.AccountClassificationId" 
+                                  Label="Account Classification" 
+                                  T="Guid?"
+                                  Clearable="true"
+                                  ToStringFunc="@(id => GetClassificationName(id))">
+                            <MudSelectItem Value="@((Guid?)null)">-- None --</MudSelectItem>
+                            @foreach (var classification in accountClassifications)
+                            {
+                                <MudSelectItem Value="@((Guid?)classification.Id)">
+                                    @classification.Name
+                                </MudSelectItem>
+                            }
+                        </MudSelect>
+                        <MudText Typo="Typo.caption" Class="mt-1">
+                            Optional: Classify this account (e.g., Cash Account, Bank Account, Control Account) for filtering in transactions.
+                        </MudText>
+                    </MudItem>
+                    <MudItem xs="12" md="6">
+                        <MudCheckBox @bind-Value="account.AllowPosting" 
+                                    Label="Allow Posting"
+                                    Color="Color.Primary" />
+                        <MudText Typo="Typo.caption" Class="mt-1">
+                            If unchecked, this account acts as a control account and cannot be used in transactions.
+                        </MudText>
+                    </MudItem>
+                    <MudItem xs="12" md="6">
+                        <MudCheckBox @bind-Value="account.IsActive" 
+                                    Label="Active"
+                                    Color="Color.Primary" />
+                    </MudItem>
+                </MudGrid>
+
+                <MudDivider Class="my-4" />
+
+                <div class="d-flex justify-end gap-2">
+                    <MudButton Variant="Variant.Outlined" OnClick="Cancel">Cancel</MudButton>
+                    <MudButton Variant="Variant.Filled" 
+                              Color="Color.Primary" 
+                              OnClick="Save"
+                              Disabled="@(!formIsValid || isSaving)">
+                        @if (isSaving)
+                        {
+                            <MudProgressCircular Size="MudBlazor.Size.Small" Indeterminate="true" />
+                        }
+                        else
+                        {
+                            <text>Save</text>
+                        }
+                    </MudButton>
+                </div>
+            </MudForm>
+        </MudPaper>
+    }
+</MudContainer>
+
+@code {
+    [Parameter]
+    public Guid? Id { get; set; }
+
+    private AccountModel account = new() { IsActive = true, AllowPosting = true, AccountType = "Asset" };
+    private List<AccountModel> allAccounts = new();
+    private List<ClassificationModel> accountClassifications = new();
+    private MudForm form = null!;
+    private bool formIsValid;
+    private bool isLoading = false;
+    private bool isSaving = false;
+
+    private Guid GetTenantId() => Guid.TryParse(AuthService.GetTenantId(), out var id) ? id : Guid.Empty;
+
+    private class AccountModel
+    {
+        public Guid Id { get; set; }
+        public string AccountCode { get; set; } = "";
+        public string AccountName { get; set; } = "";
+        public string DisplayName => string.IsNullOrEmpty(AccountCode) ? AccountName : $"{AccountCode} - {AccountName}";
+        public string AccountType { get; set; } = "Asset";
+        public Guid? ParentAccountId { get; set; }
+        public Guid? AccountClassificationId { get; set; }
+        public bool AllowPosting { get; set; }
+        public bool IsActive { get; set; }
+    }
+
+    private class ClassificationModel
+    {
+        public Guid Id { get; set; }
+        public string Name { get; set; } = "";
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadData();
+    }
+
+    private async Task LoadData()
+    {
+        isLoading = true;
+        try
+        {
+            var tenantId = GetTenantId();
+            var accountDtos = await ChartOfAccountsService.GetAllAsync(tenantId);
+            var classificationDtos = await AccountClassificationService.GetAllAsync(tenantId);
+            
+            allAccounts = accountDtos.Select(MapToAccountModel).ToList();
+            accountClassifications = classificationDtos.Select(c => new ClassificationModel { Id = c.Id, Name = c.Name }).ToList();
+            
+            if (Id.HasValue)
+            {
+                var existing = await ChartOfAccountsService.GetByIdAsync(tenantId, Id.Value);
+                if (existing != null)
+                {
+                    account = MapToAccountModel(existing);
+                }
+                else
+                {
+                    Snackbar.Add("Account not found", Severity.Error);
+                    Navigation.NavigateTo("/master-data/chart-of-accounts");
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error loading data: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private AccountModel MapToAccountModel(PlatformDTOs.ChartOfAccountDto dto) => new()
+    {
+        Id = dto.Id,
+        AccountCode = dto.AccountCode ?? "",
+        AccountName = dto.AccountName,
+        AccountType = dto.AccountType.ToString(),
+        ParentAccountId = dto.ParentAccountId,
+        AccountClassificationId = dto.AccountClassificationId,
+        AllowPosting = dto.AllowPosting,
+        IsActive = dto.IsActive
+    };
+
+    private PlatformDTOs.AccountType ParseAccountType(string type) => type switch
+    {
+        "Asset" => PlatformDTOs.AccountType.Asset,
+        "Liability" => PlatformDTOs.AccountType.Liability,
+        "Equity" => PlatformDTOs.AccountType.Equity,
+        "Revenue" => PlatformDTOs.AccountType.Revenue,
+        "Expense" => PlatformDTOs.AccountType.Expense,
+        _ => PlatformDTOs.AccountType.Asset
+    };
+
+    private async Task<string?> ValidateCodeAsync(string code)
+    {
+        if (string.IsNullOrWhiteSpace(code))
+            return null;
+
+        var exists = await ChartOfAccountsService.CodeExistsAsync(GetTenantId(), code, account.Id == Guid.Empty ? null : account.Id);
+        return exists ? "Account code already exists" : null;
+    }
+
+    private async Task<string?> ValidateNameAsync(string name)
+    {
+        if (string.IsNullOrEmpty(name))
+            return null;
+        
+        if (string.IsNullOrWhiteSpace(name))
+            return "Account name cannot be only spaces";
+
+        var exists = await ChartOfAccountsService.NameExistsAsync(GetTenantId(), name, account.Id == Guid.Empty ? null : account.Id);
+        return exists ? "Account name already exists" : null;
+    }
+
+    private List<AccountModel> GetSelectableAccounts()
+    {
+        if (Id == null)
+            return allAccounts.OrderBy(a => a.AccountCode).ToList();
+
+        var descendants = GetDescendants(Id.Value);
+        return allAccounts
+            .Where(a => a.Id != Id.Value && !descendants.Contains(a.Id))
+            .OrderBy(a => a.AccountCode)
+            .ToList();
+    }
+
+    private HashSet<Guid> GetDescendants(Guid parentId)
+    {
+        var descendants = new HashSet<Guid>();
+        var children = allAccounts.Where(a => a.ParentAccountId == parentId);
+        
+        foreach (var child in children)
+        {
+            descendants.Add(child.Id);
+            foreach (var descendant in GetDescendants(child.Id))
+            {
+                descendants.Add(descendant);
+            }
+        }
+        
+        return descendants;
+    }
+
+    private string GetIndentedName(AccountModel acc)
+    {
+        var level = GetAccountLevel(acc.Id);
+        var indent = new string('\u00A0', level * 4);
+        return $"{indent}{acc.DisplayName}";
+    }
+
+    private int GetAccountLevel(Guid id)
+    {
+        var account = allAccounts.FirstOrDefault(a => a.Id == id);
+        if (account?.ParentAccountId == null)
+            return 0;
+
+        return 1 + GetAccountLevel(account.ParentAccountId.Value);
+    }
+
+    private string GetAccountPath(Guid id)
+    {
+        var account = allAccounts.FirstOrDefault(a => a.Id == id);
+        if (account == null)
+            return "";
+
+        if (account.ParentAccountId == null)
+            return account.AccountName;
+
+        return $"{GetAccountPath(account.ParentAccountId.Value)} > {account.AccountName}";
+    }
+
+    private string GetAccountDisplayName(Guid? id)
+    {
+        if (id == null)
+            return "-- None (Root Account) --";
+
+        var account = allAccounts.FirstOrDefault(a => a.Id == id);
+        return account?.DisplayName ?? "";
+    }
+
+    private string GetClassificationName(Guid? id)
+    {
+        if (id == null)
+            return "-- None --";
+
+        var classification = accountClassifications.FirstOrDefault(c => c.Id == id);
+        return classification?.Name ?? "";
+    }
+
+    private async Task Save()
+    {
+        await form.Validate();
+        
+        if (!formIsValid)
+        {
+            Snackbar.Add("Please fix validation errors", Severity.Warning);
+            return;
+        }
+
+        isSaving = true;
+        try
+        {
+            var tenantId = GetTenantId();
+            var accountType = ParseAccountType(account.AccountType);
+
+            if (Id == null)
+            {
+                var createRequest = new PlatformDTOs.CreateChartOfAccountRequest(
+                    string.IsNullOrWhiteSpace(account.AccountCode) ? null : account.AccountCode,
+                    account.AccountName,
+                    accountType,
+                    account.ParentAccountId,
+                    account.AllowPosting,
+                    account.AccountClassificationId,
+                    0,
+                    account.IsActive
+                );
+                await ChartOfAccountsService.CreateAsync(tenantId, createRequest);
+                Snackbar.Add("Account created successfully", Severity.Success);
+            }
+            else
+            {
+                var updateRequest = new PlatformDTOs.UpdateChartOfAccountRequest(
+                    string.IsNullOrWhiteSpace(account.AccountCode) ? null : account.AccountCode,
+                    account.AccountName,
+                    accountType,
+                    account.ParentAccountId,
+                    account.AllowPosting,
+                    account.AccountClassificationId,
+                    0,
+                    account.IsActive
+                );
+                await ChartOfAccountsService.UpdateAsync(tenantId, Id.Value, updateRequest);
+                Snackbar.Add("Account updated successfully", Severity.Success);
+            }
+
+            Navigation.NavigateTo("/master-data/chart-of-accounts");
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error saving account: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            isSaving = false;
+        }
+    }
+
+    private void Cancel()
+    {
+        Navigation.NavigateTo("/master-data/chart-of-accounts");
+    }
+}
