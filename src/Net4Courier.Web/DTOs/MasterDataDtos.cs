@@ -1,4 +1,4 @@
-namespace Truebooks.Platform.Contracts.DTOs;
+namespace Net4Courier.Web.DTOs;
 
 public record BrandDto(
     Guid Id,

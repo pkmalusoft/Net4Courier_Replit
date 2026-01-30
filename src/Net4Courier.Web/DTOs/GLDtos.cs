@@ -1,4 +1,4 @@
-namespace Truebooks.Platform.Contracts.DTOs.Finance;
+namespace Net4Courier.Web.DTOs;
 
 public enum JournalEntryStatus
 {

@@ -1,9 +1,9 @@
 using Microsoft.EntityFrameworkCore;
 using Truebooks.Platform.Contracts.DTOs;
-using Truebooks.Platform.Contracts.Services;
+using Net4Courier.Web.Interfaces;
 using Truebooks.Platform.Core.Infrastructure;
 
-namespace Truebooks.Platform.Host.Services;
+namespace Net4Courier.Web.Services.GL;
 
 public class CurrencyService : ICurrencyService
 {

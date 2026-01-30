@@ -1,6 +1,7 @@
 using Truebooks.Platform.Contracts.DTOs;
+using Truebooks.Platform.Contracts.DTOs.Finance;
 
-namespace Truebooks.Platform.Contracts.Services;
+namespace Net4Courier.Web.Interfaces;
 
 public interface IChartOfAccountsService
 {

@@ -1,11 +1,11 @@
 using Microsoft.EntityFrameworkCore;
 using Truebooks.Platform.Contracts.DTOs;
-using Truebooks.Platform.Contracts.Services;
+using Net4Courier.Web.Interfaces;
 using Truebooks.Platform.Core.Infrastructure;
 using CoreTaxType = Truebooks.Platform.Core.Infrastructure.TaxType;
 using DtoTaxType = Truebooks.Platform.Contracts.DTOs.TaxType;
 
-namespace Truebooks.Platform.Host.Services;
+namespace Net4Courier.Web.Services.GL;
 
 public class TaxCodeService : ITaxCodeService
 {
