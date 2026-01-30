@@ -1,6 +1,6 @@
 @page "/journal"
 @page "/journal-vouchers"
-@inject ApplicationDbContext DbContext
+@inject IDbContextFactory<ApplicationDbContext> DbContextFactory
 @inject IDialogService DialogService
 @inject ISnackbar Snackbar
 @using Microsoft.EntityFrameworkCore
@@ -111,7 +111,9 @@
         _isLoading = true;
         try
         {
-            var query = DbContext.Journals
+            await using var dbContext = await DbContextFactory.CreateDbContextAsync();
+            
+            var query = dbContext.Journals
                 .Include(j => j.Entries)
                 .Where(j => j.VoucherType == "JV" && !j.IsDeleted);
 
@@ -195,11 +197,16 @@
         {
             try
             {
-                journal.IsPosted = true;
-                journal.PostedAt = DateTime.UtcNow;
-                await DbContext.SaveChangesAsync();
-                Snackbar.Add("Voucher posted successfully", Severity.Success);
-                await LoadVouchers();
+                await using var dbContext = await DbContextFactory.CreateDbContextAsync();
+                var j = await dbContext.Journals.FindAsync(journal.Id);
+                if (j != null)
+                {
+                    j.IsPosted = true;
+                    j.PostedAt = DateTime.UtcNow;
+                    await dbContext.SaveChangesAsync();
+                    Snackbar.Add("Voucher posted successfully", Severity.Success);
+                    await LoadVouchers();
+                }
             }
             catch (Exception ex)
             {
@@ -219,11 +226,16 @@
         {
             try
             {
-                journal.IsPosted = false;
-                journal.PostedAt = null;
-                await DbContext.SaveChangesAsync();
-                Snackbar.Add("Voucher unposted successfully", Severity.Success);
-                await LoadVouchers();
+                await using var dbContext = await DbContextFactory.CreateDbContextAsync();
+                var j = await dbContext.Journals.FindAsync(journal.Id);
+                if (j != null)
+                {
+                    j.IsPosted = false;
+                    j.PostedAt = null;
+                    await dbContext.SaveChangesAsync();
+                    Snackbar.Add("Voucher unposted successfully", Severity.Success);
+                    await LoadVouchers();
+                }
             }
             catch (Exception ex)
             {
@@ -243,10 +255,15 @@
         {
             try
             {
-                journal.IsDeleted = true;
-                await DbContext.SaveChangesAsync();
-                Snackbar.Add("Voucher deleted successfully", Severity.Success);
-                await LoadVouchers();
+                await using var dbContext = await DbContextFactory.CreateDbContextAsync();
+                var j = await dbContext.Journals.FindAsync(journal.Id);
+                if (j != null)
+                {
+                    j.IsDeleted = true;
+                    await dbContext.SaveChangesAsync();
+                    Snackbar.Add("Voucher deleted successfully", Severity.Success);
+                    await LoadVouchers();
+                }
             }
             catch (Exception ex)
             {

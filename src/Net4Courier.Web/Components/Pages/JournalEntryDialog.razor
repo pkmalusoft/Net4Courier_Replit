@@ -1,4 +1,4 @@
-@inject ApplicationDbContext DbContext
+@inject IDbContextFactory<ApplicationDbContext> DbContextFactory
 @inject ISnackbar Snackbar
 @using Microsoft.EntityFrameworkCore
 @using Net4Courier.Infrastructure.Data
@@ -198,19 +198,23 @@
 
     private async Task LoadAccounts()
     {
-        _allAccounts = await DbContext.AccountHeads
-            .Where(a => a.IsActive && !a.IsGroup)
+        await using var dbContext = await DbContextFactory.CreateDbContextAsync();
+        
+        _allAccounts = await dbContext.AccountHeads
+            .Where(a => a.IsActive && !a.IsGroup && !a.IsDeleted)
             .OrderBy(a => a.Code)
             .ToListAsync();
     }
 
     private async Task<string> GenerateVoucherNo()
     {
+        await using var dbContext = await DbContextFactory.CreateDbContextAsync();
+        
         var today = DateTime.SpecifyKind(DateTime.Today, DateTimeKind.Utc);
         var year = today.Year;
         var prefix = $"JV{year}";
         
-        var lastVoucher = await DbContext.Journals
+        var lastVoucher = await dbContext.Journals
             .Where(j => j.VoucherType == "JV" && j.VoucherNo.StartsWith(prefix))
             .OrderByDescending(j => j.VoucherNo)
             .FirstOrDefaultAsync();
@@ -290,6 +294,8 @@
 
         try
         {
+            await using var dbContext = await DbContextFactory.CreateDbContextAsync();
+            
             if (Journal == null)
             {
                 var journal = new Journal
@@ -305,31 +311,38 @@
                     CreatedAt = DateTime.UtcNow,
                     Entries = _entries.Where(e => (e.Debit ?? 0) > 0 || (e.Credit ?? 0) > 0).ToList()
                 };
-                DbContext.Journals.Add(journal);
+                dbContext.Journals.Add(journal);
             }
             else
             {
-                var existingEntries = await DbContext.JournalEntries
-                    .Where(e => e.JournalId == Journal.Id)
-                    .ToListAsync();
-                DbContext.JournalEntries.RemoveRange(existingEntries);
+                var existingJournal = await dbContext.Journals
+                    .Include(j => j.Entries)
+                    .FirstOrDefaultAsync(j => j.Id == Journal.Id);
+                    
+                if (existingJournal == null)
+                {
+                    Snackbar.Add("Journal not found", Severity.Error);
+                    return;
+                }
+                
+                dbContext.JournalEntries.RemoveRange(existingJournal.Entries);
 
-                Journal.VoucherDate = DateTime.SpecifyKind(_voucherDate!.Value, DateTimeKind.Utc);
-                Journal.Narration = _narration;
-                Journal.Reference = _reference;
-                Journal.TotalDebit = TotalDebit;
-                Journal.TotalCredit = TotalCredit;
-                Journal.ModifiedAt = DateTime.UtcNow;
+                existingJournal.VoucherDate = DateTime.SpecifyKind(_voucherDate!.Value, DateTimeKind.Utc);
+                existingJournal.Narration = _narration;
+                existingJournal.Reference = _reference;
+                existingJournal.TotalDebit = TotalDebit;
+                existingJournal.TotalCredit = TotalCredit;
+                existingJournal.ModifiedAt = DateTime.UtcNow;
 
                 foreach (var entry in _entries.Where(e => (e.Debit ?? 0) > 0 || (e.Credit ?? 0) > 0))
                 {
-                    entry.JournalId = Journal.Id;
+                    entry.JournalId = existingJournal.Id;
                     entry.Id = 0;
-                    DbContext.JournalEntries.Add(entry);
+                    existingJournal.Entries.Add(entry);
                 }
             }
 
-            await DbContext.SaveChangesAsync();
+            await dbContext.SaveChangesAsync();
             Snackbar.Add("Journal voucher saved successfully", Severity.Success);
             MudDialog?.Close(DialogResult.Ok(true));
         }
