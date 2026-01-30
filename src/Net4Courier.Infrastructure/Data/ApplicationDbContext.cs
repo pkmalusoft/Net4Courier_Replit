@@ -83,7 +83,7 @@ public class ApplicationDbContext : DbContext
     public DbSet<DebitNote> DebitNotes => Set<DebitNote>();
     public DbSet<TaxRate> TaxRates => Set<TaxRate>();
     
-    public DbSet<BankAccount> BankAccounts => Set<BankAccount>();
+    // BankAccount DbSet removed during Cash/Bank module migration (entity not migrated)
     public DbSet<BankReconciliation> BankReconciliations => Set<BankReconciliation>();
     public DbSet<BankStatementImport> BankStatementImports => Set<BankStatementImport>();
     public DbSet<BankStatementLine> BankStatementLines => Set<BankStatementLine>();
@@ -1384,23 +1384,7 @@ public class ApplicationDbContext : DbContext
             entity.HasIndex(e => new { e.EmpostQuarterId, e.Action });
         });
 
-        modelBuilder.Entity<BankAccount>(entity =>
-        {
-            entity.ToTable("BankAccounts");
-            entity.HasKey(e => e.Id);
-            entity.Property(e => e.AccountNumber).HasMaxLength(50).IsRequired();
-            entity.Property(e => e.AccountName).HasMaxLength(200).IsRequired();
-            entity.Property(e => e.BankName).HasMaxLength(100).IsRequired();
-            entity.Property(e => e.BranchName).HasMaxLength(100);
-            entity.Property(e => e.SwiftCode).HasMaxLength(20);
-            entity.Property(e => e.IbanNumber).HasMaxLength(50);
-            entity.Property(e => e.OpeningBalance).HasPrecision(18, 2);
-            entity.Property(e => e.Notes).HasMaxLength(500);
-            entity.HasIndex(e => new { e.CompanyId, e.AccountNumber }).IsUnique();
-            entity.HasIndex(e => e.BranchId);
-            entity.HasOne(e => e.AccountHead).WithMany().HasForeignKey(e => e.AccountHeadId)
-                  .OnDelete(DeleteBehavior.Restrict);
-        });
+        // BankAccount entity configuration removed during Cash/Bank module migration
 
         modelBuilder.Entity<BankReconciliation>(entity =>
         {
@@ -1416,8 +1400,7 @@ public class ApplicationDbContext : DbContext
             entity.HasIndex(e => new { e.BranchId, e.StatementDate });
             entity.HasIndex(e => e.ReconciliationNumber).IsUnique();
             entity.HasIndex(e => e.Status);
-            entity.HasOne(e => e.BankAccount).WithMany(b => b.Reconciliations).HasForeignKey(e => e.BankAccountId)
-                  .OnDelete(DeleteBehavior.Restrict);
+            // BankAccount relationship removed during Cash/Bank module migration
         });
 
         modelBuilder.Entity<BankStatementImport>(entity =>

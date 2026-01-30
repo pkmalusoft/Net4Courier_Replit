@@ -171,6 +171,13 @@ Truebooks.Platform.Finance.Extensions.FinanceServiceExtensions.AddPlatformFinanc
 
 // GL Services are provided by TrueBooks Platform Finance package (via AddPlatformFinance above)
 
+// Register Cash & Bank and Journal Entry services
+builder.Services.AddScoped<Net4Courier.Web.Services.CashBank.ICashBankTransactionService, Net4Courier.Web.Services.CashBank.CashBankTransactionService>();
+builder.Services.AddScoped<Net4Courier.Web.Services.CashBank.IBankAccountService, Net4Courier.Web.Services.CashBank.BankAccountService>();
+builder.Services.AddScoped<Net4Courier.Web.Services.CashBank.IPaymentAllocationService, Net4Courier.Web.Services.CashBank.PaymentAllocationService>();
+builder.Services.AddScoped<Net4Courier.Web.Services.CashBank.IVoucherAttachmentService, Net4Courier.Web.Services.CashBank.VoucherAttachmentService>();
+builder.Services.AddScoped<Net4Courier.Web.Services.CashBank.IJournalEntryService, Net4Courier.Web.Services.CashBank.JournalEntryService>();
+
 builder.Services.AddAuthentication(options =>
 {
     options.DefaultScheme = "Cookies";

@@ -1,0 +1,212 @@
+@page "/cash-bank-transaction/new"
+@page "/cash-bank-transaction/edit/{Id:guid}"
+
+@using Net4Courier.Web.Services.CashBank
+@using Net4Courier.Web.DTOs
+
+@inject ICashBankTransactionService CashBankTransactionService
+@inject IBankAccountService BankAccountService
+@inject NavigationManager Navigation
+@inject ISnackbar Snackbar
+
+<MudContainer MaxWidth="MaxWidth.ExtraLarge" Class="mt-4">
+    <MudText Typo="Typo.h4" Class="mb-4">@(Id.HasValue ? "Edit" : "New") Cash & Bank Transaction</MudText>
+
+    <MudPaper Class="pa-6" Elevation="2">
+        <MudForm @ref="form" @bind-IsValid="@formIsValid">
+            <MudGrid>
+                <MudItem xs="12" sm="6" md="3">
+                    <MudSelect @bind-Value="transactionType" Label="Transaction Type" Required="true">
+                        <MudSelectItem Value="0">Bank</MudSelectItem>
+                        <MudSelectItem Value="1">Cash</MudSelectItem>
+                    </MudSelect>
+                </MudItem>
+                <MudItem xs="12" sm="6" md="3">
+                    <MudSelect @bind-Value="recPayType" Label="Receipt/Payment" Required="true">
+                        <MudSelectItem Value="0">Receipt</MudSelectItem>
+                        <MudSelectItem Value="1">Payment</MudSelectItem>
+                    </MudSelect>
+                </MudItem>
+                <MudItem xs="12" sm="6" md="3">
+                    <MudTextField @bind-Value="voucherNo" Label="Voucher No" ReadOnly="true" />
+                </MudItem>
+                <MudItem xs="12" sm="6" md="3">
+                    <MudDatePicker @bind-Date="voucherDate" Label="Voucher Date" Required="true" />
+                </MudItem>
+            </MudGrid>
+
+            <MudGrid Class="mt-4">
+                <MudItem xs="12" sm="6">
+                    <MudTextField @bind-Value="referenceNo" Label="Reference No" />
+                </MudItem>
+                <MudItem xs="12" sm="6">
+                    <MudNumericField @bind-Value="totalAmount" Label="Amount" Format="N2" Required="true" />
+                </MudItem>
+            </MudGrid>
+
+            @if (transactionType == 0)
+            {
+                <MudGrid Class="mt-4">
+                    <MudItem xs="12" sm="6">
+                        <MudTextField @bind-Value="chequeNo" Label="Cheque No" />
+                    </MudItem>
+                    <MudItem xs="12" sm="6">
+                        <MudDatePicker @bind-Date="chequeDate" Label="Cheque Date" />
+                    </MudItem>
+                </MudGrid>
+                <MudGrid Class="mt-4">
+                    <MudItem xs="12" sm="6">
+                        <MudTextField @bind-Value="bankName" Label="Bank Name" />
+                    </MudItem>
+                    <MudItem xs="12" sm="6">
+                        <MudTextField @bind-Value="branchName" Label="Branch Name" />
+                    </MudItem>
+                </MudGrid>
+            }
+
+            <MudDivider Class="my-4" />
+
+            <MudText Typo="Typo.h6" Class="mb-2">Transaction Lines</MudText>
+            <MudAlert Severity="Severity.Info" Class="mb-4">
+                This is a placeholder for transaction lines. Full functionality will be available after TrueBooks integration is complete.
+            </MudAlert>
+
+            <MudDivider Class="my-4" />
+
+            <div class="d-flex justify-end gap-2">
+                <MudButton Variant="Variant.Text" Color="Color.Secondary" OnClick="Cancel">Cancel</MudButton>
+                <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="Save" Disabled="@(!formIsValid || isSaving)">
+                    @if (isSaving)
+                    {
+                        <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" />
+                    }
+                    Save
+                </MudButton>
+            </div>
+        </MudForm>
+    </MudPaper>
+</MudContainer>
+
+@code {
+    [Parameter]
+    public Guid? Id { get; set; }
+
+    private MudForm form = null!;
+    private bool formIsValid;
+    private bool isSaving;
+
+    private int transactionType = 0;
+    private int recPayType = 0;
+    private string voucherNo = "";
+    private DateTime? voucherDate = DateTime.Today;
+    private string referenceNo = "";
+    private decimal totalAmount;
+    private string? chequeNo;
+    private DateTime? chequeDate;
+    private string? bankName;
+    private string? branchName;
+
+    private static readonly Guid TenantId = Guid.Parse("11111111-1111-1111-1111-111111111111");
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (Id.HasValue)
+        {
+            var transaction = await CashBankTransactionService.GetByIdAsync(TenantId, Id.Value);
+            if (transaction != null)
+            {
+                transactionType = transaction.TransactionType;
+                recPayType = transaction.RecPayType;
+                voucherNo = transaction.VoucherNo;
+                voucherDate = transaction.VoucherDate;
+                referenceNo = transaction.ReferenceNo ?? "";
+                totalAmount = transaction.TotalAmount;
+                chequeNo = transaction.ChequeNo;
+                chequeDate = transaction.ChequeDate;
+                bankName = transaction.BankName;
+                branchName = transaction.BranchName;
+            }
+        }
+        else
+        {
+            voucherNo = await CashBankTransactionService.GenerateVoucherNoAsync(TenantId, transactionType, recPayType);
+        }
+    }
+
+    private async Task Save()
+    {
+        await form.Validate();
+        if (!formIsValid) return;
+
+        isSaving = true;
+        try
+        {
+            if (Id.HasValue)
+            {
+                await CashBankTransactionService.UpdateAsync(TenantId, Id.Value, new UpdateCashBankTransactionRequest(
+                    Id.Value,
+                    voucherDate ?? DateTime.Today,
+                    transactionType,
+                    recPayType,
+                    0,
+                    Guid.Empty,
+                    null,
+                    totalAmount,
+                    chequeNo,
+                    chequeDate,
+                    false,
+                    bankName,
+                    branchName,
+                    referenceNo,
+                    0,
+                    null,
+                    null,
+                    null,
+                    null,
+                    new List<CreateCashBankTransactionLineRequest>()
+                ));
+                Snackbar.Add("Transaction updated successfully", Severity.Success);
+            }
+            else
+            {
+                await CashBankTransactionService.CreateAsync(TenantId, new CreateCashBankTransactionRequest(
+                    voucherNo,
+                    voucherDate ?? DateTime.Today,
+                    transactionType,
+                    recPayType,
+                    0,
+                    Guid.Empty,
+                    null,
+                    totalAmount,
+                    chequeNo,
+                    chequeDate,
+                    false,
+                    bankName,
+                    branchName,
+                    referenceNo,
+                    0,
+                    null,
+                    null,
+                    null,
+                    null,
+                    new List<CreateCashBankTransactionLineRequest>()
+                ));
+                Snackbar.Add("Transaction created successfully", Severity.Success);
+            }
+            Navigation.NavigateTo("/cash-bank-transactions");
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error saving transaction: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            isSaving = false;
+        }
+    }
+
+    private void Cancel()
+    {
+        Navigation.NavigateTo("/cash-bank-transactions");
+    }
+}

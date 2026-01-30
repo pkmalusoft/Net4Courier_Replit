@@ -1,0 +1,143 @@
+@page "/cash-bank-transactions"
+
+@using Net4Courier.Web.Services.CashBank
+@using Net4Courier.Web.DTOs
+
+@inject ICashBankTransactionService CashBankTransactionService
+@inject NavigationManager Navigation
+@inject ISnackbar Snackbar
+
+<MudContainer MaxWidth="MaxWidth.ExtraLarge" Class="mt-4">
+    <MudText Typo="Typo.h4" Class="mb-4">Cash & Bank Transactions</MudText>
+    
+    <MudPaper Class="pa-4 mb-4">
+        <MudGrid>
+            <MudItem xs="12" sm="3">
+                <MudSelect @bind-Value="selectedTransactionType" Label="Transaction Type" T="int?">
+                    <MudSelectItem Value="@((int?)null)">All</MudSelectItem>
+                    <MudSelectItem Value="@((int?)0)">Bank</MudSelectItem>
+                    <MudSelectItem Value="@((int?)1)">Cash</MudSelectItem>
+                </MudSelect>
+            </MudItem>
+            <MudItem xs="12" sm="3">
+                <MudSelect @bind-Value="selectedRecPayType" Label="Receipt/Payment" T="int?">
+                    <MudSelectItem Value="@((int?)null)">All</MudSelectItem>
+                    <MudSelectItem Value="@((int?)0)">Receipt</MudSelectItem>
+                    <MudSelectItem Value="@((int?)1)">Payment</MudSelectItem>
+                </MudSelect>
+            </MudItem>
+            <MudItem xs="12" sm="3">
+                <MudSelect @bind-Value="selectedStatusFilter" Label="Status" T="string">
+                    <MudSelectItem Value="@("All")">All</MudSelectItem>
+                    <MudSelectItem Value="@("Draft")">Draft</MudSelectItem>
+                    <MudSelectItem Value="@("Posted")">Posted</MudSelectItem>
+                </MudSelect>
+            </MudItem>
+            <MudItem xs="12" sm="3" Class="d-flex align-end">
+                <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="LoadTransactions" StartIcon="@Icons.Material.Filled.Search">
+                    Search
+                </MudButton>
+            </MudItem>
+        </MudGrid>
+    </MudPaper>
+
+    <MudPaper Class="pa-4 mb-4">
+        <div class="d-flex justify-space-between align-center mb-4">
+            <MudText Typo="Typo.h6">Transactions</MudText>
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add"
+                       OnClick="@(() => Navigation.NavigateTo("/cash-bank-transaction/new"))">
+                New Transaction
+            </MudButton>
+        </div>
+
+        @if (isLoading)
+        {
+            <MudProgressLinear Indeterminate="true" />
+        }
+        else if (!transactions.Any())
+        {
+            <MudAlert Severity="Severity.Info">
+                No transactions found. Click "New Transaction" to create one.
+            </MudAlert>
+        }
+        else
+        {
+            <MudTable Items="@transactions" Hover="true" Striped="true">
+                <HeaderContent>
+                    <MudTh>Voucher No</MudTh>
+                    <MudTh>Date</MudTh>
+                    <MudTh>Type</MudTh>
+                    <MudTh>Receipt/Payment</MudTh>
+                    <MudTh Style="text-align:right">Amount</MudTh>
+                    <MudTh>Status</MudTh>
+                    <MudTh>Actions</MudTh>
+                </HeaderContent>
+                <RowTemplate>
+                    <MudTd DataLabel="Voucher No">@context.VoucherNo</MudTd>
+                    <MudTd DataLabel="Date">@context.VoucherDate.ToString("dd/MM/yyyy")</MudTd>
+                    <MudTd DataLabel="Type">@context.TransactionTypeText</MudTd>
+                    <MudTd DataLabel="Receipt/Payment">@context.RecPayTypeText</MudTd>
+                    <MudTd DataLabel="Amount" Style="text-align:right">@context.TotalAmount.ToString("N2")</MudTd>
+                    <MudTd DataLabel="Status">
+                        <MudChip T="string" Color="@GetStatusColor(context.StatusText)" Size="Size.Small">@context.StatusText</MudChip>
+                    </MudTd>
+                    <MudTd DataLabel="Actions">
+                        <MudIconButton Icon="@Icons.Material.Filled.Edit" Size="Size.Small"
+                                       OnClick="@(() => Navigation.NavigateTo($"/cash-bank-transaction/edit/{context.Id}"))" />
+                    </MudTd>
+                </RowTemplate>
+            </MudTable>
+        }
+    </MudPaper>
+</MudContainer>
+
+@code {
+    private List<CashBankTransactionDto> transactions = new();
+    private int? selectedTransactionType = null;
+    private int? selectedRecPayType = null;
+    private string selectedStatusFilter = "All";
+    private bool isLoading = false;
+
+    private static readonly Guid TenantId = Guid.Parse("11111111-1111-1111-1111-111111111111");
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadTransactions();
+    }
+
+    private async Task LoadTransactions()
+    {
+        isLoading = true;
+        try
+        {
+            int? statusFilter = selectedStatusFilter switch
+            {
+                "Draft" => 0,
+                "Posted" => 1,
+                _ => null
+            };
+
+            transactions = await CashBankTransactionService.GetAllAsync(
+                TenantId,
+                selectedTransactionType,
+                selectedRecPayType,
+                statusFilter);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error loading transactions: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private Color GetStatusColor(string status) => status switch
+    {
+        "Draft" => Color.Default,
+        "Posted" => Color.Success,
+        "Cancelled" => Color.Error,
+        _ => Color.Default
+    };
+}

@@ -144,12 +144,9 @@ public class PrepaidService
         }
         else if (document.PaymentMode == PrepaidPaymentMode.Bank || document.PaymentMode == PrepaidPaymentMode.Cheque)
         {
-            if (document.BankAccountId.HasValue)
-            {
-                var bankAccount = await _context.BankAccounts
-                    .FirstOrDefaultAsync(b => b.Id == document.BankAccountId.Value);
-                cashBankAccountId = bankAccount?.AccountHeadId;
-            }
+            // BankAccounts reference removed during Cash/Bank module migration
+            // TODO: Use new CashBank service to get account information
+            cashBankAccountId = null;
         }
 
         if (prepaidControlAccount == null || cashBankAccountId == null)
