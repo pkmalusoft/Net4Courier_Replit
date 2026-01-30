@@ -48,6 +48,7 @@ The application is built on .NET 8 Blazor Server, adopting a modular architectur
 - **General Ledger Module**: Full GL implementation with Chart of Accounts, Control Accounts, Financial Years, Tax Setup, Vouchers, Bank Reconciliation, Journal Vouchers, and comprehensive Financial Reports.
 - **TrueBooks GL Integration**: Migrated GL module to TrueBooks ERP platform, adapted for single-tenant operation with UUIDs.
 - **TrueBooks GL Setup Pages**: Integrated GL Setup pages from TrueBooks platform including Chart of Accounts, Currencies, Voucher Numbering, and Control Accounts settings. Pages use fixed tenant ID '11111111-1111-1111-1111-111111111111' via SingleTenantContext. Routes use `/gl/` prefix (e.g., `/gl/chart-of-accounts`, `/gl/currencies`, `/gl/voucher-numbering`, `/gl/control-accounts`).
+- **TrueBooks GL Services**: Local service implementations for GL module including ChartOfAccountsService, CurrencyService, TaxCodeService, VoucherNumberingService, and AccountClassificationService. Services located in `Net4Courier.Web/Services/GL/` with interfaces in `Net4Courier.Web/Interfaces/`. Services use PlatformDbContext from TrueBooks NuGet packages.
 - **Error Handling**: Robust global error handling with `ErrorBoundary`, `PageErrorHandler`, and `MudBlazor Snackbar` integration.
 - **Demo Data Management**: Admin feature to create and delete demo data for training.
 - **Initial Setup Wizard**: Secure setup page for platform administrators to configure new client deployments.
