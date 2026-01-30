@@ -11,6 +11,7 @@ namespace Net4Courier.Web.Services;
 public interface IDemoDataService
 {
     Task<DemoDataStats> GetDemoDataStatsAsync();
+    Task<AllDataStats> GetAllDataStatsAsync();
     Task<bool> CreateGLDataAsync();
     Task<bool> CreateMasterDataAsync();
     Task<bool> CreateAWBStockDataAsync();
@@ -18,6 +19,26 @@ public interface IDemoDataService
     Task<bool> CreateTransactionDataAsync();
     Task<bool> CreateFinanceDataAsync();
     Task<bool> DeleteAllDemoDataAsync();
+    Task<bool> DeleteAllDataAsync();
+}
+
+public class AllDataStats
+{
+    public int Parties { get; set; }
+    public int Employees { get; set; }
+    public int Vehicles { get; set; }
+    public int AWBStocks { get; set; }
+    public int PrepaidDocuments { get; set; }
+    public int Tickets { get; set; }
+    public int PickupRequests { get; set; }
+    public int AWBs { get; set; }
+    public int DRS { get; set; }
+    public int Invoices { get; set; }
+    public int Receipts { get; set; }
+    public int Journals { get; set; }
+    public int BankAccounts { get; set; }
+    public int BankReconciliations { get; set; }
+    public int CashBankTransactions { get; set; }
 }
 
 public class DemoDataStats
@@ -1486,6 +1507,280 @@ public class DemoDataService : IDemoDataService
         platformContext.ChartOfAccounts.RemoveRange(demoAccounts);
 
         await platformContext.SaveChangesAsync();
+
+        return true;
+    }
+
+    public async Task<AllDataStats> GetAllDataStatsAsync()
+    {
+        await using var context = await _dbFactory.CreateDbContextAsync();
+
+        int ticketCount = 0;
+        try { ticketCount = await context.Tickets.CountAsync(); } catch { }
+
+        return new AllDataStats
+        {
+            Parties = await context.Parties.CountAsync(),
+            Employees = await context.Employees.CountAsync(),
+            Vehicles = await context.Vehicles.CountAsync(),
+            AWBStocks = await context.AWBStocks.CountAsync(),
+            PrepaidDocuments = await context.PrepaidDocuments.CountAsync(),
+            Tickets = ticketCount,
+            PickupRequests = await context.PickupRequests.CountAsync(),
+            AWBs = await context.InscanMasters.CountAsync(),
+            DRS = await context.DRSs.CountAsync(),
+            Invoices = await context.Invoices.CountAsync(),
+            Receipts = await context.Receipts.CountAsync(),
+            Journals = await context.Journals.CountAsync(),
+            BankAccounts = await context.BankAccounts.CountAsync(),
+            BankReconciliations = await context.BankReconciliations.CountAsync(),
+            CashBankTransactions = await context.CashBankTransactions.CountAsync()
+        };
+    }
+
+    public async Task<bool> DeleteAllDataAsync()
+    {
+        await using var context = await _dbFactory.CreateDbContextAsync();
+
+        // Delete in correct order to respect foreign key constraints
+        // Finance - delete child records first
+        try
+        {
+            var reconciliationAdjustments = await context.ReconciliationAdjustments.ToListAsync();
+            context.ReconciliationAdjustments.RemoveRange(reconciliationAdjustments);
+            await context.SaveChangesAsync();
+
+            var reconciliationMatches = await context.ReconciliationMatches.ToListAsync();
+            context.ReconciliationMatches.RemoveRange(reconciliationMatches);
+            await context.SaveChangesAsync();
+
+            var bankReconciliations = await context.BankReconciliations.ToListAsync();
+            context.BankReconciliations.RemoveRange(bankReconciliations);
+            await context.SaveChangesAsync();
+        }
+        catch { }
+
+        try
+        {
+            var voucherAttachments = await context.VoucherAttachments.ToListAsync();
+            context.VoucherAttachments.RemoveRange(voucherAttachments);
+            await context.SaveChangesAsync();
+
+            var cashBankLines = await context.CashBankTransactionLines.ToListAsync();
+            context.CashBankTransactionLines.RemoveRange(cashBankLines);
+            await context.SaveChangesAsync();
+
+            var cashBankTxns = await context.CashBankTransactions.ToListAsync();
+            context.CashBankTransactions.RemoveRange(cashBankTxns);
+            await context.SaveChangesAsync();
+        }
+        catch { }
+
+        try
+        {
+            var bankAccounts = await context.BankAccounts.ToListAsync();
+            context.BankAccounts.RemoveRange(bankAccounts);
+            await context.SaveChangesAsync();
+        }
+        catch { }
+
+        // Journal entries
+        try
+        {
+            var journalEntries = await context.JournalEntries.ToListAsync();
+            context.JournalEntries.RemoveRange(journalEntries);
+            await context.SaveChangesAsync();
+
+            var journals = await context.Journals.ToListAsync();
+            context.Journals.RemoveRange(journals);
+            await context.SaveChangesAsync();
+        }
+        catch { }
+
+        // Receipts and Receipt Allocations
+        try
+        {
+            var receiptAllocations = await context.ReceiptAllocations.ToListAsync();
+            context.ReceiptAllocations.RemoveRange(receiptAllocations);
+            await context.SaveChangesAsync();
+
+            var receipts = await context.Receipts.ToListAsync();
+            context.Receipts.RemoveRange(receipts);
+            await context.SaveChangesAsync();
+        }
+        catch { }
+
+        // Invoices and related
+        try
+        {
+            var invoiceSpecialCharges = await context.InvoiceSpecialCharges.ToListAsync();
+            context.InvoiceSpecialCharges.RemoveRange(invoiceSpecialCharges);
+            await context.SaveChangesAsync();
+
+            var invoiceDetails = await context.InvoiceDetails.ToListAsync();
+            context.InvoiceDetails.RemoveRange(invoiceDetails);
+            await context.SaveChangesAsync();
+
+            var invoices = await context.Invoices.ToListAsync();
+            context.Invoices.RemoveRange(invoices);
+            await context.SaveChangesAsync();
+        }
+        catch { }
+
+        // DRS and DRS Details
+        try
+        {
+            var drsDetails = await context.DRSDetails.ToListAsync();
+            context.DRSDetails.RemoveRange(drsDetails);
+            await context.SaveChangesAsync();
+
+            var drss = await context.DRSs.ToListAsync();
+            context.DRSs.RemoveRange(drss);
+            await context.SaveChangesAsync();
+        }
+        catch { }
+
+        // CRM - Tickets
+        try
+        {
+            var ticketComments = await context.TicketComments.ToListAsync();
+            context.TicketComments.RemoveRange(ticketComments);
+            await context.SaveChangesAsync();
+
+            var tickets = await context.Tickets.ToListAsync();
+            context.Tickets.RemoveRange(tickets);
+            await context.SaveChangesAsync();
+
+            var ticketCategories = await context.TicketCategories.ToListAsync();
+            context.TicketCategories.RemoveRange(ticketCategories);
+            await context.SaveChangesAsync();
+        }
+        catch { }
+
+        // Import data
+        try
+        {
+            var importDocuments = await context.ImportDocuments.ToListAsync();
+            context.ImportDocuments.RemoveRange(importDocuments);
+            await context.SaveChangesAsync();
+
+            var importShipments = await context.ImportShipments.ToListAsync();
+            context.ImportShipments.RemoveRange(importShipments);
+            await context.SaveChangesAsync();
+
+            var importBags = await context.ImportBags.ToListAsync();
+            context.ImportBags.RemoveRange(importBags);
+            await context.SaveChangesAsync();
+
+            var importMasters = await context.ImportMasters.ToListAsync();
+            context.ImportMasters.RemoveRange(importMasters);
+            await context.SaveChangesAsync();
+        }
+        catch { }
+
+        // AWB Tracking and items
+        try
+        {
+            var awbTrackings = await context.AWBTrackings.ToListAsync();
+            context.AWBTrackings.RemoveRange(awbTrackings);
+            await context.SaveChangesAsync();
+
+            var inscanItems = await context.InscanMasterItems.ToListAsync();
+            context.InscanMasterItems.RemoveRange(inscanItems);
+            await context.SaveChangesAsync();
+
+            var shipmentNoteMentions = await context.ShipmentNoteMentions.ToListAsync();
+            context.ShipmentNoteMentions.RemoveRange(shipmentNoteMentions);
+            await context.SaveChangesAsync();
+
+            var shipmentNotes = await context.ShipmentNotes.ToListAsync();
+            context.ShipmentNotes.RemoveRange(shipmentNotes);
+            await context.SaveChangesAsync();
+        }
+        catch { }
+
+        // Pickup request shipments
+        try
+        {
+            var pickupShipments = await context.PickupRequestShipments.ToListAsync();
+            context.PickupRequestShipments.RemoveRange(pickupShipments);
+            await context.SaveChangesAsync();
+
+            var pickupRequests = await context.PickupRequests.ToListAsync();
+            context.PickupRequests.RemoveRange(pickupRequests);
+            await context.SaveChangesAsync();
+        }
+        catch { }
+
+        // Inscan Masters (AWBs)
+        try
+        {
+            var inscanMasters = await context.InscanMasters.ToListAsync();
+            context.InscanMasters.RemoveRange(inscanMasters);
+            await context.SaveChangesAsync();
+        }
+        catch { }
+
+        // Prepaid Documents
+        try
+        {
+            var prepaidAwbs = await context.PrepaidAWBs.ToListAsync();
+            context.PrepaidAWBs.RemoveRange(prepaidAwbs);
+            await context.SaveChangesAsync();
+
+            var prepaidDocs = await context.PrepaidDocuments.ToListAsync();
+            context.PrepaidDocuments.RemoveRange(prepaidDocs);
+            await context.SaveChangesAsync();
+        }
+        catch { }
+
+        // AWB Stocks
+        try
+        {
+            var awbStocks = await context.AWBStocks.ToListAsync();
+            context.AWBStocks.RemoveRange(awbStocks);
+            await context.SaveChangesAsync();
+        }
+        catch { }
+
+        // Vehicles
+        try
+        {
+            var vehicles = await context.Vehicles.ToListAsync();
+            context.Vehicles.RemoveRange(vehicles);
+            await context.SaveChangesAsync();
+        }
+        catch { }
+
+        // Employees
+        try
+        {
+            var employees = await context.Employees.ToListAsync();
+            context.Employees.RemoveRange(employees);
+            await context.SaveChangesAsync();
+        }
+        catch { }
+
+        // Parties and related
+        try
+        {
+            var slaAgreements = await context.SLAAgreements.ToListAsync();
+            context.SLAAgreements.RemoveRange(slaAgreements);
+            await context.SaveChangesAsync();
+
+            var customerBranches = await context.CustomerBranches.ToListAsync();
+            context.CustomerBranches.RemoveRange(customerBranches);
+            await context.SaveChangesAsync();
+
+            var partyAddresses = await context.PartyAddresses.ToListAsync();
+            context.PartyAddresses.RemoveRange(partyAddresses);
+            await context.SaveChangesAsync();
+
+            var parties = await context.Parties.ToListAsync();
+            context.Parties.RemoveRange(parties);
+            await context.SaveChangesAsync();
+        }
+        catch { }
 
         return true;
     }
