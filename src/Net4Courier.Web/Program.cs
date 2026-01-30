@@ -160,6 +160,12 @@ builder.Services.AddScoped<PrepaidService>();
 builder.Services.AddScoped<ISetupService, SetupService>();
 builder.Services.AddHttpClient();
 builder.Services.AddScoped<IGmailEmailService, GmailEmailService>();
+
+// TrueBooks GL Module Services
+builder.Services.AddScoped<Truebooks.Platform.Core.MultiTenancy.ITenantContext, Net4Courier.Web.Services.SingleTenantContext>();
+builder.Services.AddDbContextFactory<Truebooks.Platform.Core.Infrastructure.PlatformDbContext>(options =>
+    options.UseNpgsql(connectionString), ServiceLifetime.Scoped);
+
 builder.Services.AddAuthorizationCore();
 builder.Services.AddCascadingAuthenticationState();
 
