@@ -64,6 +64,13 @@ public class DemoDataService : IDemoDataService
         await using var context = await _dbFactory.CreateDbContextAsync();
         await using var platformContext = await _platformDbFactory.CreateDbContextAsync();
 
+        int ticketCount = 0;
+        try
+        {
+            ticketCount = await context.Tickets.CountAsync(t => t.IsDemo);
+        }
+        catch { }
+
         return new DemoDataStats
         {
             Customers = await context.Parties.CountAsync(p => p.IsDemo && p.PartyType == PartyType.Customer),
@@ -74,7 +81,7 @@ public class DemoDataService : IDemoDataService
             Vehicles = await context.Vehicles.CountAsync(v => v.IsDemo),
             AWBStocks = await context.AWBStocks.CountAsync(a => a.IsDemo),
             PrepaidDocuments = await context.PrepaidDocuments.CountAsync(p => p.IsDemo),
-            Tickets = await context.Tickets.CountAsync(t => t.IsDemo),
+            Tickets = ticketCount,
             PickupRequests = await context.PickupRequests.CountAsync(p => p.IsDemo),
             AWBs = await context.InscanMasters.CountAsync(a => a.IsDemo),
             DRS = await context.DRSs.CountAsync(d => d.IsDemo),
