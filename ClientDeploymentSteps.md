@@ -204,9 +204,15 @@ When syncing code from the main repository to an existing client deployment, new
 Run these SQL commands on existing deployments (Rainbow, Gateex, etc.) after syncing from main:
 
 ```sql
--- Step 1: Add missing columns to Currencies table
+-- Step 1: Add ALL missing columns to Currencies table
 ALTER TABLE "Currencies" ADD COLUMN IF NOT EXISTS "ExchangeRate" DECIMAL(18,6) DEFAULT 1.0;
+ALTER TABLE "Currencies" ADD COLUMN IF NOT EXISTS "IsBaseCurrency" BOOLEAN DEFAULT FALSE;
+ALTER TABLE "Currencies" ADD COLUMN IF NOT EXISTS "DecimalPlaces" INTEGER DEFAULT 2;
+ALTER TABLE "Currencies" ADD COLUMN IF NOT EXISTS "Symbol" VARCHAR(10);
 UPDATE "Currencies" SET "ExchangeRate" = 1.0 WHERE "ExchangeRate" IS NULL;
+UPDATE "Currencies" SET "IsBaseCurrency" = FALSE WHERE "IsBaseCurrency" IS NULL;
+UPDATE "Currencies" SET "DecimalPlaces" = 2 WHERE "DecimalPlaces" IS NULL;
+UPDATE "Currencies" SET "IsBaseCurrency" = TRUE WHERE "Code" = 'AED';
 
 -- Step 2: Add CurrencyId columns
 ALTER TABLE "Companies" ADD COLUMN IF NOT EXISTS "CurrencyId" BIGINT;
