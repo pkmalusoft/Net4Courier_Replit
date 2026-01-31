@@ -9,8 +9,11 @@ namespace Net4Courier.Infrastructure.Services;
 public interface ISetupService
 {
     Task<bool> IsSetupRequiredAsync();
+    Task<bool> IsSetupEnabledAsync();
     Task<bool> ValidateSetupKeyAsync(string setupKey);
     Task<(bool Success, string Message)> CreateInitialAdminAsync(string setupKey, string username, string email, string fullName, string password);
+    Task<(bool Success, string Message)> ResetPasswordAsync(string setupKey, string username, string newPassword);
+    Task<List<(long Id, string Username, string FullName, string? RoleName, bool IsActive)>> GetUsersAsync(string setupKey);
 }
 
 public class SetupService : ISetupService
@@ -117,5 +120,57 @@ public class SetupService : ISetupService
         {
             return (false, $"Error creating administrator: {ex.Message}");
         }
+    }
+
+    public Task<bool> IsSetupEnabledAsync()
+    {
+        var configuredKey = _configuration["SETUP_KEY"] ?? Environment.GetEnvironmentVariable("SETUP_KEY");
+        return Task.FromResult(!string.IsNullOrEmpty(configuredKey));
+    }
+
+    public async Task<(bool Success, string Message)> ResetPasswordAsync(string setupKey, string username, string newPassword)
+    {
+        try
+        {
+            var isValidKey = await ValidateSetupKeyAsync(setupKey);
+            if (!isValidKey)
+            {
+                return (false, "Invalid setup key. Password reset denied.");
+            }
+
+            var user = await _context.Users.FirstOrDefaultAsync(u => u.Username == username && !u.IsDeleted);
+            if (user == null)
+            {
+                return (false, $"User '{username}' not found or is deleted");
+            }
+
+            user.PasswordHash = BCrypt.Net.BCrypt.HashPassword(newPassword);
+            user.ModifiedAt = DateTime.UtcNow;
+            await _context.SaveChangesAsync();
+
+            return (true, $"Password reset successfully for user '{username}'");
+        }
+        catch (Exception ex)
+        {
+            return (false, $"Error resetting password: {ex.Message}");
+        }
+    }
+
+    public async Task<List<(long Id, string Username, string FullName, string? RoleName, bool IsActive)>> GetUsersAsync(string setupKey)
+    {
+        var isValidKey = await ValidateSetupKeyAsync(setupKey);
+        if (!isValidKey)
+        {
+            return new List<(long, string, string, string?, bool)>();
+        }
+
+        var users = await _context.Users
+            .Include(u => u.Role)
+            .Where(u => !u.IsDeleted)
+            .OrderBy(u => u.Id)
+            .Select(u => new { u.Id, u.Username, u.FullName, RoleName = u.Role != null ? u.Role.Name : null, u.IsActive })
+            .ToListAsync();
+
+        return users.Select(u => (u.Id, u.Username, u.FullName ?? "", u.RoleName, u.IsActive)).ToList();
     }
 }

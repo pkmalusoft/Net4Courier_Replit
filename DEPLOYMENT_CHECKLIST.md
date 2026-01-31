@@ -81,6 +81,57 @@ This document provides step-by-step instructions for deploying Net4Courier to ne
 
 ---
 
+## Setup & Maintenance Utilities
+
+Net4Courier provides two utilities for initial setup and password management:
+
+### 1. Web-Based Setup Page (`/setup`)
+
+The `/setup` page provides a secure web interface for:
+- Creating administrator accounts
+- Resetting existing user passwords
+- Viewing all users in the system
+
+**How to use:**
+1. Set the `SETUP_KEY` environment variable to a secure password
+2. Access `/setup` in your browser
+3. Enter the setup key to authenticate
+4. Use the tabs to:
+   - **Create Admin**: Add new administrator users
+   - **Reset Password**: Reset any user's password
+   - **Users**: View all existing users
+
+**Security:** The setup page is disabled by default. It only activates when `SETUP_KEY` is set. Remove `SETUP_KEY` after completing setup to disable access.
+
+### 2. Command-Line Password Reset
+
+For quick password resets without the web interface:
+
+```bash
+cd src/Net4Courier.Web
+export SETUP_KEY="your_setup_key"  # Required for security
+dotnet run -- --reset-password <username> <newpassword>
+```
+
+**Example:**
+```bash
+export SETUP_KEY="MySecureKey123"
+dotnet run -- --reset-password platformadmin "T6u3b00ks"
+```
+
+**Requirements:**
+- `SETUP_KEY` environment variable must be set (security requirement)
+- The workflow must be stopped before running this command (it starts a temporary connection to the database)
+
+### Help Command
+
+View available command-line options:
+```bash
+dotnet run -- --help
+```
+
+---
+
 ## Option 2: Deploy to External Server
 
 ### Prerequisites
@@ -297,7 +348,20 @@ Error: Unable to find project / Build failed
 ### Platform Admin Login Fails
 - If `SETUP_KEY` wasn't set, check console logs for generated password
 - The password is only logged on first user creation
-- To reset: delete the `platformadmin` user from database and restart
+- **Option 1: Use Setup Page** (Recommended)
+  1. Set `SETUP_KEY` environment variable
+  2. Navigate to `/setup`
+  3. Enter the setup key
+  4. Use "Reset Password" tab to reset any user's password
+- **Option 2: Use Command Line**
+  ```bash
+  cd src/Net4Courier.Web
+  dotnet run -- --reset-password platformadmin "NewPassword123"
+  ```
+- **Option 3: Direct SQL**
+  ```bash
+  psql $DATABASE_URL -c "UPDATE \"Users\" SET \"PasswordHash\" = 'bcrypt_hash_here' WHERE \"Username\" = 'platformadmin';"
+  ```
 
 ### GL Module Errors
 - GL tables are created automatically on startup
@@ -329,6 +393,7 @@ Error: Unable to find project / Build failed
 | Route | Description |
 |-------|-------------|
 | `/` | Login page |
+| `/setup` | Setup & maintenance page (requires SETUP_KEY) |
 | `/dashboard` | Main dashboard (after login) |
 | `/platform-admin/demo-data` | Initial Setup / Demo Data management |
 | `/how-to-guides` | Built-in documentation |

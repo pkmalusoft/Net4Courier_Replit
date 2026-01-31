@@ -15,6 +15,21 @@ Console.WriteLine($"[{DateTime.UtcNow:O}] Net4Courier starting...");
 Console.WriteLine($"[{DateTime.UtcNow:O}] Environment: {Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT") ?? "Production"}");
 Console.WriteLine($"[{DateTime.UtcNow:O}] DATABASE_URL: {(string.IsNullOrEmpty(Environment.GetEnvironmentVariable("DATABASE_URL")) ? "NOT SET" : "SET")}");
 
+// Handle command-line utilities (runs without starting web server)
+if (args.Length >= 3 && args[0] == "--reset-password")
+{
+    await HandlePasswordReset(args[1], args[2]);
+    return;
+}
+
+if (args.Length >= 1 && args[0] == "--help")
+{
+    Console.WriteLine("Net4Courier Command Line Utilities:");
+    Console.WriteLine("  --reset-password <username> <password>  Reset user password");
+    Console.WriteLine("  --help                                   Show this help message");
+    return;
+}
+
 try
 {
     QuestPDF.Settings.License = LicenseType.Community;
@@ -530,6 +545,70 @@ catch (Exception ex)
     Console.WriteLine($"[{DateTime.UtcNow:O}] FATAL ERROR starting server: {ex.Message}");
     Console.WriteLine($"[{DateTime.UtcNow:O}] Stack trace: {ex.StackTrace}");
     throw;
+}
+
+static async Task HandlePasswordReset(string username, string password)
+{
+    Console.WriteLine($"[{DateTime.UtcNow:O}] Password Reset Utility");
+    
+    var setupKey = Environment.GetEnvironmentVariable("SETUP_KEY");
+    if (string.IsNullOrEmpty(setupKey))
+    {
+        Console.WriteLine($"[{DateTime.UtcNow:O}] ERROR: SETUP_KEY environment variable is required for password reset");
+        Console.WriteLine($"[{DateTime.UtcNow:O}] Set SETUP_KEY environment variable to enable this utility");
+        Environment.Exit(1);
+        return;
+    }
+    
+    Console.WriteLine($"[{DateTime.UtcNow:O}] SETUP_KEY verified");
+    Console.WriteLine($"[{DateTime.UtcNow:O}] Resetting password for user: {username}");
+    
+    var databaseUrl = Environment.GetEnvironmentVariable("DATABASE_URL");
+    if (string.IsNullOrEmpty(databaseUrl))
+    {
+        Console.WriteLine($"[{DateTime.UtcNow:O}] ERROR: DATABASE_URL environment variable is not set");
+        Environment.Exit(1);
+        return;
+    }
+    
+    string connectionString;
+    if (databaseUrl.StartsWith("postgresql://"))
+    {
+        var uri = new Uri(databaseUrl);
+        var userInfo = uri.UserInfo.Split(':');
+        var host = uri.Host;
+        var port = uri.Port > 0 ? uri.Port : 5432;
+        var database = uri.AbsolutePath.TrimStart('/').Split('?')[0];
+        var dbUsername = userInfo[0];
+        var dbPassword = userInfo.Length > 1 ? userInfo[1] : "";
+        connectionString = $"Host={host};Port={port};Database={database};Username={dbUsername};Password={dbPassword}";
+    }
+    else
+    {
+        connectionString = databaseUrl;
+    }
+    
+    var optionsBuilder = new DbContextOptionsBuilder<ApplicationDbContext>();
+    optionsBuilder.UseNpgsql(connectionString);
+    
+    using var dbContext = new ApplicationDbContext(optionsBuilder.Options);
+    
+    var user = await dbContext.Users.FirstOrDefaultAsync(u => u.Username == username);
+    if (user == null)
+    {
+        Console.WriteLine($"[{DateTime.UtcNow:O}] ERROR: User '{username}' not found");
+        Environment.Exit(1);
+        return;
+    }
+    
+    var newHash = BCrypt.Net.BCrypt.HashPassword(password);
+    user.PasswordHash = newHash;
+    user.ModifiedAt = DateTime.UtcNow;
+    
+    await dbContext.SaveChangesAsync();
+    
+    Console.WriteLine($"[{DateTime.UtcNow:O}] SUCCESS: Password updated for user '{username}'");
+    Console.WriteLine($"[{DateTime.UtcNow:O}] New password hash: {newHash.Substring(0, 20)}...");
 }
 
 public class DatabaseInitializationService : BackgroundService
