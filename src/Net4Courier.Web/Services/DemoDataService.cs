@@ -246,14 +246,8 @@ public class DemoDataService : IDemoDataService
 
         platformContext.ChartOfAccounts.AddRange(accounts);
 
-        var currencies = new List<TruebooksPlatform.Currency>
-        {
-            new TruebooksPlatform.Currency { Id = Guid.NewGuid(), TenantId = DemoTenantId, Code = "AED", Name = "DEMO-UAE Dirham", Symbol = "AED", DecimalPlaces = 2, IsBaseCurrency = true, ExchangeRate = 1m, IsActive = true, CreatedAt = now },
-            new TruebooksPlatform.Currency { Id = Guid.NewGuid(), TenantId = DemoTenantId, Code = "USD", Name = "DEMO-US Dollar", Symbol = "$", DecimalPlaces = 2, IsBaseCurrency = false, ExchangeRate = 3.67m, IsActive = true, CreatedAt = now },
-            new TruebooksPlatform.Currency { Id = Guid.NewGuid(), TenantId = DemoTenantId, Code = "INR", Name = "DEMO-Indian Rupee", Symbol = "₹", DecimalPlaces = 2, IsBaseCurrency = false, ExchangeRate = 0.044m, IsActive = true, CreatedAt = now },
-            new TruebooksPlatform.Currency { Id = Guid.NewGuid(), TenantId = DemoTenantId, Code = "SAR", Name = "DEMO-Saudi Riyal", Symbol = "SAR", DecimalPlaces = 2, IsBaseCurrency = false, ExchangeRate = 0.98m, IsActive = true, CreatedAt = now }
-        };
-        platformContext.Currencies.AddRange(currencies);
+        // NOTE: Skip TrueBooks Currency creation - the Currencies table uses bigint IDs (Net4Courier schema)
+        // while TrueBooks expects UUID IDs. Currencies already exist from Net4Courier master data.
 
         var taxCodes = new List<TruebooksPlatform.TaxCode>
         {
