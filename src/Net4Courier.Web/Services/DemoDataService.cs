@@ -270,6 +270,31 @@ public class DemoDataService : IDemoDataService
     {
         await using var context = await _dbFactory.CreateDbContextAsync();
 
+        // Ensure a company exists before creating parties
+        var company = await context.Companies.FirstOrDefaultAsync();
+        if (company == null)
+        {
+            // Create a demo company
+            company = new Net4Courier.Masters.Entities.Company
+            {
+                Code = "DEMO-CO",
+                Name = "DEMO Courier Company LLC",
+                Address = "Business Bay, Dubai",
+                Phone = "+971 4 123 4567",
+                Email = "info@democourier.ae",
+                Website = "www.democourier.ae",
+                TaxNumber = "TRN100012345678901",
+                RegistrationNumber = "LLC-123456",
+                IsActive = true,
+                IsDemo = true,
+                CreatedAt = DateTime.UtcNow
+            };
+            context.Companies.Add(company);
+            await context.SaveChangesAsync();
+        }
+
+        var companyId = company.Id;
+
         var uaeAddresses = new[]
         {
             new { Building = "Al Quoz Business Center", Street = "Sheikh Zayed Road", Area = "Al Quoz", City = "Dubai", PostalCode = "12345" },
@@ -293,7 +318,7 @@ public class DemoDataService : IDemoDataService
         {
             var party = new Party
             {
-                CompanyId = 1,
+                CompanyId = companyId,
                 Code = $"DEMO-CUST-{(i + 1):D3}",
                 Name = customerNames[i],
                 PartyType = PartyType.Customer,
@@ -323,7 +348,7 @@ public class DemoDataService : IDemoDataService
         {
             var vendor = new Party
             {
-                CompanyId = 1,
+                CompanyId = companyId,
                 Code = $"DEMO-VEND-{(i + 1):D3}",
                 Name = vendorNames[i],
                 PartyType = PartyType.Supplier,
@@ -352,7 +377,7 @@ public class DemoDataService : IDemoDataService
         {
             var agent = new Party
             {
-                CompanyId = 1,
+                CompanyId = companyId,
                 Code = $"DEMO-AGNT-{(i + 1):D3}",
                 Name = agentNames[i],
                 PartyType = PartyType.ForwardingAgent,
@@ -381,7 +406,7 @@ public class DemoDataService : IDemoDataService
         {
             var courier = new Party
             {
-                CompanyId = 1,
+                CompanyId = companyId,
                 Code = $"DEMO-COUR-{(i + 1):D3}",
                 Name = courierNames[i],
                 PartyType = PartyType.DeliveryAgent,
@@ -467,7 +492,7 @@ public class DemoDataService : IDemoDataService
         {
             var vehicle = new Vehicle
             {
-                CompanyId = 1,
+                CompanyId = companyId,
                 BranchId = 1,
                 VehicleNo = veh.VehicleNo,
                 VehicleType = veh.Type,
@@ -490,11 +515,15 @@ public class DemoDataService : IDemoDataService
     {
         await using var context = await _dbFactory.CreateDbContextAsync();
 
+        var company = await context.Companies.FirstOrDefaultAsync();
+        if (company == null) return false;
+        var companyId = company.Id;
+
         var awbStocks = new[]
         {
             new AWBStock
             {
-                CompanyId = 1,
+                CompanyId = companyId,
                 BranchId = 1,
                 StockDate = DateTime.UtcNow.AddDays(-30),
                 ReferenceNo = "DEMO-STOCK-001",
@@ -516,7 +545,7 @@ public class DemoDataService : IDemoDataService
             },
             new AWBStock
             {
-                CompanyId = 1,
+                CompanyId = companyId,
                 BranchId = 1,
                 StockDate = DateTime.UtcNow.AddDays(-25),
                 ReferenceNo = "DEMO-STOCK-002",
@@ -552,7 +581,7 @@ public class DemoDataService : IDemoDataService
             {
                 new PrepaidDocument
                 {
-                    CompanyId = 1,
+                    CompanyId = companyId,
                     BranchId = 1,
                     DocumentNo = "DEMO-PREP-001",
                     DocumentDate = DateTime.UtcNow.AddDays(-20),
@@ -576,7 +605,7 @@ public class DemoDataService : IDemoDataService
                 },
                 new PrepaidDocument
                 {
-                    CompanyId = 1,
+                    CompanyId = companyId,
                     BranchId = 1,
                     DocumentNo = "DEMO-PREP-002",
                     DocumentDate = DateTime.UtcNow.AddDays(-15),
@@ -700,6 +729,10 @@ public class DemoDataService : IDemoDataService
     {
         await using var context = await _dbFactory.CreateDbContextAsync();
 
+        var company = await context.Companies.FirstOrDefaultAsync();
+        if (company == null) return false;
+        var companyId = company.Id;
+
         var consignorData = new[]
         {
             new { Name = "Al Futtaim Electronics", Contact = "Ahmed Hassan", Phone = "+971 4 345 6789", Address = "Al Quoz Industrial 3", City = "Dubai" },
@@ -748,7 +781,7 @@ public class DemoDataService : IDemoDataService
                 PickupNo = $"DEMO-PKP-{(i + 1):D3}",
                 RequestDate = pickupDate,
                 ScheduledDate = pickupDate.AddHours(2),
-                CompanyId = 1,
+                CompanyId = companyId,
                 CustomerId = customerId,
                 CustomerName = consignorData[i].Name,
                 ContactPerson = consignorData[i].Contact,
@@ -802,7 +835,7 @@ public class DemoDataService : IDemoDataService
             {
                 AWBNo = $"DEMO-AWB-{(i + 1):D3}",
                 TransactionDate = pickupDate,
-                CompanyId = 1,
+                CompanyId = companyId,
                 CustomerId = customerId,
                 PickupRequestId = pickupRequest.Id,
                 PickupRequestShipmentId = pickupShipment.Id,
@@ -887,7 +920,7 @@ public class DemoDataService : IDemoDataService
             {
                 DRSNo = $"DEMO-DRS-{(i + 1):D3}",
                 DRSDate = pickupDate.AddHours(18),
-                CompanyId = 1,
+                CompanyId = companyId,
                 BranchId = 1,
                 DeliveryEmployeeId = employee != null ? (int)employee.Id : null,
                 DeliveryEmployeeName = employee?.Name,
@@ -935,7 +968,7 @@ public class DemoDataService : IDemoDataService
             {
                 InvoiceNo = $"DEMO-INV-{(i + 1):D4}",
                 InvoiceDate = pickupDate.AddDays(2),
-                CompanyId = 1,
+                CompanyId = companyId,
                 BranchId = 1,
                 CustomerId = customerId,
                 CustomerName = demoCustomers.Count > i ? demoCustomers[i].Name : consignorData[i].Name,
@@ -983,7 +1016,7 @@ public class DemoDataService : IDemoDataService
                 {
                     ReceiptNo = $"DEMO-RCT-{(i + 1):D4}",
                     ReceiptDate = pickupDate.AddDays(5),
-                    CompanyId = 1,
+                    CompanyId = companyId,
                     BranchId = 1,
                     CustomerId = customerId,
                     CustomerName = demoCustomers.Count > i ? demoCustomers[i].Name : consignorData[i].Name,
@@ -1027,6 +1060,10 @@ public class DemoDataService : IDemoDataService
     {
         await using var context = await _dbFactory.CreateDbContextAsync();
 
+        var company = await context.Companies.FirstOrDefaultAsync();
+        if (company == null) return false;
+        var companyId = company.Id;
+
         var accountHeads = await context.AccountHeads
             .Where(a => a.IsActive)
             .Take(10)
@@ -1043,7 +1080,7 @@ public class DemoDataService : IDemoDataService
             {
                 VoucherNo = $"DEMO-JV-{(i + 1):D4}",
                 VoucherDate = DateTime.UtcNow.AddDays(-10 + i),
-                CompanyId = 1,
+                CompanyId = companyId,
                 BranchId = 1,
                 VoucherType = "JV",
                 Narration = $"Demo journal entry {i + 1} - Manual adjustment",
@@ -1167,7 +1204,7 @@ public class DemoDataService : IDemoDataService
                 Notes = "[DEMO] Demo bank account for testing",
                 IsActive = true,
                 AccountHeadId = accountHeads.Count > 1 ? accountHeads[1].Id : accountHeads[0].Id,
-                CompanyId = 1,
+                CompanyId = companyId,
                 BranchId = 1,
                 CreatedAt = DateTime.UtcNow
             };
@@ -1177,7 +1214,7 @@ public class DemoDataService : IDemoDataService
 
             var reconciliation = new Net4Courier.Finance.Entities.BankReconciliation
             {
-                CompanyId = 1,
+                CompanyId = companyId,
                 BranchId = 1,
                 BankAccountId = bankAccount.Id,
                 ReconciliationNumber = "DEMO-RECON-001",
