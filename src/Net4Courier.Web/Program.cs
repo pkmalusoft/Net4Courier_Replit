@@ -1463,67 +1463,67 @@ public class DatabaseInitializationService : BackgroundService
 
             // Seed Locations - UAE
             await dbContext.Database.ExecuteSqlRawAsync(@"
-                INSERT INTO "Locations" ("Name", "Code", "CityId", "Pincode", "IsServiceable", "IsActive", "IsDeleted", "IsDemo", "CreatedAt")
+                INSERT INTO ""Locations"" (""Name"", ""Code"", ""CityId"", ""Pincode"", ""IsServiceable"", ""IsActive"", ""CreatedAt"")
                 SELECT 'Deira', 'DEIRA', (SELECT ""Id"" FROM ""Cities"" WHERE ""Code"" = 'DXBC'), '00000', TRUE, TRUE, FALSE, FALSE, CURRENT_TIMESTAMP 
                 WHERE NOT EXISTS (SELECT 1 FROM ""Locations"" WHERE ""Code"" = 'DEIRA');
-                INSERT INTO "Locations" ("Name", "Code", "CityId", "Pincode", "IsServiceable", "IsActive", "IsDeleted", "IsDemo", "CreatedAt")
+                INSERT INTO ""Locations"" (""Name"", ""Code"", ""CityId"", ""Pincode"", ""IsServiceable"", ""IsActive"", ""CreatedAt"")
                 SELECT 'Bur Dubai', 'BURDXB', (SELECT ""Id"" FROM ""Cities"" WHERE ""Code"" = 'DXBC'), '00000', TRUE, TRUE, FALSE, FALSE, CURRENT_TIMESTAMP 
                 WHERE NOT EXISTS (SELECT 1 FROM ""Locations"" WHERE ""Code"" = 'BURDXB');
-                INSERT INTO "Locations" ("Name", "Code", "CityId", "Pincode", "IsServiceable", "IsActive", "IsDeleted", "IsDemo", "CreatedAt")
+                INSERT INTO ""Locations"" (""Name"", ""Code"", ""CityId"", ""Pincode"", ""IsServiceable"", ""IsActive"", ""CreatedAt"")
                 SELECT 'Abu Dhabi Downtown', 'AUHDTN', (SELECT ""Id"" FROM ""Cities"" WHERE ""Code"" = 'AUHC'), '00000', TRUE, TRUE, FALSE, FALSE, CURRENT_TIMESTAMP 
                 WHERE NOT EXISTS (SELECT 1 FROM ""Locations"" WHERE ""Code"" = 'AUHDTN');
             ", stoppingToken);
 
             // Seed Locations - India
             await dbContext.Database.ExecuteSqlRawAsync(@"
-                INSERT INTO "Locations" ("Name", "Code", "CityId", "Pincode", "IsServiceable", "IsActive", "IsDeleted", "IsDemo", "CreatedAt")
+                INSERT INTO ""Locations"" (""Name"", ""Code"", ""CityId"", ""Pincode"", ""IsServiceable"", ""IsActive"", ""CreatedAt"")
                 SELECT 'Andheri', 'ANDH', (SELECT ""Id"" FROM ""Cities"" WHERE ""Code"" = 'BOM'), '400069', TRUE, TRUE, FALSE, FALSE, CURRENT_TIMESTAMP 
                 WHERE NOT EXISTS (SELECT 1 FROM ""Locations"" WHERE ""Code"" = 'ANDH');
-                INSERT INTO "Locations" ("Name", "Code", "CityId", "Pincode", "IsServiceable", "IsActive", "IsDeleted", "IsDemo", "CreatedAt")
+                INSERT INTO ""Locations"" (""Name"", ""Code"", ""CityId"", ""Pincode"", ""IsServiceable"", ""IsActive"", ""CreatedAt"")
                 SELECT 'Bandra', 'BNDR', (SELECT ""Id"" FROM ""Cities"" WHERE ""Code"" = 'BOM'), '400050', TRUE, TRUE, FALSE, FALSE, CURRENT_TIMESTAMP 
                 WHERE NOT EXISTS (SELECT 1 FROM ""Locations"" WHERE ""Code"" = 'BNDR');
-                INSERT INTO "Locations" ("Name", "Code", "CityId", "Pincode", "IsServiceable", "IsActive", "IsDeleted", "IsDemo", "CreatedAt")
+                INSERT INTO ""Locations"" (""Name"", ""Code"", ""CityId"", ""Pincode"", ""IsServiceable"", ""IsActive"", ""CreatedAt"")
                 SELECT 'Connaught Place', 'CNPL', (SELECT ""Id"" FROM ""Cities"" WHERE ""Code"" = 'DEL'), '110001', TRUE, TRUE, FALSE, FALSE, CURRENT_TIMESTAMP 
                 WHERE NOT EXISTS (SELECT 1 FROM ""Locations"" WHERE ""Code"" = 'CNPL');
-                INSERT INTO "Locations" ("Name", "Code", "CityId", "Pincode", "IsServiceable", "IsActive", "IsDeleted", "IsDemo", "CreatedAt")
+                INSERT INTO ""Locations"" (""Name"", ""Code"", ""CityId"", ""Pincode"", ""IsServiceable"", ""IsActive"", ""CreatedAt"")
                 SELECT 'Whitefield', 'WTFL', (SELECT ""Id"" FROM ""Cities"" WHERE ""Code"" = 'BLR'), '560066', TRUE, TRUE, FALSE, FALSE, CURRENT_TIMESTAMP 
                 WHERE NOT EXISTS (SELECT 1 FROM ""Locations"" WHERE ""Code"" = 'WTFL');
-                INSERT INTO "Locations" ("Name", "Code", "CityId", "Pincode", "IsServiceable", "IsActive", "IsDeleted", "IsDemo", "CreatedAt")
+                INSERT INTO ""Locations"" (""Name"", ""Code"", ""CityId"", ""Pincode"", ""IsServiceable"", ""IsActive"", ""CreatedAt"")
                 SELECT 'Koramangala', 'KRMN', (SELECT ""Id"" FROM ""Cities"" WHERE ""Code"" = 'BLR'), '560034', TRUE, TRUE, FALSE, FALSE, CURRENT_TIMESTAMP 
                 WHERE NOT EXISTS (SELECT 1 FROM ""Locations"" WHERE ""Code"" = 'KRMN');
-                INSERT INTO "Locations" ("Name", "Code", "CityId", "Pincode", "IsServiceable", "IsActive", "IsDeleted", "IsDemo", "CreatedAt")
+                INSERT INTO ""Locations"" (""Name"", ""Code"", ""CityId"", ""Pincode"", ""IsServiceable"", ""IsActive"", ""CreatedAt"")
                 SELECT 'T Nagar', 'TNGR', (SELECT ""Id"" FROM ""Cities"" WHERE ""Code"" = 'MAA'), '600017', TRUE, TRUE, FALSE, FALSE, CURRENT_TIMESTAMP 
                 WHERE NOT EXISTS (SELECT 1 FROM ""Locations"" WHERE ""Code"" = 'TNGR');
             ", stoppingToken);
 
             // Seed Locations - Pakistan, Bangladesh
             await dbContext.Database.ExecuteSqlRawAsync(@"
-                INSERT INTO "Locations" ("Name", "Code", "CityId", "Pincode", "IsServiceable", "IsActive", "IsDeleted", "IsDemo", "CreatedAt")
+                INSERT INTO ""Locations"" (""Name"", ""Code"", ""CityId"", ""Pincode"", ""IsServiceable"", ""IsActive"", ""CreatedAt"")
                 SELECT 'Gulberg', 'GULB', (SELECT ""Id"" FROM ""Cities"" WHERE ""Code"" = 'LHE'), '54000', TRUE, TRUE, FALSE, FALSE, CURRENT_TIMESTAMP 
                 WHERE NOT EXISTS (SELECT 1 FROM ""Locations"" WHERE ""Code"" = 'GULB');
-                INSERT INTO "Locations" ("Name", "Code", "CityId", "Pincode", "IsServiceable", "IsActive", "IsDeleted", "IsDemo", "CreatedAt")
+                INSERT INTO ""Locations"" (""Name"", ""Code"", ""CityId"", ""Pincode"", ""IsServiceable"", ""IsActive"", ""CreatedAt"")
                 SELECT 'Clifton', 'CLFT', (SELECT ""Id"" FROM ""Cities"" WHERE ""Code"" = 'KHI'), '75600', TRUE, TRUE, FALSE, FALSE, CURRENT_TIMESTAMP 
                 WHERE NOT EXISTS (SELECT 1 FROM ""Locations"" WHERE ""Code"" = 'CLFT');
-                INSERT INTO "Locations" ("Name", "Code", "CityId", "Pincode", "IsServiceable", "IsActive", "IsDeleted", "IsDemo", "CreatedAt")
+                INSERT INTO ""Locations"" (""Name"", ""Code"", ""CityId"", ""Pincode"", ""IsServiceable"", ""IsActive"", ""CreatedAt"")
                 SELECT 'Gulshan', 'GLSN', (SELECT ""Id"" FROM ""Cities"" WHERE ""Code"" = 'DHKC'), '1212', TRUE, TRUE, FALSE, FALSE, CURRENT_TIMESTAMP 
                 WHERE NOT EXISTS (SELECT 1 FROM ""Locations"" WHERE ""Code"" = 'GLSN');
-                INSERT INTO "Locations" ("Name", "Code", "CityId", "Pincode", "IsServiceable", "IsActive", "IsDeleted", "IsDemo", "CreatedAt")
+                INSERT INTO ""Locations"" (""Name"", ""Code"", ""CityId"", ""Pincode"", ""IsServiceable"", ""IsActive"", ""CreatedAt"")
                 SELECT 'Banani', 'BNNI', (SELECT ""Id"" FROM ""Cities"" WHERE ""Code"" = 'DHKC'), '1213', TRUE, TRUE, FALSE, FALSE, CURRENT_TIMESTAMP 
                 WHERE NOT EXISTS (SELECT 1 FROM ""Locations"" WHERE ""Code"" = 'BNNI');
             ", stoppingToken);
 
             // Seed Locations - Southeast Asia
             await dbContext.Database.ExecuteSqlRawAsync(@"
-                INSERT INTO "Locations" ("Name", "Code", "CityId", "Pincode", "IsServiceable", "IsActive", "IsDeleted", "IsDemo", "CreatedAt")
+                INSERT INTO ""Locations"" (""Name"", ""Code"", ""CityId"", ""Pincode"", ""IsServiceable"", ""IsActive"", ""CreatedAt"")
                 SELECT 'KLCC', 'KLCC', (SELECT ""Id"" FROM ""Cities"" WHERE ""Code"" = 'KLC'), '50088', TRUE, TRUE, FALSE, FALSE, CURRENT_TIMESTAMP 
                 WHERE NOT EXISTS (SELECT 1 FROM ""Locations"" WHERE ""Code"" = 'KLCC');
-                INSERT INTO "Locations" ("Name", "Code", "CityId", "Pincode", "IsServiceable", "IsActive", "IsDeleted", "IsDemo", "CreatedAt")
+                INSERT INTO ""Locations"" (""Name"", ""Code"", ""CityId"", ""Pincode"", ""IsServiceable"", ""IsActive"", ""CreatedAt"")
                 SELECT 'Menteng', 'MNTG', (SELECT ""Id"" FROM ""Cities"" WHERE ""Code"" = 'JKTC'), '10310', TRUE, TRUE, FALSE, FALSE, CURRENT_TIMESTAMP 
                 WHERE NOT EXISTS (SELECT 1 FROM ""Locations"" WHERE ""Code"" = 'MNTG');
-                INSERT INTO "Locations" ("Name", "Code", "CityId", "Pincode", "IsServiceable", "IsActive", "IsDeleted", "IsDemo", "CreatedAt")
+                INSERT INTO ""Locations"" (""Name"", ""Code"", ""CityId"", ""Pincode"", ""IsServiceable"", ""IsActive"", ""CreatedAt"")
                 SELECT 'Makati', 'MKAT', (SELECT ""Id"" FROM ""Cities"" WHERE ""Code"" = 'MLA'), '1200', TRUE, TRUE, FALSE, FALSE, CURRENT_TIMESTAMP 
                 WHERE NOT EXISTS (SELECT 1 FROM ""Locations"" WHERE ""Code"" = 'MKAT');
-                INSERT INTO "Locations" ("Name", "Code", "CityId", "Pincode", "IsServiceable", "IsActive", "IsDeleted", "IsDemo", "CreatedAt")
+                INSERT INTO ""Locations"" (""Name"", ""Code"", ""CityId"", ""Pincode"", ""IsServiceable"", ""IsActive"", ""CreatedAt"")
                 SELECT 'BGC', 'BGC', (SELECT ""Id"" FROM ""Cities"" WHERE ""Code"" = 'MLA'), '1630', TRUE, TRUE, FALSE, FALSE, CURRENT_TIMESTAMP 
                 WHERE NOT EXISTS (SELECT 1 FROM ""Locations"" WHERE ""Code"" = 'BGC');
             ", stoppingToken);
