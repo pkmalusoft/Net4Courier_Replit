@@ -100,6 +100,14 @@ public class DemoDataService : IDemoDataService
         }
         catch { }
 
+        int chartOfAccountsCount = 0;
+        int currenciesCount = 0;
+        int taxCodesCount = 0;
+        
+        try { chartOfAccountsCount = await platformContext.ChartOfAccounts.CountAsync(c => c.TenantId == DemoTenantId && c.AccountName.StartsWith("DEMO-")); } catch { }
+        try { currenciesCount = await platformContext.Currencies.CountAsync(c => c.TenantId == DemoTenantId && c.Name.StartsWith("DEMO-")); } catch { }
+        try { taxCodesCount = await platformContext.TaxCodes.CountAsync(t => t.TenantId == DemoTenantId && t.Description != null && t.Description.StartsWith("DEMO-")); } catch { }
+
         return new DemoDataStats
         {
             Customers = await context.Parties.CountAsync(p => p.IsDemo && p.PartyType == PartyType.Customer),
@@ -119,20 +127,22 @@ public class DemoDataService : IDemoDataService
             Journals = await context.Journals.CountAsync(j => j.IsDemo),
             BankAccounts = await context.BankAccounts.CountAsync(b => b.Notes != null && b.Notes.Contains("[DEMO]")),
             BankReconciliations = await context.BankReconciliations.CountAsync(r => r.IsDemo),
-            ChartOfAccounts = await platformContext.ChartOfAccounts.CountAsync(c => c.TenantId == DemoTenantId && c.AccountName.StartsWith("DEMO-")),
-            Currencies = await platformContext.Currencies.CountAsync(c => c.TenantId == DemoTenantId && c.Name.StartsWith("DEMO-")),
-            TaxCodes = await platformContext.TaxCodes.CountAsync(t => t.TenantId == DemoTenantId && t.Description != null && t.Description.StartsWith("DEMO-")),
+            ChartOfAccounts = chartOfAccountsCount,
+            Currencies = currenciesCount,
+            TaxCodes = taxCodesCount,
             CashBankTransactions = await context.CashBankTransactions.CountAsync(c => c.IsDemo)
         };
     }
 
     public async Task<bool> CreateGLDataAsync()
     {
-        await using var platformContext = await _platformDbFactory.CreateDbContextAsync();
+        try
+        {
+            await using var platformContext = await _platformDbFactory.CreateDbContextAsync();
 
-        var existingAccounts = await platformContext.ChartOfAccounts
-            .Where(c => c.TenantId == DemoTenantId && c.AccountName.StartsWith("DEMO-"))
-            .AnyAsync();
+            var existingAccounts = await platformContext.ChartOfAccounts
+                .Where(c => c.TenantId == DemoTenantId && c.AccountName.StartsWith("DEMO-"))
+                .AnyAsync();
 
         if (existingAccounts)
         {
@@ -250,11 +260,16 @@ public class DemoDataService : IDemoDataService
             new TruebooksPlatform.TaxCode { Id = Guid.NewGuid(), TenantId = DemoTenantId, Code = "VAT5", Description = "DEMO-5% VAT", Rate = 5m, IsActive = true, CreatedAt = now },
             new TruebooksPlatform.TaxCode { Id = Guid.NewGuid(), TenantId = DemoTenantId, Code = "VAT0", Description = "DEMO-Zero Rated", Rate = 0m, IsActive = true, CreatedAt = now },
             new TruebooksPlatform.TaxCode { Id = Guid.NewGuid(), TenantId = DemoTenantId, Code = "EXEMPT", Description = "DEMO-Exempt from VAT", Rate = 0m, IsActive = true, CreatedAt = now }
-        };
-        platformContext.TaxCodes.AddRange(taxCodes);
+            };
+            platformContext.TaxCodes.AddRange(taxCodes);
 
-        await platformContext.SaveChangesAsync();
-        return true;
+            await platformContext.SaveChangesAsync();
+            return true;
+        }
+        catch
+        {
+            return false;
+        }
     }
 
     public async Task<bool> CreateMasterDataAsync()
@@ -1497,24 +1512,28 @@ public class DemoDataService : IDemoDataService
         context.Parties.RemoveRange(parties);
         await context.SaveChangesAsync();
 
-        await using var platformContext = await _platformDbFactory.CreateDbContextAsync();
+        try
+        {
+            await using var platformContext = await _platformDbFactory.CreateDbContextAsync();
 
-        var demoTaxCodes = await platformContext.TaxCodes
-            .Where(t => t.TenantId == DemoTenantId && t.Description != null && t.Description.StartsWith("DEMO-"))
-            .ToListAsync();
-        platformContext.TaxCodes.RemoveRange(demoTaxCodes);
+            var demoTaxCodes = await platformContext.TaxCodes
+                .Where(t => t.TenantId == DemoTenantId && t.Description != null && t.Description.StartsWith("DEMO-"))
+                .ToListAsync();
+            platformContext.TaxCodes.RemoveRange(demoTaxCodes);
 
-        var demoCurrencies = await platformContext.Currencies
-            .Where(c => c.TenantId == DemoTenantId && c.Name.StartsWith("DEMO-"))
-            .ToListAsync();
-        platformContext.Currencies.RemoveRange(demoCurrencies);
+            var demoCurrencies = await platformContext.Currencies
+                .Where(c => c.TenantId == DemoTenantId && c.Name.StartsWith("DEMO-"))
+                .ToListAsync();
+            platformContext.Currencies.RemoveRange(demoCurrencies);
 
-        var demoAccounts = await platformContext.ChartOfAccounts
-            .Where(c => c.TenantId == DemoTenantId && c.AccountName.StartsWith("DEMO-"))
-            .ToListAsync();
-        platformContext.ChartOfAccounts.RemoveRange(demoAccounts);
+            var demoAccounts = await platformContext.ChartOfAccounts
+                .Where(c => c.TenantId == DemoTenantId && c.AccountName.StartsWith("DEMO-"))
+                .ToListAsync();
+            platformContext.ChartOfAccounts.RemoveRange(demoAccounts);
 
-        await platformContext.SaveChangesAsync();
+            await platformContext.SaveChangesAsync();
+        }
+        catch { }
 
         return true;
     }
