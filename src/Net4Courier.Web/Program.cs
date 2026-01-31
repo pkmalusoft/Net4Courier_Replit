@@ -1057,474 +1057,474 @@ public class DatabaseInitializationService : BackgroundService
 
             // Seed Countries
             await dbContext.Database.ExecuteSqlRawAsync(@"
-                INSERT INTO ""Countries"" (""Name"", ""Code"", ""IATACode"", ""IsActive"", ""CreatedAt"")
-                SELECT 'United Arab Emirates', 'AE', 'AE', TRUE, CURRENT_TIMESTAMP WHERE NOT EXISTS (SELECT 1 FROM ""Countries"" WHERE ""Code"" = 'AE');
-                INSERT INTO ""Countries"" (""Name"", ""Code"", ""IATACode"", ""IsActive"", ""CreatedAt"")
-                SELECT 'Saudi Arabia', 'SA', 'SA', TRUE, CURRENT_TIMESTAMP WHERE NOT EXISTS (SELECT 1 FROM ""Countries"" WHERE ""Code"" = 'SA');
-                INSERT INTO ""Countries"" (""Name"", ""Code"", ""IATACode"", ""IsActive"", ""CreatedAt"")
-                SELECT 'Qatar', 'QA', 'QA', TRUE, CURRENT_TIMESTAMP WHERE NOT EXISTS (SELECT 1 FROM ""Countries"" WHERE ""Code"" = 'QA');
-                INSERT INTO ""Countries"" (""Name"", ""Code"", ""IATACode"", ""IsActive"", ""CreatedAt"")
-                SELECT 'Kuwait', 'KW', 'KW', TRUE, CURRENT_TIMESTAMP WHERE NOT EXISTS (SELECT 1 FROM ""Countries"" WHERE ""Code"" = 'KW');
-                INSERT INTO ""Countries"" (""Name"", ""Code"", ""IATACode"", ""IsActive"", ""CreatedAt"")
-                SELECT 'Bahrain', 'BH', 'BH', TRUE, CURRENT_TIMESTAMP WHERE NOT EXISTS (SELECT 1 FROM ""Countries"" WHERE ""Code"" = 'BH');
-                INSERT INTO ""Countries"" (""Name"", ""Code"", ""IATACode"", ""IsActive"", ""CreatedAt"")
-                SELECT 'Oman', 'OM', 'OM', TRUE, CURRENT_TIMESTAMP WHERE NOT EXISTS (SELECT 1 FROM ""Countries"" WHERE ""Code"" = 'OM');
-                INSERT INTO ""Countries"" (""Name"", ""Code"", ""IATACode"", ""IsActive"", ""CreatedAt"")
-                SELECT 'Jordan', 'JO', 'JO', TRUE, CURRENT_TIMESTAMP WHERE NOT EXISTS (SELECT 1 FROM ""Countries"" WHERE ""Code"" = 'JO');
-                INSERT INTO ""Countries"" (""Name"", ""Code"", ""IATACode"", ""IsActive"", ""CreatedAt"")
-                SELECT 'India', 'IN', 'IN', TRUE, CURRENT_TIMESTAMP WHERE NOT EXISTS (SELECT 1 FROM ""Countries"" WHERE ""Code"" = 'IN');
-                INSERT INTO ""Countries"" (""Name"", ""Code"", ""IATACode"", ""IsActive"", ""CreatedAt"")
-                SELECT 'Pakistan', 'PK', 'PK', TRUE, CURRENT_TIMESTAMP WHERE NOT EXISTS (SELECT 1 FROM ""Countries"" WHERE ""Code"" = 'PK');
-                INSERT INTO ""Countries"" (""Name"", ""Code"", ""IATACode"", ""IsActive"", ""CreatedAt"")
-                SELECT 'Bangladesh', 'BD', 'BD', TRUE, CURRENT_TIMESTAMP WHERE NOT EXISTS (SELECT 1 FROM ""Countries"" WHERE ""Code"" = 'BD');
-                INSERT INTO ""Countries"" (""Name"", ""Code"", ""IATACode"", ""IsActive"", ""CreatedAt"")
-                SELECT 'Malaysia', 'MY', 'MY', TRUE, CURRENT_TIMESTAMP WHERE NOT EXISTS (SELECT 1 FROM ""Countries"" WHERE ""Code"" = 'MY');
-                INSERT INTO ""Countries"" (""Name"", ""Code"", ""IATACode"", ""IsActive"", ""CreatedAt"")
-                SELECT 'Indonesia', 'ID', 'ID', TRUE, CURRENT_TIMESTAMP WHERE NOT EXISTS (SELECT 1 FROM ""Countries"" WHERE ""Code"" = 'ID');
-                INSERT INTO ""Countries"" (""Name"", ""Code"", ""IATACode"", ""IsActive"", ""CreatedAt"")
-                SELECT 'Philippines', 'PH', 'PH', TRUE, CURRENT_TIMESTAMP WHERE NOT EXISTS (SELECT 1 FROM ""Countries"" WHERE ""Code"" = 'PH');
+                INSERT INTO ""Countries"" (""Name"", ""Code"", ""IATACode"", ""IsActive"", ""IsDeleted"", ""CreatedAt"")
+                SELECT 'United Arab Emirates', 'AE', 'AE', TRUE, FALSE, CURRENT_TIMESTAMP WHERE NOT EXISTS (SELECT 1 FROM ""Countries"" WHERE ""Code"" = 'AE');
+                INSERT INTO ""Countries"" (""Name"", ""Code"", ""IATACode"", ""IsActive"", ""IsDeleted"", ""CreatedAt"")
+                SELECT 'Saudi Arabia', 'SA', 'SA', TRUE, FALSE, CURRENT_TIMESTAMP WHERE NOT EXISTS (SELECT 1 FROM ""Countries"" WHERE ""Code"" = 'SA');
+                INSERT INTO ""Countries"" (""Name"", ""Code"", ""IATACode"", ""IsActive"", ""IsDeleted"", ""CreatedAt"")
+                SELECT 'Qatar', 'QA', 'QA', TRUE, FALSE, CURRENT_TIMESTAMP WHERE NOT EXISTS (SELECT 1 FROM ""Countries"" WHERE ""Code"" = 'QA');
+                INSERT INTO ""Countries"" (""Name"", ""Code"", ""IATACode"", ""IsActive"", ""IsDeleted"", ""CreatedAt"")
+                SELECT 'Kuwait', 'KW', 'KW', TRUE, FALSE, CURRENT_TIMESTAMP WHERE NOT EXISTS (SELECT 1 FROM ""Countries"" WHERE ""Code"" = 'KW');
+                INSERT INTO ""Countries"" (""Name"", ""Code"", ""IATACode"", ""IsActive"", ""IsDeleted"", ""CreatedAt"")
+                SELECT 'Bahrain', 'BH', 'BH', TRUE, FALSE, CURRENT_TIMESTAMP WHERE NOT EXISTS (SELECT 1 FROM ""Countries"" WHERE ""Code"" = 'BH');
+                INSERT INTO ""Countries"" (""Name"", ""Code"", ""IATACode"", ""IsActive"", ""IsDeleted"", ""CreatedAt"")
+                SELECT 'Oman', 'OM', 'OM', TRUE, FALSE, CURRENT_TIMESTAMP WHERE NOT EXISTS (SELECT 1 FROM ""Countries"" WHERE ""Code"" = 'OM');
+                INSERT INTO ""Countries"" (""Name"", ""Code"", ""IATACode"", ""IsActive"", ""IsDeleted"", ""CreatedAt"")
+                SELECT 'Jordan', 'JO', 'JO', TRUE, FALSE, CURRENT_TIMESTAMP WHERE NOT EXISTS (SELECT 1 FROM ""Countries"" WHERE ""Code"" = 'JO');
+                INSERT INTO ""Countries"" (""Name"", ""Code"", ""IATACode"", ""IsActive"", ""IsDeleted"", ""CreatedAt"")
+                SELECT 'India', 'IN', 'IN', TRUE, FALSE, CURRENT_TIMESTAMP WHERE NOT EXISTS (SELECT 1 FROM ""Countries"" WHERE ""Code"" = 'IN');
+                INSERT INTO ""Countries"" (""Name"", ""Code"", ""IATACode"", ""IsActive"", ""IsDeleted"", ""CreatedAt"")
+                SELECT 'Pakistan', 'PK', 'PK', TRUE, FALSE, CURRENT_TIMESTAMP WHERE NOT EXISTS (SELECT 1 FROM ""Countries"" WHERE ""Code"" = 'PK');
+                INSERT INTO ""Countries"" (""Name"", ""Code"", ""IATACode"", ""IsActive"", ""IsDeleted"", ""CreatedAt"")
+                SELECT 'Bangladesh', 'BD', 'BD', TRUE, FALSE, CURRENT_TIMESTAMP WHERE NOT EXISTS (SELECT 1 FROM ""Countries"" WHERE ""Code"" = 'BD');
+                INSERT INTO ""Countries"" (""Name"", ""Code"", ""IATACode"", ""IsActive"", ""IsDeleted"", ""CreatedAt"")
+                SELECT 'Malaysia', 'MY', 'MY', TRUE, FALSE, CURRENT_TIMESTAMP WHERE NOT EXISTS (SELECT 1 FROM ""Countries"" WHERE ""Code"" = 'MY');
+                INSERT INTO ""Countries"" (""Name"", ""Code"", ""IATACode"", ""IsActive"", ""IsDeleted"", ""CreatedAt"")
+                SELECT 'Indonesia', 'ID', 'ID', TRUE, FALSE, CURRENT_TIMESTAMP WHERE NOT EXISTS (SELECT 1 FROM ""Countries"" WHERE ""Code"" = 'ID');
+                INSERT INTO ""Countries"" (""Name"", ""Code"", ""IATACode"", ""IsActive"", ""IsDeleted"", ""CreatedAt"")
+                SELECT 'Philippines', 'PH', 'PH', TRUE, FALSE, CURRENT_TIMESTAMP WHERE NOT EXISTS (SELECT 1 FROM ""Countries"" WHERE ""Code"" = 'PH');
             ", stoppingToken);
 
             // Seed States - UAE
             await dbContext.Database.ExecuteSqlRawAsync(@"
-                INSERT INTO ""States"" (""Name"", ""Code"", ""CountryId"", ""IsActive"", ""CreatedAt"")
-                SELECT 'Dubai', 'DXB', (SELECT ""Id"" FROM ""Countries"" WHERE ""Code"" = 'AE'), TRUE, CURRENT_TIMESTAMP 
+                INSERT INTO ""States"" (""Name"", ""Code"", ""CountryId"", ""IsActive"", ""IsDeleted"", ""CreatedAt"")
+                SELECT 'Dubai', 'DXB', (SELECT ""Id"" FROM ""Countries"" WHERE ""Code"" = 'AE'), TRUE, FALSE, CURRENT_TIMESTAMP 
                 WHERE NOT EXISTS (SELECT 1 FROM ""States"" WHERE ""Code"" = 'DXB' AND ""CountryId"" = (SELECT ""Id"" FROM ""Countries"" WHERE ""Code"" = 'AE'));
-                INSERT INTO ""States"" (""Name"", ""Code"", ""CountryId"", ""IsActive"", ""CreatedAt"")
-                SELECT 'Abu Dhabi', 'AUH', (SELECT ""Id"" FROM ""Countries"" WHERE ""Code"" = 'AE'), TRUE, CURRENT_TIMESTAMP 
+                INSERT INTO ""States"" (""Name"", ""Code"", ""CountryId"", ""IsActive"", ""IsDeleted"", ""CreatedAt"")
+                SELECT 'Abu Dhabi', 'AUH', (SELECT ""Id"" FROM ""Countries"" WHERE ""Code"" = 'AE'), TRUE, FALSE, CURRENT_TIMESTAMP 
                 WHERE NOT EXISTS (SELECT 1 FROM ""States"" WHERE ""Code"" = 'AUH' AND ""CountryId"" = (SELECT ""Id"" FROM ""Countries"" WHERE ""Code"" = 'AE'));
-                INSERT INTO ""States"" (""Name"", ""Code"", ""CountryId"", ""IsActive"", ""CreatedAt"")
-                SELECT 'Sharjah', 'SHJ', (SELECT ""Id"" FROM ""Countries"" WHERE ""Code"" = 'AE'), TRUE, CURRENT_TIMESTAMP 
+                INSERT INTO ""States"" (""Name"", ""Code"", ""CountryId"", ""IsActive"", ""IsDeleted"", ""CreatedAt"")
+                SELECT 'Sharjah', 'SHJ', (SELECT ""Id"" FROM ""Countries"" WHERE ""Code"" = 'AE'), TRUE, FALSE, CURRENT_TIMESTAMP 
                 WHERE NOT EXISTS (SELECT 1 FROM ""States"" WHERE ""Code"" = 'SHJ' AND ""CountryId"" = (SELECT ""Id"" FROM ""Countries"" WHERE ""Code"" = 'AE'));
-                INSERT INTO ""States"" (""Name"", ""Code"", ""CountryId"", ""IsActive"", ""CreatedAt"")
-                SELECT 'Ajman', 'AJM', (SELECT ""Id"" FROM ""Countries"" WHERE ""Code"" = 'AE'), TRUE, CURRENT_TIMESTAMP 
+                INSERT INTO ""States"" (""Name"", ""Code"", ""CountryId"", ""IsActive"", ""IsDeleted"", ""CreatedAt"")
+                SELECT 'Ajman', 'AJM', (SELECT ""Id"" FROM ""Countries"" WHERE ""Code"" = 'AE'), TRUE, FALSE, CURRENT_TIMESTAMP 
                 WHERE NOT EXISTS (SELECT 1 FROM ""States"" WHERE ""Code"" = 'AJM' AND ""CountryId"" = (SELECT ""Id"" FROM ""Countries"" WHERE ""Code"" = 'AE'));
-                INSERT INTO ""States"" (""Name"", ""Code"", ""CountryId"", ""IsActive"", ""CreatedAt"")
-                SELECT 'Fujairah', 'FUJ', (SELECT ""Id"" FROM ""Countries"" WHERE ""Code"" = 'AE'), TRUE, CURRENT_TIMESTAMP 
+                INSERT INTO ""States"" (""Name"", ""Code"", ""CountryId"", ""IsActive"", ""IsDeleted"", ""CreatedAt"")
+                SELECT 'Fujairah', 'FUJ', (SELECT ""Id"" FROM ""Countries"" WHERE ""Code"" = 'AE'), TRUE, FALSE, CURRENT_TIMESTAMP 
                 WHERE NOT EXISTS (SELECT 1 FROM ""States"" WHERE ""Code"" = 'FUJ' AND ""CountryId"" = (SELECT ""Id"" FROM ""Countries"" WHERE ""Code"" = 'AE'));
-                INSERT INTO ""States"" (""Name"", ""Code"", ""CountryId"", ""IsActive"", ""CreatedAt"")
-                SELECT 'Ras Al Khaimah', 'RAK', (SELECT ""Id"" FROM ""Countries"" WHERE ""Code"" = 'AE'), TRUE, CURRENT_TIMESTAMP 
+                INSERT INTO ""States"" (""Name"", ""Code"", ""CountryId"", ""IsActive"", ""IsDeleted"", ""CreatedAt"")
+                SELECT 'Ras Al Khaimah', 'RAK', (SELECT ""Id"" FROM ""Countries"" WHERE ""Code"" = 'AE'), TRUE, FALSE, CURRENT_TIMESTAMP 
                 WHERE NOT EXISTS (SELECT 1 FROM ""States"" WHERE ""Code"" = 'RAK' AND ""CountryId"" = (SELECT ""Id"" FROM ""Countries"" WHERE ""Code"" = 'AE'));
-                INSERT INTO ""States"" (""Name"", ""Code"", ""CountryId"", ""IsActive"", ""CreatedAt"")
-                SELECT 'Umm Al Quwain', 'UAQ', (SELECT ""Id"" FROM ""Countries"" WHERE ""Code"" = 'AE'), TRUE, CURRENT_TIMESTAMP 
+                INSERT INTO ""States"" (""Name"", ""Code"", ""CountryId"", ""IsActive"", ""IsDeleted"", ""CreatedAt"")
+                SELECT 'Umm Al Quwain', 'UAQ', (SELECT ""Id"" FROM ""Countries"" WHERE ""Code"" = 'AE'), TRUE, FALSE, CURRENT_TIMESTAMP 
                 WHERE NOT EXISTS (SELECT 1 FROM ""States"" WHERE ""Code"" = 'UAQ' AND ""CountryId"" = (SELECT ""Id"" FROM ""Countries"" WHERE ""Code"" = 'AE'));
             ", stoppingToken);
 
             // Seed States - Saudi Arabia
             await dbContext.Database.ExecuteSqlRawAsync(@"
-                INSERT INTO ""States"" (""Name"", ""Code"", ""CountryId"", ""IsActive"", ""CreatedAt"")
-                SELECT 'Riyadh', 'RUH', (SELECT ""Id"" FROM ""Countries"" WHERE ""Code"" = 'SA'), TRUE, CURRENT_TIMESTAMP 
+                INSERT INTO ""States"" (""Name"", ""Code"", ""CountryId"", ""IsActive"", ""IsDeleted"", ""CreatedAt"")
+                SELECT 'Riyadh', 'RUH', (SELECT ""Id"" FROM ""Countries"" WHERE ""Code"" = 'SA'), TRUE, FALSE, CURRENT_TIMESTAMP 
                 WHERE NOT EXISTS (SELECT 1 FROM ""States"" WHERE ""Code"" = 'RUH' AND ""CountryId"" = (SELECT ""Id"" FROM ""Countries"" WHERE ""Code"" = 'SA'));
-                INSERT INTO ""States"" (""Name"", ""Code"", ""CountryId"", ""IsActive"", ""CreatedAt"")
-                SELECT 'Makkah', 'MKH', (SELECT ""Id"" FROM ""Countries"" WHERE ""Code"" = 'SA'), TRUE, CURRENT_TIMESTAMP 
+                INSERT INTO ""States"" (""Name"", ""Code"", ""CountryId"", ""IsActive"", ""IsDeleted"", ""CreatedAt"")
+                SELECT 'Makkah', 'MKH', (SELECT ""Id"" FROM ""Countries"" WHERE ""Code"" = 'SA'), TRUE, FALSE, CURRENT_TIMESTAMP 
                 WHERE NOT EXISTS (SELECT 1 FROM ""States"" WHERE ""Code"" = 'MKH' AND ""CountryId"" = (SELECT ""Id"" FROM ""Countries"" WHERE ""Code"" = 'SA'));
-                INSERT INTO ""States"" (""Name"", ""Code"", ""CountryId"", ""IsActive"", ""CreatedAt"")
-                SELECT 'Madinah', 'MDN', (SELECT ""Id"" FROM ""Countries"" WHERE ""Code"" = 'SA'), TRUE, CURRENT_TIMESTAMP 
+                INSERT INTO ""States"" (""Name"", ""Code"", ""CountryId"", ""IsActive"", ""IsDeleted"", ""CreatedAt"")
+                SELECT 'Madinah', 'MDN', (SELECT ""Id"" FROM ""Countries"" WHERE ""Code"" = 'SA'), TRUE, FALSE, CURRENT_TIMESTAMP 
                 WHERE NOT EXISTS (SELECT 1 FROM ""States"" WHERE ""Code"" = 'MDN' AND ""CountryId"" = (SELECT ""Id"" FROM ""Countries"" WHERE ""Code"" = 'SA'));
-                INSERT INTO ""States"" (""Name"", ""Code"", ""CountryId"", ""IsActive"", ""CreatedAt"")
-                SELECT 'Eastern Province', 'EP', (SELECT ""Id"" FROM ""Countries"" WHERE ""Code"" = 'SA'), TRUE, CURRENT_TIMESTAMP 
+                INSERT INTO ""States"" (""Name"", ""Code"", ""CountryId"", ""IsActive"", ""IsDeleted"", ""CreatedAt"")
+                SELECT 'Eastern Province', 'EP', (SELECT ""Id"" FROM ""Countries"" WHERE ""Code"" = 'SA'), TRUE, FALSE, CURRENT_TIMESTAMP 
                 WHERE NOT EXISTS (SELECT 1 FROM ""States"" WHERE ""Code"" = 'EP' AND ""CountryId"" = (SELECT ""Id"" FROM ""Countries"" WHERE ""Code"" = 'SA'));
-                INSERT INTO ""States"" (""Name"", ""Code"", ""CountryId"", ""IsActive"", ""CreatedAt"")
-                SELECT 'Asir', 'ASR', (SELECT ""Id"" FROM ""Countries"" WHERE ""Code"" = 'SA'), TRUE, CURRENT_TIMESTAMP 
+                INSERT INTO ""States"" (""Name"", ""Code"", ""CountryId"", ""IsActive"", ""IsDeleted"", ""CreatedAt"")
+                SELECT 'Asir', 'ASR', (SELECT ""Id"" FROM ""Countries"" WHERE ""Code"" = 'SA'), TRUE, FALSE, CURRENT_TIMESTAMP 
                 WHERE NOT EXISTS (SELECT 1 FROM ""States"" WHERE ""Code"" = 'ASR' AND ""CountryId"" = (SELECT ""Id"" FROM ""Countries"" WHERE ""Code"" = 'SA'));
             ", stoppingToken);
 
             // Seed States - Qatar, Kuwait, Bahrain
             await dbContext.Database.ExecuteSqlRawAsync(@"
-                INSERT INTO ""States"" (""Name"", ""Code"", ""CountryId"", ""IsActive"", ""CreatedAt"")
-                SELECT 'Doha', 'DOH', (SELECT ""Id"" FROM ""Countries"" WHERE ""Code"" = 'QA'), TRUE, CURRENT_TIMESTAMP 
+                INSERT INTO ""States"" (""Name"", ""Code"", ""CountryId"", ""IsActive"", ""IsDeleted"", ""CreatedAt"")
+                SELECT 'Doha', 'DOH', (SELECT ""Id"" FROM ""Countries"" WHERE ""Code"" = 'QA'), TRUE, FALSE, CURRENT_TIMESTAMP 
                 WHERE NOT EXISTS (SELECT 1 FROM ""States"" WHERE ""Code"" = 'DOH' AND ""CountryId"" = (SELECT ""Id"" FROM ""Countries"" WHERE ""Code"" = 'QA'));
-                INSERT INTO ""States"" (""Name"", ""Code"", ""CountryId"", ""IsActive"", ""CreatedAt"")
-                SELECT 'Al Rayyan', 'RYN', (SELECT ""Id"" FROM ""Countries"" WHERE ""Code"" = 'QA'), TRUE, CURRENT_TIMESTAMP 
+                INSERT INTO ""States"" (""Name"", ""Code"", ""CountryId"", ""IsActive"", ""IsDeleted"", ""CreatedAt"")
+                SELECT 'Al Rayyan', 'RYN', (SELECT ""Id"" FROM ""Countries"" WHERE ""Code"" = 'QA'), TRUE, FALSE, CURRENT_TIMESTAMP 
                 WHERE NOT EXISTS (SELECT 1 FROM ""States"" WHERE ""Code"" = 'RYN' AND ""CountryId"" = (SELECT ""Id"" FROM ""Countries"" WHERE ""Code"" = 'QA'));
-                INSERT INTO ""States"" (""Name"", ""Code"", ""CountryId"", ""IsActive"", ""CreatedAt"")
-                SELECT 'Al Wakrah', 'WKR', (SELECT ""Id"" FROM ""Countries"" WHERE ""Code"" = 'QA'), TRUE, CURRENT_TIMESTAMP 
+                INSERT INTO ""States"" (""Name"", ""Code"", ""CountryId"", ""IsActive"", ""IsDeleted"", ""CreatedAt"")
+                SELECT 'Al Wakrah', 'WKR', (SELECT ""Id"" FROM ""Countries"" WHERE ""Code"" = 'QA'), TRUE, FALSE, CURRENT_TIMESTAMP 
                 WHERE NOT EXISTS (SELECT 1 FROM ""States"" WHERE ""Code"" = 'WKR' AND ""CountryId"" = (SELECT ""Id"" FROM ""Countries"" WHERE ""Code"" = 'QA'));
-                INSERT INTO ""States"" (""Name"", ""Code"", ""CountryId"", ""IsActive"", ""CreatedAt"")
-                SELECT 'Al Asimah', 'ASM', (SELECT ""Id"" FROM ""Countries"" WHERE ""Code"" = 'KW'), TRUE, CURRENT_TIMESTAMP 
+                INSERT INTO ""States"" (""Name"", ""Code"", ""CountryId"", ""IsActive"", ""IsDeleted"", ""CreatedAt"")
+                SELECT 'Al Asimah', 'ASM', (SELECT ""Id"" FROM ""Countries"" WHERE ""Code"" = 'KW'), TRUE, FALSE, CURRENT_TIMESTAMP 
                 WHERE NOT EXISTS (SELECT 1 FROM ""States"" WHERE ""Code"" = 'ASM' AND ""CountryId"" = (SELECT ""Id"" FROM ""Countries"" WHERE ""Code"" = 'KW'));
-                INSERT INTO ""States"" (""Name"", ""Code"", ""CountryId"", ""IsActive"", ""CreatedAt"")
-                SELECT 'Hawalli', 'HWL', (SELECT ""Id"" FROM ""Countries"" WHERE ""Code"" = 'KW'), TRUE, CURRENT_TIMESTAMP 
+                INSERT INTO ""States"" (""Name"", ""Code"", ""CountryId"", ""IsActive"", ""IsDeleted"", ""CreatedAt"")
+                SELECT 'Hawalli', 'HWL', (SELECT ""Id"" FROM ""Countries"" WHERE ""Code"" = 'KW'), TRUE, FALSE, CURRENT_TIMESTAMP 
                 WHERE NOT EXISTS (SELECT 1 FROM ""States"" WHERE ""Code"" = 'HWL' AND ""CountryId"" = (SELECT ""Id"" FROM ""Countries"" WHERE ""Code"" = 'KW'));
-                INSERT INTO ""States"" (""Name"", ""Code"", ""CountryId"", ""IsActive"", ""CreatedAt"")
-                SELECT 'Farwaniya', 'FRW', (SELECT ""Id"" FROM ""Countries"" WHERE ""Code"" = 'KW'), TRUE, CURRENT_TIMESTAMP 
+                INSERT INTO ""States"" (""Name"", ""Code"", ""CountryId"", ""IsActive"", ""IsDeleted"", ""CreatedAt"")
+                SELECT 'Farwaniya', 'FRW', (SELECT ""Id"" FROM ""Countries"" WHERE ""Code"" = 'KW'), TRUE, FALSE, CURRENT_TIMESTAMP 
                 WHERE NOT EXISTS (SELECT 1 FROM ""States"" WHERE ""Code"" = 'FRW' AND ""CountryId"" = (SELECT ""Id"" FROM ""Countries"" WHERE ""Code"" = 'KW'));
-                INSERT INTO ""States"" (""Name"", ""Code"", ""CountryId"", ""IsActive"", ""CreatedAt"")
-                SELECT 'Capital', 'CAP', (SELECT ""Id"" FROM ""Countries"" WHERE ""Code"" = 'BH'), TRUE, CURRENT_TIMESTAMP 
+                INSERT INTO ""States"" (""Name"", ""Code"", ""CountryId"", ""IsActive"", ""IsDeleted"", ""CreatedAt"")
+                SELECT 'Capital', 'CAP', (SELECT ""Id"" FROM ""Countries"" WHERE ""Code"" = 'BH'), TRUE, FALSE, CURRENT_TIMESTAMP 
                 WHERE NOT EXISTS (SELECT 1 FROM ""States"" WHERE ""Code"" = 'CAP' AND ""CountryId"" = (SELECT ""Id"" FROM ""Countries"" WHERE ""Code"" = 'BH'));
-                INSERT INTO ""States"" (""Name"", ""Code"", ""CountryId"", ""IsActive"", ""CreatedAt"")
-                SELECT 'Muharraq', 'MUH', (SELECT ""Id"" FROM ""Countries"" WHERE ""Code"" = 'BH'), TRUE, CURRENT_TIMESTAMP 
+                INSERT INTO ""States"" (""Name"", ""Code"", ""CountryId"", ""IsActive"", ""IsDeleted"", ""CreatedAt"")
+                SELECT 'Muharraq', 'MUH', (SELECT ""Id"" FROM ""Countries"" WHERE ""Code"" = 'BH'), TRUE, FALSE, CURRENT_TIMESTAMP 
                 WHERE NOT EXISTS (SELECT 1 FROM ""States"" WHERE ""Code"" = 'MUH' AND ""CountryId"" = (SELECT ""Id"" FROM ""Countries"" WHERE ""Code"" = 'BH'));
-                INSERT INTO ""States"" (""Name"", ""Code"", ""CountryId"", ""IsActive"", ""CreatedAt"")
-                SELECT 'Northern', 'NOR', (SELECT ""Id"" FROM ""Countries"" WHERE ""Code"" = 'BH'), TRUE, CURRENT_TIMESTAMP 
+                INSERT INTO ""States"" (""Name"", ""Code"", ""CountryId"", ""IsActive"", ""IsDeleted"", ""CreatedAt"")
+                SELECT 'Northern', 'NOR', (SELECT ""Id"" FROM ""Countries"" WHERE ""Code"" = 'BH'), TRUE, FALSE, CURRENT_TIMESTAMP 
                 WHERE NOT EXISTS (SELECT 1 FROM ""States"" WHERE ""Code"" = 'NOR' AND ""CountryId"" = (SELECT ""Id"" FROM ""Countries"" WHERE ""Code"" = 'BH'));
             ", stoppingToken);
 
             // Seed States - Oman, Jordan
             await dbContext.Database.ExecuteSqlRawAsync(@"
-                INSERT INTO ""States"" (""Name"", ""Code"", ""CountryId"", ""IsActive"", ""CreatedAt"")
-                SELECT 'Muscat', 'MSC', (SELECT ""Id"" FROM ""Countries"" WHERE ""Code"" = 'OM'), TRUE, CURRENT_TIMESTAMP 
+                INSERT INTO ""States"" (""Name"", ""Code"", ""CountryId"", ""IsActive"", ""IsDeleted"", ""CreatedAt"")
+                SELECT 'Muscat', 'MSC', (SELECT ""Id"" FROM ""Countries"" WHERE ""Code"" = 'OM'), TRUE, FALSE, CURRENT_TIMESTAMP 
                 WHERE NOT EXISTS (SELECT 1 FROM ""States"" WHERE ""Code"" = 'MSC' AND ""CountryId"" = (SELECT ""Id"" FROM ""Countries"" WHERE ""Code"" = 'OM'));
-                INSERT INTO ""States"" (""Name"", ""Code"", ""CountryId"", ""IsActive"", ""CreatedAt"")
-                SELECT 'Dhofar', 'DHF', (SELECT ""Id"" FROM ""Countries"" WHERE ""Code"" = 'OM'), TRUE, CURRENT_TIMESTAMP 
+                INSERT INTO ""States"" (""Name"", ""Code"", ""CountryId"", ""IsActive"", ""IsDeleted"", ""CreatedAt"")
+                SELECT 'Dhofar', 'DHF', (SELECT ""Id"" FROM ""Countries"" WHERE ""Code"" = 'OM'), TRUE, FALSE, CURRENT_TIMESTAMP 
                 WHERE NOT EXISTS (SELECT 1 FROM ""States"" WHERE ""Code"" = 'DHF' AND ""CountryId"" = (SELECT ""Id"" FROM ""Countries"" WHERE ""Code"" = 'OM'));
-                INSERT INTO ""States"" (""Name"", ""Code"", ""CountryId"", ""IsActive"", ""CreatedAt"")
-                SELECT 'North Al Batinah', 'NAB', (SELECT ""Id"" FROM ""Countries"" WHERE ""Code"" = 'OM'), TRUE, CURRENT_TIMESTAMP 
+                INSERT INTO ""States"" (""Name"", ""Code"", ""CountryId"", ""IsActive"", ""IsDeleted"", ""CreatedAt"")
+                SELECT 'North Al Batinah', 'NAB', (SELECT ""Id"" FROM ""Countries"" WHERE ""Code"" = 'OM'), TRUE, FALSE, CURRENT_TIMESTAMP 
                 WHERE NOT EXISTS (SELECT 1 FROM ""States"" WHERE ""Code"" = 'NAB' AND ""CountryId"" = (SELECT ""Id"" FROM ""Countries"" WHERE ""Code"" = 'OM'));
-                INSERT INTO ""States"" (""Name"", ""Code"", ""CountryId"", ""IsActive"", ""CreatedAt"")
-                SELECT 'Amman', 'AMN', (SELECT ""Id"" FROM ""Countries"" WHERE ""Code"" = 'JO'), TRUE, CURRENT_TIMESTAMP 
+                INSERT INTO ""States"" (""Name"", ""Code"", ""CountryId"", ""IsActive"", ""IsDeleted"", ""CreatedAt"")
+                SELECT 'Amman', 'AMN', (SELECT ""Id"" FROM ""Countries"" WHERE ""Code"" = 'JO'), TRUE, FALSE, CURRENT_TIMESTAMP 
                 WHERE NOT EXISTS (SELECT 1 FROM ""States"" WHERE ""Code"" = 'AMN' AND ""CountryId"" = (SELECT ""Id"" FROM ""Countries"" WHERE ""Code"" = 'JO'));
-                INSERT INTO ""States"" (""Name"", ""Code"", ""CountryId"", ""IsActive"", ""CreatedAt"")
-                SELECT 'Irbid', 'IRB', (SELECT ""Id"" FROM ""Countries"" WHERE ""Code"" = 'JO'), TRUE, CURRENT_TIMESTAMP 
+                INSERT INTO ""States"" (""Name"", ""Code"", ""CountryId"", ""IsActive"", ""IsDeleted"", ""CreatedAt"")
+                SELECT 'Irbid', 'IRB', (SELECT ""Id"" FROM ""Countries"" WHERE ""Code"" = 'JO'), TRUE, FALSE, CURRENT_TIMESTAMP 
                 WHERE NOT EXISTS (SELECT 1 FROM ""States"" WHERE ""Code"" = 'IRB' AND ""CountryId"" = (SELECT ""Id"" FROM ""Countries"" WHERE ""Code"" = 'JO'));
-                INSERT INTO ""States"" (""Name"", ""Code"", ""CountryId"", ""IsActive"", ""CreatedAt"")
-                SELECT 'Zarqa', 'ZRQ', (SELECT ""Id"" FROM ""Countries"" WHERE ""Code"" = 'JO'), TRUE, CURRENT_TIMESTAMP 
+                INSERT INTO ""States"" (""Name"", ""Code"", ""CountryId"", ""IsActive"", ""IsDeleted"", ""CreatedAt"")
+                SELECT 'Zarqa', 'ZRQ', (SELECT ""Id"" FROM ""Countries"" WHERE ""Code"" = 'JO'), TRUE, FALSE, CURRENT_TIMESTAMP 
                 WHERE NOT EXISTS (SELECT 1 FROM ""States"" WHERE ""Code"" = 'ZRQ' AND ""CountryId"" = (SELECT ""Id"" FROM ""Countries"" WHERE ""Code"" = 'JO'));
             ", stoppingToken);
 
             // Seed States - India
             await dbContext.Database.ExecuteSqlRawAsync(@"
-                INSERT INTO ""States"" (""Name"", ""Code"", ""CountryId"", ""IsActive"", ""CreatedAt"")
-                SELECT 'Maharashtra', 'MH', (SELECT ""Id"" FROM ""Countries"" WHERE ""Code"" = 'IN'), TRUE, CURRENT_TIMESTAMP 
+                INSERT INTO ""States"" (""Name"", ""Code"", ""CountryId"", ""IsActive"", ""IsDeleted"", ""CreatedAt"")
+                SELECT 'Maharashtra', 'MH', (SELECT ""Id"" FROM ""Countries"" WHERE ""Code"" = 'IN'), TRUE, FALSE, CURRENT_TIMESTAMP 
                 WHERE NOT EXISTS (SELECT 1 FROM ""States"" WHERE ""Code"" = 'MH' AND ""CountryId"" = (SELECT ""Id"" FROM ""Countries"" WHERE ""Code"" = 'IN'));
-                INSERT INTO ""States"" (""Name"", ""Code"", ""CountryId"", ""IsActive"", ""CreatedAt"")
-                SELECT 'Delhi', 'DL', (SELECT ""Id"" FROM ""Countries"" WHERE ""Code"" = 'IN'), TRUE, CURRENT_TIMESTAMP 
+                INSERT INTO ""States"" (""Name"", ""Code"", ""CountryId"", ""IsActive"", ""IsDeleted"", ""CreatedAt"")
+                SELECT 'Delhi', 'DL', (SELECT ""Id"" FROM ""Countries"" WHERE ""Code"" = 'IN'), TRUE, FALSE, CURRENT_TIMESTAMP 
                 WHERE NOT EXISTS (SELECT 1 FROM ""States"" WHERE ""Code"" = 'DL' AND ""CountryId"" = (SELECT ""Id"" FROM ""Countries"" WHERE ""Code"" = 'IN'));
-                INSERT INTO ""States"" (""Name"", ""Code"", ""CountryId"", ""IsActive"", ""CreatedAt"")
-                SELECT 'Karnataka', 'KA', (SELECT ""Id"" FROM ""Countries"" WHERE ""Code"" = 'IN'), TRUE, CURRENT_TIMESTAMP 
+                INSERT INTO ""States"" (""Name"", ""Code"", ""CountryId"", ""IsActive"", ""IsDeleted"", ""CreatedAt"")
+                SELECT 'Karnataka', 'KA', (SELECT ""Id"" FROM ""Countries"" WHERE ""Code"" = 'IN'), TRUE, FALSE, CURRENT_TIMESTAMP 
                 WHERE NOT EXISTS (SELECT 1 FROM ""States"" WHERE ""Code"" = 'KA' AND ""CountryId"" = (SELECT ""Id"" FROM ""Countries"" WHERE ""Code"" = 'IN'));
-                INSERT INTO ""States"" (""Name"", ""Code"", ""CountryId"", ""IsActive"", ""CreatedAt"")
-                SELECT 'Tamil Nadu', 'TN', (SELECT ""Id"" FROM ""Countries"" WHERE ""Code"" = 'IN'), TRUE, CURRENT_TIMESTAMP 
+                INSERT INTO ""States"" (""Name"", ""Code"", ""CountryId"", ""IsActive"", ""IsDeleted"", ""CreatedAt"")
+                SELECT 'Tamil Nadu', 'TN', (SELECT ""Id"" FROM ""Countries"" WHERE ""Code"" = 'IN'), TRUE, FALSE, CURRENT_TIMESTAMP 
                 WHERE NOT EXISTS (SELECT 1 FROM ""States"" WHERE ""Code"" = 'TN' AND ""CountryId"" = (SELECT ""Id"" FROM ""Countries"" WHERE ""Code"" = 'IN'));
-                INSERT INTO ""States"" (""Name"", ""Code"", ""CountryId"", ""IsActive"", ""CreatedAt"")
-                SELECT 'Gujarat', 'GJ', (SELECT ""Id"" FROM ""Countries"" WHERE ""Code"" = 'IN'), TRUE, CURRENT_TIMESTAMP 
+                INSERT INTO ""States"" (""Name"", ""Code"", ""CountryId"", ""IsActive"", ""IsDeleted"", ""CreatedAt"")
+                SELECT 'Gujarat', 'GJ', (SELECT ""Id"" FROM ""Countries"" WHERE ""Code"" = 'IN'), TRUE, FALSE, CURRENT_TIMESTAMP 
                 WHERE NOT EXISTS (SELECT 1 FROM ""States"" WHERE ""Code"" = 'GJ' AND ""CountryId"" = (SELECT ""Id"" FROM ""Countries"" WHERE ""Code"" = 'IN'));
-                INSERT INTO ""States"" (""Name"", ""Code"", ""CountryId"", ""IsActive"", ""CreatedAt"")
-                SELECT 'Kerala', 'KL', (SELECT ""Id"" FROM ""Countries"" WHERE ""Code"" = 'IN'), TRUE, CURRENT_TIMESTAMP 
+                INSERT INTO ""States"" (""Name"", ""Code"", ""CountryId"", ""IsActive"", ""IsDeleted"", ""CreatedAt"")
+                SELECT 'Kerala', 'KL', (SELECT ""Id"" FROM ""Countries"" WHERE ""Code"" = 'IN'), TRUE, FALSE, CURRENT_TIMESTAMP 
                 WHERE NOT EXISTS (SELECT 1 FROM ""States"" WHERE ""Code"" = 'KL' AND ""CountryId"" = (SELECT ""Id"" FROM ""Countries"" WHERE ""Code"" = 'IN'));
-                INSERT INTO ""States"" (""Name"", ""Code"", ""CountryId"", ""IsActive"", ""CreatedAt"")
-                SELECT 'West Bengal', 'WB', (SELECT ""Id"" FROM ""Countries"" WHERE ""Code"" = 'IN'), TRUE, CURRENT_TIMESTAMP 
+                INSERT INTO ""States"" (""Name"", ""Code"", ""CountryId"", ""IsActive"", ""IsDeleted"", ""CreatedAt"")
+                SELECT 'West Bengal', 'WB', (SELECT ""Id"" FROM ""Countries"" WHERE ""Code"" = 'IN'), TRUE, FALSE, CURRENT_TIMESTAMP 
                 WHERE NOT EXISTS (SELECT 1 FROM ""States"" WHERE ""Code"" = 'WB' AND ""CountryId"" = (SELECT ""Id"" FROM ""Countries"" WHERE ""Code"" = 'IN'));
-                INSERT INTO ""States"" (""Name"", ""Code"", ""CountryId"", ""IsActive"", ""CreatedAt"")
-                SELECT 'Uttar Pradesh', 'UP', (SELECT ""Id"" FROM ""Countries"" WHERE ""Code"" = 'IN'), TRUE, CURRENT_TIMESTAMP 
+                INSERT INTO ""States"" (""Name"", ""Code"", ""CountryId"", ""IsActive"", ""IsDeleted"", ""CreatedAt"")
+                SELECT 'Uttar Pradesh', 'UP', (SELECT ""Id"" FROM ""Countries"" WHERE ""Code"" = 'IN'), TRUE, FALSE, CURRENT_TIMESTAMP 
                 WHERE NOT EXISTS (SELECT 1 FROM ""States"" WHERE ""Code"" = 'UP' AND ""CountryId"" = (SELECT ""Id"" FROM ""Countries"" WHERE ""Code"" = 'IN'));
-                INSERT INTO ""States"" (""Name"", ""Code"", ""CountryId"", ""IsActive"", ""CreatedAt"")
-                SELECT 'Rajasthan', 'RJ', (SELECT ""Id"" FROM ""Countries"" WHERE ""Code"" = 'IN'), TRUE, CURRENT_TIMESTAMP 
+                INSERT INTO ""States"" (""Name"", ""Code"", ""CountryId"", ""IsActive"", ""IsDeleted"", ""CreatedAt"")
+                SELECT 'Rajasthan', 'RJ', (SELECT ""Id"" FROM ""Countries"" WHERE ""Code"" = 'IN'), TRUE, FALSE, CURRENT_TIMESTAMP 
                 WHERE NOT EXISTS (SELECT 1 FROM ""States"" WHERE ""Code"" = 'RJ' AND ""CountryId"" = (SELECT ""Id"" FROM ""Countries"" WHERE ""Code"" = 'IN'));
-                INSERT INTO ""States"" (""Name"", ""Code"", ""CountryId"", ""IsActive"", ""CreatedAt"")
-                SELECT 'Punjab', 'PB', (SELECT ""Id"" FROM ""Countries"" WHERE ""Code"" = 'IN'), TRUE, CURRENT_TIMESTAMP 
+                INSERT INTO ""States"" (""Name"", ""Code"", ""CountryId"", ""IsActive"", ""IsDeleted"", ""CreatedAt"")
+                SELECT 'Punjab', 'PB', (SELECT ""Id"" FROM ""Countries"" WHERE ""Code"" = 'IN'), TRUE, FALSE, CURRENT_TIMESTAMP 
                 WHERE NOT EXISTS (SELECT 1 FROM ""States"" WHERE ""Code"" = 'PB' AND ""CountryId"" = (SELECT ""Id"" FROM ""Countries"" WHERE ""Code"" = 'IN'));
-                INSERT INTO ""States"" (""Name"", ""Code"", ""CountryId"", ""IsActive"", ""CreatedAt"")
-                SELECT 'Telangana', 'TG', (SELECT ""Id"" FROM ""Countries"" WHERE ""Code"" = 'IN'), TRUE, CURRENT_TIMESTAMP 
+                INSERT INTO ""States"" (""Name"", ""Code"", ""CountryId"", ""IsActive"", ""IsDeleted"", ""CreatedAt"")
+                SELECT 'Telangana', 'TG', (SELECT ""Id"" FROM ""Countries"" WHERE ""Code"" = 'IN'), TRUE, FALSE, CURRENT_TIMESTAMP 
                 WHERE NOT EXISTS (SELECT 1 FROM ""States"" WHERE ""Code"" = 'TG' AND ""CountryId"" = (SELECT ""Id"" FROM ""Countries"" WHERE ""Code"" = 'IN'));
-                INSERT INTO ""States"" (""Name"", ""Code"", ""CountryId"", ""IsActive"", ""CreatedAt"")
-                SELECT 'Andhra Pradesh', 'AP', (SELECT ""Id"" FROM ""Countries"" WHERE ""Code"" = 'IN'), TRUE, CURRENT_TIMESTAMP 
+                INSERT INTO ""States"" (""Name"", ""Code"", ""CountryId"", ""IsActive"", ""IsDeleted"", ""CreatedAt"")
+                SELECT 'Andhra Pradesh', 'AP', (SELECT ""Id"" FROM ""Countries"" WHERE ""Code"" = 'IN'), TRUE, FALSE, CURRENT_TIMESTAMP 
                 WHERE NOT EXISTS (SELECT 1 FROM ""States"" WHERE ""Code"" = 'AP' AND ""CountryId"" = (SELECT ""Id"" FROM ""Countries"" WHERE ""Code"" = 'IN'));
             ", stoppingToken);
 
             // Seed States - Pakistan, Bangladesh
             await dbContext.Database.ExecuteSqlRawAsync(@"
-                INSERT INTO ""States"" (""Name"", ""Code"", ""CountryId"", ""IsActive"", ""CreatedAt"")
-                SELECT 'Punjab', 'PJB', (SELECT ""Id"" FROM ""Countries"" WHERE ""Code"" = 'PK'), TRUE, CURRENT_TIMESTAMP 
+                INSERT INTO ""States"" (""Name"", ""Code"", ""CountryId"", ""IsActive"", ""IsDeleted"", ""CreatedAt"")
+                SELECT 'Punjab', 'PJB', (SELECT ""Id"" FROM ""Countries"" WHERE ""Code"" = 'PK'), TRUE, FALSE, CURRENT_TIMESTAMP 
                 WHERE NOT EXISTS (SELECT 1 FROM ""States"" WHERE ""Code"" = 'PJB' AND ""CountryId"" = (SELECT ""Id"" FROM ""Countries"" WHERE ""Code"" = 'PK'));
-                INSERT INTO ""States"" (""Name"", ""Code"", ""CountryId"", ""IsActive"", ""CreatedAt"")
-                SELECT 'Sindh', 'SND', (SELECT ""Id"" FROM ""Countries"" WHERE ""Code"" = 'PK'), TRUE, CURRENT_TIMESTAMP 
+                INSERT INTO ""States"" (""Name"", ""Code"", ""CountryId"", ""IsActive"", ""IsDeleted"", ""CreatedAt"")
+                SELECT 'Sindh', 'SND', (SELECT ""Id"" FROM ""Countries"" WHERE ""Code"" = 'PK'), TRUE, FALSE, CURRENT_TIMESTAMP 
                 WHERE NOT EXISTS (SELECT 1 FROM ""States"" WHERE ""Code"" = 'SND' AND ""CountryId"" = (SELECT ""Id"" FROM ""Countries"" WHERE ""Code"" = 'PK'));
-                INSERT INTO ""States"" (""Name"", ""Code"", ""CountryId"", ""IsActive"", ""CreatedAt"")
-                SELECT 'KPK', 'KPK', (SELECT ""Id"" FROM ""Countries"" WHERE ""Code"" = 'PK'), TRUE, CURRENT_TIMESTAMP 
+                INSERT INTO ""States"" (""Name"", ""Code"", ""CountryId"", ""IsActive"", ""IsDeleted"", ""CreatedAt"")
+                SELECT 'KPK', 'KPK', (SELECT ""Id"" FROM ""Countries"" WHERE ""Code"" = 'PK'), TRUE, FALSE, CURRENT_TIMESTAMP 
                 WHERE NOT EXISTS (SELECT 1 FROM ""States"" WHERE ""Code"" = 'KPK' AND ""CountryId"" = (SELECT ""Id"" FROM ""Countries"" WHERE ""Code"" = 'PK'));
-                INSERT INTO ""States"" (""Name"", ""Code"", ""CountryId"", ""IsActive"", ""CreatedAt"")
-                SELECT 'Balochistan', 'BLN', (SELECT ""Id"" FROM ""Countries"" WHERE ""Code"" = 'PK'), TRUE, CURRENT_TIMESTAMP 
+                INSERT INTO ""States"" (""Name"", ""Code"", ""CountryId"", ""IsActive"", ""IsDeleted"", ""CreatedAt"")
+                SELECT 'Balochistan', 'BLN', (SELECT ""Id"" FROM ""Countries"" WHERE ""Code"" = 'PK'), TRUE, FALSE, CURRENT_TIMESTAMP 
                 WHERE NOT EXISTS (SELECT 1 FROM ""States"" WHERE ""Code"" = 'BLN' AND ""CountryId"" = (SELECT ""Id"" FROM ""Countries"" WHERE ""Code"" = 'PK'));
-                INSERT INTO ""States"" (""Name"", ""Code"", ""CountryId"", ""IsActive"", ""CreatedAt"")
-                SELECT 'Islamabad', 'ISB', (SELECT ""Id"" FROM ""Countries"" WHERE ""Code"" = 'PK'), TRUE, CURRENT_TIMESTAMP 
+                INSERT INTO ""States"" (""Name"", ""Code"", ""CountryId"", ""IsActive"", ""IsDeleted"", ""CreatedAt"")
+                SELECT 'Islamabad', 'ISB', (SELECT ""Id"" FROM ""Countries"" WHERE ""Code"" = 'PK'), TRUE, FALSE, CURRENT_TIMESTAMP 
                 WHERE NOT EXISTS (SELECT 1 FROM ""States"" WHERE ""Code"" = 'ISB' AND ""CountryId"" = (SELECT ""Id"" FROM ""Countries"" WHERE ""Code"" = 'PK'));
-                INSERT INTO ""States"" (""Name"", ""Code"", ""CountryId"", ""IsActive"", ""CreatedAt"")
-                SELECT 'Dhaka', 'DHK', (SELECT ""Id"" FROM ""Countries"" WHERE ""Code"" = 'BD'), TRUE, CURRENT_TIMESTAMP 
+                INSERT INTO ""States"" (""Name"", ""Code"", ""CountryId"", ""IsActive"", ""IsDeleted"", ""CreatedAt"")
+                SELECT 'Dhaka', 'DHK', (SELECT ""Id"" FROM ""Countries"" WHERE ""Code"" = 'BD'), TRUE, FALSE, CURRENT_TIMESTAMP 
                 WHERE NOT EXISTS (SELECT 1 FROM ""States"" WHERE ""Code"" = 'DHK' AND ""CountryId"" = (SELECT ""Id"" FROM ""Countries"" WHERE ""Code"" = 'BD'));
-                INSERT INTO ""States"" (""Name"", ""Code"", ""CountryId"", ""IsActive"", ""CreatedAt"")
-                SELECT 'Chittagong', 'CTG', (SELECT ""Id"" FROM ""Countries"" WHERE ""Code"" = 'BD'), TRUE, CURRENT_TIMESTAMP 
+                INSERT INTO ""States"" (""Name"", ""Code"", ""CountryId"", ""IsActive"", ""IsDeleted"", ""CreatedAt"")
+                SELECT 'Chittagong', 'CTG', (SELECT ""Id"" FROM ""Countries"" WHERE ""Code"" = 'BD'), TRUE, FALSE, CURRENT_TIMESTAMP 
                 WHERE NOT EXISTS (SELECT 1 FROM ""States"" WHERE ""Code"" = 'CTG' AND ""CountryId"" = (SELECT ""Id"" FROM ""Countries"" WHERE ""Code"" = 'BD'));
-                INSERT INTO ""States"" (""Name"", ""Code"", ""CountryId"", ""IsActive"", ""CreatedAt"")
-                SELECT 'Rajshahi', 'RAJ', (SELECT ""Id"" FROM ""Countries"" WHERE ""Code"" = 'BD'), TRUE, CURRENT_TIMESTAMP 
+                INSERT INTO ""States"" (""Name"", ""Code"", ""CountryId"", ""IsActive"", ""IsDeleted"", ""CreatedAt"")
+                SELECT 'Rajshahi', 'RAJ', (SELECT ""Id"" FROM ""Countries"" WHERE ""Code"" = 'BD'), TRUE, FALSE, CURRENT_TIMESTAMP 
                 WHERE NOT EXISTS (SELECT 1 FROM ""States"" WHERE ""Code"" = 'RAJ' AND ""CountryId"" = (SELECT ""Id"" FROM ""Countries"" WHERE ""Code"" = 'BD'));
-                INSERT INTO ""States"" (""Name"", ""Code"", ""CountryId"", ""IsActive"", ""CreatedAt"")
-                SELECT 'Khulna', 'KHU', (SELECT ""Id"" FROM ""Countries"" WHERE ""Code"" = 'BD'), TRUE, CURRENT_TIMESTAMP 
+                INSERT INTO ""States"" (""Name"", ""Code"", ""CountryId"", ""IsActive"", ""IsDeleted"", ""CreatedAt"")
+                SELECT 'Khulna', 'KHU', (SELECT ""Id"" FROM ""Countries"" WHERE ""Code"" = 'BD'), TRUE, FALSE, CURRENT_TIMESTAMP 
                 WHERE NOT EXISTS (SELECT 1 FROM ""States"" WHERE ""Code"" = 'KHU' AND ""CountryId"" = (SELECT ""Id"" FROM ""Countries"" WHERE ""Code"" = 'BD'));
-                INSERT INTO ""States"" (""Name"", ""Code"", ""CountryId"", ""IsActive"", ""CreatedAt"")
-                SELECT 'Sylhet', 'SYL', (SELECT ""Id"" FROM ""Countries"" WHERE ""Code"" = 'BD'), TRUE, CURRENT_TIMESTAMP 
+                INSERT INTO ""States"" (""Name"", ""Code"", ""CountryId"", ""IsActive"", ""IsDeleted"", ""CreatedAt"")
+                SELECT 'Sylhet', 'SYL', (SELECT ""Id"" FROM ""Countries"" WHERE ""Code"" = 'BD'), TRUE, FALSE, CURRENT_TIMESTAMP 
                 WHERE NOT EXISTS (SELECT 1 FROM ""States"" WHERE ""Code"" = 'SYL' AND ""CountryId"" = (SELECT ""Id"" FROM ""Countries"" WHERE ""Code"" = 'BD'));
             ", stoppingToken);
 
             // Seed States - Malaysia, Indonesia, Philippines
             await dbContext.Database.ExecuteSqlRawAsync(@"
-                INSERT INTO ""States"" (""Name"", ""Code"", ""CountryId"", ""IsActive"", ""CreatedAt"")
-                SELECT 'Selangor', 'SEL', (SELECT ""Id"" FROM ""Countries"" WHERE ""Code"" = 'MY'), TRUE, CURRENT_TIMESTAMP 
+                INSERT INTO ""States"" (""Name"", ""Code"", ""CountryId"", ""IsActive"", ""IsDeleted"", ""CreatedAt"")
+                SELECT 'Selangor', 'SEL', (SELECT ""Id"" FROM ""Countries"" WHERE ""Code"" = 'MY'), TRUE, FALSE, CURRENT_TIMESTAMP 
                 WHERE NOT EXISTS (SELECT 1 FROM ""States"" WHERE ""Code"" = 'SEL' AND ""CountryId"" = (SELECT ""Id"" FROM ""Countries"" WHERE ""Code"" = 'MY'));
-                INSERT INTO ""States"" (""Name"", ""Code"", ""CountryId"", ""IsActive"", ""CreatedAt"")
-                SELECT 'Kuala Lumpur', 'KL', (SELECT ""Id"" FROM ""Countries"" WHERE ""Code"" = 'MY'), TRUE, CURRENT_TIMESTAMP 
+                INSERT INTO ""States"" (""Name"", ""Code"", ""CountryId"", ""IsActive"", ""IsDeleted"", ""CreatedAt"")
+                SELECT 'Kuala Lumpur', 'KL', (SELECT ""Id"" FROM ""Countries"" WHERE ""Code"" = 'MY'), TRUE, FALSE, CURRENT_TIMESTAMP 
                 WHERE NOT EXISTS (SELECT 1 FROM ""States"" WHERE ""Code"" = 'KL' AND ""CountryId"" = (SELECT ""Id"" FROM ""Countries"" WHERE ""Code"" = 'MY'));
-                INSERT INTO ""States"" (""Name"", ""Code"", ""CountryId"", ""IsActive"", ""CreatedAt"")
-                SELECT 'Penang', 'PNG', (SELECT ""Id"" FROM ""Countries"" WHERE ""Code"" = 'MY'), TRUE, CURRENT_TIMESTAMP 
+                INSERT INTO ""States"" (""Name"", ""Code"", ""CountryId"", ""IsActive"", ""IsDeleted"", ""CreatedAt"")
+                SELECT 'Penang', 'PNG', (SELECT ""Id"" FROM ""Countries"" WHERE ""Code"" = 'MY'), TRUE, FALSE, CURRENT_TIMESTAMP 
                 WHERE NOT EXISTS (SELECT 1 FROM ""States"" WHERE ""Code"" = 'PNG' AND ""CountryId"" = (SELECT ""Id"" FROM ""Countries"" WHERE ""Code"" = 'MY'));
-                INSERT INTO ""States"" (""Name"", ""Code"", ""CountryId"", ""IsActive"", ""CreatedAt"")
-                SELECT 'Johor', 'JHR', (SELECT ""Id"" FROM ""Countries"" WHERE ""Code"" = 'MY'), TRUE, CURRENT_TIMESTAMP 
+                INSERT INTO ""States"" (""Name"", ""Code"", ""CountryId"", ""IsActive"", ""IsDeleted"", ""CreatedAt"")
+                SELECT 'Johor', 'JHR', (SELECT ""Id"" FROM ""Countries"" WHERE ""Code"" = 'MY'), TRUE, FALSE, CURRENT_TIMESTAMP 
                 WHERE NOT EXISTS (SELECT 1 FROM ""States"" WHERE ""Code"" = 'JHR' AND ""CountryId"" = (SELECT ""Id"" FROM ""Countries"" WHERE ""Code"" = 'MY'));
-                INSERT INTO ""States"" (""Name"", ""Code"", ""CountryId"", ""IsActive"", ""CreatedAt"")
-                SELECT 'Sabah', 'SBH', (SELECT ""Id"" FROM ""Countries"" WHERE ""Code"" = 'MY'), TRUE, CURRENT_TIMESTAMP 
+                INSERT INTO ""States"" (""Name"", ""Code"", ""CountryId"", ""IsActive"", ""IsDeleted"", ""CreatedAt"")
+                SELECT 'Sabah', 'SBH', (SELECT ""Id"" FROM ""Countries"" WHERE ""Code"" = 'MY'), TRUE, FALSE, CURRENT_TIMESTAMP 
                 WHERE NOT EXISTS (SELECT 1 FROM ""States"" WHERE ""Code"" = 'SBH' AND ""CountryId"" = (SELECT ""Id"" FROM ""Countries"" WHERE ""Code"" = 'MY'));
-                INSERT INTO ""States"" (""Name"", ""Code"", ""CountryId"", ""IsActive"", ""CreatedAt"")
-                SELECT 'Sarawak', 'SRK', (SELECT ""Id"" FROM ""Countries"" WHERE ""Code"" = 'MY'), TRUE, CURRENT_TIMESTAMP 
+                INSERT INTO ""States"" (""Name"", ""Code"", ""CountryId"", ""IsActive"", ""IsDeleted"", ""CreatedAt"")
+                SELECT 'Sarawak', 'SRK', (SELECT ""Id"" FROM ""Countries"" WHERE ""Code"" = 'MY'), TRUE, FALSE, CURRENT_TIMESTAMP 
                 WHERE NOT EXISTS (SELECT 1 FROM ""States"" WHERE ""Code"" = 'SRK' AND ""CountryId"" = (SELECT ""Id"" FROM ""Countries"" WHERE ""Code"" = 'MY'));
-                INSERT INTO ""States"" (""Name"", ""Code"", ""CountryId"", ""IsActive"", ""CreatedAt"")
-                SELECT 'Jakarta', 'JKT', (SELECT ""Id"" FROM ""Countries"" WHERE ""Code"" = 'ID'), TRUE, CURRENT_TIMESTAMP 
+                INSERT INTO ""States"" (""Name"", ""Code"", ""CountryId"", ""IsActive"", ""IsDeleted"", ""CreatedAt"")
+                SELECT 'Jakarta', 'JKT', (SELECT ""Id"" FROM ""Countries"" WHERE ""Code"" = 'ID'), TRUE, FALSE, CURRENT_TIMESTAMP 
                 WHERE NOT EXISTS (SELECT 1 FROM ""States"" WHERE ""Code"" = 'JKT' AND ""CountryId"" = (SELECT ""Id"" FROM ""Countries"" WHERE ""Code"" = 'ID'));
-                INSERT INTO ""States"" (""Name"", ""Code"", ""CountryId"", ""IsActive"", ""CreatedAt"")
-                SELECT 'West Java', 'WJV', (SELECT ""Id"" FROM ""Countries"" WHERE ""Code"" = 'ID'), TRUE, CURRENT_TIMESTAMP 
+                INSERT INTO ""States"" (""Name"", ""Code"", ""CountryId"", ""IsActive"", ""IsDeleted"", ""CreatedAt"")
+                SELECT 'West Java', 'WJV', (SELECT ""Id"" FROM ""Countries"" WHERE ""Code"" = 'ID'), TRUE, FALSE, CURRENT_TIMESTAMP 
                 WHERE NOT EXISTS (SELECT 1 FROM ""States"" WHERE ""Code"" = 'WJV' AND ""CountryId"" = (SELECT ""Id"" FROM ""Countries"" WHERE ""Code"" = 'ID'));
-                INSERT INTO ""States"" (""Name"", ""Code"", ""CountryId"", ""IsActive"", ""CreatedAt"")
-                SELECT 'East Java', 'EJV', (SELECT ""Id"" FROM ""Countries"" WHERE ""Code"" = 'ID'), TRUE, CURRENT_TIMESTAMP 
+                INSERT INTO ""States"" (""Name"", ""Code"", ""CountryId"", ""IsActive"", ""IsDeleted"", ""CreatedAt"")
+                SELECT 'East Java', 'EJV', (SELECT ""Id"" FROM ""Countries"" WHERE ""Code"" = 'ID'), TRUE, FALSE, CURRENT_TIMESTAMP 
                 WHERE NOT EXISTS (SELECT 1 FROM ""States"" WHERE ""Code"" = 'EJV' AND ""CountryId"" = (SELECT ""Id"" FROM ""Countries"" WHERE ""Code"" = 'ID'));
-                INSERT INTO ""States"" (""Name"", ""Code"", ""CountryId"", ""IsActive"", ""CreatedAt"")
-                SELECT 'Central Java', 'CJV', (SELECT ""Id"" FROM ""Countries"" WHERE ""Code"" = 'ID'), TRUE, CURRENT_TIMESTAMP 
+                INSERT INTO ""States"" (""Name"", ""Code"", ""CountryId"", ""IsActive"", ""IsDeleted"", ""CreatedAt"")
+                SELECT 'Central Java', 'CJV', (SELECT ""Id"" FROM ""Countries"" WHERE ""Code"" = 'ID'), TRUE, FALSE, CURRENT_TIMESTAMP 
                 WHERE NOT EXISTS (SELECT 1 FROM ""States"" WHERE ""Code"" = 'CJV' AND ""CountryId"" = (SELECT ""Id"" FROM ""Countries"" WHERE ""Code"" = 'ID'));
-                INSERT INTO ""States"" (""Name"", ""Code"", ""CountryId"", ""IsActive"", ""CreatedAt"")
-                SELECT 'Bali', 'BAL', (SELECT ""Id"" FROM ""Countries"" WHERE ""Code"" = 'ID'), TRUE, CURRENT_TIMESTAMP 
+                INSERT INTO ""States"" (""Name"", ""Code"", ""CountryId"", ""IsActive"", ""IsDeleted"", ""CreatedAt"")
+                SELECT 'Bali', 'BAL', (SELECT ""Id"" FROM ""Countries"" WHERE ""Code"" = 'ID'), TRUE, FALSE, CURRENT_TIMESTAMP 
                 WHERE NOT EXISTS (SELECT 1 FROM ""States"" WHERE ""Code"" = 'BAL' AND ""CountryId"" = (SELECT ""Id"" FROM ""Countries"" WHERE ""Code"" = 'ID'));
-                INSERT INTO ""States"" (""Name"", ""Code"", ""CountryId"", ""IsActive"", ""CreatedAt"")
-                SELECT 'North Sumatra', 'NSM', (SELECT ""Id"" FROM ""Countries"" WHERE ""Code"" = 'ID'), TRUE, CURRENT_TIMESTAMP 
+                INSERT INTO ""States"" (""Name"", ""Code"", ""CountryId"", ""IsActive"", ""IsDeleted"", ""CreatedAt"")
+                SELECT 'North Sumatra', 'NSM', (SELECT ""Id"" FROM ""Countries"" WHERE ""Code"" = 'ID'), TRUE, FALSE, CURRENT_TIMESTAMP 
                 WHERE NOT EXISTS (SELECT 1 FROM ""States"" WHERE ""Code"" = 'NSM' AND ""CountryId"" = (SELECT ""Id"" FROM ""Countries"" WHERE ""Code"" = 'ID'));
-                INSERT INTO ""States"" (""Name"", ""Code"", ""CountryId"", ""IsActive"", ""CreatedAt"")
-                SELECT 'Metro Manila', 'MNL', (SELECT ""Id"" FROM ""Countries"" WHERE ""Code"" = 'PH'), TRUE, CURRENT_TIMESTAMP 
+                INSERT INTO ""States"" (""Name"", ""Code"", ""CountryId"", ""IsActive"", ""IsDeleted"", ""CreatedAt"")
+                SELECT 'Metro Manila', 'MNL', (SELECT ""Id"" FROM ""Countries"" WHERE ""Code"" = 'PH'), TRUE, FALSE, CURRENT_TIMESTAMP 
                 WHERE NOT EXISTS (SELECT 1 FROM ""States"" WHERE ""Code"" = 'MNL' AND ""CountryId"" = (SELECT ""Id"" FROM ""Countries"" WHERE ""Code"" = 'PH'));
-                INSERT INTO ""States"" (""Name"", ""Code"", ""CountryId"", ""IsActive"", ""CreatedAt"")
-                SELECT 'Cebu', 'CEB', (SELECT ""Id"" FROM ""Countries"" WHERE ""Code"" = 'PH'), TRUE, CURRENT_TIMESTAMP 
+                INSERT INTO ""States"" (""Name"", ""Code"", ""CountryId"", ""IsActive"", ""IsDeleted"", ""CreatedAt"")
+                SELECT 'Cebu', 'CEB', (SELECT ""Id"" FROM ""Countries"" WHERE ""Code"" = 'PH'), TRUE, FALSE, CURRENT_TIMESTAMP 
                 WHERE NOT EXISTS (SELECT 1 FROM ""States"" WHERE ""Code"" = 'CEB' AND ""CountryId"" = (SELECT ""Id"" FROM ""Countries"" WHERE ""Code"" = 'PH'));
-                INSERT INTO ""States"" (""Name"", ""Code"", ""CountryId"", ""IsActive"", ""CreatedAt"")
-                SELECT 'Davao', 'DAV', (SELECT ""Id"" FROM ""Countries"" WHERE ""Code"" = 'PH'), TRUE, CURRENT_TIMESTAMP 
+                INSERT INTO ""States"" (""Name"", ""Code"", ""CountryId"", ""IsActive"", ""IsDeleted"", ""CreatedAt"")
+                SELECT 'Davao', 'DAV', (SELECT ""Id"" FROM ""Countries"" WHERE ""Code"" = 'PH'), TRUE, FALSE, CURRENT_TIMESTAMP 
                 WHERE NOT EXISTS (SELECT 1 FROM ""States"" WHERE ""Code"" = 'DAV' AND ""CountryId"" = (SELECT ""Id"" FROM ""Countries"" WHERE ""Code"" = 'PH'));
-                INSERT INTO ""States"" (""Name"", ""Code"", ""CountryId"", ""IsActive"", ""CreatedAt"")
-                SELECT 'Calabarzon', 'CAL', (SELECT ""Id"" FROM ""Countries"" WHERE ""Code"" = 'PH'), TRUE, CURRENT_TIMESTAMP 
+                INSERT INTO ""States"" (""Name"", ""Code"", ""CountryId"", ""IsActive"", ""IsDeleted"", ""CreatedAt"")
+                SELECT 'Calabarzon', 'CAL', (SELECT ""Id"" FROM ""Countries"" WHERE ""Code"" = 'PH'), TRUE, FALSE, CURRENT_TIMESTAMP 
                 WHERE NOT EXISTS (SELECT 1 FROM ""States"" WHERE ""Code"" = 'CAL' AND ""CountryId"" = (SELECT ""Id"" FROM ""Countries"" WHERE ""Code"" = 'PH'));
-                INSERT INTO ""States"" (""Name"", ""Code"", ""CountryId"", ""IsActive"", ""CreatedAt"")
-                SELECT 'Central Luzon', 'CLZ', (SELECT ""Id"" FROM ""Countries"" WHERE ""Code"" = 'PH'), TRUE, CURRENT_TIMESTAMP 
+                INSERT INTO ""States"" (""Name"", ""Code"", ""CountryId"", ""IsActive"", ""IsDeleted"", ""CreatedAt"")
+                SELECT 'Central Luzon', 'CLZ', (SELECT ""Id"" FROM ""Countries"" WHERE ""Code"" = 'PH'), TRUE, FALSE, CURRENT_TIMESTAMP 
                 WHERE NOT EXISTS (SELECT 1 FROM ""States"" WHERE ""Code"" = 'CLZ' AND ""CountryId"" = (SELECT ""Id"" FROM ""Countries"" WHERE ""Code"" = 'PH'));
             ", stoppingToken);
 
             // Seed Cities - UAE
             await dbContext.Database.ExecuteSqlRawAsync(@"
-                INSERT INTO ""Cities"" (""Name"", ""Code"", ""StateId"", ""CountryId"", ""IsHub"", ""IsActive"", ""CreatedAt"")
-                SELECT 'Dubai City', 'DXBC', (SELECT ""Id"" FROM ""States"" WHERE ""Code"" = 'DXB'), (SELECT ""Id"" FROM ""Countries"" WHERE ""Code"" = 'AE'), TRUE, TRUE, CURRENT_TIMESTAMP 
+                INSERT INTO ""Cities"" (""Name"", ""Code"", ""StateId"", ""CountryId"", ""IsHub"", ""IsActive"", ""IsDeleted"", ""CreatedAt"")
+                SELECT 'Dubai City', 'DXBC', (SELECT ""Id"" FROM ""States"" WHERE ""Code"" = 'DXB'), (SELECT ""Id"" FROM ""Countries"" WHERE ""Code"" = 'AE'), TRUE, TRUE, FALSE, CURRENT_TIMESTAMP 
                 WHERE NOT EXISTS (SELECT 1 FROM ""Cities"" WHERE ""Code"" = 'DXBC');
-                INSERT INTO ""Cities"" (""Name"", ""Code"", ""StateId"", ""CountryId"", ""IsHub"", ""IsActive"", ""CreatedAt"")
-                SELECT 'Jebel Ali', 'JBL', (SELECT ""Id"" FROM ""States"" WHERE ""Code"" = 'DXB'), (SELECT ""Id"" FROM ""Countries"" WHERE ""Code"" = 'AE'), FALSE, TRUE, CURRENT_TIMESTAMP 
+                INSERT INTO ""Cities"" (""Name"", ""Code"", ""StateId"", ""CountryId"", ""IsHub"", ""IsActive"", ""IsDeleted"", ""CreatedAt"")
+                SELECT 'Jebel Ali', 'JBL', (SELECT ""Id"" FROM ""States"" WHERE ""Code"" = 'DXB'), (SELECT ""Id"" FROM ""Countries"" WHERE ""Code"" = 'AE'), FALSE, TRUE, FALSE, CURRENT_TIMESTAMP 
                 WHERE NOT EXISTS (SELECT 1 FROM ""Cities"" WHERE ""Code"" = 'JBL');
-                INSERT INTO ""Cities"" (""Name"", ""Code"", ""StateId"", ""CountryId"", ""IsHub"", ""IsActive"", ""CreatedAt"")
-                SELECT 'Abu Dhabi City', 'AUHC', (SELECT ""Id"" FROM ""States"" WHERE ""Code"" = 'AUH'), (SELECT ""Id"" FROM ""Countries"" WHERE ""Code"" = 'AE'), TRUE, TRUE, CURRENT_TIMESTAMP 
+                INSERT INTO ""Cities"" (""Name"", ""Code"", ""StateId"", ""CountryId"", ""IsHub"", ""IsActive"", ""IsDeleted"", ""CreatedAt"")
+                SELECT 'Abu Dhabi City', 'AUHC', (SELECT ""Id"" FROM ""States"" WHERE ""Code"" = 'AUH'), (SELECT ""Id"" FROM ""Countries"" WHERE ""Code"" = 'AE'), TRUE, TRUE, FALSE, CURRENT_TIMESTAMP 
                 WHERE NOT EXISTS (SELECT 1 FROM ""Cities"" WHERE ""Code"" = 'AUHC');
-                INSERT INTO ""Cities"" (""Name"", ""Code"", ""StateId"", ""CountryId"", ""IsHub"", ""IsActive"", ""CreatedAt"")
-                SELECT 'Al Ain', 'AAC', (SELECT ""Id"" FROM ""States"" WHERE ""Code"" = 'AUH'), (SELECT ""Id"" FROM ""Countries"" WHERE ""Code"" = 'AE'), FALSE, TRUE, CURRENT_TIMESTAMP 
+                INSERT INTO ""Cities"" (""Name"", ""Code"", ""StateId"", ""CountryId"", ""IsHub"", ""IsActive"", ""IsDeleted"", ""CreatedAt"")
+                SELECT 'Al Ain', 'AAC', (SELECT ""Id"" FROM ""States"" WHERE ""Code"" = 'AUH'), (SELECT ""Id"" FROM ""Countries"" WHERE ""Code"" = 'AE'), FALSE, TRUE, FALSE, CURRENT_TIMESTAMP 
                 WHERE NOT EXISTS (SELECT 1 FROM ""Cities"" WHERE ""Code"" = 'AAC');
-                INSERT INTO ""Cities"" (""Name"", ""Code"", ""StateId"", ""CountryId"", ""IsHub"", ""IsActive"", ""CreatedAt"")
-                SELECT 'Sharjah City', 'SHJC', (SELECT ""Id"" FROM ""States"" WHERE ""Code"" = 'SHJ'), (SELECT ""Id"" FROM ""Countries"" WHERE ""Code"" = 'AE'), TRUE, TRUE, CURRENT_TIMESTAMP 
+                INSERT INTO ""Cities"" (""Name"", ""Code"", ""StateId"", ""CountryId"", ""IsHub"", ""IsActive"", ""IsDeleted"", ""CreatedAt"")
+                SELECT 'Sharjah City', 'SHJC', (SELECT ""Id"" FROM ""States"" WHERE ""Code"" = 'SHJ'), (SELECT ""Id"" FROM ""Countries"" WHERE ""Code"" = 'AE'), TRUE, TRUE, FALSE, CURRENT_TIMESTAMP 
                 WHERE NOT EXISTS (SELECT 1 FROM ""Cities"" WHERE ""Code"" = 'SHJC');
-                INSERT INTO ""Cities"" (""Name"", ""Code"", ""StateId"", ""CountryId"", ""IsHub"", ""IsActive"", ""CreatedAt"")
-                SELECT 'Ajman City', 'AJMC', (SELECT ""Id"" FROM ""States"" WHERE ""Code"" = 'AJM'), (SELECT ""Id"" FROM ""Countries"" WHERE ""Code"" = 'AE'), TRUE, TRUE, CURRENT_TIMESTAMP 
+                INSERT INTO ""Cities"" (""Name"", ""Code"", ""StateId"", ""CountryId"", ""IsHub"", ""IsActive"", ""IsDeleted"", ""CreatedAt"")
+                SELECT 'Ajman City', 'AJMC', (SELECT ""Id"" FROM ""States"" WHERE ""Code"" = 'AJM'), (SELECT ""Id"" FROM ""Countries"" WHERE ""Code"" = 'AE'), TRUE, TRUE, FALSE, CURRENT_TIMESTAMP 
                 WHERE NOT EXISTS (SELECT 1 FROM ""Cities"" WHERE ""Code"" = 'AJMC');
-                INSERT INTO ""Cities"" (""Name"", ""Code"", ""StateId"", ""CountryId"", ""IsHub"", ""IsActive"", ""CreatedAt"")
-                SELECT 'Fujairah City', 'FUJC', (SELECT ""Id"" FROM ""States"" WHERE ""Code"" = 'FUJ'), (SELECT ""Id"" FROM ""Countries"" WHERE ""Code"" = 'AE'), TRUE, TRUE, CURRENT_TIMESTAMP 
+                INSERT INTO ""Cities"" (""Name"", ""Code"", ""StateId"", ""CountryId"", ""IsHub"", ""IsActive"", ""IsDeleted"", ""CreatedAt"")
+                SELECT 'Fujairah City', 'FUJC', (SELECT ""Id"" FROM ""States"" WHERE ""Code"" = 'FUJ'), (SELECT ""Id"" FROM ""Countries"" WHERE ""Code"" = 'AE'), TRUE, TRUE, FALSE, CURRENT_TIMESTAMP 
                 WHERE NOT EXISTS (SELECT 1 FROM ""Cities"" WHERE ""Code"" = 'FUJC');
-                INSERT INTO ""Cities"" (""Name"", ""Code"", ""StateId"", ""CountryId"", ""IsHub"", ""IsActive"", ""CreatedAt"")
-                SELECT 'Ras Al Khaimah City', 'RAKC', (SELECT ""Id"" FROM ""States"" WHERE ""Code"" = 'RAK'), (SELECT ""Id"" FROM ""Countries"" WHERE ""Code"" = 'AE'), TRUE, TRUE, CURRENT_TIMESTAMP 
+                INSERT INTO ""Cities"" (""Name"", ""Code"", ""StateId"", ""CountryId"", ""IsHub"", ""IsActive"", ""IsDeleted"", ""CreatedAt"")
+                SELECT 'Ras Al Khaimah City', 'RAKC', (SELECT ""Id"" FROM ""States"" WHERE ""Code"" = 'RAK'), (SELECT ""Id"" FROM ""Countries"" WHERE ""Code"" = 'AE'), TRUE, TRUE, FALSE, CURRENT_TIMESTAMP 
                 WHERE NOT EXISTS (SELECT 1 FROM ""Cities"" WHERE ""Code"" = 'RAKC');
             ", stoppingToken);
 
             // Seed Cities - Saudi Arabia, Qatar, Kuwait
             await dbContext.Database.ExecuteSqlRawAsync(@"
-                INSERT INTO ""Cities"" (""Name"", ""Code"", ""StateId"", ""CountryId"", ""IsHub"", ""IsActive"", ""CreatedAt"")
-                SELECT 'Riyadh City', 'RUHC', (SELECT ""Id"" FROM ""States"" WHERE ""Code"" = 'RUH'), (SELECT ""Id"" FROM ""Countries"" WHERE ""Code"" = 'SA'), TRUE, TRUE, CURRENT_TIMESTAMP 
+                INSERT INTO ""Cities"" (""Name"", ""Code"", ""StateId"", ""CountryId"", ""IsHub"", ""IsActive"", ""IsDeleted"", ""CreatedAt"")
+                SELECT 'Riyadh City', 'RUHC', (SELECT ""Id"" FROM ""States"" WHERE ""Code"" = 'RUH'), (SELECT ""Id"" FROM ""Countries"" WHERE ""Code"" = 'SA'), TRUE, TRUE, FALSE, CURRENT_TIMESTAMP 
                 WHERE NOT EXISTS (SELECT 1 FROM ""Cities"" WHERE ""Code"" = 'RUHC');
-                INSERT INTO ""Cities"" (""Name"", ""Code"", ""StateId"", ""CountryId"", ""IsHub"", ""IsActive"", ""CreatedAt"")
-                SELECT 'Makkah City', 'MKHC', (SELECT ""Id"" FROM ""States"" WHERE ""Code"" = 'MKH'), (SELECT ""Id"" FROM ""Countries"" WHERE ""Code"" = 'SA'), TRUE, TRUE, CURRENT_TIMESTAMP 
+                INSERT INTO ""Cities"" (""Name"", ""Code"", ""StateId"", ""CountryId"", ""IsHub"", ""IsActive"", ""IsDeleted"", ""CreatedAt"")
+                SELECT 'Makkah City', 'MKHC', (SELECT ""Id"" FROM ""States"" WHERE ""Code"" = 'MKH'), (SELECT ""Id"" FROM ""Countries"" WHERE ""Code"" = 'SA'), TRUE, TRUE, FALSE, CURRENT_TIMESTAMP 
                 WHERE NOT EXISTS (SELECT 1 FROM ""Cities"" WHERE ""Code"" = 'MKHC');
-                INSERT INTO ""Cities"" (""Name"", ""Code"", ""StateId"", ""CountryId"", ""IsHub"", ""IsActive"", ""CreatedAt"")
-                SELECT 'Jeddah', 'JED', (SELECT ""Id"" FROM ""States"" WHERE ""Code"" = 'MKH'), (SELECT ""Id"" FROM ""Countries"" WHERE ""Code"" = 'SA'), TRUE, TRUE, CURRENT_TIMESTAMP 
+                INSERT INTO ""Cities"" (""Name"", ""Code"", ""StateId"", ""CountryId"", ""IsHub"", ""IsActive"", ""IsDeleted"", ""CreatedAt"")
+                SELECT 'Jeddah', 'JED', (SELECT ""Id"" FROM ""States"" WHERE ""Code"" = 'MKH'), (SELECT ""Id"" FROM ""Countries"" WHERE ""Code"" = 'SA'), TRUE, TRUE, FALSE, CURRENT_TIMESTAMP 
                 WHERE NOT EXISTS (SELECT 1 FROM ""Cities"" WHERE ""Code"" = 'JED');
-                INSERT INTO ""Cities"" (""Name"", ""Code"", ""StateId"", ""CountryId"", ""IsHub"", ""IsActive"", ""CreatedAt"")
-                SELECT 'Madinah City', 'MDNC', (SELECT ""Id"" FROM ""States"" WHERE ""Code"" = 'MDN'), (SELECT ""Id"" FROM ""Countries"" WHERE ""Code"" = 'SA'), TRUE, TRUE, CURRENT_TIMESTAMP 
+                INSERT INTO ""Cities"" (""Name"", ""Code"", ""StateId"", ""CountryId"", ""IsHub"", ""IsActive"", ""IsDeleted"", ""CreatedAt"")
+                SELECT 'Madinah City', 'MDNC', (SELECT ""Id"" FROM ""States"" WHERE ""Code"" = 'MDN'), (SELECT ""Id"" FROM ""Countries"" WHERE ""Code"" = 'SA'), TRUE, TRUE, FALSE, CURRENT_TIMESTAMP 
                 WHERE NOT EXISTS (SELECT 1 FROM ""Cities"" WHERE ""Code"" = 'MDNC');
-                INSERT INTO ""Cities"" (""Name"", ""Code"", ""StateId"", ""CountryId"", ""IsHub"", ""IsActive"", ""CreatedAt"")
-                SELECT 'Dammam', 'DMM', (SELECT ""Id"" FROM ""States"" WHERE ""Code"" = 'EP'), (SELECT ""Id"" FROM ""Countries"" WHERE ""Code"" = 'SA'), TRUE, TRUE, CURRENT_TIMESTAMP 
+                INSERT INTO ""Cities"" (""Name"", ""Code"", ""StateId"", ""CountryId"", ""IsHub"", ""IsActive"", ""IsDeleted"", ""CreatedAt"")
+                SELECT 'Dammam', 'DMM', (SELECT ""Id"" FROM ""States"" WHERE ""Code"" = 'EP'), (SELECT ""Id"" FROM ""Countries"" WHERE ""Code"" = 'SA'), TRUE, TRUE, FALSE, CURRENT_TIMESTAMP 
                 WHERE NOT EXISTS (SELECT 1 FROM ""Cities"" WHERE ""Code"" = 'DMM');
-                INSERT INTO ""Cities"" (""Name"", ""Code"", ""StateId"", ""CountryId"", ""IsHub"", ""IsActive"", ""CreatedAt"")
-                SELECT 'Doha City', 'DOHC', (SELECT ""Id"" FROM ""States"" WHERE ""Code"" = 'DOH'), (SELECT ""Id"" FROM ""Countries"" WHERE ""Code"" = 'QA'), TRUE, TRUE, CURRENT_TIMESTAMP 
+                INSERT INTO ""Cities"" (""Name"", ""Code"", ""StateId"", ""CountryId"", ""IsHub"", ""IsActive"", ""IsDeleted"", ""CreatedAt"")
+                SELECT 'Doha City', 'DOHC', (SELECT ""Id"" FROM ""States"" WHERE ""Code"" = 'DOH'), (SELECT ""Id"" FROM ""Countries"" WHERE ""Code"" = 'QA'), TRUE, TRUE, FALSE, CURRENT_TIMESTAMP 
                 WHERE NOT EXISTS (SELECT 1 FROM ""Cities"" WHERE ""Code"" = 'DOHC');
-                INSERT INTO ""Cities"" (""Name"", ""Code"", ""StateId"", ""CountryId"", ""IsHub"", ""IsActive"", ""CreatedAt"")
-                SELECT 'Kuwait City', 'KWC', (SELECT ""Id"" FROM ""States"" WHERE ""Code"" = 'ASM'), (SELECT ""Id"" FROM ""Countries"" WHERE ""Code"" = 'KW'), TRUE, TRUE, CURRENT_TIMESTAMP 
+                INSERT INTO ""Cities"" (""Name"", ""Code"", ""StateId"", ""CountryId"", ""IsHub"", ""IsActive"", ""IsDeleted"", ""CreatedAt"")
+                SELECT 'Kuwait City', 'KWC', (SELECT ""Id"" FROM ""States"" WHERE ""Code"" = 'ASM'), (SELECT ""Id"" FROM ""Countries"" WHERE ""Code"" = 'KW'), TRUE, TRUE, FALSE, CURRENT_TIMESTAMP 
                 WHERE NOT EXISTS (SELECT 1 FROM ""Cities"" WHERE ""Code"" = 'KWC');
             ", stoppingToken);
 
             // Seed Cities - Bahrain, Oman, Jordan
             await dbContext.Database.ExecuteSqlRawAsync(@"
-                INSERT INTO ""Cities"" (""Name"", ""Code"", ""StateId"", ""CountryId"", ""IsHub"", ""IsActive"", ""CreatedAt"")
-                SELECT 'Manama', 'MAN', (SELECT ""Id"" FROM ""States"" WHERE ""Code"" = 'CAP'), (SELECT ""Id"" FROM ""Countries"" WHERE ""Code"" = 'BH'), TRUE, TRUE, CURRENT_TIMESTAMP 
+                INSERT INTO ""Cities"" (""Name"", ""Code"", ""StateId"", ""CountryId"", ""IsHub"", ""IsActive"", ""IsDeleted"", ""CreatedAt"")
+                SELECT 'Manama', 'MAN', (SELECT ""Id"" FROM ""States"" WHERE ""Code"" = 'CAP'), (SELECT ""Id"" FROM ""Countries"" WHERE ""Code"" = 'BH'), TRUE, TRUE, FALSE, CURRENT_TIMESTAMP 
                 WHERE NOT EXISTS (SELECT 1 FROM ""Cities"" WHERE ""Code"" = 'MAN');
-                INSERT INTO ""Cities"" (""Name"", ""Code"", ""StateId"", ""CountryId"", ""IsHub"", ""IsActive"", ""CreatedAt"")
-                SELECT 'Muscat City', 'MSCC', (SELECT ""Id"" FROM ""States"" WHERE ""Code"" = 'MSC'), (SELECT ""Id"" FROM ""Countries"" WHERE ""Code"" = 'OM'), TRUE, TRUE, CURRENT_TIMESTAMP 
+                INSERT INTO ""Cities"" (""Name"", ""Code"", ""StateId"", ""CountryId"", ""IsHub"", ""IsActive"", ""IsDeleted"", ""CreatedAt"")
+                SELECT 'Muscat City', 'MSCC', (SELECT ""Id"" FROM ""States"" WHERE ""Code"" = 'MSC'), (SELECT ""Id"" FROM ""Countries"" WHERE ""Code"" = 'OM'), TRUE, TRUE, FALSE, CURRENT_TIMESTAMP 
                 WHERE NOT EXISTS (SELECT 1 FROM ""Cities"" WHERE ""Code"" = 'MSCC');
-                INSERT INTO ""Cities"" (""Name"", ""Code"", ""StateId"", ""CountryId"", ""IsHub"", ""IsActive"", ""CreatedAt"")
-                SELECT 'Salalah', 'SLL', (SELECT ""Id"" FROM ""States"" WHERE ""Code"" = 'DHF'), (SELECT ""Id"" FROM ""Countries"" WHERE ""Code"" = 'OM'), FALSE, TRUE, CURRENT_TIMESTAMP 
+                INSERT INTO ""Cities"" (""Name"", ""Code"", ""StateId"", ""CountryId"", ""IsHub"", ""IsActive"", ""IsDeleted"", ""CreatedAt"")
+                SELECT 'Salalah', 'SLL', (SELECT ""Id"" FROM ""States"" WHERE ""Code"" = 'DHF'), (SELECT ""Id"" FROM ""Countries"" WHERE ""Code"" = 'OM'), FALSE, TRUE, FALSE, CURRENT_TIMESTAMP 
                 WHERE NOT EXISTS (SELECT 1 FROM ""Cities"" WHERE ""Code"" = 'SLL');
-                INSERT INTO ""Cities"" (""Name"", ""Code"", ""StateId"", ""CountryId"", ""IsHub"", ""IsActive"", ""CreatedAt"")
-                SELECT 'Amman City', 'AMNC', (SELECT ""Id"" FROM ""States"" WHERE ""Code"" = 'AMN'), (SELECT ""Id"" FROM ""Countries"" WHERE ""Code"" = 'JO'), TRUE, TRUE, CURRENT_TIMESTAMP 
+                INSERT INTO ""Cities"" (""Name"", ""Code"", ""StateId"", ""CountryId"", ""IsHub"", ""IsActive"", ""IsDeleted"", ""CreatedAt"")
+                SELECT 'Amman City', 'AMNC', (SELECT ""Id"" FROM ""States"" WHERE ""Code"" = 'AMN'), (SELECT ""Id"" FROM ""Countries"" WHERE ""Code"" = 'JO'), TRUE, TRUE, FALSE, CURRENT_TIMESTAMP 
                 WHERE NOT EXISTS (SELECT 1 FROM ""Cities"" WHERE ""Code"" = 'AMNC');
             ", stoppingToken);
 
             // Seed Cities - India
             await dbContext.Database.ExecuteSqlRawAsync(@"
-                INSERT INTO ""Cities"" (""Name"", ""Code"", ""StateId"", ""CountryId"", ""IsHub"", ""IsActive"", ""CreatedAt"")
-                SELECT 'Mumbai', 'BOM', (SELECT ""Id"" FROM ""States"" WHERE ""Code"" = 'MH' AND ""CountryId"" = (SELECT ""Id"" FROM ""Countries"" WHERE ""Code"" = 'IN') LIMIT 1), (SELECT ""Id"" FROM ""Countries"" WHERE ""Code"" = 'IN'), TRUE, TRUE, CURRENT_TIMESTAMP 
+                INSERT INTO ""Cities"" (""Name"", ""Code"", ""StateId"", ""CountryId"", ""IsHub"", ""IsActive"", ""IsDeleted"", ""CreatedAt"")
+                SELECT 'Mumbai', 'BOM', (SELECT ""Id"" FROM ""States"" WHERE ""Code"" = 'MH' AND ""CountryId"" = (SELECT ""Id"" FROM ""Countries"" WHERE ""Code"" = 'IN') LIMIT 1), (SELECT ""Id"" FROM ""Countries"" WHERE ""Code"" = 'IN'), TRUE, TRUE, FALSE, CURRENT_TIMESTAMP 
                 WHERE NOT EXISTS (SELECT 1 FROM ""Cities"" WHERE ""Code"" = 'BOM');
-                INSERT INTO ""Cities"" (""Name"", ""Code"", ""StateId"", ""CountryId"", ""IsHub"", ""IsActive"", ""CreatedAt"")
-                SELECT 'Pune', 'PNQ', (SELECT ""Id"" FROM ""States"" WHERE ""Code"" = 'MH' AND ""CountryId"" = (SELECT ""Id"" FROM ""Countries"" WHERE ""Code"" = 'IN') LIMIT 1), (SELECT ""Id"" FROM ""Countries"" WHERE ""Code"" = 'IN'), FALSE, TRUE, CURRENT_TIMESTAMP 
+                INSERT INTO ""Cities"" (""Name"", ""Code"", ""StateId"", ""CountryId"", ""IsHub"", ""IsActive"", ""IsDeleted"", ""CreatedAt"")
+                SELECT 'Pune', 'PNQ', (SELECT ""Id"" FROM ""States"" WHERE ""Code"" = 'MH' AND ""CountryId"" = (SELECT ""Id"" FROM ""Countries"" WHERE ""Code"" = 'IN') LIMIT 1), (SELECT ""Id"" FROM ""Countries"" WHERE ""Code"" = 'IN'), FALSE, TRUE, FALSE, CURRENT_TIMESTAMP 
                 WHERE NOT EXISTS (SELECT 1 FROM ""Cities"" WHERE ""Code"" = 'PNQ');
-                INSERT INTO ""Cities"" (""Name"", ""Code"", ""StateId"", ""CountryId"", ""IsHub"", ""IsActive"", ""CreatedAt"")
-                SELECT 'New Delhi', 'DEL', (SELECT ""Id"" FROM ""States"" WHERE ""Code"" = 'DL' AND ""CountryId"" = (SELECT ""Id"" FROM ""Countries"" WHERE ""Code"" = 'IN') LIMIT 1), (SELECT ""Id"" FROM ""Countries"" WHERE ""Code"" = 'IN'), TRUE, TRUE, CURRENT_TIMESTAMP 
+                INSERT INTO ""Cities"" (""Name"", ""Code"", ""StateId"", ""CountryId"", ""IsHub"", ""IsActive"", ""IsDeleted"", ""CreatedAt"")
+                SELECT 'New Delhi', 'DEL', (SELECT ""Id"" FROM ""States"" WHERE ""Code"" = 'DL' AND ""CountryId"" = (SELECT ""Id"" FROM ""Countries"" WHERE ""Code"" = 'IN') LIMIT 1), (SELECT ""Id"" FROM ""Countries"" WHERE ""Code"" = 'IN'), TRUE, TRUE, FALSE, CURRENT_TIMESTAMP 
                 WHERE NOT EXISTS (SELECT 1 FROM ""Cities"" WHERE ""Code"" = 'DEL');
-                INSERT INTO ""Cities"" (""Name"", ""Code"", ""StateId"", ""CountryId"", ""IsHub"", ""IsActive"", ""CreatedAt"")
-                SELECT 'Bangalore', 'BLR', (SELECT ""Id"" FROM ""States"" WHERE ""Code"" = 'KA' AND ""CountryId"" = (SELECT ""Id"" FROM ""Countries"" WHERE ""Code"" = 'IN') LIMIT 1), (SELECT ""Id"" FROM ""Countries"" WHERE ""Code"" = 'IN'), TRUE, TRUE, CURRENT_TIMESTAMP 
+                INSERT INTO ""Cities"" (""Name"", ""Code"", ""StateId"", ""CountryId"", ""IsHub"", ""IsActive"", ""IsDeleted"", ""CreatedAt"")
+                SELECT 'Bangalore', 'BLR', (SELECT ""Id"" FROM ""States"" WHERE ""Code"" = 'KA' AND ""CountryId"" = (SELECT ""Id"" FROM ""Countries"" WHERE ""Code"" = 'IN') LIMIT 1), (SELECT ""Id"" FROM ""Countries"" WHERE ""Code"" = 'IN'), TRUE, TRUE, FALSE, CURRENT_TIMESTAMP 
                 WHERE NOT EXISTS (SELECT 1 FROM ""Cities"" WHERE ""Code"" = 'BLR');
-                INSERT INTO ""Cities"" (""Name"", ""Code"", ""StateId"", ""CountryId"", ""IsHub"", ""IsActive"", ""CreatedAt"")
-                SELECT 'Chennai', 'MAA', (SELECT ""Id"" FROM ""States"" WHERE ""Code"" = 'TN' AND ""CountryId"" = (SELECT ""Id"" FROM ""Countries"" WHERE ""Code"" = 'IN') LIMIT 1), (SELECT ""Id"" FROM ""Countries"" WHERE ""Code"" = 'IN'), TRUE, TRUE, CURRENT_TIMESTAMP 
+                INSERT INTO ""Cities"" (""Name"", ""Code"", ""StateId"", ""CountryId"", ""IsHub"", ""IsActive"", ""IsDeleted"", ""CreatedAt"")
+                SELECT 'Chennai', 'MAA', (SELECT ""Id"" FROM ""States"" WHERE ""Code"" = 'TN' AND ""CountryId"" = (SELECT ""Id"" FROM ""Countries"" WHERE ""Code"" = 'IN') LIMIT 1), (SELECT ""Id"" FROM ""Countries"" WHERE ""Code"" = 'IN'), TRUE, TRUE, FALSE, CURRENT_TIMESTAMP 
                 WHERE NOT EXISTS (SELECT 1 FROM ""Cities"" WHERE ""Code"" = 'MAA');
-                INSERT INTO ""Cities"" (""Name"", ""Code"", ""StateId"", ""CountryId"", ""IsHub"", ""IsActive"", ""CreatedAt"")
-                SELECT 'Ahmedabad', 'AMD', (SELECT ""Id"" FROM ""States"" WHERE ""Code"" = 'GJ' AND ""CountryId"" = (SELECT ""Id"" FROM ""Countries"" WHERE ""Code"" = 'IN') LIMIT 1), (SELECT ""Id"" FROM ""Countries"" WHERE ""Code"" = 'IN'), TRUE, TRUE, CURRENT_TIMESTAMP 
+                INSERT INTO ""Cities"" (""Name"", ""Code"", ""StateId"", ""CountryId"", ""IsHub"", ""IsActive"", ""IsDeleted"", ""CreatedAt"")
+                SELECT 'Ahmedabad', 'AMD', (SELECT ""Id"" FROM ""States"" WHERE ""Code"" = 'GJ' AND ""CountryId"" = (SELECT ""Id"" FROM ""Countries"" WHERE ""Code"" = 'IN') LIMIT 1), (SELECT ""Id"" FROM ""Countries"" WHERE ""Code"" = 'IN'), TRUE, TRUE, FALSE, CURRENT_TIMESTAMP 
                 WHERE NOT EXISTS (SELECT 1 FROM ""Cities"" WHERE ""Code"" = 'AMD');
-                INSERT INTO ""Cities"" (""Name"", ""Code"", ""StateId"", ""CountryId"", ""IsHub"", ""IsActive"", ""CreatedAt"")
-                SELECT 'Kolkata', 'CCU', (SELECT ""Id"" FROM ""States"" WHERE ""Code"" = 'WB' AND ""CountryId"" = (SELECT ""Id"" FROM ""Countries"" WHERE ""Code"" = 'IN') LIMIT 1), (SELECT ""Id"" FROM ""Countries"" WHERE ""Code"" = 'IN'), TRUE, TRUE, CURRENT_TIMESTAMP 
+                INSERT INTO ""Cities"" (""Name"", ""Code"", ""StateId"", ""CountryId"", ""IsHub"", ""IsActive"", ""IsDeleted"", ""CreatedAt"")
+                SELECT 'Kolkata', 'CCU', (SELECT ""Id"" FROM ""States"" WHERE ""Code"" = 'WB' AND ""CountryId"" = (SELECT ""Id"" FROM ""Countries"" WHERE ""Code"" = 'IN') LIMIT 1), (SELECT ""Id"" FROM ""Countries"" WHERE ""Code"" = 'IN'), TRUE, TRUE, FALSE, CURRENT_TIMESTAMP 
                 WHERE NOT EXISTS (SELECT 1 FROM ""Cities"" WHERE ""Code"" = 'CCU');
-                INSERT INTO ""Cities"" (""Name"", ""Code"", ""StateId"", ""CountryId"", ""IsHub"", ""IsActive"", ""CreatedAt"")
-                SELECT 'Hyderabad', 'HYD', (SELECT ""Id"" FROM ""States"" WHERE ""Code"" = 'TG' AND ""CountryId"" = (SELECT ""Id"" FROM ""Countries"" WHERE ""Code"" = 'IN') LIMIT 1), (SELECT ""Id"" FROM ""Countries"" WHERE ""Code"" = 'IN'), TRUE, TRUE, CURRENT_TIMESTAMP 
+                INSERT INTO ""Cities"" (""Name"", ""Code"", ""StateId"", ""CountryId"", ""IsHub"", ""IsActive"", ""IsDeleted"", ""CreatedAt"")
+                SELECT 'Hyderabad', 'HYD', (SELECT ""Id"" FROM ""States"" WHERE ""Code"" = 'TG' AND ""CountryId"" = (SELECT ""Id"" FROM ""Countries"" WHERE ""Code"" = 'IN') LIMIT 1), (SELECT ""Id"" FROM ""Countries"" WHERE ""Code"" = 'IN'), TRUE, TRUE, FALSE, CURRENT_TIMESTAMP 
                 WHERE NOT EXISTS (SELECT 1 FROM ""Cities"" WHERE ""Code"" = 'HYD');
-                INSERT INTO ""Cities"" (""Name"", ""Code"", ""StateId"", ""CountryId"", ""IsHub"", ""IsActive"", ""CreatedAt"")
-                SELECT 'Kochi', 'COK', (SELECT ""Id"" FROM ""States"" WHERE ""Code"" = 'KL' AND ""CountryId"" = (SELECT ""Id"" FROM ""Countries"" WHERE ""Code"" = 'IN') LIMIT 1), (SELECT ""Id"" FROM ""Countries"" WHERE ""Code"" = 'IN'), FALSE, TRUE, CURRENT_TIMESTAMP 
+                INSERT INTO ""Cities"" (""Name"", ""Code"", ""StateId"", ""CountryId"", ""IsHub"", ""IsActive"", ""IsDeleted"", ""CreatedAt"")
+                SELECT 'Kochi', 'COK', (SELECT ""Id"" FROM ""States"" WHERE ""Code"" = 'KL' AND ""CountryId"" = (SELECT ""Id"" FROM ""Countries"" WHERE ""Code"" = 'IN') LIMIT 1), (SELECT ""Id"" FROM ""Countries"" WHERE ""Code"" = 'IN'), FALSE, TRUE, FALSE, CURRENT_TIMESTAMP 
                 WHERE NOT EXISTS (SELECT 1 FROM ""Cities"" WHERE ""Code"" = 'COK');
             ", stoppingToken);
 
             // Seed Cities - Pakistan, Bangladesh
             await dbContext.Database.ExecuteSqlRawAsync(@"
-                INSERT INTO ""Cities"" (""Name"", ""Code"", ""StateId"", ""CountryId"", ""IsHub"", ""IsActive"", ""CreatedAt"")
-                SELECT 'Lahore', 'LHE', (SELECT ""Id"" FROM ""States"" WHERE ""Code"" = 'PJB'), (SELECT ""Id"" FROM ""Countries"" WHERE ""Code"" = 'PK'), TRUE, TRUE, CURRENT_TIMESTAMP 
+                INSERT INTO ""Cities"" (""Name"", ""Code"", ""StateId"", ""CountryId"", ""IsHub"", ""IsActive"", ""IsDeleted"", ""CreatedAt"")
+                SELECT 'Lahore', 'LHE', (SELECT ""Id"" FROM ""States"" WHERE ""Code"" = 'PJB'), (SELECT ""Id"" FROM ""Countries"" WHERE ""Code"" = 'PK'), TRUE, TRUE, FALSE, CURRENT_TIMESTAMP 
                 WHERE NOT EXISTS (SELECT 1 FROM ""Cities"" WHERE ""Code"" = 'LHE');
-                INSERT INTO ""Cities"" (""Name"", ""Code"", ""StateId"", ""CountryId"", ""IsHub"", ""IsActive"", ""CreatedAt"")
-                SELECT 'Karachi', 'KHI', (SELECT ""Id"" FROM ""States"" WHERE ""Code"" = 'SND'), (SELECT ""Id"" FROM ""Countries"" WHERE ""Code"" = 'PK'), TRUE, TRUE, CURRENT_TIMESTAMP 
+                INSERT INTO ""Cities"" (""Name"", ""Code"", ""StateId"", ""CountryId"", ""IsHub"", ""IsActive"", ""IsDeleted"", ""CreatedAt"")
+                SELECT 'Karachi', 'KHI', (SELECT ""Id"" FROM ""States"" WHERE ""Code"" = 'SND'), (SELECT ""Id"" FROM ""Countries"" WHERE ""Code"" = 'PK'), TRUE, TRUE, FALSE, CURRENT_TIMESTAMP 
                 WHERE NOT EXISTS (SELECT 1 FROM ""Cities"" WHERE ""Code"" = 'KHI');
-                INSERT INTO ""Cities"" (""Name"", ""Code"", ""StateId"", ""CountryId"", ""IsHub"", ""IsActive"", ""CreatedAt"")
-                SELECT 'Islamabad City', 'ISBC', (SELECT ""Id"" FROM ""States"" WHERE ""Code"" = 'ISB'), (SELECT ""Id"" FROM ""Countries"" WHERE ""Code"" = 'PK'), TRUE, TRUE, CURRENT_TIMESTAMP 
+                INSERT INTO ""Cities"" (""Name"", ""Code"", ""StateId"", ""CountryId"", ""IsHub"", ""IsActive"", ""IsDeleted"", ""CreatedAt"")
+                SELECT 'Islamabad City', 'ISBC', (SELECT ""Id"" FROM ""States"" WHERE ""Code"" = 'ISB'), (SELECT ""Id"" FROM ""Countries"" WHERE ""Code"" = 'PK'), TRUE, TRUE, FALSE, CURRENT_TIMESTAMP 
                 WHERE NOT EXISTS (SELECT 1 FROM ""Cities"" WHERE ""Code"" = 'ISBC');
-                INSERT INTO ""Cities"" (""Name"", ""Code"", ""StateId"", ""CountryId"", ""IsHub"", ""IsActive"", ""CreatedAt"")
-                SELECT 'Dhaka City', 'DHKC', (SELECT ""Id"" FROM ""States"" WHERE ""Code"" = 'DHK'), (SELECT ""Id"" FROM ""Countries"" WHERE ""Code"" = 'BD'), TRUE, TRUE, CURRENT_TIMESTAMP 
+                INSERT INTO ""Cities"" (""Name"", ""Code"", ""StateId"", ""CountryId"", ""IsHub"", ""IsActive"", ""IsDeleted"", ""CreatedAt"")
+                SELECT 'Dhaka City', 'DHKC', (SELECT ""Id"" FROM ""States"" WHERE ""Code"" = 'DHK'), (SELECT ""Id"" FROM ""Countries"" WHERE ""Code"" = 'BD'), TRUE, TRUE, FALSE, CURRENT_TIMESTAMP 
                 WHERE NOT EXISTS (SELECT 1 FROM ""Cities"" WHERE ""Code"" = 'DHKC');
-                INSERT INTO ""Cities"" (""Name"", ""Code"", ""StateId"", ""CountryId"", ""IsHub"", ""IsActive"", ""CreatedAt"")
-                SELECT 'Chittagong City', 'CTGC', (SELECT ""Id"" FROM ""States"" WHERE ""Code"" = 'CTG'), (SELECT ""Id"" FROM ""Countries"" WHERE ""Code"" = 'BD'), TRUE, TRUE, CURRENT_TIMESTAMP 
+                INSERT INTO ""Cities"" (""Name"", ""Code"", ""StateId"", ""CountryId"", ""IsHub"", ""IsActive"", ""IsDeleted"", ""CreatedAt"")
+                SELECT 'Chittagong City', 'CTGC', (SELECT ""Id"" FROM ""States"" WHERE ""Code"" = 'CTG'), (SELECT ""Id"" FROM ""Countries"" WHERE ""Code"" = 'BD'), TRUE, TRUE, FALSE, CURRENT_TIMESTAMP 
                 WHERE NOT EXISTS (SELECT 1 FROM ""Cities"" WHERE ""Code"" = 'CTGC');
             ", stoppingToken);
 
             // Seed Cities - Malaysia, Indonesia, Philippines
             await dbContext.Database.ExecuteSqlRawAsync(@"
-                INSERT INTO ""Cities"" (""Name"", ""Code"", ""StateId"", ""CountryId"", ""IsHub"", ""IsActive"", ""CreatedAt"")
-                SELECT 'Kuala Lumpur City', 'KLC', (SELECT ""Id"" FROM ""States"" WHERE ""Code"" = 'KL' AND ""CountryId"" = (SELECT ""Id"" FROM ""Countries"" WHERE ""Code"" = 'MY') LIMIT 1), (SELECT ""Id"" FROM ""Countries"" WHERE ""Code"" = 'MY'), TRUE, TRUE, CURRENT_TIMESTAMP 
+                INSERT INTO ""Cities"" (""Name"", ""Code"", ""StateId"", ""CountryId"", ""IsHub"", ""IsActive"", ""IsDeleted"", ""CreatedAt"")
+                SELECT 'Kuala Lumpur City', 'KLC', (SELECT ""Id"" FROM ""States"" WHERE ""Code"" = 'KL' AND ""CountryId"" = (SELECT ""Id"" FROM ""Countries"" WHERE ""Code"" = 'MY') LIMIT 1), (SELECT ""Id"" FROM ""Countries"" WHERE ""Code"" = 'MY'), TRUE, TRUE, FALSE, CURRENT_TIMESTAMP 
                 WHERE NOT EXISTS (SELECT 1 FROM ""Cities"" WHERE ""Code"" = 'KLC');
-                INSERT INTO ""Cities"" (""Name"", ""Code"", ""StateId"", ""CountryId"", ""IsHub"", ""IsActive"", ""CreatedAt"")
-                SELECT 'George Town', 'PEN', (SELECT ""Id"" FROM ""States"" WHERE ""Code"" = 'PNG' AND ""CountryId"" = (SELECT ""Id"" FROM ""Countries"" WHERE ""Code"" = 'MY') LIMIT 1), (SELECT ""Id"" FROM ""Countries"" WHERE ""Code"" = 'MY'), FALSE, TRUE, CURRENT_TIMESTAMP 
+                INSERT INTO ""Cities"" (""Name"", ""Code"", ""StateId"", ""CountryId"", ""IsHub"", ""IsActive"", ""IsDeleted"", ""CreatedAt"")
+                SELECT 'George Town', 'PEN', (SELECT ""Id"" FROM ""States"" WHERE ""Code"" = 'PNG' AND ""CountryId"" = (SELECT ""Id"" FROM ""Countries"" WHERE ""Code"" = 'MY') LIMIT 1), (SELECT ""Id"" FROM ""Countries"" WHERE ""Code"" = 'MY'), FALSE, TRUE, FALSE, CURRENT_TIMESTAMP 
                 WHERE NOT EXISTS (SELECT 1 FROM ""Cities"" WHERE ""Code"" = 'PEN');
-                INSERT INTO ""Cities"" (""Name"", ""Code"", ""StateId"", ""CountryId"", ""IsHub"", ""IsActive"", ""CreatedAt"")
-                SELECT 'Johor Bahru', 'JHB', (SELECT ""Id"" FROM ""States"" WHERE ""Code"" = 'JHR' AND ""CountryId"" = (SELECT ""Id"" FROM ""Countries"" WHERE ""Code"" = 'MY') LIMIT 1), (SELECT ""Id"" FROM ""Countries"" WHERE ""Code"" = 'MY'), FALSE, TRUE, CURRENT_TIMESTAMP 
+                INSERT INTO ""Cities"" (""Name"", ""Code"", ""StateId"", ""CountryId"", ""IsHub"", ""IsActive"", ""IsDeleted"", ""CreatedAt"")
+                SELECT 'Johor Bahru', 'JHB', (SELECT ""Id"" FROM ""States"" WHERE ""Code"" = 'JHR' AND ""CountryId"" = (SELECT ""Id"" FROM ""Countries"" WHERE ""Code"" = 'MY') LIMIT 1), (SELECT ""Id"" FROM ""Countries"" WHERE ""Code"" = 'MY'), FALSE, TRUE, FALSE, CURRENT_TIMESTAMP 
                 WHERE NOT EXISTS (SELECT 1 FROM ""Cities"" WHERE ""Code"" = 'JHB');
-                INSERT INTO ""Cities"" (""Name"", ""Code"", ""StateId"", ""CountryId"", ""IsHub"", ""IsActive"", ""CreatedAt"")
-                SELECT 'Jakarta City', 'JKTC', (SELECT ""Id"" FROM ""States"" WHERE ""Code"" = 'JKT' AND ""CountryId"" = (SELECT ""Id"" FROM ""Countries"" WHERE ""Code"" = 'ID') LIMIT 1), (SELECT ""Id"" FROM ""Countries"" WHERE ""Code"" = 'ID'), TRUE, TRUE, CURRENT_TIMESTAMP 
+                INSERT INTO ""Cities"" (""Name"", ""Code"", ""StateId"", ""CountryId"", ""IsHub"", ""IsActive"", ""IsDeleted"", ""CreatedAt"")
+                SELECT 'Jakarta City', 'JKTC', (SELECT ""Id"" FROM ""States"" WHERE ""Code"" = 'JKT' AND ""CountryId"" = (SELECT ""Id"" FROM ""Countries"" WHERE ""Code"" = 'ID') LIMIT 1), (SELECT ""Id"" FROM ""Countries"" WHERE ""Code"" = 'ID'), TRUE, TRUE, FALSE, CURRENT_TIMESTAMP 
                 WHERE NOT EXISTS (SELECT 1 FROM ""Cities"" WHERE ""Code"" = 'JKTC');
-                INSERT INTO ""Cities"" (""Name"", ""Code"", ""StateId"", ""CountryId"", ""IsHub"", ""IsActive"", ""CreatedAt"")
-                SELECT 'Surabaya', 'SUB', (SELECT ""Id"" FROM ""States"" WHERE ""Code"" = 'EJV' AND ""CountryId"" = (SELECT ""Id"" FROM ""Countries"" WHERE ""Code"" = 'ID') LIMIT 1), (SELECT ""Id"" FROM ""Countries"" WHERE ""Code"" = 'ID'), TRUE, TRUE, CURRENT_TIMESTAMP 
+                INSERT INTO ""Cities"" (""Name"", ""Code"", ""StateId"", ""CountryId"", ""IsHub"", ""IsActive"", ""IsDeleted"", ""CreatedAt"")
+                SELECT 'Surabaya', 'SUB', (SELECT ""Id"" FROM ""States"" WHERE ""Code"" = 'EJV' AND ""CountryId"" = (SELECT ""Id"" FROM ""Countries"" WHERE ""Code"" = 'ID') LIMIT 1), (SELECT ""Id"" FROM ""Countries"" WHERE ""Code"" = 'ID'), TRUE, TRUE, FALSE, CURRENT_TIMESTAMP 
                 WHERE NOT EXISTS (SELECT 1 FROM ""Cities"" WHERE ""Code"" = 'SUB');
-                INSERT INTO ""Cities"" (""Name"", ""Code"", ""StateId"", ""CountryId"", ""IsHub"", ""IsActive"", ""CreatedAt"")
-                SELECT 'Denpasar', 'DPS', (SELECT ""Id"" FROM ""States"" WHERE ""Code"" = 'BAL' AND ""CountryId"" = (SELECT ""Id"" FROM ""Countries"" WHERE ""Code"" = 'ID') LIMIT 1), (SELECT ""Id"" FROM ""Countries"" WHERE ""Code"" = 'ID'), FALSE, TRUE, CURRENT_TIMESTAMP 
+                INSERT INTO ""Cities"" (""Name"", ""Code"", ""StateId"", ""CountryId"", ""IsHub"", ""IsActive"", ""IsDeleted"", ""CreatedAt"")
+                SELECT 'Denpasar', 'DPS', (SELECT ""Id"" FROM ""States"" WHERE ""Code"" = 'BAL' AND ""CountryId"" = (SELECT ""Id"" FROM ""Countries"" WHERE ""Code"" = 'ID') LIMIT 1), (SELECT ""Id"" FROM ""Countries"" WHERE ""Code"" = 'ID'), FALSE, TRUE, FALSE, CURRENT_TIMESTAMP 
                 WHERE NOT EXISTS (SELECT 1 FROM ""Cities"" WHERE ""Code"" = 'DPS');
-                INSERT INTO ""Cities"" (""Name"", ""Code"", ""StateId"", ""CountryId"", ""IsHub"", ""IsActive"", ""CreatedAt"")
-                SELECT 'Manila', 'MLA', (SELECT ""Id"" FROM ""States"" WHERE ""Code"" = 'MNL' AND ""CountryId"" = (SELECT ""Id"" FROM ""Countries"" WHERE ""Code"" = 'PH') LIMIT 1), (SELECT ""Id"" FROM ""Countries"" WHERE ""Code"" = 'PH'), TRUE, TRUE, CURRENT_TIMESTAMP 
+                INSERT INTO ""Cities"" (""Name"", ""Code"", ""StateId"", ""CountryId"", ""IsHub"", ""IsActive"", ""IsDeleted"", ""CreatedAt"")
+                SELECT 'Manila', 'MLA', (SELECT ""Id"" FROM ""States"" WHERE ""Code"" = 'MNL' AND ""CountryId"" = (SELECT ""Id"" FROM ""Countries"" WHERE ""Code"" = 'PH') LIMIT 1), (SELECT ""Id"" FROM ""Countries"" WHERE ""Code"" = 'PH'), TRUE, TRUE, FALSE, CURRENT_TIMESTAMP 
                 WHERE NOT EXISTS (SELECT 1 FROM ""Cities"" WHERE ""Code"" = 'MLA');
-                INSERT INTO ""Cities"" (""Name"", ""Code"", ""StateId"", ""CountryId"", ""IsHub"", ""IsActive"", ""CreatedAt"")
-                SELECT 'Cebu City', 'CEBC', (SELECT ""Id"" FROM ""States"" WHERE ""Code"" = 'CEB' AND ""CountryId"" = (SELECT ""Id"" FROM ""Countries"" WHERE ""Code"" = 'PH') LIMIT 1), (SELECT ""Id"" FROM ""Countries"" WHERE ""Code"" = 'PH'), TRUE, TRUE, CURRENT_TIMESTAMP 
+                INSERT INTO ""Cities"" (""Name"", ""Code"", ""StateId"", ""CountryId"", ""IsHub"", ""IsActive"", ""IsDeleted"", ""CreatedAt"")
+                SELECT 'Cebu City', 'CEBC', (SELECT ""Id"" FROM ""States"" WHERE ""Code"" = 'CEB' AND ""CountryId"" = (SELECT ""Id"" FROM ""Countries"" WHERE ""Code"" = 'PH') LIMIT 1), (SELECT ""Id"" FROM ""Countries"" WHERE ""Code"" = 'PH'), TRUE, TRUE, FALSE, CURRENT_TIMESTAMP 
                 WHERE NOT EXISTS (SELECT 1 FROM ""Cities"" WHERE ""Code"" = 'CEBC');
-                INSERT INTO ""Cities"" (""Name"", ""Code"", ""StateId"", ""CountryId"", ""IsHub"", ""IsActive"", ""CreatedAt"")
-                SELECT 'Davao City', 'DAVC', (SELECT ""Id"" FROM ""States"" WHERE ""Code"" = 'DAV' AND ""CountryId"" = (SELECT ""Id"" FROM ""Countries"" WHERE ""Code"" = 'PH') LIMIT 1), (SELECT ""Id"" FROM ""Countries"" WHERE ""Code"" = 'PH'), TRUE, TRUE, CURRENT_TIMESTAMP 
+                INSERT INTO ""Cities"" (""Name"", ""Code"", ""StateId"", ""CountryId"", ""IsHub"", ""IsActive"", ""IsDeleted"", ""CreatedAt"")
+                SELECT 'Davao City', 'DAVC', (SELECT ""Id"" FROM ""States"" WHERE ""Code"" = 'DAV' AND ""CountryId"" = (SELECT ""Id"" FROM ""Countries"" WHERE ""Code"" = 'PH') LIMIT 1), (SELECT ""Id"" FROM ""Countries"" WHERE ""Code"" = 'PH'), TRUE, TRUE, FALSE, CURRENT_TIMESTAMP 
                 WHERE NOT EXISTS (SELECT 1 FROM ""Cities"" WHERE ""Code"" = 'DAVC');
             ", stoppingToken);
 
             // Seed Locations - UAE
             await dbContext.Database.ExecuteSqlRawAsync(@"
                 INSERT INTO ""Locations"" (""Name"", ""Code"", ""CityId"", ""Pincode"", ""IsServiceable"", ""IsActive"", ""CreatedAt"")
-                SELECT 'Deira', 'DEIRA', (SELECT ""Id"" FROM ""Cities"" WHERE ""Code"" = 'DXBC'), '00000', TRUE, TRUE, CURRENT_TIMESTAMP 
+                SELECT 'Deira', 'DEIRA', (SELECT ""Id"" FROM ""Cities"" WHERE ""Code"" = 'DXBC'), '00000', TRUE, TRUE, FALSE, CURRENT_TIMESTAMP 
                 WHERE NOT EXISTS (SELECT 1 FROM ""Locations"" WHERE ""Code"" = 'DEIRA');
                 INSERT INTO ""Locations"" (""Name"", ""Code"", ""CityId"", ""Pincode"", ""IsServiceable"", ""IsActive"", ""CreatedAt"")
-                SELECT 'Bur Dubai', 'BURDXB', (SELECT ""Id"" FROM ""Cities"" WHERE ""Code"" = 'DXBC'), '00000', TRUE, TRUE, CURRENT_TIMESTAMP 
+                SELECT 'Bur Dubai', 'BURDXB', (SELECT ""Id"" FROM ""Cities"" WHERE ""Code"" = 'DXBC'), '00000', TRUE, TRUE, FALSE, CURRENT_TIMESTAMP 
                 WHERE NOT EXISTS (SELECT 1 FROM ""Locations"" WHERE ""Code"" = 'BURDXB');
                 INSERT INTO ""Locations"" (""Name"", ""Code"", ""CityId"", ""Pincode"", ""IsServiceable"", ""IsActive"", ""CreatedAt"")
-                SELECT 'Abu Dhabi Downtown', 'AUHDTN', (SELECT ""Id"" FROM ""Cities"" WHERE ""Code"" = 'AUHC'), '00000', TRUE, TRUE, CURRENT_TIMESTAMP 
+                SELECT 'Abu Dhabi Downtown', 'AUHDTN', (SELECT ""Id"" FROM ""Cities"" WHERE ""Code"" = 'AUHC'), '00000', TRUE, TRUE, FALSE, CURRENT_TIMESTAMP 
                 WHERE NOT EXISTS (SELECT 1 FROM ""Locations"" WHERE ""Code"" = 'AUHDTN');
             ", stoppingToken);
 
             // Seed Locations - India
             await dbContext.Database.ExecuteSqlRawAsync(@"
                 INSERT INTO ""Locations"" (""Name"", ""Code"", ""CityId"", ""Pincode"", ""IsServiceable"", ""IsActive"", ""CreatedAt"")
-                SELECT 'Andheri', 'ANDH', (SELECT ""Id"" FROM ""Cities"" WHERE ""Code"" = 'BOM'), '400069', TRUE, TRUE, CURRENT_TIMESTAMP 
+                SELECT 'Andheri', 'ANDH', (SELECT ""Id"" FROM ""Cities"" WHERE ""Code"" = 'BOM'), '400069', TRUE, TRUE, FALSE, CURRENT_TIMESTAMP 
                 WHERE NOT EXISTS (SELECT 1 FROM ""Locations"" WHERE ""Code"" = 'ANDH');
                 INSERT INTO ""Locations"" (""Name"", ""Code"", ""CityId"", ""Pincode"", ""IsServiceable"", ""IsActive"", ""CreatedAt"")
-                SELECT 'Bandra', 'BNDR', (SELECT ""Id"" FROM ""Cities"" WHERE ""Code"" = 'BOM'), '400050', TRUE, TRUE, CURRENT_TIMESTAMP 
+                SELECT 'Bandra', 'BNDR', (SELECT ""Id"" FROM ""Cities"" WHERE ""Code"" = 'BOM'), '400050', TRUE, TRUE, FALSE, CURRENT_TIMESTAMP 
                 WHERE NOT EXISTS (SELECT 1 FROM ""Locations"" WHERE ""Code"" = 'BNDR');
                 INSERT INTO ""Locations"" (""Name"", ""Code"", ""CityId"", ""Pincode"", ""IsServiceable"", ""IsActive"", ""CreatedAt"")
-                SELECT 'Connaught Place', 'CNPL', (SELECT ""Id"" FROM ""Cities"" WHERE ""Code"" = 'DEL'), '110001', TRUE, TRUE, CURRENT_TIMESTAMP 
+                SELECT 'Connaught Place', 'CNPL', (SELECT ""Id"" FROM ""Cities"" WHERE ""Code"" = 'DEL'), '110001', TRUE, TRUE, FALSE, CURRENT_TIMESTAMP 
                 WHERE NOT EXISTS (SELECT 1 FROM ""Locations"" WHERE ""Code"" = 'CNPL');
                 INSERT INTO ""Locations"" (""Name"", ""Code"", ""CityId"", ""Pincode"", ""IsServiceable"", ""IsActive"", ""CreatedAt"")
-                SELECT 'Whitefield', 'WTFL', (SELECT ""Id"" FROM ""Cities"" WHERE ""Code"" = 'BLR'), '560066', TRUE, TRUE, CURRENT_TIMESTAMP 
+                SELECT 'Whitefield', 'WTFL', (SELECT ""Id"" FROM ""Cities"" WHERE ""Code"" = 'BLR'), '560066', TRUE, TRUE, FALSE, CURRENT_TIMESTAMP 
                 WHERE NOT EXISTS (SELECT 1 FROM ""Locations"" WHERE ""Code"" = 'WTFL');
                 INSERT INTO ""Locations"" (""Name"", ""Code"", ""CityId"", ""Pincode"", ""IsServiceable"", ""IsActive"", ""CreatedAt"")
-                SELECT 'Koramangala', 'KRMN', (SELECT ""Id"" FROM ""Cities"" WHERE ""Code"" = 'BLR'), '560034', TRUE, TRUE, CURRENT_TIMESTAMP 
+                SELECT 'Koramangala', 'KRMN', (SELECT ""Id"" FROM ""Cities"" WHERE ""Code"" = 'BLR'), '560034', TRUE, TRUE, FALSE, CURRENT_TIMESTAMP 
                 WHERE NOT EXISTS (SELECT 1 FROM ""Locations"" WHERE ""Code"" = 'KRMN');
                 INSERT INTO ""Locations"" (""Name"", ""Code"", ""CityId"", ""Pincode"", ""IsServiceable"", ""IsActive"", ""CreatedAt"")
-                SELECT 'T Nagar', 'TNGR', (SELECT ""Id"" FROM ""Cities"" WHERE ""Code"" = 'MAA'), '600017', TRUE, TRUE, CURRENT_TIMESTAMP 
+                SELECT 'T Nagar', 'TNGR', (SELECT ""Id"" FROM ""Cities"" WHERE ""Code"" = 'MAA'), '600017', TRUE, TRUE, FALSE, CURRENT_TIMESTAMP 
                 WHERE NOT EXISTS (SELECT 1 FROM ""Locations"" WHERE ""Code"" = 'TNGR');
             ", stoppingToken);
 
             // Seed Locations - Pakistan, Bangladesh
             await dbContext.Database.ExecuteSqlRawAsync(@"
                 INSERT INTO ""Locations"" (""Name"", ""Code"", ""CityId"", ""Pincode"", ""IsServiceable"", ""IsActive"", ""CreatedAt"")
-                SELECT 'Gulberg', 'GULB', (SELECT ""Id"" FROM ""Cities"" WHERE ""Code"" = 'LHE'), '54000', TRUE, TRUE, CURRENT_TIMESTAMP 
+                SELECT 'Gulberg', 'GULB', (SELECT ""Id"" FROM ""Cities"" WHERE ""Code"" = 'LHE'), '54000', TRUE, TRUE, FALSE, CURRENT_TIMESTAMP 
                 WHERE NOT EXISTS (SELECT 1 FROM ""Locations"" WHERE ""Code"" = 'GULB');
                 INSERT INTO ""Locations"" (""Name"", ""Code"", ""CityId"", ""Pincode"", ""IsServiceable"", ""IsActive"", ""CreatedAt"")
-                SELECT 'Clifton', 'CLFT', (SELECT ""Id"" FROM ""Cities"" WHERE ""Code"" = 'KHI'), '75600', TRUE, TRUE, CURRENT_TIMESTAMP 
+                SELECT 'Clifton', 'CLFT', (SELECT ""Id"" FROM ""Cities"" WHERE ""Code"" = 'KHI'), '75600', TRUE, TRUE, FALSE, CURRENT_TIMESTAMP 
                 WHERE NOT EXISTS (SELECT 1 FROM ""Locations"" WHERE ""Code"" = 'CLFT');
                 INSERT INTO ""Locations"" (""Name"", ""Code"", ""CityId"", ""Pincode"", ""IsServiceable"", ""IsActive"", ""CreatedAt"")
-                SELECT 'Gulshan', 'GLSN', (SELECT ""Id"" FROM ""Cities"" WHERE ""Code"" = 'DHKC'), '1212', TRUE, TRUE, CURRENT_TIMESTAMP 
+                SELECT 'Gulshan', 'GLSN', (SELECT ""Id"" FROM ""Cities"" WHERE ""Code"" = 'DHKC'), '1212', TRUE, TRUE, FALSE, CURRENT_TIMESTAMP 
                 WHERE NOT EXISTS (SELECT 1 FROM ""Locations"" WHERE ""Code"" = 'GLSN');
                 INSERT INTO ""Locations"" (""Name"", ""Code"", ""CityId"", ""Pincode"", ""IsServiceable"", ""IsActive"", ""CreatedAt"")
-                SELECT 'Banani', 'BNNI', (SELECT ""Id"" FROM ""Cities"" WHERE ""Code"" = 'DHKC'), '1213', TRUE, TRUE, CURRENT_TIMESTAMP 
+                SELECT 'Banani', 'BNNI', (SELECT ""Id"" FROM ""Cities"" WHERE ""Code"" = 'DHKC'), '1213', TRUE, TRUE, FALSE, CURRENT_TIMESTAMP 
                 WHERE NOT EXISTS (SELECT 1 FROM ""Locations"" WHERE ""Code"" = 'BNNI');
             ", stoppingToken);
 
             // Seed Locations - Southeast Asia
             await dbContext.Database.ExecuteSqlRawAsync(@"
                 INSERT INTO ""Locations"" (""Name"", ""Code"", ""CityId"", ""Pincode"", ""IsServiceable"", ""IsActive"", ""CreatedAt"")
-                SELECT 'KLCC', 'KLCC', (SELECT ""Id"" FROM ""Cities"" WHERE ""Code"" = 'KLC'), '50088', TRUE, TRUE, CURRENT_TIMESTAMP 
+                SELECT 'KLCC', 'KLCC', (SELECT ""Id"" FROM ""Cities"" WHERE ""Code"" = 'KLC'), '50088', TRUE, TRUE, FALSE, CURRENT_TIMESTAMP 
                 WHERE NOT EXISTS (SELECT 1 FROM ""Locations"" WHERE ""Code"" = 'KLCC');
                 INSERT INTO ""Locations"" (""Name"", ""Code"", ""CityId"", ""Pincode"", ""IsServiceable"", ""IsActive"", ""CreatedAt"")
-                SELECT 'Menteng', 'MNTG', (SELECT ""Id"" FROM ""Cities"" WHERE ""Code"" = 'JKTC'), '10310', TRUE, TRUE, CURRENT_TIMESTAMP 
+                SELECT 'Menteng', 'MNTG', (SELECT ""Id"" FROM ""Cities"" WHERE ""Code"" = 'JKTC'), '10310', TRUE, TRUE, FALSE, CURRENT_TIMESTAMP 
                 WHERE NOT EXISTS (SELECT 1 FROM ""Locations"" WHERE ""Code"" = 'MNTG');
                 INSERT INTO ""Locations"" (""Name"", ""Code"", ""CityId"", ""Pincode"", ""IsServiceable"", ""IsActive"", ""CreatedAt"")
-                SELECT 'Makati', 'MKAT', (SELECT ""Id"" FROM ""Cities"" WHERE ""Code"" = 'MLA'), '1200', TRUE, TRUE, CURRENT_TIMESTAMP 
+                SELECT 'Makati', 'MKAT', (SELECT ""Id"" FROM ""Cities"" WHERE ""Code"" = 'MLA'), '1200', TRUE, TRUE, FALSE, CURRENT_TIMESTAMP 
                 WHERE NOT EXISTS (SELECT 1 FROM ""Locations"" WHERE ""Code"" = 'MKAT');
                 INSERT INTO ""Locations"" (""Name"", ""Code"", ""CityId"", ""Pincode"", ""IsServiceable"", ""IsActive"", ""CreatedAt"")
-                SELECT 'BGC', 'BGC', (SELECT ""Id"" FROM ""Cities"" WHERE ""Code"" = 'MLA'), '1630', TRUE, TRUE, CURRENT_TIMESTAMP 
+                SELECT 'BGC', 'BGC', (SELECT ""Id"" FROM ""Cities"" WHERE ""Code"" = 'MLA'), '1630', TRUE, TRUE, FALSE, CURRENT_TIMESTAMP 
                 WHERE NOT EXISTS (SELECT 1 FROM ""Locations"" WHERE ""Code"" = 'BGC');
             ", stoppingToken);
 
