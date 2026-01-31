@@ -1,59 +1,46 @@
+@inject IDbContextFactory<ApplicationDbContext> DbContextFactory
 @using Microsoft.EntityFrameworkCore
 @using Net4Courier.Infrastructure.Data
 @using Net4Courier.Masters.Entities
-@using Net4Courier.Kernel.Enums
-@inject IDbContextFactory<ApplicationDbContext> DbContextFactory
 
 <MudDialog>
     <TitleContent>
         <MudText Typo="Typo.h6">
-            <MudIcon Icon="@Icons.Material.Filled.AccountTree" Class="mr-2" />
-            @(IsNew ? "Add New Branch" : "Edit Branch")
+            <MudIcon Icon="@Icons.Material.Filled.Store" Class="mr-2" />
+            @(IsNew ? "Add Branch" : "Edit Branch")
         </MudText>
     </TitleContent>
     <DialogContent>
         @if (_isLoading)
         {
-            <MudProgressCircular Color="Color.Primary" Indeterminate="true" Class="ma-4" />
+            <MudProgressCircular Indeterminate="true" />
         }
         else
         {
-        <MudForm @ref="_form" @bind-IsValid="_formIsValid">
+        <MudForm @ref="_form" @bind-IsValid="@_formIsValid">
             <MudGrid>
                 <MudItem xs="12" md="6">
-                    @if (_companies.Count == 1)
-                    {
-                        <MudTextField Value="@_companies[0].Name" Label="Company" ReadOnly="true" Variant="Variant.Outlined" />
-                    }
-                    else if (_companies.Count > 1)
-                    {
-                        <MudSelect T="long" @bind-Value="Branch.CompanyId" Label="Company" Required="true" RequiredError="Company is required" Variant="Variant.Outlined">
-                            @foreach (var company in _companies)
-                            {
-                                <MudSelectItem T="long" Value="@company.Id">@company.Name</MudSelectItem>
-                            }
-                        </MudSelect>
-                    }
-                    else
-                    {
-                        <MudAlert Severity="Severity.Warning" Dense="true">No companies found. Please create a company first.</MudAlert>
-                    }
-                </MudItem>
-                <MudItem xs="12" md="6">
-                    <MudTextField @bind-Value="Branch.Name" Label="Branch Name" Required="true" RequiredError="Branch name is required"
-                                  Variant="Variant.Outlined" />
+                    <MudTextField @bind-Value="Branch.Name" Label="Branch Name" Required="true" RequiredError="Name is required" Variant="Variant.Outlined" />
                 </MudItem>
                 <MudItem xs="12" md="6">
                     <MudTextField @bind-Value="Branch.Code" Label="Branch Code" Variant="Variant.Outlined" />
                 </MudItem>
                 <MudItem xs="12" md="6">
-                    <MudTextField @bind-Value="Branch.Email" Label="Email" InputType="InputType.Email" Variant="Variant.Outlined" />
+                    <MudSelect T="long" @bind-Value="Branch.CompanyId" Label="Company" Required="true" Variant="Variant.Outlined">
+                        @foreach (var company in _companies)
+                        {
+                            <MudSelectItem T="long" Value="@company.Id">@company.Name</MudSelectItem>
+                        }
+                    </MudSelect>
+                </MudItem>
+                <MudItem xs="12" md="6">
+                    <MudTextField @bind-Value="Branch.ManagerName" Label="Manager Name" Variant="Variant.Outlined" />
                 </MudItem>
                 <MudItem xs="12" md="6">
                     <MudTextField @bind-Value="Branch.Phone" Label="Phone" Variant="Variant.Outlined" />
                 </MudItem>
                 <MudItem xs="12" md="6">
-                    <MudTextField @bind-Value="Branch.ManagerName" Label="Manager Name" Variant="Variant.Outlined" />
+                    <MudTextField @bind-Value="Branch.Email" Label="Email" InputType="InputType.Email" Variant="Variant.Outlined" />
                 </MudItem>
                 <MudItem xs="12">
                     <MudTextField @bind-Value="Branch.Address" Label="Address" Variant="Variant.Outlined" Lines="2" />
@@ -65,42 +52,46 @@
                 </MudItem>
 
                 <MudItem xs="12" md="4">
-                    <MudSelect T="long?" @bind-Value="Branch.CountryId" 
-                               Label="Country" 
-                               Variant="Variant.Outlined"
-                               Clearable="true"
-                               Fixed="true">
-                        @foreach (var country in _countries)
-                        {
-                            <MudSelectItem T="long?" Value="@((long?)country.Id)">@country.Name</MudSelectItem>
-                        }
-                    </MudSelect>
+                    <div class="mud-input-control mud-input-input-control">
+                        <div class="mud-input-control-input-container">
+                            <label class="mud-input-label mud-input-label-animated mud-input-label-outlined mud-input-label-inputcontrol" style="font-size:12px; color:rgba(0,0,0,0.6);">Country</label>
+                            <select @bind="_selectedCountryId" @bind:after="OnCountryChanged" style="width:100%; height:56px; padding:16px 14px; border:1px solid rgba(0,0,0,0.23); border-radius:4px; background:white; font-size:16px;">
+                                <option value="0">-- Select Country --</option>
+                                @foreach (var country in _countries)
+                                {
+                                    <option value="@country.Id">@country.Name</option>
+                                }
+                            </select>
+                        </div>
+                    </div>
                 </MudItem>
                 <MudItem xs="12" md="4">
-                    <MudSelect T="long?" @bind-Value="Branch.StateId" 
-                               Label="State" 
-                               Variant="Variant.Outlined"
-                               Disabled="@(!Branch.CountryId.HasValue)"
-                               Clearable="true"
-                               Fixed="true">
-                        @foreach (var state in _states)
-                        {
-                            <MudSelectItem T="long?" Value="@((long?)state.Id)">@state.Name</MudSelectItem>
-                        }
-                    </MudSelect>
+                    <div class="mud-input-control mud-input-input-control">
+                        <div class="mud-input-control-input-container">
+                            <label class="mud-input-label mud-input-label-animated mud-input-label-outlined mud-input-label-inputcontrol" style="font-size:12px; color:rgba(0,0,0,0.6);">State</label>
+                            <select @bind="_selectedStateId" @bind:after="OnStateChanged" disabled="@(_selectedCountryId == 0)" style="width:100%; height:56px; padding:16px 14px; border:1px solid rgba(0,0,0,0.23); border-radius:4px; background:white; font-size:16px;">
+                                <option value="0">-- Select State --</option>
+                                @foreach (var state in _states)
+                                {
+                                    <option value="@state.Id">@state.Name</option>
+                                }
+                            </select>
+                        </div>
+                    </div>
                 </MudItem>
                 <MudItem xs="12" md="4">
-                    <MudSelect T="long?" @bind-Value="Branch.CityId" 
-                               Label="City" 
-                               Variant="Variant.Outlined"
-                               Disabled="@(!Branch.StateId.HasValue)"
-                               Clearable="true"
-                               Fixed="true">
-                        @foreach (var city in _cities)
-                        {
-                            <MudSelectItem T="long?" Value="@((long?)city.Id)">@city.Name</MudSelectItem>
-                        }
-                    </MudSelect>
+                    <div class="mud-input-control mud-input-input-control">
+                        <div class="mud-input-control-input-container">
+                            <label class="mud-input-label mud-input-label-animated mud-input-label-outlined mud-input-label-inputcontrol" style="font-size:12px; color:rgba(0,0,0,0.6);">City</label>
+                            <select @bind="_selectedCityId" disabled="@(_selectedStateId == 0)" style="width:100%; height:56px; padding:16px 14px; border:1px solid rgba(0,0,0,0.23); border-radius:4px; background:white; font-size:16px;">
+                                <option value="0">-- Select City --</option>
+                                @foreach (var city in _cities)
+                                {
+                                    <option value="@city.Id">@city.Name</option>
+                                }
+                            </select>
+                        </div>
+                    </div>
                 </MudItem>
                 <MudItem xs="12" md="4">
                     <MudTextField @bind-Value="Branch.PostalCode" Label="Postal Code" Variant="Variant.Outlined" />
@@ -109,17 +100,14 @@
                     <MudNumericField @bind-Value="Branch.VatPercentage" Label="VAT %" Format="N2" Variant="Variant.Outlined" />
                 </MudItem>
                 <MudItem xs="12" md="4">
-                    <MudSelect T="long?" @bind-Value="Branch.CurrencyId" 
-                               Label="Default Currency" 
-                               Variant="Variant.Outlined"
-                               Clearable="true">
+                    <MudSelect T="long?" @bind-Value="Branch.CurrencyId" Label="Default Currency" Variant="Variant.Outlined" Clearable="true">
                         @foreach (var currency in _currencies)
                         {
                             <MudSelectItem T="long?" Value="@((long?)currency.Id)">@currency.Code - @currency.Name</MudSelectItem>
                         }
                     </MudSelect>
                 </MudItem>
-                <MudItem xs="12" md="4">
+                <MudItem xs="12" md="6">
                     <MudStack Row="true" Spacing="4">
                         <MudSwitch @bind-Value="Branch.IsActive" Label="Active" Color="Color.Primary" />
                         <MudSwitch @bind-Value="Branch.IsHeadOffice" Label="Head Office" Color="Color.Secondary" />
@@ -132,49 +120,7 @@
                 </MudItem>
 
                 <MudItem xs="12">
-                    <MudSwitch @bind-Value="Branch.HideAccountCodes" Label="Hide Account Codes" Color="Color.Primary" 
-                               Class="mt-0" />
-                    <MudText Typo="Typo.caption" Color="Color.Secondary">
-                        When enabled, account codes will be hidden in Chart of Accounts, reports, and all financial grids
-                    </MudText>
-                </MudItem>
-
-                <MudItem xs="12">
-                    <MudDivider Class="my-2" />
-                    <MudText Typo="Typo.subtitle2" Class="mb-2">AWB Number Configuration by Movement Type</MudText>
-                </MudItem>
-
-                <MudItem xs="12">
-                    <MudTable Items="_awbConfigs" Dense="true" Hover="true" Bordered="true" Striped="true">
-                        <HeaderContent>
-                            <MudTh>Movement Type</MudTh>
-                            <MudTh>AWB Prefix</MudTh>
-                            <MudTh>Starting Number</MudTh>
-                            <MudTh>Increment By</MudTh>
-                            <MudTh>Last Used Number</MudTh>
-                        </HeaderContent>
-                        <RowTemplate>
-                            <MudTd DataLabel="Movement Type">
-                                <MudText>@GetMovementTypeLabel(context.MovementType)</MudText>
-                            </MudTd>
-                            <MudTd DataLabel="AWB Prefix">
-                                <MudTextField @bind-Value="context.AWBPrefix" Variant="Variant.Text" 
-                                              Placeholder="e.g. DOM" Style="max-width: 100px;" />
-                            </MudTd>
-                            <MudTd DataLabel="Starting Number">
-                                <MudNumericField @bind-Value="context.StartingNumber" Variant="Variant.Text" 
-                                                 Min="1" Style="max-width: 100px;" />
-                            </MudTd>
-                            <MudTd DataLabel="Increment By">
-                                <MudNumericField @bind-Value="context.IncrementBy" Variant="Variant.Text" 
-                                                 Min="1" Style="max-width: 80px;" />
-                            </MudTd>
-                            <MudTd DataLabel="Last Used Number">
-                                <MudNumericField @bind-Value="context.LastUsedNumber" Variant="Variant.Text" 
-                                                 Style="max-width: 100px;" ReadOnly="true" />
-                            </MudTd>
-                        </RowTemplate>
-                    </MudTable>
+                    <MudSwitch @bind-Value="Branch.HideAccountCodes" Label="Hide Account Codes" Color="Color.Primary" Class="mt-0" />
                 </MudItem>
             </MudGrid>
         </MudForm>
@@ -190,234 +136,90 @@
     [CascadingParameter] MudDialogInstance MudDialog { get; set; } = null!;
     [Parameter] public Branch Branch { get; set; } = new();
     [Parameter] public bool IsNew { get; set; }
-    [Parameter] public List<Company> Companies { get; set; } = new();
 
     private MudForm _form = null!;
     private bool _formIsValid;
+    private bool _isLoading = true;
     
     private List<Company> _companies = new();
     private List<Country> _countries = new();
     private List<State> _states = new();
     private List<City> _cities = new();
     private List<Currency> _currencies = new();
-    private List<BranchAWBConfig> _awbConfigs = new();
-    private bool _isLoading = true;
-    private bool _initialized = false;
     
-    private Country? _selectedCountry;
-    private State? _selectedState;
-    private City? _selectedCity;
+    private long _selectedCountryId;
+    private long _selectedStateId;
+    private long _selectedCityId;
 
-    protected override async Task OnParametersSetAsync()
+    protected override async Task OnInitializedAsync()
     {
-        if (_initialized) return;
-        _initialized = true;
         _isLoading = true;
         
-        await LoadCompanies();
-        await LoadCountries();
-        await LoadCurrencies();
-        
-        if (Branch.CountryId.HasValue)
-        {
-            _selectedCountry = _countries.FirstOrDefault(c => c.Id == Branch.CountryId);
-            await LoadStates(Branch.CountryId.Value);
-        }
-        
-        if (Branch.StateId.HasValue)
-        {
-            _selectedState = _states.FirstOrDefault(s => s.Id == Branch.StateId);
-            await LoadCities(Branch.StateId.Value);
-        }
-        
-        if (Branch.CityId.HasValue)
-        {
-            _selectedCity = _cities.FirstOrDefault(c => c.Id == Branch.CityId);
-        }
-        
-        await LoadAWBConfigs();
-        
-        _isLoading = false;
-        await InvokeAsync(StateHasChanged);
-    }
-
-    private async Task LoadAWBConfigs()
-    {
-        if (!IsNew && Branch.Id > 0)
-        {
-            await using var db = await DbContextFactory.CreateDbContextAsync();
-            _awbConfigs = await db.BranchAWBConfigs
-                .Where(c => c.BranchId == Branch.Id && !c.IsDeleted)
-                .ToListAsync();
-        }
-
-        foreach (MovementType movementType in Enum.GetValues<MovementType>())
-        {
-            if (!_awbConfigs.Any(c => c.MovementType == movementType))
-            {
-                _awbConfigs.Add(new BranchAWBConfig
-                {
-                    BranchId = Branch.Id,
-                    MovementType = movementType,
-                    AWBPrefix = GetDefaultPrefix(movementType),
-                    StartingNumber = GetDefaultStartingNumber(movementType),
-                    IncrementBy = 1,
-                    LastUsedNumber = 0
-                });
-            }
-        }
-
-        _awbConfigs = _awbConfigs.OrderBy(c => (int)c.MovementType).ToList();
-    }
-
-    private string GetDefaultPrefix(MovementType movementType) => movementType switch
-    {
-        MovementType.Domestic => "DOM",
-        MovementType.InternationalExport => "SGE",
-        MovementType.InternationalImport => "SGI",
-        MovementType.Transhipment => "SGT",
-        _ => ""
-    };
-
-    private long GetDefaultStartingNumber(MovementType movementType) => movementType switch
-    {
-        MovementType.Domestic => 101,
-        MovementType.InternationalExport => 201,
-        MovementType.InternationalImport => 301,
-        MovementType.Transhipment => 401,
-        _ => 1
-    };
-
-    private string GetMovementTypeLabel(MovementType movementType) => movementType switch
-    {
-        MovementType.Domestic => "Domestic",
-        MovementType.InternationalExport => "Export",
-        MovementType.InternationalImport => "Import",
-        MovementType.Transhipment => "Transhipment",
-        _ => movementType.ToString()
-    };
-
-    private async Task LoadCountries()
-    {
         await using var db = await DbContextFactory.CreateDbContextAsync();
-        _countries = await db.Countries
-            .Where(c => c.IsActive && !c.IsDeleted)
-            .OrderBy(c => c.Name)
-            .ToListAsync();
-    }
-
-    private async Task LoadCurrencies()
-    {
-        await using var db = await DbContextFactory.CreateDbContextAsync();
-        _currencies = await db.Currencies
-            .Where(c => c.IsActive && !c.IsDeleted)
-            .OrderBy(c => c.Code)
-            .ToListAsync();
-    }
-
-    private async Task LoadCompanies()
-    {
-        await using var db = await DbContextFactory.CreateDbContextAsync();
-        _companies = await db.Companies
-            .Where(c => !c.IsDeleted)
-            .OrderBy(c => c.Name)
-            .ToListAsync();
+        
+        _companies = await db.Companies.Where(c => !c.IsDeleted).OrderBy(c => c.Name).ToListAsync();
+        _countries = await db.Countries.Where(c => c.IsActive && !c.IsDeleted).OrderBy(c => c.Name).ToListAsync();
+        _currencies = await db.Currencies.Where(c => c.IsActive && !c.IsDeleted).OrderBy(c => c.Code).ToListAsync();
         
         if (_companies.Count == 1 && Branch.CompanyId == 0)
         {
             Branch.CompanyId = _companies[0].Id;
         }
+        
+        _selectedCountryId = Branch.CountryId ?? 0;
+        _selectedStateId = Branch.StateId ?? 0;
+        _selectedCityId = Branch.CityId ?? 0;
+        
+        if (_selectedCountryId > 0)
+        {
+            _states = await db.States.Where(s => s.CountryId == _selectedCountryId && s.IsActive && !s.IsDeleted).OrderBy(s => s.Name).ToListAsync();
+        }
+        
+        if (_selectedStateId > 0)
+        {
+            _cities = await db.Cities.Where(c => c.StateId == _selectedStateId && c.IsActive && !c.IsDeleted).OrderBy(c => c.Name).ToListAsync();
+        }
+        
+        _isLoading = false;
     }
 
-    private async Task LoadStates(long countryId)
+    private async Task OnCountryChanged()
     {
-        await using var db = await DbContextFactory.CreateDbContextAsync();
-        _states = await db.States
-            .Where(s => s.CountryId == countryId && s.IsActive && !s.IsDeleted)
-            .OrderBy(s => s.Name)
-            .ToListAsync();
-    }
-
-    private async Task LoadCities(long stateId)
-    {
-        await using var db = await DbContextFactory.CreateDbContextAsync();
-        _cities = await db.Cities
-            .Where(c => c.StateId == stateId && c.IsActive && !c.IsDeleted)
-            .OrderBy(c => c.Name)
-            .ToListAsync();
-    }
-
-    private Task<IEnumerable<Country>> SearchCountries(string value, CancellationToken token)
-    {
-        if (string.IsNullOrEmpty(value))
-            return Task.FromResult(_countries.AsEnumerable());
-        
-        return Task.FromResult(_countries.Where(c => 
-            c.Name.Contains(value, StringComparison.OrdinalIgnoreCase) ||
-            (c.Code != null && c.Code.Contains(value, StringComparison.OrdinalIgnoreCase))));
-    }
-    
-    private Task<IEnumerable<State>> SearchStates(string value, CancellationToken token)
-    {
-        if (string.IsNullOrEmpty(value))
-            return Task.FromResult(_states.AsEnumerable());
-        
-        return Task.FromResult(_states.Where(s => 
-            s.Name.Contains(value, StringComparison.OrdinalIgnoreCase) ||
-            (s.Code != null && s.Code.Contains(value, StringComparison.OrdinalIgnoreCase))));
-    }
-    
-    private Task<IEnumerable<City>> SearchCities(string value, CancellationToken token)
-    {
-        if (string.IsNullOrEmpty(value))
-            return Task.FromResult(_cities.AsEnumerable());
-        
-        return Task.FromResult(_cities.Where(c => 
-            c.Name.Contains(value, StringComparison.OrdinalIgnoreCase) ||
-            (c.Code != null && c.Code.Contains(value, StringComparison.OrdinalIgnoreCase))));
-    }
-    
-    private async Task OnCountrySelected(Country? country)
-    {
-        _selectedCountry = country;
-        Branch.CountryId = country?.Id;
+        Branch.CountryId = _selectedCountryId > 0 ? _selectedCountryId : null;
         Branch.StateId = null;
         Branch.CityId = null;
-        _selectedState = null;
-        _selectedCity = null;
+        _selectedStateId = 0;
+        _selectedCityId = 0;
         _states.Clear();
         _cities.Clear();
         
-        if (country != null)
+        if (_selectedCountryId > 0)
         {
-            await LoadStates(country.Id);
+            await using var db = await DbContextFactory.CreateDbContextAsync();
+            _states = await db.States.Where(s => s.CountryId == _selectedCountryId && s.IsActive && !s.IsDeleted).OrderBy(s => s.Name).ToListAsync();
         }
     }
-    
-    private async Task OnStateSelected(State? state)
+
+    private async Task OnStateChanged()
     {
-        _selectedState = state;
-        Branch.StateId = state?.Id;
+        Branch.StateId = _selectedStateId > 0 ? _selectedStateId : null;
         Branch.CityId = null;
-        _selectedCity = null;
+        _selectedCityId = 0;
         _cities.Clear();
         
-        if (state != null)
+        if (_selectedStateId > 0)
         {
-            await LoadCities(state.Id);
+            await using var db = await DbContextFactory.CreateDbContextAsync();
+            _cities = await db.Cities.Where(c => c.StateId == _selectedStateId && c.IsActive && !c.IsDeleted).OrderBy(c => c.Name).ToListAsync();
         }
-    }
-    
-    private void OnCitySelected(City? city)
-    {
-        _selectedCity = city;
-        Branch.CityId = city?.Id;
     }
 
     private async Task Save()
     {
         await _form.Validate();
         if (!_formIsValid) return;
+
+        Branch.CityId = _selectedCityId > 0 ? _selectedCityId : null;
 
         await using var db = await DbContextFactory.CreateDbContextAsync();
         
@@ -426,34 +228,11 @@
             Branch.CreatedAt = DateTime.UtcNow;
             Branch.AWBLastUsedNumber = Branch.AWBStartingNumber;
             db.Branches.Add(Branch);
-            await db.SaveChangesAsync();
-            
-            foreach (var config in _awbConfigs)
-            {
-                config.BranchId = Branch.Id;
-                config.CreatedAt = DateTime.UtcNow;
-                db.BranchAWBConfigs.Add(config);
-            }
         }
         else
         {
             Branch.ModifiedAt = DateTime.UtcNow;
             db.Branches.Update(Branch);
-            
-            foreach (var config in _awbConfigs)
-            {
-                config.ModifiedAt = DateTime.UtcNow;
-                if (config.Id == 0)
-                {
-                    config.BranchId = Branch.Id;
-                    config.CreatedAt = DateTime.UtcNow;
-                    db.BranchAWBConfigs.Add(config);
-                }
-                else
-                {
-                    db.BranchAWBConfigs.Update(config);
-                }
-            }
         }
 
         await db.SaveChangesAsync();

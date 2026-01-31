@@ -1,5 +1,5 @@
 @page "/branches"
-@inject ApplicationDbContext DbContext
+@inject IDbContextFactory<ApplicationDbContext> DbContextFactory
 @inject IDialogService DialogService
 @inject ISnackbar Snackbar
 @using Microsoft.EntityFrameworkCore
@@ -49,21 +49,26 @@
                     @(context.IsActive ? "Active" : "Inactive")
                 </MudChip>
             </MudTd>
-            <MudTd>
-                <MudIconButton Icon="@Icons.Material.Filled.Edit" Size="Size.Small" Color="Color.Primary" OnClick="@(() => OpenEditDialog(context))" />
-                <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" Color="Color.Error" OnClick="@(() => DeleteBranch(context))" />
+            <MudTd DataLabel="Actions">
+                <MudIconButton Icon="@Icons.Material.Filled.Edit" Color="Color.Primary" Size="Size.Small" 
+                               OnClick="@(() => OpenEditDialog(context))" />
+                <MudIconButton Icon="@Icons.Material.Filled.Delete" Color="Color.Error" Size="Size.Small" 
+                               OnClick="@(() => DeleteBranch(context))" />
             </MudTd>
         </RowTemplate>
         <NoRecordsContent>
-            <MudText>No branches found.</MudText>
+            <MudText>No branches found</MudText>
         </NoRecordsContent>
+        <LoadingContent>
+            <MudText>Loading...</MudText>
+        </LoadingContent>
     </MudTable>
 </MudPaper>
 
 @code {
     private List<Branch> _branches = new();
-    private bool _loading = true;
     private string _searchString = "";
+    private bool _loading = true;
 
     protected override async Task OnInitializedAsync()
     {
@@ -73,7 +78,8 @@
     private async Task LoadBranches()
     {
         _loading = true;
-        _branches = await DbContext.Branches
+        await using var db = await DbContextFactory.CreateDbContextAsync();
+        _branches = await db.Branches
             .Include(b => b.Company)
             .Include(b => b.Country)
             .Include(b => b.State)
@@ -86,22 +92,24 @@
 
     private bool FilterFunc(Branch branch)
     {
-        if (string.IsNullOrWhiteSpace(_searchString))
-            return true;
-        
-        return branch.Name.Contains(_searchString, StringComparison.OrdinalIgnoreCase) ||
-               (branch.Email?.Contains(_searchString, StringComparison.OrdinalIgnoreCase) ?? false) ||
-               (branch.Code?.Contains(_searchString, StringComparison.OrdinalIgnoreCase) ?? false);
+        if (string.IsNullOrWhiteSpace(_searchString)) return true;
+        if (branch.Name?.Contains(_searchString, StringComparison.OrdinalIgnoreCase) == true) return true;
+        if (branch.Code?.Contains(_searchString, StringComparison.OrdinalIgnoreCase) == true) return true;
+        if (branch.Company?.Name?.Contains(_searchString, StringComparison.OrdinalIgnoreCase) == true) return true;
+        return false;
     }
 
     private async Task OpenCreateDialog()
     {
-        var companies = await DbContext.Companies.Where(c => c.IsActive && !c.IsDeleted).ToListAsync();
-        var parameters = new DialogParameters<BranchDialog> { { x => x.Branch, new Branch() }, { x => x.IsNew, true }, { x => x.Companies, companies } };
-        var dialog = await DialogService.ShowAsync<BranchDialog>("Add Branch", parameters, new DialogOptions { MaxWidth = MaxWidth.Medium, FullWidth = true });
+        var parameters = new DialogParameters<BranchDialog>
+        {
+            { x => x.Branch, new Branch { IsActive = true } },
+            { x => x.IsNew, true }
+        };
+        var options = new DialogOptions { MaxWidth = MaxWidth.Medium, FullWidth = true };
+        var dialog = await DialogService.ShowAsync<BranchDialog>("Add Branch", parameters, options);
         var result = await dialog.Result;
-        
-        if (!result!.Canceled)
+        if (result != null && !result.Canceled)
         {
             await LoadBranches();
             Snackbar.Add("Branch created successfully", Severity.Success);
@@ -110,12 +118,19 @@
 
     private async Task OpenEditDialog(Branch branch)
     {
-        var companies = await DbContext.Companies.Where(c => c.IsActive && !c.IsDeleted).ToListAsync();
-        var parameters = new DialogParameters<BranchDialog> { { x => x.Branch, branch }, { x => x.IsNew, false }, { x => x.Companies, companies } };
-        var dialog = await DialogService.ShowAsync<BranchDialog>("Edit Branch", parameters, new DialogOptions { MaxWidth = MaxWidth.Medium, FullWidth = true });
+        await using var db = await DbContextFactory.CreateDbContextAsync();
+        var branchToEdit = await db.Branches.FirstOrDefaultAsync(b => b.Id == branch.Id);
+        if (branchToEdit == null) return;
+
+        var parameters = new DialogParameters<BranchDialog>
+        {
+            { x => x.Branch, branchToEdit },
+            { x => x.IsNew, false }
+        };
+        var options = new DialogOptions { MaxWidth = MaxWidth.Medium, FullWidth = true };
+        var dialog = await DialogService.ShowAsync<BranchDialog>("Edit Branch", parameters, options);
         var result = await dialog.Result;
-        
-        if (!result!.Canceled)
+        if (result != null && !result.Canceled)
         {
             await LoadBranches();
             Snackbar.Add("Branch updated successfully", Severity.Success);
@@ -124,14 +139,23 @@
 
     private async Task DeleteBranch(Branch branch)
     {
-        var confirm = await DialogService.ShowMessageBox("Confirm Delete", $"Are you sure you want to delete {branch.Name}?", yesText: "Delete", cancelText: "Cancel");
+        bool? confirm = await DialogService.ShowMessageBox(
+            "Confirm Delete",
+            $"Are you sure you want to delete branch '{branch.Name}'?",
+            yesText: "Delete", cancelText: "Cancel");
         
         if (confirm == true)
         {
-            branch.IsDeleted = true;
-            await DbContext.SaveChangesAsync();
-            await LoadBranches();
-            Snackbar.Add("Branch deleted successfully", Severity.Success);
+            await using var db = await DbContextFactory.CreateDbContextAsync();
+            var branchToDelete = await db.Branches.FindAsync(branch.Id);
+            if (branchToDelete != null)
+            {
+                branchToDelete.IsDeleted = true;
+                branchToDelete.ModifiedAt = DateTime.UtcNow;
+                await db.SaveChangesAsync();
+                await LoadBranches();
+                Snackbar.Add("Branch deleted successfully", Severity.Success);
+            }
         }
     }
 }
