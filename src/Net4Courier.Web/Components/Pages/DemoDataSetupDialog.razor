@@ -1,0 +1,333 @@
+@inject IDbContextFactory<ApplicationDbContext> DbContextFactory
+@using Microsoft.EntityFrameworkCore
+@using Net4Courier.Infrastructure.Data
+@using Net4Courier.Masters.Entities
+
+<MudDialog>
+    <TitleContent>
+        <MudText Typo="Typo.h6">
+            <MudIcon Icon="@Icons.Material.Filled.Settings" Class="mr-2" />
+            Initial Setup - Company Details
+        </MudText>
+    </TitleContent>
+    <DialogContent>
+        @if (_isLoading)
+        {
+            <MudProgressCircular Indeterminate="true" />
+        }
+        else
+        {
+            <MudAlert Severity="Severity.Info" Class="mb-4" Dense="true">
+                Please provide the following mandatory details before creating demo data.
+                These details will be used to set up your company and admin user.
+            </MudAlert>
+            
+            <MudForm @ref="_form" @bind-IsValid="@_formIsValid">
+                <MudText Typo="Typo.subtitle2" Class="mb-2" Color="Color.Primary">Company Information</MudText>
+                <MudGrid>
+                    <MudItem xs="12">
+                        <MudTextField @bind-Value="SetupData.CompanyName" Label="Company Name" Required="true" 
+                                      RequiredError="Company name is required" Variant="Variant.Outlined" 
+                                      Placeholder="e.g., Express Logistics LLC" />
+                    </MudItem>
+                    <MudItem xs="12" md="6">
+                        <fieldset style="border:1px solid rgba(0,0,0,0.23); border-radius:4px; padding:0 8px 8px 8px; margin:0;">
+                            <legend style="font-size:12px; color:rgba(0,0,0,0.6); padding:0 4px;">Country *</legend>
+                            <select @bind="_selectedCountryId" @bind:after="OnCountryChanged" 
+                                    style="width:100%; height:40px; border:none; background:white; font-size:16px; outline:none;">
+                                <option value="0">-- Select Country --</option>
+                                @foreach (var country in _countries)
+                                {
+                                    <option value="@country.Id">@country.Name</option>
+                                }
+                            </select>
+                        </fieldset>
+                    </MudItem>
+                    <MudItem xs="12" md="6">
+                        <fieldset style="border:1px solid rgba(0,0,0,0.23); border-radius:4px; padding:0 8px 8px 8px; margin:0;">
+                            <legend style="font-size:12px; color:rgba(0,0,0,0.6); padding:0 4px;">Base Currency *</legend>
+                            <select @bind="_selectedCurrencyId" 
+                                    style="width:100%; height:40px; border:none; background:white; font-size:16px; outline:none;">
+                                <option value="0">-- Select Currency --</option>
+                                @foreach (var currency in _currencies)
+                                {
+                                    <option value="@currency.Id">@currency.Code - @currency.Name</option>
+                                }
+                            </select>
+                        </fieldset>
+                    </MudItem>
+                </MudGrid>
+
+                <MudDivider Class="my-4" />
+                
+                <MudText Typo="Typo.subtitle2" Class="mb-2" Color="Color.Primary">Administrator Details</MudText>
+                <MudGrid>
+                    <MudItem xs="12" md="6">
+                        <MudTextField @bind-Value="SetupData.AdminFullName" Label="Admin Full Name" Required="true" 
+                                      RequiredError="Admin name is required" Variant="Variant.Outlined" 
+                                      Placeholder="e.g., John Smith" />
+                    </MudItem>
+                    <MudItem xs="12" md="6">
+                        <MudTextField @bind-Value="SetupData.AdminEmail" Label="Admin Email" Required="true" 
+                                      RequiredError="Admin email is required" InputType="InputType.Email" 
+                                      Variant="Variant.Outlined" Placeholder="e.g., admin@company.com" />
+                    </MudItem>
+                    <MudItem xs="12" md="6">
+                        <MudTextField @bind-Value="SetupData.AdminUsername" Label="Admin Username" 
+                                      Variant="Variant.Outlined" Placeholder="Leave blank to auto-generate from email"
+                                      HelperText="Optional - will be generated from email if empty" />
+                    </MudItem>
+                    <MudItem xs="12" md="6">
+                        <MudTextField @bind-Value="SetupData.AdminPhone" Label="Admin Phone" 
+                                      Variant="Variant.Outlined" Placeholder="e.g., +971 50 123 4567" />
+                    </MudItem>
+                </MudGrid>
+                
+                <MudDivider Class="my-4" />
+                
+                <MudText Typo="Typo.subtitle2" Class="mb-2" Color="Color.Primary">Branch Details (Optional)</MudText>
+                <MudGrid>
+                    <MudItem xs="12" md="6">
+                        <MudTextField @bind-Value="SetupData.BranchName" Label="Main Branch Name" 
+                                      Variant="Variant.Outlined" Placeholder="e.g., Dubai Head Office"
+                                      HelperText="Default: Main Branch" />
+                    </MudItem>
+                    <MudItem xs="12" md="6">
+                        <MudTextField @bind-Value="SetupData.BranchCode" Label="Branch Code" 
+                                      Variant="Variant.Outlined" Placeholder="e.g., DXB-HQ"
+                                      HelperText="Default: HQ" />
+                    </MudItem>
+                </MudGrid>
+            </MudForm>
+            
+            @if (!string.IsNullOrEmpty(_validationError))
+            {
+                <MudAlert Severity="Severity.Error" Class="mt-4" Dense="true">@_validationError</MudAlert>
+            }
+        }
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Cancel" Variant="Variant.Text">Cancel</MudButton>
+        <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="Submit" 
+                   Disabled="@(!CanSubmit())">
+            Continue with Setup
+        </MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] MudDialogInstance MudDialog { get; set; } = null!;
+    
+    [Parameter] public DemoDataSetupModel SetupData { get; set; } = new();
+
+    private MudForm _form = null!;
+    private bool _formIsValid;
+    private bool _isLoading = true;
+    private string? _validationError;
+    
+    private List<Country> _countries = new();
+    private List<Currency> _currencies = new();
+    private long _selectedCountryId;
+    private long _selectedCurrencyId;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadDataAsync();
+    }
+
+    private async Task LoadDataAsync()
+    {
+        _isLoading = true;
+        try
+        {
+            await using var context = await DbContextFactory.CreateDbContextAsync();
+            
+            _countries = await context.Countries
+                .Where(c => c.IsActive && !c.IsDeleted)
+                .OrderBy(c => c.Name)
+                .ToListAsync();
+            
+            _currencies = await context.Currencies
+                .Where(c => c.IsActive)
+                .OrderBy(c => c.Code)
+                .ToListAsync();
+            
+            // If no currencies exist, we'll need to create some defaults
+            if (!_currencies.Any())
+            {
+                // Add common currencies that will be created
+                _currencies = new List<Currency>
+                {
+                    new Currency { Id = -1, Code = "AED", Name = "UAE Dirham", Symbol = "د.إ" },
+                    new Currency { Id = -2, Code = "USD", Name = "US Dollar", Symbol = "$" },
+                    new Currency { Id = -3, Code = "EUR", Name = "Euro", Symbol = "€" },
+                    new Currency { Id = -4, Code = "GBP", Name = "British Pound", Symbol = "£" },
+                    new Currency { Id = -5, Code = "SAR", Name = "Saudi Riyal", Symbol = "ر.س" },
+                    new Currency { Id = -6, Code = "INR", Name = "Indian Rupee", Symbol = "₹" }
+                };
+            }
+            
+            // Auto-select UAE and AED as defaults if available
+            var uae = _countries.FirstOrDefault(c => c.Code == "AE" || c.Name.Contains("Emirates", StringComparison.OrdinalIgnoreCase));
+            if (uae != null)
+            {
+                _selectedCountryId = uae.Id;
+            }
+            
+            var aed = _currencies.FirstOrDefault(c => c.Code == "AED");
+            if (aed != null)
+            {
+                _selectedCurrencyId = aed.Id;
+            }
+        }
+        finally
+        {
+            _isLoading = false;
+        }
+    }
+
+    private async Task OnCountryChanged()
+    {
+        // Auto-select currency based on country
+        if (_selectedCountryId > 0)
+        {
+            var country = _countries.FirstOrDefault(c => c.Id == _selectedCountryId);
+            if (country != null)
+            {
+                // Map country code to currency code
+                var currencyCode = GetCurrencyCodeForCountry(country.Code ?? "");
+                var currency = _currencies.FirstOrDefault(c => c.Code == currencyCode);
+                if (currency != null)
+                {
+                    _selectedCurrencyId = currency.Id;
+                }
+            }
+        }
+        await Task.CompletedTask;
+    }
+
+    private string GetCurrencyCodeForCountry(string countryCode)
+    {
+        return countryCode switch
+        {
+            "AE" => "AED",
+            "SA" => "SAR",
+            "US" => "USD",
+            "GB" => "GBP",
+            "IN" => "INR",
+            "PK" => "PKR",
+            "BD" => "BDT",
+            "OM" => "OMR",
+            "KW" => "KWD",
+            "BH" => "BHD",
+            "QA" => "QAR",
+            "JO" => "JOD",
+            "EG" => "EGP",
+            "MY" => "MYR",
+            "SG" => "SGD",
+            "PH" => "PHP",
+            "ID" => "IDR",
+            "TH" => "THB",
+            "AU" => "AUD",
+            "NZ" => "NZD",
+            "CA" => "CAD",
+            "JP" => "JPY",
+            "CN" => "CNY",
+            _ => "USD"
+        };
+    }
+
+    private bool CanSubmit()
+    {
+        return !string.IsNullOrWhiteSpace(SetupData.CompanyName) &&
+               !string.IsNullOrWhiteSpace(SetupData.AdminFullName) &&
+               !string.IsNullOrWhiteSpace(SetupData.AdminEmail) &&
+               _selectedCountryId > 0 &&
+               _selectedCurrencyId != 0;
+    }
+
+    private void Submit()
+    {
+        _validationError = null;
+        
+        // Validation
+        if (string.IsNullOrWhiteSpace(SetupData.CompanyName))
+        {
+            _validationError = "Company name is required";
+            return;
+        }
+        
+        if (_selectedCountryId <= 0)
+        {
+            _validationError = "Please select a country";
+            return;
+        }
+        
+        if (_selectedCurrencyId == 0)
+        {
+            _validationError = "Please select a base currency";
+            return;
+        }
+        
+        if (string.IsNullOrWhiteSpace(SetupData.AdminFullName))
+        {
+            _validationError = "Admin full name is required";
+            return;
+        }
+        
+        if (string.IsNullOrWhiteSpace(SetupData.AdminEmail))
+        {
+            _validationError = "Admin email is required";
+            return;
+        }
+        
+        // Set selected values
+        SetupData.CountryId = _selectedCountryId;
+        SetupData.CurrencyId = _selectedCurrencyId;
+        
+        // Get currency code for creating new currencies
+        var selectedCurrency = _currencies.FirstOrDefault(c => c.Id == _selectedCurrencyId);
+        SetupData.CurrencyCode = selectedCurrency?.Code ?? "USD";
+        SetupData.CurrencyName = selectedCurrency?.Name ?? "US Dollar";
+        SetupData.CurrencySymbol = selectedCurrency?.Symbol ?? "$";
+        
+        // Auto-generate username from email if not provided
+        if (string.IsNullOrWhiteSpace(SetupData.AdminUsername))
+        {
+            SetupData.AdminUsername = SetupData.AdminEmail.Split('@')[0].ToLower();
+        }
+        
+        // Set default branch name/code if not provided
+        if (string.IsNullOrWhiteSpace(SetupData.BranchName))
+        {
+            SetupData.BranchName = "Main Branch";
+        }
+        
+        if (string.IsNullOrWhiteSpace(SetupData.BranchCode))
+        {
+            SetupData.BranchCode = "HQ";
+        }
+        
+        MudDialog.Close(DialogResult.Ok(SetupData));
+    }
+
+    private void Cancel() => MudDialog.Cancel();
+}
+
+@code {
+    public class DemoDataSetupModel
+    {
+        public string CompanyName { get; set; } = "";
+        public long CountryId { get; set; }
+        public long CurrencyId { get; set; }
+        public string CurrencyCode { get; set; } = "";
+        public string CurrencyName { get; set; } = "";
+        public string CurrencySymbol { get; set; } = "";
+        public string AdminFullName { get; set; } = "";
+        public string AdminEmail { get; set; } = "";
+        public string AdminUsername { get; set; } = "";
+        public string AdminPhone { get; set; } = "";
+        public string BranchName { get; set; } = "";
+        public string BranchCode { get; set; } = "";
+    }
+}

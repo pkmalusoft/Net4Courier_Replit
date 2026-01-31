@@ -14,13 +14,29 @@ public interface IDemoDataService
     Task<DemoDataStats> GetDemoDataStatsAsync();
     Task<AllDataStats> GetAllDataStatsAsync();
     Task<bool> CreateGLDataAsync();
-    Task<bool> CreateMasterDataAsync();
+    Task<bool> CreateMasterDataAsync(DemoDataSetupInput? setupInput = null);
     Task<bool> CreateAWBStockDataAsync();
     Task<bool> CreateCRMDataAsync();
     Task<bool> CreateTransactionDataAsync();
     Task<bool> CreateFinanceDataAsync();
     Task<bool> DeleteAllDemoDataAsync();
     Task<bool> DeleteAllDataAsync();
+}
+
+public class DemoDataSetupInput
+{
+    public string CompanyName { get; set; } = "";
+    public long CountryId { get; set; }
+    public long CurrencyId { get; set; }
+    public string CurrencyCode { get; set; } = "";
+    public string CurrencyName { get; set; } = "";
+    public string CurrencySymbol { get; set; } = "";
+    public string AdminFullName { get; set; } = "";
+    public string AdminEmail { get; set; } = "";
+    public string AdminUsername { get; set; } = "";
+    public string AdminPhone { get; set; } = "";
+    public string BranchName { get; set; } = "";
+    public string BranchCode { get; set; } = "";
 }
 
 public class AllDataStats
@@ -281,99 +297,207 @@ public class DemoDataService : IDemoDataService
         }
     }
 
-    public async Task<bool> CreateMasterDataAsync()
+    public async Task<bool> CreateMasterDataAsync(DemoDataSetupInput? setupInput = null)
     {
         await using var context = await _dbFactory.CreateDbContextAsync();
+        LastError = null;
 
-        // Step 1: Get or create AED currency (always create if not exists)
-        var aedCurrency = await context.Currencies.FirstOrDefaultAsync(c => c.Code == "AED");
-        if (aedCurrency == null)
+        try
         {
-            // Create AED currency for demo data
-            aedCurrency = new Net4Courier.Masters.Entities.Currency
+            // Step 1: Get or create the selected currency (or AED as default)
+            Net4Courier.Masters.Entities.Currency? baseCurrency = null;
+            
+            if (setupInput != null && setupInput.CurrencyId > 0)
             {
-                Code = "AED",
-                Name = "UAE Dirham",
-                Symbol = "د.إ",
-                DecimalPlaces = 2,
-                IsActive = true,
-                CreatedAt = DateTime.UtcNow
-            };
-            context.Currencies.Add(aedCurrency);
-            await context.SaveChangesAsync();
-        }
-
-        // Step 2: Look for demo company first, then any company
-        var company = await context.Companies.FirstOrDefaultAsync(c => c.Code == "DEMO-CO" || c.IsDemo);
-        if (company == null)
-        {
-            // No demo company, check if any company exists
-            company = await context.Companies.FirstOrDefaultAsync();
-        }
-        
-        if (company == null)
-        {
-            // Create a demo company with CurrencyId set
-            company = new Net4Courier.Masters.Entities.Company
+                // Use user-selected currency
+                baseCurrency = await context.Currencies.FirstOrDefaultAsync(c => c.Id == setupInput.CurrencyId);
+            }
+            else if (setupInput != null && setupInput.CurrencyId < 0)
             {
-                Code = "DEMO-CO",
-                Name = "DEMO Courier Company LLC",
-                Address = "Business Bay, Dubai",
-                Phone = "+971 4 123 4567",
-                Email = "info@democourier.ae",
-                Website = "www.democourier.ae",
-                TaxNumber = "TRN100012345678901",
-                RegistrationNumber = "LLC-123456",
-                CurrencyId = aedCurrency.Id,
-                IsActive = true,
-                IsDemo = true,
-                CreatedAt = DateTime.UtcNow
-            };
-            context.Companies.Add(company);
-            await context.SaveChangesAsync();
-        }
-        else if (company.CurrencyId == null && company.IsDemo)
-        {
-            // Only update CurrencyId for demo companies that don't have one
-            company.CurrencyId = aedCurrency.Id;
-            await context.SaveChangesAsync();
-        }
-
-        // Step 3: Look for demo branch first, or branch belonging to this company
-        var branch = await context.Branches.FirstOrDefaultAsync(b => b.CompanyId == company.Id && (b.Code == "DXB-HQ" || b.IsDemo));
-        if (branch == null)
-        {
-            // Check if any branch exists for this company
-            branch = await context.Branches.FirstOrDefaultAsync(b => b.CompanyId == company.Id);
-        }
-        
-        if (branch == null)
-        {
-            // Create a demo branch with CurrencyId tied to the company
-            branch = new Net4Courier.Masters.Entities.Branch
+                // Currency needs to be created (negative ID means it's a placeholder)
+                baseCurrency = await context.Currencies.FirstOrDefaultAsync(c => c.Code == setupInput.CurrencyCode);
+                if (baseCurrency == null)
+                {
+                    baseCurrency = new Net4Courier.Masters.Entities.Currency
+                    {
+                        Code = setupInput.CurrencyCode,
+                        Name = setupInput.CurrencyName,
+                        Symbol = setupInput.CurrencySymbol,
+                        DecimalPlaces = 2,
+                        IsActive = true,
+                        CreatedAt = DateTime.UtcNow
+                    };
+                    context.Currencies.Add(baseCurrency);
+                    await context.SaveChangesAsync();
+                }
+            }
+            
+            // Fallback to AED if no currency selected
+            if (baseCurrency == null)
             {
-                CompanyId = company.Id,
-                Code = "DXB-HQ",
-                Name = "Dubai Main Branch",
-                Address = "Business Bay, Dubai",
-                Phone = "+971 4 123 4567",
-                Email = "dubai@democourier.ae",
-                CurrencyId = aedCurrency.Id,
-                IsActive = true,
-                IsDemo = true,
-                CreatedAt = DateTime.UtcNow
-            };
-            context.Branches.Add(branch);
-            await context.SaveChangesAsync();
-        }
-        else if (branch.CurrencyId == null && branch.IsDemo)
-        {
-            // Only update CurrencyId for demo branches that don't have one
-            branch.CurrencyId = aedCurrency.Id;
-            await context.SaveChangesAsync();
-        }
+                baseCurrency = await context.Currencies.FirstOrDefaultAsync(c => c.Code == "AED");
+                if (baseCurrency == null)
+                {
+                    baseCurrency = new Net4Courier.Masters.Entities.Currency
+                    {
+                        Code = "AED",
+                        Name = "UAE Dirham",
+                        Symbol = "د.إ",
+                        DecimalPlaces = 2,
+                        IsActive = true,
+                        CreatedAt = DateTime.UtcNow
+                    };
+                    context.Currencies.Add(baseCurrency);
+                    await context.SaveChangesAsync();
+                }
+            }
 
-        var companyId = company.Id;
+            // Step 2: Create or find company
+            Net4Courier.Masters.Entities.Company? company = null;
+            
+            if (setupInput != null && !string.IsNullOrEmpty(setupInput.CompanyName))
+            {
+                // Check if company with this name already exists
+                company = await context.Companies.FirstOrDefaultAsync(c => c.Name == setupInput.CompanyName);
+                
+                if (company == null)
+                {
+                    // Create company with user-provided details
+                    company = new Net4Courier.Masters.Entities.Company
+                    {
+                        Code = GenerateCompanyCode(setupInput.CompanyName),
+                        Name = setupInput.CompanyName,
+                        Address = "Head Office",
+                        Phone = setupInput.AdminPhone ?? "",
+                        Email = setupInput.AdminEmail ?? "",
+                        CurrencyId = baseCurrency.Id,
+                        CountryId = setupInput.CountryId > 0 ? setupInput.CountryId : null,
+                        IsActive = true,
+                        IsDemo = false,
+                        CreatedAt = DateTime.UtcNow
+                    };
+                    context.Companies.Add(company);
+                    await context.SaveChangesAsync();
+                }
+                else if (company.CurrencyId == null)
+                {
+                    company.CurrencyId = baseCurrency.Id;
+                    await context.SaveChangesAsync();
+                }
+            }
+            else
+            {
+                // Legacy behavior - look for demo company
+                company = await context.Companies.FirstOrDefaultAsync(c => c.Code == "DEMO-CO" || c.IsDemo);
+                if (company == null)
+                {
+                    company = await context.Companies.FirstOrDefaultAsync();
+                }
+                
+                if (company == null)
+                {
+                    company = new Net4Courier.Masters.Entities.Company
+                    {
+                        Code = "DEMO-CO",
+                        Name = "DEMO Courier Company LLC",
+                        Address = "Business Bay, Dubai",
+                        Phone = "+971 4 123 4567",
+                        Email = "info@democourier.ae",
+                        Website = "www.democourier.ae",
+                        TaxNumber = "TRN100012345678901",
+                        RegistrationNumber = "LLC-123456",
+                        CurrencyId = baseCurrency.Id,
+                        IsActive = true,
+                        IsDemo = true,
+                        CreatedAt = DateTime.UtcNow
+                    };
+                    context.Companies.Add(company);
+                    await context.SaveChangesAsync();
+                }
+                else if (company.CurrencyId == null && company.IsDemo)
+                {
+                    company.CurrencyId = baseCurrency.Id;
+                    await context.SaveChangesAsync();
+                }
+            }
+
+            // Step 3: Create or find branch
+            Net4Courier.Masters.Entities.Branch? branch = null;
+            // For legacy demo path, use demo defaults; for user setup, use provided values
+            bool isLegacyDemo = setupInput == null;
+            string branchCode = isLegacyDemo ? "DXB-HQ" : (setupInput?.BranchCode ?? "HQ");
+            string branchName = isLegacyDemo ? "Dubai Main Branch" : (setupInput?.BranchName ?? "Main Branch");
+            
+            branch = await context.Branches.FirstOrDefaultAsync(b => b.CompanyId == company.Id && b.Code == branchCode);
+            if (branch == null)
+            {
+                branch = await context.Branches.FirstOrDefaultAsync(b => b.CompanyId == company.Id);
+            }
+            
+            if (branch == null)
+            {
+                branch = new Net4Courier.Masters.Entities.Branch
+                {
+                    CompanyId = company.Id,
+                    Code = branchCode,
+                    Name = branchName,
+                    Address = company.Address ?? "Head Office",
+                    Phone = company.Phone ?? "",
+                    Email = company.Email ?? "",
+                    CurrencyId = baseCurrency.Id,
+                    CountryId = setupInput?.CountryId > 0 ? setupInput.CountryId : null,
+                    IsActive = true,
+                    IsDemo = isLegacyDemo,
+                    CreatedAt = DateTime.UtcNow
+                };
+                context.Branches.Add(branch);
+                await context.SaveChangesAsync();
+            }
+            else if (branch.CurrencyId == null)
+            {
+                branch.CurrencyId = baseCurrency.Id;
+                await context.SaveChangesAsync();
+            }
+
+            // Step 4: Create admin user if setup input provided
+            if (setupInput != null && !string.IsNullOrEmpty(setupInput.AdminEmail))
+            {
+                // Auto-generate username from email if not provided
+                var adminUsername = !string.IsNullOrEmpty(setupInput.AdminUsername) 
+                    ? setupInput.AdminUsername 
+                    : setupInput.AdminEmail.Split('@')[0].ToLower().Replace(".", "").Replace("-", "");
+                
+                var existingUser = await context.Users.FirstOrDefaultAsync(u => u.Username == adminUsername || u.Email == setupInput.AdminEmail);
+                if (existingUser == null)
+                {
+                    var adminRole = await context.Roles.FirstOrDefaultAsync(r => r.Name == "Administrator");
+                    if (adminRole != null)
+                    {
+                        // Generate a secure temporary password (user should change on first login)
+                        var tempPassword = GenerateSecurePassword();
+                        
+                        var adminUser = new Net4Courier.Masters.Entities.User
+                        {
+                            Username = adminUsername,
+                            FullName = setupInput.AdminFullName,
+                            Email = setupInput.AdminEmail,
+                            Phone = setupInput.AdminPhone,
+                            PasswordHash = BCrypt.Net.BCrypt.HashPassword(tempPassword),
+                            RoleId = adminRole.Id,
+                            BranchId = branch.Id,
+                            IsActive = true,
+                            IsDemo = false,
+                            CreatedAt = DateTime.UtcNow
+                        };
+                        context.Users.Add(adminUser);
+                        await context.SaveChangesAsync();
+                        
+                        _logger.LogInformation("Created admin user '{Username}' for company '{Company}' with temporary password", adminUsername, setupInput.CompanyName);
+                    }
+                }
+            }
+
+            var companyId = company.Id;
 
         var uaeAddresses = new[]
         {
@@ -561,34 +685,85 @@ public class DemoDataService : IDemoDataService
             context.Employees.Add(employee);
         }
 
-        var vehicleData = new[]
-        {
-            new { VehicleNo = "DEMO-DXB-1234", Type = "Van", Make = "Toyota", Model = "Hiace", Capacity = 1500m },
-            new { VehicleNo = "DEMO-DXB-5678", Type = "Motorcycle", Make = "Honda", Model = "PCX", Capacity = 50m },
-            new { VehicleNo = "DEMO-DXB-9012", Type = "Truck", Make = "Isuzu", Model = "NPR", Capacity = 3000m }
-        };
-
-        foreach (var veh in vehicleData)
-        {
-            var vehicle = new Vehicle
+            var vehicleData = new[]
             {
-                CompanyId = companyId,
-                BranchId = 1,
-                VehicleNo = veh.VehicleNo,
-                VehicleType = veh.Type,
-                Make = veh.Make,
-                Model = veh.Model,
-                Year = 2023,
-                Capacity = veh.Capacity,
-                IsActive = true,
-                IsDemo = true,
-                CreatedAt = DateTime.UtcNow
+                new { VehicleNo = "DEMO-DXB-1234", Type = "Van", Make = "Toyota", Model = "Hiace", Capacity = 1500m },
+                new { VehicleNo = "DEMO-DXB-5678", Type = "Motorcycle", Make = "Honda", Model = "PCX", Capacity = 50m },
+                new { VehicleNo = "DEMO-DXB-9012", Type = "Truck", Make = "Isuzu", Model = "NPR", Capacity = 3000m }
             };
-            context.Vehicles.Add(vehicle);
-        }
 
-        await context.SaveChangesAsync();
-        return true;
+            foreach (var veh in vehicleData)
+            {
+                var vehicle = new Vehicle
+                {
+                    CompanyId = companyId,
+                    BranchId = branch.Id,
+                    VehicleNo = veh.VehicleNo,
+                    VehicleType = veh.Type,
+                    Make = veh.Make,
+                    Model = veh.Model,
+                    Year = 2023,
+                    Capacity = veh.Capacity,
+                    IsActive = true,
+                    IsDemo = true,
+                    CreatedAt = DateTime.UtcNow
+                };
+                context.Vehicles.Add(vehicle);
+            }
+
+            await context.SaveChangesAsync();
+            return true;
+        }
+        catch (Exception ex)
+        {
+            LastError = $"Failed to create master data: {ex.Message}";
+            _logger.LogError(ex, "Failed to create master data. Error: {ErrorMessage}", ex.Message);
+            if (ex.InnerException != null)
+            {
+                _logger.LogError("Inner Exception: {InnerMessage}", ex.InnerException.Message);
+                LastError += $" | Inner: {ex.InnerException.Message}";
+            }
+            return false;
+        }
+    }
+
+    private string GenerateCompanyCode(string companyName)
+    {
+        if (string.IsNullOrWhiteSpace(companyName))
+            return "CO";
+        
+        var words = companyName.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        if (words.Length >= 2)
+        {
+            return (words[0][0].ToString() + words[1][0].ToString()).ToUpper();
+        }
+        return companyName.Length >= 3 
+            ? companyName.Substring(0, 3).ToUpper() 
+            : companyName.ToUpper();
+    }
+    
+    private string GenerateSecurePassword()
+    {
+        const string upperCase = "ABCDEFGHJKLMNPQRSTUVWXYZ";
+        const string lowerCase = "abcdefghjkmnpqrstuvwxyz";
+        const string digits = "23456789";
+        const string special = "!@#$%&*";
+        
+        var random = new Random();
+        var password = new char[12];
+        
+        password[0] = upperCase[random.Next(upperCase.Length)];
+        password[1] = lowerCase[random.Next(lowerCase.Length)];
+        password[2] = digits[random.Next(digits.Length)];
+        password[3] = special[random.Next(special.Length)];
+        
+        var allChars = upperCase + lowerCase + digits;
+        for (int i = 4; i < 12; i++)
+        {
+            password[i] = allChars[random.Next(allChars.Length)];
+        }
+        
+        return new string(password.OrderBy(x => random.Next()).ToArray());
     }
 
     public async Task<bool> CreateAWBStockDataAsync()
