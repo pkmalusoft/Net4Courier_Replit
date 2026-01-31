@@ -1,5 +1,5 @@
 @page "/companies"
-@inject ApplicationDbContext DbContext
+@inject IDbContextFactory<ApplicationDbContext> DbFactory
 @inject IDialogService DialogService
 @inject ISnackbar Snackbar
 @inject NavigationManager Navigation
@@ -68,7 +68,8 @@
     private async Task LoadCompanies()
     {
         _loading = true;
-        _companies = await DbContext.Companies
+        await using var dbContext = await DbFactory.CreateDbContextAsync();
+        _companies = await dbContext.Companies
             .Include(c => c.Country)
             .Include(c => c.State)
             .Include(c => c.City)
@@ -113,8 +114,13 @@
         
         if (confirm == true)
         {
-            company.IsDeleted = true;
-            await DbContext.SaveChangesAsync();
+            await using var dbContext = await DbFactory.CreateDbContextAsync();
+            var entity = await dbContext.Companies.FindAsync(company.Id);
+            if (entity != null)
+            {
+                entity.IsDeleted = true;
+                await dbContext.SaveChangesAsync();
+            }
             await LoadCompanies();
             Snackbar.Add("Company deleted successfully", Severity.Success);
         }
