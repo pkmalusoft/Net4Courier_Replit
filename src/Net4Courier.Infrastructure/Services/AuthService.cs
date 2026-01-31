@@ -40,6 +40,8 @@ public class AuthService
         var userBranches = await _context.UserBranches
             .Include(ub => ub.Branch)
                 .ThenInclude(b => b.Company)
+            .Include(ub => ub.Branch)
+                .ThenInclude(b => b.Currency)
             .Where(ub => ub.UserId == userId && ub.Branch.IsActive && !ub.IsDeleted)
             .Select(ub => ub.Branch)
             .ToListAsync();
@@ -49,6 +51,8 @@ public class AuthService
             var user = await _context.Users
                 .Include(u => u.Branch)
                     .ThenInclude(b => b!.Company)
+                .Include(u => u.Branch)
+                    .ThenInclude(b => b!.Currency)
                 .FirstOrDefaultAsync(u => u.Id == userId);
             if (user?.Branch != null)
             {
