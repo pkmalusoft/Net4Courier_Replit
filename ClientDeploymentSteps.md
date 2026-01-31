@@ -204,16 +204,20 @@ When syncing code from the main repository to an existing client deployment, new
 Run these SQL commands on existing deployments (Rainbow, Gateex, etc.) after syncing from main:
 
 ```sql
--- Step 1: Add CurrencyId columns
+-- Step 1: Add missing columns to Currencies table
+ALTER TABLE "Currencies" ADD COLUMN IF NOT EXISTS "ExchangeRate" DECIMAL(18,6) DEFAULT 1.0;
+UPDATE "Currencies" SET "ExchangeRate" = 1.0 WHERE "ExchangeRate" IS NULL;
+
+-- Step 2: Add CurrencyId columns
 ALTER TABLE "Companies" ADD COLUMN IF NOT EXISTS "CurrencyId" BIGINT;
 ALTER TABLE "Branches" ADD COLUMN IF NOT EXISTS "CurrencyId" BIGINT;
 ALTER TABLE "RateCardZones" ADD COLUMN IF NOT EXISTS "CurrencyId" BIGINT;
 
--- Step 2: Set default currency (AED) for existing records
+-- Step 3: Set default currency (AED) for existing records
 UPDATE "Companies" SET "CurrencyId" = (SELECT "Id" FROM "Currencies" WHERE "Code" = 'AED' LIMIT 1) WHERE "CurrencyId" IS NULL;
 UPDATE "Branches" SET "CurrencyId" = (SELECT "Id" FROM "Currencies" WHERE "Code" = 'AED' LIMIT 1) WHERE "CurrencyId" IS NULL;
 
--- Step 3: Add foreign key constraints (run only once - will error if already exists)
+-- Step 4: Add foreign key constraints (run only once - will error if already exists)
 -- Check first: SELECT * FROM pg_constraint WHERE conname LIKE '%Currency%';
 DO $$
 BEGIN
