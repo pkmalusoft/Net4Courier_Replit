@@ -499,6 +499,17 @@ public class DemoDataService : IDemoDataService
 
             var companyId = company.Id;
 
+        // Check if demo parties already exist for this company
+        var existingDemoParties = await context.Parties
+            .Where(p => p.CompanyId == companyId && p.IsDemo)
+            .AnyAsync();
+        
+        if (existingDemoParties)
+        {
+            // Demo master data already exists, skip creation
+            return true;
+        }
+
         var uaeAddresses = new[]
         {
             new { Building = "Al Quoz Business Center", Street = "Sheikh Zayed Road", Area = "Al Quoz", City = "Dubai", PostalCode = "12345" },
