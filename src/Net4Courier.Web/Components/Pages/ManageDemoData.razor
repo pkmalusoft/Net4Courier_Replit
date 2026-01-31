@@ -26,6 +26,34 @@
 }
 else
 {
+    <MudPaper Class="pa-4 mb-4" Elevation="3" Style="background: linear-gradient(135deg, #1976d2 0%, #42a5f5 100%);">
+        <MudGrid>
+            <MudItem xs="12" md="8">
+                <MudText Typo="Typo.h5" Style="color: white; font-weight: 600;">
+                    <MudIcon Icon="@Icons.Material.Filled.Business" Class="mr-2" Style="color: white;" />Initial Company Setup
+                </MudText>
+                <MudText Typo="Typo.body1" Style="color: rgba(255,255,255,0.9);" Class="mt-2">
+                    Set up your company, branch, currency, and administrator account. This is the first step for new deployments.
+                </MudText>
+            </MudItem>
+            <MudItem xs="12" md="4" Class="d-flex align-center justify-end">
+                <MudButton Variant="Variant.Filled" 
+                           Color="Color.Surface" 
+                           Size="Size.Large"
+                           StartIcon="@Icons.Material.Filled.RocketLaunch"
+                           OnClick="@OpenCompanySetupDialog"
+                           Disabled="@_processing"
+                           Style="font-weight: 600;">
+                    @if (_processing && _processingAction == "setup") 
+                    { 
+                        <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" /> 
+                    }
+                    Company Setup
+                </MudButton>
+            </MudItem>
+        </MudGrid>
+    </MudPaper>
+
     <MudGrid>
         <MudItem xs="12" lg="6">
             <MudPaper Class="pa-4" Elevation="2">
@@ -430,6 +458,82 @@ else
             {
                 var errorMsg = DemoDataService.LastError ?? "Failed to create GL data (unknown error)";
                 Snackbar.Add(errorMsg, Severity.Error);
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _processing = false;
+            _processingAction = "";
+        }
+    }
+
+    private async Task OpenCompanySetupDialog()
+    {
+        _processing = true;
+        _processingAction = "setup";
+        StateHasChanged();
+        
+        try
+        {
+            var parameters = new DialogParameters<DemoDataSetupDialog>
+            {
+                { x => x.SetupData, new DemoDataSetupDialog.DemoDataSetupModel() }
+            };
+            
+            var options = new DialogOptions 
+            { 
+                CloseOnEscapeKey = true, 
+                MaxWidth = MaxWidth.Medium, 
+                FullWidth = true,
+                CloseButton = true
+            };
+            
+            var dialog = await DialogService.ShowAsync<DemoDataSetupDialog>("Initial Company Setup", parameters, options);
+            var result = await dialog.Result;
+            
+            if (result == null || result.Canceled)
+            {
+                return;
+            }
+            
+            var dialogData = result.Data as DemoDataSetupDialog.DemoDataSetupModel;
+            if (dialogData == null)
+            {
+                Snackbar.Add("Invalid setup data", Severity.Error);
+                return;
+            }
+            
+            // Convert dialog model to service input
+            var setupInput = new DemoDataSetupInput
+            {
+                CompanyName = dialogData.CompanyName,
+                CountryId = dialogData.CountryId,
+                CurrencyId = dialogData.CurrencyId,
+                CurrencyCode = dialogData.CurrencyCode,
+                CurrencyName = dialogData.CurrencyName,
+                CurrencySymbol = dialogData.CurrencySymbol,
+                AdminFullName = dialogData.AdminFullName,
+                AdminEmail = dialogData.AdminEmail,
+                AdminUsername = dialogData.AdminUsername
+            };
+            
+            Snackbar.Add("Creating company setup...", Severity.Info);
+            
+            var success = await DemoDataService.CreateMasterDataAsync(setupInput);
+            
+            if (success)
+            {
+                Snackbar.Add("Company setup completed successfully!", Severity.Success);
+                _stats = await DemoDataService.GetDemoDataStatsAsync();
+                _allStats = await DemoDataService.GetAllDataStatsAsync();
+            }
+            else
+            {
+                Snackbar.Add($"Setup failed. Check logs for details.", Severity.Error);
             }
         }
         catch (Exception ex)
