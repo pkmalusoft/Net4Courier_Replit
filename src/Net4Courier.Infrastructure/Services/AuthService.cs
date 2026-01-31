@@ -15,6 +15,8 @@ public class AuthService
 
     public async Task<User?> ValidateUserAsync(string username, string password)
     {
+        Console.WriteLine($"[AUTH DEBUG] Attempting login for username: '{username}'");
+        
         var user = await _context.Users
             .Include(u => u.Role)
             .Include(u => u.Branch)
@@ -24,13 +26,32 @@ public class AuthService
             .FirstOrDefaultAsync(u => u.Username == username && u.IsActive);
 
         if (user == null)
+        {
+            Console.WriteLine($"[AUTH DEBUG] User not found or not active for username: '{username}'");
             return null;
+        }
 
-        if (!BCrypt.Net.BCrypt.Verify(password, user.PasswordHash))
+        Console.WriteLine($"[AUTH DEBUG] User found: Id={user.Id}, Username='{user.Username}', IsActive={user.IsActive}");
+        Console.WriteLine($"[AUTH DEBUG] PasswordHash length: {user.PasswordHash?.Length ?? 0}");
+        Console.WriteLine($"[AUTH DEBUG] PasswordHash starts with: {(user.PasswordHash?.Length > 10 ? user.PasswordHash.Substring(0, 10) : "null/short")}");
+        
+        try
+        {
+            var verifyResult = BCrypt.Net.BCrypt.Verify(password, user.PasswordHash);
+            Console.WriteLine($"[AUTH DEBUG] BCrypt.Verify result: {verifyResult}");
+            
+            if (!verifyResult)
+                return null;
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[AUTH DEBUG] BCrypt.Verify EXCEPTION: {ex.Message}");
             return null;
+        }
 
         user.LastLoginAt = DateTime.UtcNow;
         await _context.SaveChangesAsync();
+        Console.WriteLine($"[AUTH DEBUG] Login successful for user: {user.Username}");
 
         return user;
     }
