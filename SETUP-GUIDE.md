@@ -74,6 +74,62 @@ dotnet build              # Should build successfully
 | Port not accessible | Ensure workflow uses `--urls http://0.0.0.0:5000` |
 | Security scan fails | Clean bin/obj/publish folders before import |
 | Truebooks package missing | Copy .nupkg files from GL-Migration-Package to NuGet/packages |
+| Platform Admin login failed | See "Reset Platform Admin Password" section below |
+
+---
+
+## Reset Platform Admin Password
+
+If you cannot log in as Platform Admin (username: `platformadmin`), use one of these methods:
+
+### Method 1: Check Deployment Logs
+1. Go to your Replit deployment's **Logs** tab
+2. Search for "Platform admin user created"
+3. The generated password should be shown there
+
+### Method 2: Update Password via SQL
+Run this SQL command in your database to reset the password to `T6u3b00ks`:
+
+```sql
+UPDATE "Users" 
+SET "PasswordHash" = '$2a$11$hmDFlxl2RNiTrNgrKrtYruTvNpolPXKc/VxjIgpV.fkbuoclnS2VK'
+WHERE "Username" = 'platformadmin';
+```
+
+### Method 3: Delete and Recreate User
+If you want to use your `SETUP_KEY` secret value as the password:
+
+1. First, ensure `SETUP_KEY` is set in your Replit Secrets
+2. Delete the existing Platform Admin user:
+   ```sql
+   DELETE FROM "UserBranches" WHERE "UserId" = (SELECT "Id" FROM "Users" WHERE "Username" = 'platformadmin');
+   DELETE FROM "Users" WHERE "Username" = 'platformadmin';
+   ```
+3. Restart the application - it will recreate the user with your `SETUP_KEY` password
+
+### Method 4: Generate Custom Password Hash
+To set a custom password, generate a BCrypt hash:
+
+```bash
+# Create a temporary .NET console app to generate hash
+mkdir -p /tmp/HashPassword && cd /tmp/HashPassword
+dotnet new console --force
+dotnet add package BCrypt.Net-Next
+echo 'Console.WriteLine(BCrypt.Net.BCrypt.HashPassword("YOUR_NEW_PASSWORD"));' > Program.cs
+dotnet run
+```
+
+Then update the database with the generated hash:
+```sql
+UPDATE "Users" 
+SET "PasswordHash" = 'PASTE_GENERATED_HASH_HERE'
+WHERE "Username" = 'platformadmin';
+```
+
+### Password Security Notes
+- The `SETUP_KEY` environment variable should be set **before** first deployment
+- If not set, a random 12-character password is generated and shown in console logs
+- Always use strong passwords in production environments
 
 ---
 

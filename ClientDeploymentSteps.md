@@ -167,7 +167,15 @@ Ensure NuGet/packages/ folder contains:
 ### Platform Admin Login Fails
 - Check console logs for the generated password (if SETUP_KEY wasn't set)
 - Verify the password is your SETUP_KEY value
-- To reset: Delete `platformadmin` user from database and restart app
+- To reset password via SQL:
+  ```sql
+  UPDATE "Users" 
+  SET "PasswordHash" = '$2a$11$hmDFlxl2RNiTrNgrKrtYruTvNpolPXKc/VxjIgpV.fkbuoclnS2VK'
+  WHERE "Username" = 'platformadmin';
+  ```
+  This sets the password to `T6u3b00ks`
+- Or delete and recreate: Delete `platformadmin` user from database and restart app (will use SETUP_KEY)
+- See **SETUP-GUIDE.md** for detailed password reset methods
 
 ### Database Connection Error
 - Verify PostgreSQL database was created in Tools
