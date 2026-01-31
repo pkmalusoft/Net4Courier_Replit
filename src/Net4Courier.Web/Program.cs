@@ -1023,36 +1023,36 @@ public class DatabaseInitializationService : BackgroundService
 
             // Seed Currencies
             await dbContext.Database.ExecuteSqlRawAsync(@"
-                INSERT INTO ""Currencies"" (""Code"", ""Name"", ""Symbol"", ""DecimalPlaces"", ""IsActive"", ""CreatedAt"")
-                SELECT 'AED', 'UAE Dirham', 'د.إ', 2, TRUE, CURRENT_TIMESTAMP WHERE NOT EXISTS (SELECT 1 FROM ""Currencies"" WHERE ""Code"" = 'AED');
-                INSERT INTO ""Currencies"" (""Code"", ""Name"", ""Symbol"", ""DecimalPlaces"", ""IsActive"", ""CreatedAt"")
-                SELECT 'SAR', 'Saudi Riyal', '﷼', 2, TRUE, CURRENT_TIMESTAMP WHERE NOT EXISTS (SELECT 1 FROM ""Currencies"" WHERE ""Code"" = 'SAR');
-                INSERT INTO ""Currencies"" (""Code"", ""Name"", ""Symbol"", ""DecimalPlaces"", ""IsActive"", ""CreatedAt"")
-                SELECT 'QAR', 'Qatari Riyal', '﷼', 2, TRUE, CURRENT_TIMESTAMP WHERE NOT EXISTS (SELECT 1 FROM ""Currencies"" WHERE ""Code"" = 'QAR');
-                INSERT INTO ""Currencies"" (""Code"", ""Name"", ""Symbol"", ""DecimalPlaces"", ""IsActive"", ""CreatedAt"")
-                SELECT 'KWD', 'Kuwaiti Dinar', 'د.ك', 3, TRUE, CURRENT_TIMESTAMP WHERE NOT EXISTS (SELECT 1 FROM ""Currencies"" WHERE ""Code"" = 'KWD');
-                INSERT INTO ""Currencies"" (""Code"", ""Name"", ""Symbol"", ""DecimalPlaces"", ""IsActive"", ""CreatedAt"")
-                SELECT 'BHD', 'Bahraini Dinar', '.د.ب', 3, TRUE, CURRENT_TIMESTAMP WHERE NOT EXISTS (SELECT 1 FROM ""Currencies"" WHERE ""Code"" = 'BHD');
-                INSERT INTO ""Currencies"" (""Code"", ""Name"", ""Symbol"", ""DecimalPlaces"", ""IsActive"", ""CreatedAt"")
-                SELECT 'OMR', 'Omani Rial', 'ر.ع.', 3, TRUE, CURRENT_TIMESTAMP WHERE NOT EXISTS (SELECT 1 FROM ""Currencies"" WHERE ""Code"" = 'OMR');
-                INSERT INTO ""Currencies"" (""Code"", ""Name"", ""Symbol"", ""DecimalPlaces"", ""IsActive"", ""CreatedAt"")
-                SELECT 'JOD', 'Jordanian Dinar', 'د.ا', 3, TRUE, CURRENT_TIMESTAMP WHERE NOT EXISTS (SELECT 1 FROM ""Currencies"" WHERE ""Code"" = 'JOD');
-                INSERT INTO ""Currencies"" (""Code"", ""Name"", ""Symbol"", ""DecimalPlaces"", ""IsActive"", ""CreatedAt"")
-                SELECT 'USD', 'US Dollar', '$', 2, TRUE, CURRENT_TIMESTAMP WHERE NOT EXISTS (SELECT 1 FROM ""Currencies"" WHERE ""Code"" = 'USD');
-                INSERT INTO ""Currencies"" (""Code"", ""Name"", ""Symbol"", ""DecimalPlaces"", ""IsActive"", ""CreatedAt"")
-                SELECT 'INR', 'Indian Rupee', '₹', 2, TRUE, CURRENT_TIMESTAMP WHERE NOT EXISTS (SELECT 1 FROM ""Currencies"" WHERE ""Code"" = 'INR');
-                INSERT INTO ""Currencies"" (""Code"", ""Name"", ""Symbol"", ""DecimalPlaces"", ""IsActive"", ""CreatedAt"")
-                SELECT 'EUR', 'Euro', '€', 2, TRUE, CURRENT_TIMESTAMP WHERE NOT EXISTS (SELECT 1 FROM ""Currencies"" WHERE ""Code"" = 'EUR');
-                INSERT INTO ""Currencies"" (""Code"", ""Name"", ""Symbol"", ""DecimalPlaces"", ""IsActive"", ""CreatedAt"")
-                SELECT 'PKR', 'Pakistani Rupee', 'Rs', 2, TRUE, CURRENT_TIMESTAMP WHERE NOT EXISTS (SELECT 1 FROM ""Currencies"" WHERE ""Code"" = 'PKR');
-                INSERT INTO ""Currencies"" (""Code"", ""Name"", ""Symbol"", ""DecimalPlaces"", ""IsActive"", ""CreatedAt"")
-                SELECT 'BDT', 'Bangladeshi Taka', '৳', 2, TRUE, CURRENT_TIMESTAMP WHERE NOT EXISTS (SELECT 1 FROM ""Currencies"" WHERE ""Code"" = 'BDT');
-                INSERT INTO ""Currencies"" (""Code"", ""Name"", ""Symbol"", ""DecimalPlaces"", ""IsActive"", ""CreatedAt"")
-                SELECT 'MYR', 'Malaysian Ringgit', 'RM', 2, TRUE, CURRENT_TIMESTAMP WHERE NOT EXISTS (SELECT 1 FROM ""Currencies"" WHERE ""Code"" = 'MYR');
-                INSERT INTO ""Currencies"" (""Code"", ""Name"", ""Symbol"", ""DecimalPlaces"", ""IsActive"", ""CreatedAt"")
-                SELECT 'IDR', 'Indonesian Rupiah', 'Rp', 0, TRUE, CURRENT_TIMESTAMP WHERE NOT EXISTS (SELECT 1 FROM ""Currencies"" WHERE ""Code"" = 'IDR');
-                INSERT INTO ""Currencies"" (""Code"", ""Name"", ""Symbol"", ""DecimalPlaces"", ""IsActive"", ""CreatedAt"")
-                SELECT 'PHP', 'Philippine Peso', '₱', 2, TRUE, CURRENT_TIMESTAMP WHERE NOT EXISTS (SELECT 1 FROM ""Currencies"" WHERE ""Code"" = 'PHP');
+                INSERT INTO ""Currencies"" (""Code"", ""Name"", ""Symbol"", ""DecimalPlaces"", ""IsActive"", ""IsDeleted"", ""IsDemo"", ""CreatedAt"")
+                SELECT 'AED', 'UAE Dirham', 'د.إ', 2, TRUE, FALSE, FALSE, CURRENT_TIMESTAMP WHERE NOT EXISTS (SELECT 1 FROM ""Currencies"" WHERE ""Code"" = 'AED');
+                INSERT INTO ""Currencies"" (""Code"", ""Name"", ""Symbol"", ""DecimalPlaces"", ""IsActive"", ""IsDeleted"", ""IsDemo"", ""CreatedAt"")
+                SELECT 'SAR', 'Saudi Riyal', '﷼', 2, TRUE, FALSE, FALSE, CURRENT_TIMESTAMP WHERE NOT EXISTS (SELECT 1 FROM ""Currencies"" WHERE ""Code"" = 'SAR');
+                INSERT INTO ""Currencies"" (""Code"", ""Name"", ""Symbol"", ""DecimalPlaces"", ""IsActive"", ""IsDeleted"", ""IsDemo"", ""CreatedAt"")
+                SELECT 'QAR', 'Qatari Riyal', '﷼', 2, TRUE, FALSE, FALSE, CURRENT_TIMESTAMP WHERE NOT EXISTS (SELECT 1 FROM ""Currencies"" WHERE ""Code"" = 'QAR');
+                INSERT INTO ""Currencies"" (""Code"", ""Name"", ""Symbol"", ""DecimalPlaces"", ""IsActive"", ""IsDeleted"", ""IsDemo"", ""CreatedAt"")
+                SELECT 'KWD', 'Kuwaiti Dinar', 'د.ك', 3, TRUE, FALSE, FALSE, CURRENT_TIMESTAMP WHERE NOT EXISTS (SELECT 1 FROM ""Currencies"" WHERE ""Code"" = 'KWD');
+                INSERT INTO ""Currencies"" (""Code"", ""Name"", ""Symbol"", ""DecimalPlaces"", ""IsActive"", ""IsDeleted"", ""IsDemo"", ""CreatedAt"")
+                SELECT 'BHD', 'Bahraini Dinar', '.د.ب', 3, TRUE, FALSE, FALSE, CURRENT_TIMESTAMP WHERE NOT EXISTS (SELECT 1 FROM ""Currencies"" WHERE ""Code"" = 'BHD');
+                INSERT INTO ""Currencies"" (""Code"", ""Name"", ""Symbol"", ""DecimalPlaces"", ""IsActive"", ""IsDeleted"", ""IsDemo"", ""CreatedAt"")
+                SELECT 'OMR', 'Omani Rial', 'ر.ع.', 3, TRUE, FALSE, FALSE, CURRENT_TIMESTAMP WHERE NOT EXISTS (SELECT 1 FROM ""Currencies"" WHERE ""Code"" = 'OMR');
+                INSERT INTO ""Currencies"" (""Code"", ""Name"", ""Symbol"", ""DecimalPlaces"", ""IsActive"", ""IsDeleted"", ""IsDemo"", ""CreatedAt"")
+                SELECT 'JOD', 'Jordanian Dinar', 'د.ا', 3, TRUE, FALSE, FALSE, CURRENT_TIMESTAMP WHERE NOT EXISTS (SELECT 1 FROM ""Currencies"" WHERE ""Code"" = 'JOD');
+                INSERT INTO ""Currencies"" (""Code"", ""Name"", ""Symbol"", ""DecimalPlaces"", ""IsActive"", ""IsDeleted"", ""IsDemo"", ""CreatedAt"")
+                SELECT 'USD', 'US Dollar', '$', 2, TRUE, FALSE, FALSE, CURRENT_TIMESTAMP WHERE NOT EXISTS (SELECT 1 FROM ""Currencies"" WHERE ""Code"" = 'USD');
+                INSERT INTO ""Currencies"" (""Code"", ""Name"", ""Symbol"", ""DecimalPlaces"", ""IsActive"", ""IsDeleted"", ""IsDemo"", ""CreatedAt"")
+                SELECT 'INR', 'Indian Rupee', '₹', 2, TRUE, FALSE, FALSE, CURRENT_TIMESTAMP WHERE NOT EXISTS (SELECT 1 FROM ""Currencies"" WHERE ""Code"" = 'INR');
+                INSERT INTO ""Currencies"" (""Code"", ""Name"", ""Symbol"", ""DecimalPlaces"", ""IsActive"", ""IsDeleted"", ""IsDemo"", ""CreatedAt"")
+                SELECT 'EUR', 'Euro', '€', 2, TRUE, FALSE, FALSE, CURRENT_TIMESTAMP WHERE NOT EXISTS (SELECT 1 FROM ""Currencies"" WHERE ""Code"" = 'EUR');
+                INSERT INTO ""Currencies"" (""Code"", ""Name"", ""Symbol"", ""DecimalPlaces"", ""IsActive"", ""IsDeleted"", ""IsDemo"", ""CreatedAt"")
+                SELECT 'PKR', 'Pakistani Rupee', 'Rs', 2, TRUE, FALSE, FALSE, CURRENT_TIMESTAMP WHERE NOT EXISTS (SELECT 1 FROM ""Currencies"" WHERE ""Code"" = 'PKR');
+                INSERT INTO ""Currencies"" (""Code"", ""Name"", ""Symbol"", ""DecimalPlaces"", ""IsActive"", ""IsDeleted"", ""IsDemo"", ""CreatedAt"")
+                SELECT 'BDT', 'Bangladeshi Taka', '৳', 2, TRUE, FALSE, FALSE, CURRENT_TIMESTAMP WHERE NOT EXISTS (SELECT 1 FROM ""Currencies"" WHERE ""Code"" = 'BDT');
+                INSERT INTO ""Currencies"" (""Code"", ""Name"", ""Symbol"", ""DecimalPlaces"", ""IsActive"", ""IsDeleted"", ""IsDemo"", ""CreatedAt"")
+                SELECT 'MYR', 'Malaysian Ringgit', 'RM', 2, TRUE, FALSE, FALSE, CURRENT_TIMESTAMP WHERE NOT EXISTS (SELECT 1 FROM ""Currencies"" WHERE ""Code"" = 'MYR');
+                INSERT INTO ""Currencies"" (""Code"", ""Name"", ""Symbol"", ""DecimalPlaces"", ""IsActive"", ""IsDeleted"", ""IsDemo"", ""CreatedAt"")
+                SELECT 'IDR', 'Indonesian Rupiah', 'Rp', 0, TRUE, FALSE, FALSE, CURRENT_TIMESTAMP WHERE NOT EXISTS (SELECT 1 FROM ""Currencies"" WHERE ""Code"" = 'IDR');
+                INSERT INTO ""Currencies"" (""Code"", ""Name"", ""Symbol"", ""DecimalPlaces"", ""IsActive"", ""IsDeleted"", ""IsDemo"", ""CreatedAt"")
+                SELECT 'PHP', 'Philippine Peso', '₱', 2, TRUE, FALSE, FALSE, CURRENT_TIMESTAMP WHERE NOT EXISTS (SELECT 1 FROM ""Currencies"" WHERE ""Code"" = 'PHP');
             ", stoppingToken);
 
             // Seed Countries
