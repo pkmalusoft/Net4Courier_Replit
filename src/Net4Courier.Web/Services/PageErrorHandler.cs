@@ -95,35 +95,38 @@ public class PageErrorHandler : IPageErrorHandler
         var message = ex.Message.ToLowerInvariant();
         
         if (message.Contains("42703") || message.Contains("column") && message.Contains("does not exist"))
-            return "Database configuration issue. A required column is missing. Please contact support.";
+            return $"Database column missing: {ex.Message}";
         
         if (message.Contains("42p01") || message.Contains("relation") && message.Contains("does not exist"))
-            return "Database table is missing. Please ensure the database is properly set up.";
+            return $"Database table missing: {ex.Message}";
+        
+        if (message.Contains("23502") || message.Contains("violates not-null constraint"))
+            return $"Database constraint error: {ex.Message}";
         
         if (message.Contains("23505") || message.Contains("duplicate key"))
-            return "This record already exists. Please use a unique value.";
+            return $"Duplicate record: {ex.Message}";
         
         if (message.Contains("23503") || message.Contains("foreign key"))
-            return "Cannot complete this action because it references other data.";
+            return $"Reference error: {ex.Message}";
         
         if (message.Contains("connection") || message.Contains("timeout"))
-            return "Unable to connect to the database. Please try again.";
+            return $"Connection error: {ex.Message}";
         
         if (message.Contains("unauthorized") || message.Contains("permission"))
-            return "You don't have permission to perform this action.";
+            return $"Permission denied: {ex.Message}";
         
         if (ex is InvalidOperationException && message.Contains("sequence"))
-            return "Error loading data. Please refresh the page.";
+            return $"Data loading error: {ex.Message}";
 
         if (ex is ArgumentNullException or ArgumentException)
-            return "Invalid input provided. Please check your data.";
+            return $"Invalid input: {ex.Message}";
 
         if (ex is Microsoft.EntityFrameworkCore.DbUpdateConcurrencyException)
-            return "This record was modified by another user. Please refresh and try again.";
+            return $"Concurrency error: {ex.Message}";
 
         if (ex is Microsoft.EntityFrameworkCore.DbUpdateException)
-            return "Error saving data. Please check your input and try again.";
+            return $"Save error: {ex.Message}";
 
-        return "An unexpected error occurred. Please try again or contact support.";
+        return $"Error: {ex.Message}";
     }
 }
