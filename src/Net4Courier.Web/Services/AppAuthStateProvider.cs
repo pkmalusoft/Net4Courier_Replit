@@ -15,8 +15,8 @@ public class AppAuthStateProvider : AuthenticationStateProvider
     public string CompanyName => _currentBranch?.Company?.Name ?? "";
     public string BranchName => _currentBranch?.Name ?? "";
     public string UserFullName => _currentUser?.FullName ?? _currentUser?.Username ?? "";
-    public string CurrencyCode => _currentBranch?.Currency?.Code ?? "USD";
-    public string CurrencySymbol => _currentBranch?.Currency?.Symbol ?? "$";
+    public string CurrencyCode => _currentBranch?.Currency?.Code ?? "";
+    public string CurrencySymbol => _currentBranch?.Currency?.Symbol ?? "";
 
     public override Task<AuthenticationState> GetAuthenticationStateAsync()
     {
@@ -34,8 +34,8 @@ public class AppAuthStateProvider : AuthenticationStateProvider
             new("BranchName", _currentBranch?.Name ?? ""),
             new("CompanyId", _currentBranch?.CompanyId.ToString() ?? ""),
             new("CompanyName", _currentBranch?.Company?.Name ?? ""),
-            new("CurrencyCode", _currentBranch?.Currency?.Code ?? "USD"),
-            new("CurrencySymbol", _currentBranch?.Currency?.Symbol ?? "$")
+            new("CurrencyCode", _currentBranch?.Currency?.Code ?? ""),
+            new("CurrencySymbol", _currentBranch?.Currency?.Symbol ?? "")
         };
 
         var identity = new ClaimsIdentity(claims, "Custom");
