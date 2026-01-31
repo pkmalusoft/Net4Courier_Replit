@@ -141,8 +141,13 @@ Ensure NuGet/packages/ folder contains:
 2. The application will automatically:
    - Create all database tables (including GL module tables)
    - Seed currencies, countries, roles, and service types
-   - Create the Platform Admin user
-3. Watch the console for: `Platform admin user created`
+   - Create the Platform Admin user (if not exists)
+3. Watch the console for: `Database initialization completed successfully`
+
+**Important for Existing Deployments**: If updating from an older version:
+- The Platform Admin user may already exist with a different password hash
+- Use the `/setup` page or CLI utility to reset the password (see Troubleshooting below)
+- New database columns won't be added automatically - see "Schema Updates for Existing Deployments" section
 
 ---
 
@@ -190,6 +195,69 @@ Ensure NuGet/packages/ folder contains:
 
 ---
 
+## Schema Updates for Existing Deployments
+
+When syncing code from the main repository to an existing client deployment, new database columns are **NOT automatically added**. EF Core's `EnsureCreated()` only creates tables that don't exist.
+
+### Required SQL for Recent Updates (Jan 2026)
+
+Run these SQL commands on existing deployments (Rainbow, Gateex, etc.) after syncing from main:
+
+```sql
+-- Step 1: Add CurrencyId columns
+ALTER TABLE "Companies" ADD COLUMN IF NOT EXISTS "CurrencyId" BIGINT;
+ALTER TABLE "Branches" ADD COLUMN IF NOT EXISTS "CurrencyId" BIGINT;
+ALTER TABLE "RateCardZones" ADD COLUMN IF NOT EXISTS "CurrencyId" BIGINT;
+
+-- Step 2: Set default currency (AED) for existing records
+UPDATE "Companies" SET "CurrencyId" = (SELECT "Id" FROM "Currencies" WHERE "Code" = 'AED' LIMIT 1) WHERE "CurrencyId" IS NULL;
+UPDATE "Branches" SET "CurrencyId" = (SELECT "Id" FROM "Currencies" WHERE "Code" = 'AED' LIMIT 1) WHERE "CurrencyId" IS NULL;
+
+-- Step 3: Add foreign key constraints (run only once - will error if already exists)
+-- Check first: SELECT * FROM pg_constraint WHERE conname LIKE '%Currency%';
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'FK_Companies_Currencies_CurrencyId') THEN
+    ALTER TABLE "Companies" ADD CONSTRAINT "FK_Companies_Currencies_CurrencyId" 
+      FOREIGN KEY ("CurrencyId") REFERENCES "Currencies"("Id");
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'FK_Branches_Currencies_CurrencyId') THEN
+    ALTER TABLE "Branches" ADD CONSTRAINT "FK_Branches_Currencies_CurrencyId" 
+      FOREIGN KEY ("CurrencyId") REFERENCES "Currencies"("Id");
+  END IF;
+END $$;
+```
+
+**Note**: The application's `DatabaseInitializationService` automatically seeds geographic data (countries, states, cities) on startup using `INSERT ... WHERE NOT EXISTS`, so geographic tables are updated automatically. The above commands are only needed for structural column additions.
+
+### How to Run These Commands
+
+**Option 1: Via Replit Database Tool**
+1. Go to Tools > Database in Replit
+2. Click on your PostgreSQL database
+3. Use the SQL console to run the commands
+
+**Option 2: Via psql command line**
+```bash
+# Add columns
+psql $DATABASE_URL -c 'ALTER TABLE "Companies" ADD COLUMN IF NOT EXISTS "CurrencyId" BIGINT;'
+psql $DATABASE_URL -c 'ALTER TABLE "Branches" ADD COLUMN IF NOT EXISTS "CurrencyId" BIGINT;'
+psql $DATABASE_URL -c 'ALTER TABLE "RateCardZones" ADD COLUMN IF NOT EXISTS "CurrencyId" BIGINT;'
+
+# Set defaults (AED currency)
+psql $DATABASE_URL -c 'UPDATE "Companies" SET "CurrencyId" = (SELECT "Id" FROM "Currencies" WHERE "Code" = '\''AED'\'' LIMIT 1) WHERE "CurrencyId" IS NULL;'
+psql $DATABASE_URL -c 'UPDATE "Branches" SET "CurrencyId" = (SELECT "Id" FROM "Currencies" WHERE "Code" = '\''AED'\'' LIMIT 1) WHERE "CurrencyId" IS NULL;'
+```
+
+### Verification
+
+After running the ALTER TABLE commands:
+1. Restart the application workflow
+2. Check the console logs for any errors
+3. Log in and verify Companies/Branches pages load correctly
+
+---
+
 ## Security & Maintenance
 
 ### Avoid Security Scan Issues
@@ -221,17 +289,40 @@ Ensure NuGet/packages/ folder contains:
 ## Troubleshooting
 
 ### Platform Admin Login Fails
-- Check console logs for the generated password (if SETUP_KEY wasn't set)
-- Verify the password is your SETUP_KEY value
-- To reset password via SQL:
-  ```sql
-  UPDATE "Users" 
-  SET "PasswordHash" = '$2a$11$hmDFlxl2RNiTrNgrKrtYruTvNpolPXKc/VxjIgpV.fkbuoclnS2VK'
-  WHERE "Username" = 'platformadmin';
-  ```
-  This sets the password to `T6u3b00ks`
-- Or delete and recreate: Delete `platformadmin` user from database and restart app (will use SETUP_KEY)
-- See **SETUP-GUIDE.md** for detailed password reset methods
+
+**Common cause after sync**: The Platform Admin already exists with an old password hash that doesn't match your `SETUP_KEY`.
+
+**Option 1: Use Setup Page (Recommended)**
+1. Set `SETUP_KEY` environment variable in Replit Secrets
+2. Navigate to `/setup` in your browser
+3. Enter your setup key to authenticate
+4. Use the **Reset Password** tab to reset the `platformadmin` password
+
+**Option 2: Use Command Line Utility**
+```bash
+cd src/Net4Courier.Web
+export SETUP_KEY="your_setup_key"
+dotnet run -- --reset-password platformadmin "YourNewPassword"
+```
+Note: Stop the workflow before running this command.
+
+**Option 3: Direct SQL Reset**
+```sql
+UPDATE "Users" 
+SET "PasswordHash" = '$2a$11$hmDFlxl2RNiTrNgrKrtYruTvNpolPXKc/VxjIgpV.fkbuoclnS2VK'
+WHERE "Username" = 'platformadmin';
+```
+This sets the password to `T6u3b00ks`
+
+**Option 4: Sync Hash from Working Deployment**
+Copy the password hash from an environment where login works:
+```sql
+-- Run on working deployment (e.g., main project)
+SELECT "PasswordHash" FROM "Users" WHERE "Username" = 'platformadmin';
+
+-- Run on target deployment (e.g., Gateex)
+UPDATE "Users" SET "PasswordHash" = '<copied_hash>' WHERE "Username" = 'platformadmin';
+```
 
 ### Database Connection Error
 - Verify PostgreSQL database was created in Tools
@@ -257,8 +348,10 @@ Ensure NuGet/packages/ folder contains:
 | Platform Admin Username | `platformadmin` |
 | Platform Admin Password | Your `SETUP_KEY` secret |
 | Default Port | 5000 |
+| Setup & Maintenance Page | `/setup` (requires `SETUP_KEY` env var) |
 | Initial Setup Location | Platform Admin > Manage Demo Data |
 | Tracking URL | `/tracking/{awbNumber}` |
+| Password Reset CLI | `dotnet run -- --reset-password <user> <pass>` |
 
 ---
 
