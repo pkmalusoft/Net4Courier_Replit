@@ -1,5 +1,5 @@
 @page "/"
-@inject Net4Courier.Infrastructure.Data.ApplicationDbContext DbContext
+@inject IDbContextFactory<Net4Courier.Infrastructure.Data.ApplicationDbContext> DbContextFactory
 @inject IDialogService DialogService
 @inject Net4Courier.Web.Services.GlobalSearchService SearchService
 @inject NavigationManager NavigationManager
@@ -478,57 +478,59 @@ else
 
     private async Task LoadDashboardData()
     {
+        await using var context = await DbContextFactory.CreateDbContextAsync();
+        
         var today = DateTime.UtcNow.Date;
         var startOfMonth = new DateTime(today.Year, today.Month, 1, 0, 0, 0, DateTimeKind.Utc);
 
-        _stats.TotalShipments = await DbContext.InscanMasters
+        _stats.TotalShipments = await context.InscanMasters
             .CountAsync(s => !s.IsDeleted);
 
-        _stats.TodayShipments = await DbContext.InscanMasters
+        _stats.TodayShipments = await context.InscanMasters
             .CountAsync(s => !s.IsDeleted && s.TransactionDate.Date == today);
 
-        _stats.PendingDeliveries = await DbContext.InscanMasters
+        _stats.PendingDeliveries = await context.InscanMasters
             .CountAsync(s => !s.IsDeleted && s.CourierStatusId == CourierStatus.Pending);
 
-        _stats.OutForDelivery = await DbContext.InscanMasters
+        _stats.OutForDelivery = await context.InscanMasters
             .CountAsync(s => !s.IsDeleted && s.CourierStatusId == CourierStatus.OutForDelivery);
 
-        _stats.InTransitShipments = await DbContext.InscanMasters
+        _stats.InTransitShipments = await context.InscanMasters
             .CountAsync(s => !s.IsDeleted && s.CourierStatusId == CourierStatus.InTransit);
 
-        _stats.DeliveredShipments = await DbContext.InscanMasters
+        _stats.DeliveredShipments = await context.InscanMasters
             .CountAsync(s => !s.IsDeleted && s.CourierStatusId == CourierStatus.Delivered);
 
-        _stats.ReturnedShipments = await DbContext.InscanMasters
+        _stats.ReturnedShipments = await context.InscanMasters
             .CountAsync(s => !s.IsDeleted && s.CourierStatusId == CourierStatus.Returned);
 
-        _stats.TotalRevenue = await DbContext.InscanMasters
+        _stats.TotalRevenue = await context.InscanMasters
             .Where(s => !s.IsDeleted)
             .SumAsync(s => s.NetTotal ?? 0);
 
-        _stats.MonthRevenue = await DbContext.InscanMasters
+        _stats.MonthRevenue = await context.InscanMasters
             .Where(s => !s.IsDeleted && s.TransactionDate >= startOfMonth)
             .SumAsync(s => s.NetTotal ?? 0);
 
-        _stats.ActiveCustomers = await DbContext.Parties
+        _stats.ActiveCustomers = await context.Parties
             .CountAsync(p => !p.IsDeleted && p.IsActive && p.PartyType == Net4Courier.Masters.Entities.PartyType.Customer);
 
-        _stats.NewCustomersThisMonth = await DbContext.Parties
+        _stats.NewCustomersThisMonth = await context.Parties
             .CountAsync(p => !p.IsDeleted && p.PartyType == Net4Courier.Masters.Entities.PartyType.Customer && p.CreatedAt >= startOfMonth);
 
-        _stats.DomesticShipments = await DbContext.InscanMasters
+        _stats.DomesticShipments = await context.InscanMasters
             .CountAsync(s => !s.IsDeleted && s.MovementTypeId == MovementType.Domestic);
 
-        _stats.ExportShipments = await DbContext.InscanMasters
+        _stats.ExportShipments = await context.InscanMasters
             .CountAsync(s => !s.IsDeleted && s.MovementTypeId == MovementType.InternationalExport);
 
-        _stats.ImportShipments = await DbContext.InscanMasters
+        _stats.ImportShipments = await context.InscanMasters
             .CountAsync(s => !s.IsDeleted && s.MovementTypeId == MovementType.InternationalImport);
 
-        _stats.TranshipmentShipments = await DbContext.InscanMasters
+        _stats.TranshipmentShipments = await context.InscanMasters
             .CountAsync(s => !s.IsDeleted && s.MovementTypeId == MovementType.Transhipment);
 
-        _recentShipments = await DbContext.InscanMasters
+        _recentShipments = await context.InscanMasters
             .Where(s => !s.IsDeleted)
             .OrderByDescending(s => s.TransactionDate)
             .ThenByDescending(s => s.Id)
