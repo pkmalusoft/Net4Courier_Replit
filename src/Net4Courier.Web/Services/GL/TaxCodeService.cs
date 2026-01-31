@@ -1,108 +1,103 @@
 using Microsoft.EntityFrameworkCore;
 using Truebooks.Platform.Contracts.DTOs;
 using Net4Courier.Web.Interfaces;
-using Truebooks.Platform.Core.Infrastructure;
-using CoreTaxType = Truebooks.Platform.Core.Infrastructure.TaxType;
+using Net4Courier.Infrastructure.Data;
 using DtoTaxType = Truebooks.Platform.Contracts.DTOs.TaxType;
 
 namespace Net4Courier.Web.Services.GL;
 
 public class TaxCodeService : ITaxCodeService
 {
-    private readonly PlatformDbContext _context;
+    private readonly IDbContextFactory<ApplicationDbContext> _dbFactory;
 
-    public TaxCodeService(PlatformDbContext context)
+    public TaxCodeService(IDbContextFactory<ApplicationDbContext> dbFactory)
     {
-        _context = context;
+        _dbFactory = dbFactory;
     }
 
     public async Task<IEnumerable<TaxCodeDto>> GetAllAsync(Guid tenantId)
     {
-        if (tenantId == Guid.Empty)
-            return Enumerable.Empty<TaxCodeDto>();
-
-        var taxCodes = await _context.TaxCodes
-            .Where(t => t.TenantId == tenantId)
+        await using var context = await _dbFactory.CreateDbContextAsync();
+        
+        return await context.GLTaxCodes
+            .Where(t => !t.IsDeleted)
             .OrderBy(t => t.Code)
             .Select(t => new TaxCodeDto(
-                t.Id,
-                t.TenantId,
+                LongToGuid(t.Id),
+                tenantId,
                 t.Code,
-                t.Description ?? string.Empty,
+                t.Description ?? "",
                 t.Rate,
                 MapTaxType(t.TaxType),
                 t.IsActive,
                 t.CreatedAt,
-                t.UpdatedAt
+                t.ModifiedAt
             ))
             .ToListAsync();
-
-        return taxCodes;
     }
 
     public async Task<TaxCodeDto?> GetByIdAsync(Guid tenantId, Guid id)
     {
-        if (tenantId == Guid.Empty)
-            return null;
+        var longId = GuidToLong(id);
+        await using var context = await _dbFactory.CreateDbContextAsync();
 
-        var taxCode = await _context.TaxCodes
-            .Where(t => t.TenantId == tenantId && t.Id == id)
-            .Select(t => new TaxCodeDto(
-                t.Id,
-                t.TenantId,
-                t.Code,
-                t.Description ?? string.Empty,
-                t.Rate,
-                MapTaxType(t.TaxType),
-                t.IsActive,
-                t.CreatedAt,
-                t.UpdatedAt
-            ))
+        var entity = await context.GLTaxCodes
+            .Where(t => t.Id == longId && !t.IsDeleted)
             .FirstOrDefaultAsync();
 
-        return taxCode;
-    }
-
-    public async Task<TaxCodeDto> CreateAsync(Guid tenantId, CreateTaxCodeRequest request)
-    {
-        if (tenantId == Guid.Empty)
-            throw new InvalidOperationException("Invalid tenant ID");
-
-        var entity = new TaxCode
-        {
-            Id = Guid.NewGuid(),
-            TenantId = tenantId,
-            Code = request.Code,
-            Description = request.Description,
-            Rate = request.Rate,
-            TaxType = MapToCoreTaxType(request.TaxType),
-            IsActive = request.IsActive,
-            CreatedAt = DateTime.UtcNow
-        };
-
-        _context.TaxCodes.Add(entity);
-        await _context.SaveChangesAsync();
+        if (entity == null)
+            return null;
 
         return new TaxCodeDto(
-            entity.Id,
-            entity.TenantId,
+            LongToGuid(entity.Id),
+            tenantId,
             entity.Code,
-            entity.Description ?? string.Empty,
+            entity.Description ?? "",
             entity.Rate,
             MapTaxType(entity.TaxType),
             entity.IsActive,
             entity.CreatedAt,
-            entity.UpdatedAt
+            entity.ModifiedAt
+        );
+    }
+
+    public async Task<TaxCodeDto> CreateAsync(Guid tenantId, CreateTaxCodeRequest request)
+    {
+        await using var context = await _dbFactory.CreateDbContextAsync();
+
+        var entity = new Net4Courier.Finance.Entities.GLTaxCode
+        {
+            Code = request.Code,
+            Description = request.Description,
+            Rate = request.Rate,
+            TaxType = request.TaxType.ToString(),
+            IsActive = request.IsActive,
+            CreatedAt = DateTime.UtcNow
+        };
+
+        context.GLTaxCodes.Add(entity);
+        await context.SaveChangesAsync();
+
+        return new TaxCodeDto(
+            LongToGuid(entity.Id),
+            tenantId,
+            entity.Code,
+            entity.Description ?? "",
+            entity.Rate,
+            MapTaxType(entity.TaxType),
+            entity.IsActive,
+            entity.CreatedAt,
+            entity.ModifiedAt
         );
     }
 
     public async Task<TaxCodeDto> UpdateAsync(Guid tenantId, Guid id, UpdateTaxCodeRequest request)
     {
-        if (tenantId == Guid.Empty)
-            throw new InvalidOperationException("Invalid tenant ID");
+        var longId = GuidToLong(id);
+        await using var context = await _dbFactory.CreateDbContextAsync();
 
-        var entity = await _context.TaxCodes
-            .FirstOrDefaultAsync(t => t.TenantId == tenantId && t.Id == id);
+        var entity = await context.GLTaxCodes
+            .FirstOrDefaultAsync(t => t.Id == longId && !t.IsDeleted);
 
         if (entity == null)
             throw new InvalidOperationException("Tax code not found");
@@ -110,60 +105,64 @@ public class TaxCodeService : ITaxCodeService
         entity.Code = request.Code;
         entity.Description = request.Description;
         entity.Rate = request.Rate;
-        entity.TaxType = MapToCoreTaxType(request.TaxType);
+        entity.TaxType = request.TaxType.ToString();
         entity.IsActive = request.IsActive;
-        entity.UpdatedAt = DateTime.UtcNow;
+        entity.ModifiedAt = DateTime.UtcNow;
 
-        await _context.SaveChangesAsync();
+        await context.SaveChangesAsync();
 
         return new TaxCodeDto(
-            entity.Id,
-            entity.TenantId,
+            LongToGuid(entity.Id),
+            tenantId,
             entity.Code,
-            entity.Description ?? string.Empty,
+            entity.Description ?? "",
             entity.Rate,
             MapTaxType(entity.TaxType),
             entity.IsActive,
             entity.CreatedAt,
-            entity.UpdatedAt
+            entity.ModifiedAt
         );
     }
 
     public async Task DeleteAsync(Guid tenantId, Guid id)
     {
-        if (tenantId == Guid.Empty)
-            return;
+        var longId = GuidToLong(id);
+        await using var context = await _dbFactory.CreateDbContextAsync();
 
-        var entity = await _context.TaxCodes
-            .FirstOrDefaultAsync(t => t.TenantId == tenantId && t.Id == id);
+        var entity = await context.GLTaxCodes
+            .FirstOrDefaultAsync(t => t.Id == longId && !t.IsDeleted);
 
         if (entity == null)
             return;
 
-        _context.TaxCodes.Remove(entity);
-        await _context.SaveChangesAsync();
+        entity.IsDeleted = true;
+        entity.IsActive = false;
+        entity.ModifiedAt = DateTime.UtcNow;
+        
+        await context.SaveChangesAsync();
     }
 
-    private static DtoTaxType MapTaxType(CoreTaxType taxType)
+    private static DtoTaxType MapTaxType(string? taxType)
     {
         return taxType switch
         {
-            CoreTaxType.Simple => DtoTaxType.Simple,
-            CoreTaxType.VAT => DtoTaxType.VAT,
-            CoreTaxType.GST => DtoTaxType.GST,
+            "VAT" => DtoTaxType.VAT,
+            "GST" => DtoTaxType.GST,
+            "USSalesTax" => DtoTaxType.USSalesTax,
             _ => DtoTaxType.Simple
         };
     }
 
-    private static CoreTaxType MapToCoreTaxType(DtoTaxType taxType)
+    private static Guid LongToGuid(long id)
     {
-        return taxType switch
-        {
-            DtoTaxType.Simple => CoreTaxType.Simple,
-            DtoTaxType.VAT => CoreTaxType.VAT,
-            DtoTaxType.GST => CoreTaxType.GST,
-            DtoTaxType.USSalesTax => CoreTaxType.Simple,
-            _ => CoreTaxType.Simple
-        };
+        var bytes = new byte[16];
+        BitConverter.GetBytes(id).CopyTo(bytes, 0);
+        return new Guid(bytes);
+    }
+
+    private static long GuidToLong(Guid guid)
+    {
+        var bytes = guid.ToByteArray();
+        return BitConverter.ToInt64(bytes, 0);
     }
 }

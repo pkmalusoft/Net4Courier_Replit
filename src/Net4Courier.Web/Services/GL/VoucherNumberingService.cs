@@ -1,82 +1,77 @@
 using Microsoft.EntityFrameworkCore;
 using Truebooks.Platform.Contracts.DTOs;
 using Net4Courier.Web.Interfaces;
-using Truebooks.Platform.Core.Infrastructure;
-using CoreVoucherTransactionType = Truebooks.Platform.Core.Infrastructure.VoucherTransactionType;
+using Net4Courier.Infrastructure.Data;
 using DtoVoucherTransactionType = Truebooks.Platform.Contracts.DTOs.VoucherTransactionType;
 
 namespace Net4Courier.Web.Services.GL;
 
 public class VoucherNumberingService : IVoucherNumberingService
 {
-    private readonly PlatformDbContext _context;
+    private readonly IDbContextFactory<ApplicationDbContext> _dbFactory;
 
-    public VoucherNumberingService(PlatformDbContext context)
+    public VoucherNumberingService(IDbContextFactory<ApplicationDbContext> dbFactory)
     {
-        _context = context;
+        _dbFactory = dbFactory;
     }
 
     public async Task<IEnumerable<VoucherNumberingDto>> GetAllAsync(Guid tenantId)
     {
-        if (tenantId == Guid.Empty)
-            return Enumerable.Empty<VoucherNumberingDto>();
-
-        var vouchers = await _context.VoucherNumberings
-            .Where(v => v.TenantId == tenantId)
+        await using var context = await _dbFactory.CreateDbContextAsync();
+        
+        return await context.GLVoucherNumberings
+            .Where(v => !v.IsDeleted)
             .OrderBy(v => v.TransactionType)
             .Select(v => new VoucherNumberingDto(
-                v.Id,
-                v.TenantId,
+                LongToGuid(v.Id),
+                tenantId,
                 MapTransactionType(v.TransactionType),
-                v.Prefix,
+                v.Prefix ?? "",
                 v.NextNumber,
                 v.NumberLength,
-                v.Separator,
+                v.Separator ?? "-",
                 v.IsLocked,
                 v.IsActive,
                 v.CreatedAt,
-                v.UpdatedAt
+                v.ModifiedAt
             ))
             .ToListAsync();
-
-        return vouchers;
     }
 
     public async Task<VoucherNumberingDto?> GetByIdAsync(Guid tenantId, Guid id)
     {
-        if (tenantId == Guid.Empty)
-            return null;
+        var longId = GuidToLong(id);
+        await using var context = await _dbFactory.CreateDbContextAsync();
 
-        var voucher = await _context.VoucherNumberings
-            .Where(v => v.TenantId == tenantId && v.Id == id)
-            .Select(v => new VoucherNumberingDto(
-                v.Id,
-                v.TenantId,
-                MapTransactionType(v.TransactionType),
-                v.Prefix,
-                v.NextNumber,
-                v.NumberLength,
-                v.Separator,
-                v.IsLocked,
-                v.IsActive,
-                v.CreatedAt,
-                v.UpdatedAt
-            ))
+        var entity = await context.GLVoucherNumberings
+            .Where(v => v.Id == longId && !v.IsDeleted)
             .FirstOrDefaultAsync();
 
-        return voucher;
+        if (entity == null)
+            return null;
+
+        return new VoucherNumberingDto(
+            LongToGuid(entity.Id),
+            tenantId,
+            MapTransactionType(entity.TransactionType),
+            entity.Prefix ?? "",
+            entity.NextNumber,
+            entity.NumberLength,
+            entity.Separator ?? "-",
+            entity.IsLocked,
+            entity.IsActive,
+            entity.CreatedAt,
+            entity.ModifiedAt
+        );
     }
 
     public async Task<VoucherNumberingDto> CreateAsync(Guid tenantId, CreateVoucherNumberingRequest request)
     {
-        if (tenantId == Guid.Empty)
-            throw new InvalidOperationException("Invalid tenant ID");
+        await using var context = await _dbFactory.CreateDbContextAsync();
 
-        var entity = new VoucherNumbering
+        var entity = new Net4Courier.Finance.Entities.GLVoucherNumbering
         {
-            Id = Guid.NewGuid(),
-            TenantId = tenantId,
-            TransactionType = MapToCoreTransactionType(request.TransactionType),
+            TransactionType = request.TransactionType.ToString(),
             Prefix = request.Prefix,
             NextNumber = request.NextNumber,
             NumberLength = request.NumberLength,
@@ -86,31 +81,31 @@ public class VoucherNumberingService : IVoucherNumberingService
             CreatedAt = DateTime.UtcNow
         };
 
-        _context.VoucherNumberings.Add(entity);
-        await _context.SaveChangesAsync();
+        context.GLVoucherNumberings.Add(entity);
+        await context.SaveChangesAsync();
 
         return new VoucherNumberingDto(
-            entity.Id,
-            entity.TenantId,
+            LongToGuid(entity.Id),
+            tenantId,
             MapTransactionType(entity.TransactionType),
-            entity.Prefix,
+            entity.Prefix ?? "",
             entity.NextNumber,
             entity.NumberLength,
-            entity.Separator,
+            entity.Separator ?? "-",
             entity.IsLocked,
             entity.IsActive,
             entity.CreatedAt,
-            entity.UpdatedAt
+            entity.ModifiedAt
         );
     }
 
     public async Task<VoucherNumberingDto> UpdateAsync(Guid tenantId, Guid id, UpdateVoucherNumberingRequest request)
     {
-        if (tenantId == Guid.Empty)
-            throw new InvalidOperationException("Invalid tenant ID");
+        var longId = GuidToLong(id);
+        await using var context = await _dbFactory.CreateDbContextAsync();
 
-        var entity = await _context.VoucherNumberings
-            .FirstOrDefaultAsync(v => v.TenantId == tenantId && v.Id == id);
+        var entity = await context.GLVoucherNumberings
+            .FirstOrDefaultAsync(v => v.Id == longId && !v.IsDeleted);
 
         if (entity == null)
             throw new InvalidOperationException("Voucher numbering not found");
@@ -123,32 +118,32 @@ public class VoucherNumberingService : IVoucherNumberingService
         entity.NumberLength = request.NumberLength;
         entity.Separator = request.Separator;
         entity.IsActive = request.IsActive;
-        entity.UpdatedAt = DateTime.UtcNow;
+        entity.ModifiedAt = DateTime.UtcNow;
 
-        await _context.SaveChangesAsync();
+        await context.SaveChangesAsync();
 
         return new VoucherNumberingDto(
-            entity.Id,
-            entity.TenantId,
+            LongToGuid(entity.Id),
+            tenantId,
             MapTransactionType(entity.TransactionType),
-            entity.Prefix,
+            entity.Prefix ?? "",
             entity.NextNumber,
             entity.NumberLength,
-            entity.Separator,
+            entity.Separator ?? "-",
             entity.IsLocked,
             entity.IsActive,
             entity.CreatedAt,
-            entity.UpdatedAt
+            entity.ModifiedAt
         );
     }
 
     public async Task DeleteAsync(Guid tenantId, Guid id)
     {
-        if (tenantId == Guid.Empty)
-            return;
+        var longId = GuidToLong(id);
+        await using var context = await _dbFactory.CreateDbContextAsync();
 
-        var entity = await _context.VoucherNumberings
-            .FirstOrDefaultAsync(v => v.TenantId == tenantId && v.Id == id);
+        var entity = await context.GLVoucherNumberings
+            .FirstOrDefaultAsync(v => v.Id == longId && !v.IsDeleted);
 
         if (entity == null)
             return;
@@ -156,17 +151,30 @@ public class VoucherNumberingService : IVoucherNumberingService
         if (entity.IsLocked)
             throw new InvalidOperationException("This voucher numbering configuration is locked and cannot be deleted");
 
-        _context.VoucherNumberings.Remove(entity);
-        await _context.SaveChangesAsync();
+        entity.IsDeleted = true;
+        entity.IsActive = false;
+        entity.ModifiedAt = DateTime.UtcNow;
+        
+        await context.SaveChangesAsync();
     }
 
-    private static DtoVoucherTransactionType MapTransactionType(CoreVoucherTransactionType type)
+    private static DtoVoucherTransactionType MapTransactionType(string? type)
     {
-        return (DtoVoucherTransactionType)(int)type;
+        if (Enum.TryParse<DtoVoucherTransactionType>(type, true, out var result))
+            return result;
+        return 0;
     }
 
-    private static CoreVoucherTransactionType MapToCoreTransactionType(DtoVoucherTransactionType type)
+    private static Guid LongToGuid(long id)
     {
-        return (CoreVoucherTransactionType)(int)type;
+        var bytes = new byte[16];
+        BitConverter.GetBytes(id).CopyTo(bytes, 0);
+        return new Guid(bytes);
+    }
+
+    private static long GuidToLong(Guid guid)
+    {
+        var bytes = guid.ToByteArray();
+        return BitConverter.ToInt64(bytes, 0);
     }
 }

@@ -183,12 +183,15 @@ builder.Services.AddScoped<Net4Courier.Web.Services.IFinancialYearService, Net4C
 builder.Services.AddScoped<Net4Courier.Web.Services.IAccountHeadService, Net4Courier.Web.Services.AccountHeadService>();
 builder.Services.AddScoped<Net4Courier.Web.Services.IPartyService, Net4Courier.Web.Services.PartyService>();
 
-// GL Master Data Services
+// GL Master Data Services (Legacy TrueBooks - kept for backward compatibility)
 builder.Services.AddScoped<Net4Courier.Web.Interfaces.IChartOfAccountsService, Net4Courier.Web.Services.GL.ChartOfAccountsService>();
 builder.Services.AddScoped<Net4Courier.Web.Interfaces.ICurrencyService, Net4Courier.Web.Services.GL.CurrencyService>();
 builder.Services.AddScoped<Net4Courier.Web.Interfaces.ITaxCodeService, Net4Courier.Web.Services.GL.TaxCodeService>();
 builder.Services.AddScoped<Net4Courier.Web.Interfaces.IVoucherNumberingService, Net4Courier.Web.Services.GL.VoucherNumberingService>();
 builder.Services.AddScoped<Net4Courier.Web.Interfaces.IAccountClassificationService, Net4Courier.Web.Services.GL.AccountClassificationService>();
+
+// GL Native Services (Net4Courier with long IDs)
+builder.Services.AddScoped<Net4Courier.Web.Interfaces.IGLChartOfAccountsService, Net4Courier.Web.Services.GL.GLChartOfAccountsService>();
 
 builder.Services.AddAuthentication(options =>
 {

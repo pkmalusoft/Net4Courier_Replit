@@ -83,6 +83,12 @@ public class ApplicationDbContext : DbContext
     public DbSet<DebitNote> DebitNotes => Set<DebitNote>();
     public DbSet<TaxRate> TaxRates => Set<TaxRate>();
     
+    // GL Module Native Entities (long IDs)
+    public DbSet<GLChartOfAccount> GLChartOfAccounts => Set<GLChartOfAccount>();
+    public DbSet<GLAccountClassification> GLAccountClassifications => Set<GLAccountClassification>();
+    public DbSet<GLTaxCode> GLTaxCodes => Set<GLTaxCode>();
+    public DbSet<GLVoucherNumbering> GLVoucherNumberings => Set<GLVoucherNumbering>();
+    
     // Cash & Bank Module Entities
     public DbSet<BankAccount> BankAccounts => Set<BankAccount>();
     public DbSet<CashBankTransaction> CashBankTransactions => Set<CashBankTransaction>();
@@ -1649,6 +1655,58 @@ public class ApplicationDbContext : DbContext
             entity.HasIndex(e => new { e.TransferOrderId, e.EventTime });
             entity.HasOne(e => e.TransferOrder).WithMany(t => t.Events)
                   .HasForeignKey(e => e.TransferOrderId).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        // GL Module Native Entities (long IDs)
+        modelBuilder.Entity<GLAccountClassification>(entity =>
+        {
+            entity.ToTable("GLAccountClassifications");
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Name).HasMaxLength(100).IsRequired();
+            entity.Property(e => e.Description).HasMaxLength(500);
+            entity.HasIndex(e => new { e.CompanyId, e.Name }).IsUnique();
+        });
+
+        modelBuilder.Entity<GLChartOfAccount>(entity =>
+        {
+            entity.ToTable("GLChartOfAccounts");
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.AccountCode).HasMaxLength(50).IsRequired();
+            entity.Property(e => e.AccountName).HasMaxLength(200).IsRequired();
+            entity.Property(e => e.AccountType).HasMaxLength(50);
+            entity.Property(e => e.Description).HasMaxLength(500);
+            entity.Property(e => e.DeactivationReason).HasMaxLength(500);
+            entity.Property(e => e.CreatedByUser).HasMaxLength(100);
+            entity.Property(e => e.UpdatedByUser).HasMaxLength(100);
+            entity.Property(e => e.DeactivatedByUserId).HasMaxLength(100);
+            entity.HasIndex(e => new { e.CompanyId, e.AccountCode }).IsUnique();
+            entity.HasOne(e => e.Parent).WithMany(a => a.Children).HasForeignKey(e => e.ParentId);
+            entity.HasOne(e => e.AccountClassification).WithMany(a => a.ChartOfAccounts)
+                  .HasForeignKey(e => e.AccountClassificationId);
+        });
+
+        modelBuilder.Entity<GLTaxCode>(entity =>
+        {
+            entity.ToTable("GLTaxCodes");
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Code).HasMaxLength(20).IsRequired();
+            entity.Property(e => e.Description).HasMaxLength(200);
+            entity.Property(e => e.Rate).HasPrecision(18, 4);
+            entity.Property(e => e.TaxType).HasMaxLength(20);
+            entity.Property(e => e.CreatedByUser).HasMaxLength(100);
+            entity.Property(e => e.UpdatedByUser).HasMaxLength(100);
+            entity.HasIndex(e => new { e.CompanyId, e.Code }).IsUnique();
+        });
+
+        modelBuilder.Entity<GLVoucherNumbering>(entity =>
+        {
+            entity.ToTable("GLVoucherNumberings");
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.TransactionType).HasMaxLength(50).IsRequired();
+            entity.Property(e => e.Prefix).HasMaxLength(20);
+            entity.Property(e => e.Suffix).HasMaxLength(20);
+            entity.Property(e => e.Separator).HasMaxLength(10);
+            entity.HasIndex(e => new { e.CompanyId, e.TransactionType, e.FinancialYearId }).IsUnique();
         });
     }
 }

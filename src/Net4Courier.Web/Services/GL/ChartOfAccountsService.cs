@@ -1,194 +1,174 @@
 using Microsoft.EntityFrameworkCore;
 using Truebooks.Platform.Contracts.DTOs;
 using Net4Courier.Web.Interfaces;
-using Truebooks.Platform.Core.Infrastructure;
-using CoreAccountType = Truebooks.Platform.Core.Infrastructure.AccountType;
-using DtoAccountType = Truebooks.Platform.Contracts.DTOs.AccountType;
+using Net4Courier.Infrastructure.Data;
+using Net4Courier.Finance.Entities;
 
 namespace Net4Courier.Web.Services.GL;
 
 public class ChartOfAccountsService : IChartOfAccountsService
 {
-    private readonly IDbContextFactory<PlatformDbContext> _contextFactory;
+    private readonly IDbContextFactory<ApplicationDbContext> _dbFactory;
 
-    public ChartOfAccountsService(IDbContextFactory<PlatformDbContext> contextFactory)
+    public ChartOfAccountsService(IDbContextFactory<ApplicationDbContext> dbFactory)
     {
-        _contextFactory = contextFactory;
+        _dbFactory = dbFactory;
     }
 
     public async Task<IEnumerable<ChartOfAccountDto>> GetAllAsync(Guid tenantId)
     {
-        if (tenantId == Guid.Empty)
-            return Enumerable.Empty<ChartOfAccountDto>();
-
-        await using var context = await _contextFactory.CreateDbContextAsync();
-        return await context.ChartOfAccounts
+        await using var context = await _dbFactory.CreateDbContextAsync();
+        return await context.GLChartOfAccounts
             .Include(c => c.AccountClassification)
-            .Where(c => c.TenantId == tenantId)
+            .Where(c => !c.IsDeleted)
             .OrderBy(c => c.AccountCode)
             .ThenBy(c => c.AccountName)
             .Select(c => new ChartOfAccountDto(
-                c.Id,
-                c.TenantId,
+                LongToGuid(c.Id),
+                tenantId,
                 c.AccountCode,
                 c.AccountName,
                 MapAccountType(c.AccountType),
-                c.ParentAccountId,
+                c.ParentId.HasValue ? LongToGuid(c.ParentId.Value) : null,
                 null,
                 c.IsActive,
                 c.AllowPosting,
-                c.AccountClassificationId,
+                c.AccountClassificationId.HasValue ? LongToGuid(c.AccountClassificationId.Value) : null,
                 c.AccountClassification != null ? c.AccountClassification.Name : null,
-                c.ControlAccountType,
+                c.ControlAccountType ?? 0,
                 c.IsSystemAccount,
                 c.CreatedAt,
-                c.UpdatedAt
+                c.ModifiedAt
             ))
             .ToListAsync();
     }
 
     public async Task<IEnumerable<ChartOfAccountDto>> GetByTypeAsync(Guid tenantId, Truebooks.Platform.Contracts.DTOs.AccountType accountType)
     {
-        if (tenantId == Guid.Empty)
-            return Enumerable.Empty<ChartOfAccountDto>();
-
-        var coreType = MapToCoreAccountType(accountType);
-
-        await using var context = await _contextFactory.CreateDbContextAsync();
-        return await context.ChartOfAccounts
+        var typeStr = accountType.ToString();
+        await using var context = await _dbFactory.CreateDbContextAsync();
+        return await context.GLChartOfAccounts
             .Include(c => c.AccountClassification)
-            .Where(c => c.TenantId == tenantId && c.AccountType == coreType)
+            .Where(c => !c.IsDeleted && c.AccountType == typeStr)
             .OrderBy(c => c.AccountCode)
             .ThenBy(c => c.AccountName)
             .Select(c => new ChartOfAccountDto(
-                c.Id,
-                c.TenantId,
+                LongToGuid(c.Id),
+                tenantId,
                 c.AccountCode,
                 c.AccountName,
                 MapAccountType(c.AccountType),
-                c.ParentAccountId,
+                c.ParentId.HasValue ? LongToGuid(c.ParentId.Value) : null,
                 null,
                 c.IsActive,
                 c.AllowPosting,
-                c.AccountClassificationId,
+                c.AccountClassificationId.HasValue ? LongToGuid(c.AccountClassificationId.Value) : null,
                 c.AccountClassification != null ? c.AccountClassification.Name : null,
-                c.ControlAccountType,
+                c.ControlAccountType ?? 0,
                 c.IsSystemAccount,
                 c.CreatedAt,
-                c.UpdatedAt
+                c.ModifiedAt
             ))
             .ToListAsync();
     }
 
     public async Task<IEnumerable<ChartOfAccountDto>> GetPostableAccountsAsync(Guid tenantId)
     {
-        if (tenantId == Guid.Empty)
-            return Enumerable.Empty<ChartOfAccountDto>();
-
-        await using var context = await _contextFactory.CreateDbContextAsync();
-        return await context.ChartOfAccounts
+        await using var context = await _dbFactory.CreateDbContextAsync();
+        return await context.GLChartOfAccounts
             .Include(c => c.AccountClassification)
-            .Where(c => c.TenantId == tenantId && c.AllowPosting && c.IsActive)
+            .Where(c => !c.IsDeleted && c.AllowPosting && c.IsActive)
             .OrderBy(c => c.AccountCode)
             .ThenBy(c => c.AccountName)
             .Select(c => new ChartOfAccountDto(
-                c.Id,
-                c.TenantId,
+                LongToGuid(c.Id),
+                tenantId,
                 c.AccountCode,
                 c.AccountName,
                 MapAccountType(c.AccountType),
-                c.ParentAccountId,
+                c.ParentId.HasValue ? LongToGuid(c.ParentId.Value) : null,
                 null,
                 c.IsActive,
                 c.AllowPosting,
-                c.AccountClassificationId,
+                c.AccountClassificationId.HasValue ? LongToGuid(c.AccountClassificationId.Value) : null,
                 c.AccountClassification != null ? c.AccountClassification.Name : null,
-                c.ControlAccountType,
+                c.ControlAccountType ?? 0,
                 c.IsSystemAccount,
                 c.CreatedAt,
-                c.UpdatedAt
+                c.ModifiedAt
             ))
             .ToListAsync();
     }
 
     public async Task<ChartOfAccountDto?> GetByIdAsync(Guid tenantId, Guid id)
     {
-        if (tenantId == Guid.Empty)
-            return null;
-
-        await using var context = await _contextFactory.CreateDbContextAsync();
-        var entity = await context.ChartOfAccounts
+        var longId = GuidToLong(id);
+        await using var context = await _dbFactory.CreateDbContextAsync();
+        var entity = await context.GLChartOfAccounts
             .Include(c => c.AccountClassification)
-            .Where(c => c.TenantId == tenantId && c.Id == id)
+            .Where(c => c.Id == longId && !c.IsDeleted)
             .FirstOrDefaultAsync();
 
         if (entity == null)
             return null;
 
         string? parentName = null;
-        if (entity.ParentAccountId.HasValue)
+        if (entity.ParentId.HasValue)
         {
-            parentName = await context.ChartOfAccounts
-                .Where(c => c.Id == entity.ParentAccountId.Value)
+            parentName = await context.GLChartOfAccounts
+                .Where(c => c.Id == entity.ParentId.Value)
                 .Select(c => c.AccountName)
                 .FirstOrDefaultAsync();
         }
 
         return new ChartOfAccountDto(
-            entity.Id,
-            entity.TenantId,
+            LongToGuid(entity.Id),
+            tenantId,
             entity.AccountCode,
             entity.AccountName,
             MapAccountType(entity.AccountType),
-            entity.ParentAccountId,
+            entity.ParentId.HasValue ? LongToGuid(entity.ParentId.Value) : null,
             parentName,
             entity.IsActive,
             entity.AllowPosting,
-            entity.AccountClassificationId,
+            entity.AccountClassificationId.HasValue ? LongToGuid(entity.AccountClassificationId.Value) : null,
             entity.AccountClassification?.Name,
-            entity.ControlAccountType,
+            entity.ControlAccountType ?? 0,
             entity.IsSystemAccount,
             entity.CreatedAt,
-            entity.UpdatedAt
+            entity.ModifiedAt
         );
     }
 
     public async Task<ChartOfAccountDto> CreateAsync(Guid tenantId, CreateChartOfAccountRequest request)
     {
-        if (tenantId == Guid.Empty)
-            throw new InvalidOperationException("Invalid tenant ID");
-
-        await using var context = await _contextFactory.CreateDbContextAsync();
-        var entity = new ChartOfAccount
+        await using var context = await _dbFactory.CreateDbContextAsync();
+        var entity = new GLChartOfAccount
         {
-            Id = Guid.NewGuid(),
-            TenantId = tenantId,
             AccountCode = request.AccountCode,
             AccountName = request.AccountName,
-            AccountType = MapToCoreAccountType(request.AccountType),
-            ParentAccountId = request.ParentAccountId,
+            AccountType = request.AccountType.ToString(),
+            ParentId = request.ParentAccountId.HasValue ? GuidToLong(request.ParentAccountId.Value) : null,
             AllowPosting = request.AllowPosting,
-            AccountClassificationId = request.AccountClassificationId,
+            AccountClassificationId = request.AccountClassificationId.HasValue ? GuidToLong(request.AccountClassificationId.Value) : null,
             ControlAccountType = request.ControlAccountType,
             IsActive = request.IsActive,
             IsSystemAccount = false,
             CreatedAt = DateTime.UtcNow
         };
 
-        context.ChartOfAccounts.Add(entity);
+        context.GLChartOfAccounts.Add(entity);
         await context.SaveChangesAsync();
 
-        return await GetByIdAsync(tenantId, entity.Id) ?? throw new InvalidOperationException("Failed to create account");
+        return await GetByIdAsync(tenantId, LongToGuid(entity.Id)) ?? throw new InvalidOperationException("Failed to create account");
     }
 
     public async Task<ChartOfAccountDto> UpdateAsync(Guid tenantId, Guid id, UpdateChartOfAccountRequest request)
     {
-        if (tenantId == Guid.Empty)
-            throw new InvalidOperationException("Invalid tenant ID");
-
-        await using var context = await _contextFactory.CreateDbContextAsync();
-        var entity = await context.ChartOfAccounts
-            .FirstOrDefaultAsync(c => c.TenantId == tenantId && c.Id == id);
+        var longId = GuidToLong(id);
+        await using var context = await _dbFactory.CreateDbContextAsync();
+        var entity = await context.GLChartOfAccounts
+            .FirstOrDefaultAsync(c => c.Id == longId && !c.IsDeleted);
 
         if (entity == null)
             throw new InvalidOperationException("Account not found");
@@ -198,13 +178,13 @@ public class ChartOfAccountsService : IChartOfAccountsService
 
         entity.AccountCode = request.AccountCode;
         entity.AccountName = request.AccountName;
-        entity.AccountType = MapToCoreAccountType(request.AccountType);
-        entity.ParentAccountId = request.ParentAccountId;
+        entity.AccountType = request.AccountType.ToString();
+        entity.ParentId = request.ParentAccountId.HasValue ? GuidToLong(request.ParentAccountId.Value) : null;
         entity.AllowPosting = request.AllowPosting;
-        entity.AccountClassificationId = request.AccountClassificationId;
+        entity.AccountClassificationId = request.AccountClassificationId.HasValue ? GuidToLong(request.AccountClassificationId.Value) : null;
         entity.ControlAccountType = request.ControlAccountType;
         entity.IsActive = request.IsActive;
-        entity.UpdatedAt = DateTime.UtcNow;
+        entity.ModifiedAt = DateTime.UtcNow;
 
         await context.SaveChangesAsync();
 
@@ -213,12 +193,10 @@ public class ChartOfAccountsService : IChartOfAccountsService
 
     public async Task DeleteAsync(Guid tenantId, Guid id)
     {
-        if (tenantId == Guid.Empty)
-            return;
-
-        await using var context = await _contextFactory.CreateDbContextAsync();
-        var entity = await context.ChartOfAccounts
-            .FirstOrDefaultAsync(c => c.TenantId == tenantId && c.Id == id);
+        var longId = GuidToLong(id);
+        await using var context = await _dbFactory.CreateDbContextAsync();
+        var entity = await context.GLChartOfAccounts
+            .FirstOrDefaultAsync(c => c.Id == longId && !c.IsDeleted);
 
         if (entity == null)
             return;
@@ -229,81 +207,86 @@ public class ChartOfAccountsService : IChartOfAccountsService
         if (await HasTransactionsAsync(tenantId, id))
             throw new InvalidOperationException("Cannot delete account with existing transactions");
 
-        context.ChartOfAccounts.Remove(entity);
+        entity.IsDeleted = true;
+        entity.IsActive = false;
+        entity.ModifiedAt = DateTime.UtcNow;
+        
         await context.SaveChangesAsync();
     }
 
     public async Task<bool> HasTransactionsAsync(Guid tenantId, Guid accountId)
     {
-        await using var context = await _contextFactory.CreateDbContextAsync();
-        return await context.JournalEntryLines
-            .AnyAsync(j => j.TenantId == tenantId && j.AccountId == accountId);
+        var longId = GuidToLong(accountId);
+        await using var context = await _dbFactory.CreateDbContextAsync();
+        return await context.JournalEntries.AnyAsync(j => j.AccountHeadId == longId);
     }
 
     public async Task<IEnumerable<ChartOfAccountHierarchyDto>> GetHierarchyAsync(Guid tenantId)
     {
-        if (tenantId == Guid.Empty)
-            return Enumerable.Empty<ChartOfAccountHierarchyDto>();
-
-        await using var context = await _contextFactory.CreateDbContextAsync();
-        var accounts = await context.ChartOfAccounts
+        await using var context = await _dbFactory.CreateDbContextAsync();
+        var accounts = await context.GLChartOfAccounts
             .Include(c => c.AccountClassification)
-            .Where(c => c.TenantId == tenantId)
+            .Where(c => !c.IsDeleted)
             .OrderBy(c => c.AccountCode)
             .ThenBy(c => c.AccountName)
             .ToListAsync();
 
-        var rootAccounts = accounts.Where(a => a.ParentAccountId == null);
-        return rootAccounts.Select(a => BuildHierarchy(a, accounts)).ToList();
+        var rootAccounts = accounts.Where(a => a.ParentId == null);
+        return rootAccounts.Select(a => BuildHierarchy(a, accounts, tenantId)).ToList();
     }
 
-    private ChartOfAccountHierarchyDto BuildHierarchy(ChartOfAccount account, List<ChartOfAccount> allAccounts)
+    private ChartOfAccountHierarchyDto BuildHierarchy(GLChartOfAccount account, List<GLChartOfAccount> allAccounts, Guid tenantId)
     {
-        var children = allAccounts.Where(a => a.ParentAccountId == account.Id).ToList();
+        var children = allAccounts.Where(a => a.ParentId == account.Id).ToList();
         return new ChartOfAccountHierarchyDto(
-            account.Id,
-            account.TenantId,
+            LongToGuid(account.Id),
+            tenantId,
             account.AccountCode,
             account.AccountName,
             MapAccountType(account.AccountType),
-            account.ParentAccountId,
+            account.ParentId.HasValue ? LongToGuid(account.ParentId.Value) : null,
             null,
             account.IsActive,
             account.AllowPosting,
-            account.AccountClassificationId,
+            account.AccountClassificationId.HasValue ? LongToGuid(account.AccountClassificationId.Value) : null,
             account.AccountClassification?.Name,
-            account.ControlAccountType,
+            account.ControlAccountType ?? 0,
             account.IsSystemAccount,
             account.CreatedAt,
-            account.UpdatedAt,
-            children.Select(c => BuildHierarchy(c, allAccounts)).ToList()
+            account.ModifiedAt,
+            children.Select(c => BuildHierarchy(c, allAccounts, tenantId)).ToList()
         );
     }
 
     public async Task<bool> HasAccountsAsync(Guid tenantId)
     {
-        if (tenantId == Guid.Empty) return false;
-        await using var context = await _contextFactory.CreateDbContextAsync();
-        return await context.ChartOfAccounts.AnyAsync(c => c.TenantId == tenantId);
+        await using var context = await _dbFactory.CreateDbContextAsync();
+        return await context.GLChartOfAccounts.AnyAsync(c => !c.IsDeleted);
     }
 
     public async Task<bool> CodeExistsAsync(Guid tenantId, string code, Guid? excludeId = null)
     {
-        if (tenantId == Guid.Empty || string.IsNullOrWhiteSpace(code)) return false;
-        await using var context = await _contextFactory.CreateDbContextAsync();
-        var query = context.ChartOfAccounts.Where(c => c.TenantId == tenantId && c.AccountCode == code);
+        if (string.IsNullOrWhiteSpace(code)) return false;
+        await using var context = await _dbFactory.CreateDbContextAsync();
+        var query = context.GLChartOfAccounts.Where(c => c.AccountCode == code && !c.IsDeleted);
         if (excludeId.HasValue)
-            query = query.Where(c => c.Id != excludeId.Value);
+        {
+            var longId = GuidToLong(excludeId.Value);
+            query = query.Where(c => c.Id != longId);
+        }
         return await query.AnyAsync();
     }
 
     public async Task<bool> NameExistsAsync(Guid tenantId, string name, Guid? excludeId = null)
     {
-        if (tenantId == Guid.Empty || string.IsNullOrWhiteSpace(name)) return false;
-        await using var context = await _contextFactory.CreateDbContextAsync();
-        var query = context.ChartOfAccounts.Where(c => c.TenantId == tenantId && c.AccountName == name);
+        if (string.IsNullOrWhiteSpace(name)) return false;
+        await using var context = await _dbFactory.CreateDbContextAsync();
+        var query = context.GLChartOfAccounts.Where(c => c.AccountName == name && !c.IsDeleted);
         if (excludeId.HasValue)
-            query = query.Where(c => c.Id != excludeId.Value);
+        {
+            var longId = GuidToLong(excludeId.Value);
+            query = query.Where(c => c.Id != longId);
+        }
         return await query.AnyAsync();
     }
 
@@ -339,12 +322,9 @@ public class ChartOfAccountsService : IChartOfAccountsService
             { "OpeningBalanceEquity", null }
         };
 
-        if (tenantId == Guid.Empty)
-            return result;
-
-        await using var context = await _contextFactory.CreateDbContextAsync();
-        var controlAccounts = await context.ChartOfAccounts
-            .Where(c => c.TenantId == tenantId && c.ControlAccountType > 0)
+        await using var context = await _dbFactory.CreateDbContextAsync();
+        var controlAccounts = await context.GLChartOfAccounts
+            .Where(c => !c.IsDeleted && c.ControlAccountType > 0)
             .Select(c => new { c.Id, c.AccountCode, c.AccountName, c.ControlAccountType })
             .ToListAsync();
 
@@ -363,7 +343,7 @@ public class ChartOfAccountsService : IChartOfAccountsService
 
             if (key != null)
             {
-                result[key] = new ControlAccountAssignmentDto(account.Id, account.AccountCode ?? "", account.AccountName);
+                result[key] = new ControlAccountAssignmentDto(LongToGuid(account.Id), account.AccountCode ?? "", account.AccountName);
             }
         }
 
@@ -372,37 +352,63 @@ public class ChartOfAccountsService : IChartOfAccountsService
 
     public async Task SetControlAccountAsync(Guid tenantId, Guid accountId, int controlAccountType)
     {
-        if (tenantId == Guid.Empty)
-            return;
+        var longId = GuidToLong(accountId);
+        await using var context = await _dbFactory.CreateDbContextAsync();
+        
+        var existingAccounts = await context.GLChartOfAccounts
+            .Where(c => !c.IsDeleted && c.ControlAccountType == controlAccountType)
+            .ToListAsync();
+        foreach (var acc in existingAccounts)
+        {
+            acc.ControlAccountType = 0;
+        }
 
-        await using var context = await _contextFactory.CreateDbContextAsync();
-        await context.ChartOfAccounts
-            .Where(c => c.TenantId == tenantId && c.ControlAccountType == controlAccountType)
-            .ExecuteUpdateAsync(s => s.SetProperty(c => c.ControlAccountType, 0));
+        var targetAccount = await context.GLChartOfAccounts
+            .FirstOrDefaultAsync(c => c.Id == longId && !c.IsDeleted);
+        if (targetAccount != null)
+        {
+            targetAccount.ControlAccountType = controlAccountType;
+        }
 
-        await context.ChartOfAccounts
-            .Where(c => c.TenantId == tenantId && c.Id == accountId)
-            .ExecuteUpdateAsync(s => s.SetProperty(c => c.ControlAccountType, controlAccountType));
+        await context.SaveChangesAsync();
     }
 
     public async Task RemoveControlAccountAsync(Guid tenantId, int controlAccountType)
     {
-        if (tenantId == Guid.Empty)
-            return;
-
-        await using var context = await _contextFactory.CreateDbContextAsync();
-        await context.ChartOfAccounts
-            .Where(c => c.TenantId == tenantId && c.ControlAccountType == controlAccountType)
-            .ExecuteUpdateAsync(s => s.SetProperty(c => c.ControlAccountType, 0));
+        await using var context = await _dbFactory.CreateDbContextAsync();
+        var accounts = await context.GLChartOfAccounts
+            .Where(c => !c.IsDeleted && c.ControlAccountType == controlAccountType)
+            .ToListAsync();
+        foreach (var acc in accounts)
+        {
+            acc.ControlAccountType = 0;
+        }
+        await context.SaveChangesAsync();
     }
 
-    private static DtoAccountType MapAccountType(CoreAccountType type)
+    private static Truebooks.Platform.Contracts.DTOs.AccountType MapAccountType(string? type)
     {
-        return (DtoAccountType)(int)type;
+        return type?.ToLower() switch
+        {
+            "asset" => Truebooks.Platform.Contracts.DTOs.AccountType.Asset,
+            "liability" => Truebooks.Platform.Contracts.DTOs.AccountType.Liability,
+            "equity" => Truebooks.Platform.Contracts.DTOs.AccountType.Equity,
+            "revenue" => Truebooks.Platform.Contracts.DTOs.AccountType.Revenue,
+            "expense" => Truebooks.Platform.Contracts.DTOs.AccountType.Expense,
+            _ => Truebooks.Platform.Contracts.DTOs.AccountType.Asset
+        };
     }
 
-    private static CoreAccountType MapToCoreAccountType(Truebooks.Platform.Contracts.DTOs.AccountType type)
+    private static Guid LongToGuid(long id)
     {
-        return (CoreAccountType)(int)type;
+        var bytes = new byte[16];
+        BitConverter.GetBytes(id).CopyTo(bytes, 0);
+        return new Guid(bytes);
+    }
+
+    private static long GuidToLong(Guid guid)
+    {
+        var bytes = guid.ToByteArray();
+        return BitConverter.ToInt64(bytes, 0);
     }
 }

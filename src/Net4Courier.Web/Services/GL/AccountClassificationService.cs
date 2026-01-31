@@ -1,98 +1,94 @@
 using Microsoft.EntityFrameworkCore;
 using Truebooks.Platform.Contracts.DTOs;
 using Net4Courier.Web.Interfaces;
-using Truebooks.Platform.Core.Infrastructure;
+using Net4Courier.Infrastructure.Data;
 
 namespace Net4Courier.Web.Services.GL;
 
 public class AccountClassificationService : IAccountClassificationService
 {
-    private readonly PlatformDbContext _context;
+    private readonly IDbContextFactory<ApplicationDbContext> _dbFactory;
 
-    public AccountClassificationService(PlatformDbContext context)
+    public AccountClassificationService(IDbContextFactory<ApplicationDbContext> dbFactory)
     {
-        _context = context;
+        _dbFactory = dbFactory;
     }
 
     public async Task<IEnumerable<AccountClassificationDto>> GetAllAsync(Guid tenantId)
     {
-        if (tenantId == Guid.Empty)
-            return Enumerable.Empty<AccountClassificationDto>();
-
-        return await _context.AccountClassifications
-            .Where(a => a.TenantId == tenantId)
+        await using var context = await _dbFactory.CreateDbContextAsync();
+        
+        return await context.GLAccountClassifications
+            .Where(a => !a.IsDeleted && a.IsActive)
             .OrderBy(a => a.Name)
             .Select(a => new AccountClassificationDto(
-                a.Id,
-                a.TenantId,
+                LongToGuid(a.Id),
+                tenantId,
                 a.Name,
                 a.Description,
                 a.IsActive,
                 a.CreatedAt,
-                a.UpdatedAt
+                a.ModifiedAt
             ))
             .ToListAsync();
     }
 
     public async Task<AccountClassificationDto?> GetByIdAsync(Guid tenantId, Guid id)
     {
-        if (tenantId == Guid.Empty)
-            return null;
+        var longId = GuidToLong(id);
+        await using var context = await _dbFactory.CreateDbContextAsync();
 
-        var entity = await _context.AccountClassifications
-            .Where(a => a.TenantId == tenantId && a.Id == id)
+        var entity = await context.GLAccountClassifications
+            .Where(a => a.Id == longId && !a.IsDeleted)
             .FirstOrDefaultAsync();
 
         if (entity == null)
             return null;
 
         return new AccountClassificationDto(
-            entity.Id,
-            entity.TenantId,
+            LongToGuid(entity.Id),
+            tenantId,
             entity.Name,
             entity.Description,
             entity.IsActive,
             entity.CreatedAt,
-            entity.UpdatedAt
+            entity.ModifiedAt
         );
     }
 
     public async Task<AccountClassificationDto> CreateAsync(Guid tenantId, CreateAccountClassificationRequest request)
     {
-        if (tenantId == Guid.Empty)
-            throw new InvalidOperationException("Invalid tenant ID");
+        await using var context = await _dbFactory.CreateDbContextAsync();
 
-        var entity = new AccountClassification
+        var entity = new Net4Courier.Finance.Entities.GLAccountClassification
         {
-            Id = Guid.NewGuid(),
-            TenantId = tenantId,
             Name = request.Name,
             Description = request.Description,
             IsActive = request.IsActive,
             CreatedAt = DateTime.UtcNow
         };
 
-        _context.AccountClassifications.Add(entity);
-        await _context.SaveChangesAsync();
+        context.GLAccountClassifications.Add(entity);
+        await context.SaveChangesAsync();
 
         return new AccountClassificationDto(
-            entity.Id,
-            entity.TenantId,
+            LongToGuid(entity.Id),
+            tenantId,
             entity.Name,
             entity.Description,
             entity.IsActive,
             entity.CreatedAt,
-            entity.UpdatedAt
+            entity.ModifiedAt
         );
     }
 
     public async Task<AccountClassificationDto> UpdateAsync(Guid tenantId, Guid id, UpdateAccountClassificationRequest request)
     {
-        if (tenantId == Guid.Empty)
-            throw new InvalidOperationException("Invalid tenant ID");
+        var longId = GuidToLong(id);
+        await using var context = await _dbFactory.CreateDbContextAsync();
 
-        var entity = await _context.AccountClassifications
-            .FirstOrDefaultAsync(a => a.TenantId == tenantId && a.Id == id);
+        var entity = await context.GLAccountClassifications
+            .FirstOrDefaultAsync(a => a.Id == longId && !a.IsDeleted);
 
         if (entity == null)
             throw new InvalidOperationException("Account classification not found");
@@ -100,33 +96,49 @@ public class AccountClassificationService : IAccountClassificationService
         entity.Name = request.Name;
         entity.Description = request.Description;
         entity.IsActive = request.IsActive;
-        entity.UpdatedAt = DateTime.UtcNow;
+        entity.ModifiedAt = DateTime.UtcNow;
 
-        await _context.SaveChangesAsync();
+        await context.SaveChangesAsync();
 
         return new AccountClassificationDto(
-            entity.Id,
-            entity.TenantId,
+            LongToGuid(entity.Id),
+            tenantId,
             entity.Name,
             entity.Description,
             entity.IsActive,
             entity.CreatedAt,
-            entity.UpdatedAt
+            entity.ModifiedAt
         );
     }
 
     public async Task DeleteAsync(Guid tenantId, Guid id)
     {
-        if (tenantId == Guid.Empty)
-            return;
+        var longId = GuidToLong(id);
+        await using var context = await _dbFactory.CreateDbContextAsync();
 
-        var entity = await _context.AccountClassifications
-            .FirstOrDefaultAsync(a => a.TenantId == tenantId && a.Id == id);
+        var entity = await context.GLAccountClassifications
+            .FirstOrDefaultAsync(a => a.Id == longId && !a.IsDeleted);
 
         if (entity == null)
             return;
 
-        _context.AccountClassifications.Remove(entity);
-        await _context.SaveChangesAsync();
+        entity.IsDeleted = true;
+        entity.IsActive = false;
+        entity.ModifiedAt = DateTime.UtcNow;
+        
+        await context.SaveChangesAsync();
+    }
+
+    private static Guid LongToGuid(long id)
+    {
+        var bytes = new byte[16];
+        BitConverter.GetBytes(id).CopyTo(bytes, 0);
+        return new Guid(bytes);
+    }
+
+    private static long GuidToLong(Guid guid)
+    {
+        var bytes = guid.ToByteArray();
+        return BitConverter.ToInt64(bytes, 0);
     }
 }
