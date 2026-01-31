@@ -62,51 +62,43 @@
                 <MudItem xs="12">
                     <MudDivider Class="my-2" />
                     <MudText Typo="Typo.subtitle2" Class="mb-2">Location</MudText>
-                    <MudAlert Severity="Severity.Info" Dense="true">DEBUG: Countries loaded: @_countries.Count, Loading: @_isLoading, Initialized: @_initialized</MudAlert>
                 </MudItem>
 
                 <MudItem xs="12" md="4">
-                    <MudSelect T="long?" Value="@Branch.CountryId" 
-                               ValueChanged="@OnCountryChanged"
-                               Label="Country" 
-                               Variant="Variant.Outlined"
-                               Clearable="true"
-                               ToStringFunc="@(id => _countries.FirstOrDefault(c => c.Id == id)?.Name ?? string.Empty)">
-                        @for (int i = 0; i < _countries.Count; i++)
-                        {
-                            var country = _countries[i];
-                            <MudSelectItem T="long?" Value="@((long?)country.Id)">@country.Name</MudSelectItem>
-                        }
-                    </MudSelect>
+                    <MudAutocomplete T="Country" 
+                                     Value="@_selectedCountry"
+                                     ValueChanged="@OnCountrySelected"
+                                     SearchFunc="@SearchCountries"
+                                     ToStringFunc="@(c => c?.Name ?? string.Empty)"
+                                     Label="Country" 
+                                     Variant="Variant.Outlined"
+                                     Clearable="true"
+                                     Dense="true"
+                                     ShowProgressIndicator="true" />
                 </MudItem>
                 <MudItem xs="12" md="4">
-                    <MudSelect T="long?" Value="@Branch.StateId" 
-                               ValueChanged="@OnStateChanged"
-                               Label="State" 
-                               Variant="Variant.Outlined"
-                               Disabled="@(!Branch.CountryId.HasValue)"
-                               Clearable="true"
-                               ToStringFunc="@(id => _states.FirstOrDefault(s => s.Id == id)?.Name ?? string.Empty)">
-                        @for (int i = 0; i < _states.Count; i++)
-                        {
-                            var state = _states[i];
-                            <MudSelectItem T="long?" Value="@((long?)state.Id)">@state.Name</MudSelectItem>
-                        }
-                    </MudSelect>
+                    <MudAutocomplete T="State" 
+                                     Value="@_selectedState"
+                                     ValueChanged="@OnStateSelected"
+                                     SearchFunc="@SearchStates"
+                                     ToStringFunc="@(s => s?.Name ?? string.Empty)"
+                                     Label="State" 
+                                     Variant="Variant.Outlined"
+                                     Disabled="@(!Branch.CountryId.HasValue)"
+                                     Clearable="true"
+                                     Dense="true" />
                 </MudItem>
                 <MudItem xs="12" md="4">
-                    <MudSelect T="long?" @bind-Value="Branch.CityId" 
-                               Label="City" 
-                               Variant="Variant.Outlined"
-                               Disabled="@(!Branch.StateId.HasValue)"
-                               Clearable="true"
-                               ToStringFunc="@(id => _cities.FirstOrDefault(c => c.Id == id)?.Name ?? string.Empty)">
-                        @for (int i = 0; i < _cities.Count; i++)
-                        {
-                            var city = _cities[i];
-                            <MudSelectItem T="long?" Value="@((long?)city.Id)">@city.Name</MudSelectItem>
-                        }
-                    </MudSelect>
+                    <MudAutocomplete T="City" 
+                                     Value="@_selectedCity"
+                                     ValueChanged="@OnCitySelected"
+                                     SearchFunc="@SearchCities"
+                                     ToStringFunc="@(c => c?.Name ?? string.Empty)"
+                                     Label="City" 
+                                     Variant="Variant.Outlined"
+                                     Disabled="@(!Branch.StateId.HasValue)"
+                                     Clearable="true"
+                                     Dense="true" />
                 </MudItem>
                 <MudItem xs="12" md="4">
                     <MudTextField @bind-Value="Branch.PostalCode" Label="Postal Code" Variant="Variant.Outlined" />
@@ -209,6 +201,10 @@
     private List<BranchAWBConfig> _awbConfigs = new();
     private bool _isLoading = true;
     private bool _initialized = false;
+    
+    private Country? _selectedCountry;
+    private State? _selectedState;
+    private City? _selectedCity;
 
     protected override async Task OnParametersSetAsync()
     {
@@ -222,12 +218,19 @@
         
         if (Branch.CountryId.HasValue)
         {
+            _selectedCountry = _countries.FirstOrDefault(c => c.Id == Branch.CountryId);
             await LoadStates(Branch.CountryId.Value);
         }
         
         if (Branch.StateId.HasValue)
         {
+            _selectedState = _states.FirstOrDefault(s => s.Id == Branch.StateId);
             await LoadCities(Branch.StateId.Value);
+        }
+        
+        if (Branch.CityId.HasValue)
+        {
+            _selectedCity = _cities.FirstOrDefault(c => c.Id == Branch.CityId);
         }
         
         await LoadAWBConfigs();
@@ -342,30 +345,71 @@
             .ToListAsync();
     }
 
-    private async Task OnCountryChanged(long? countryId)
+    private Task<IEnumerable<Country>> SearchCountries(string value, CancellationToken token)
     {
-        Branch.CountryId = countryId;
+        if (string.IsNullOrEmpty(value))
+            return Task.FromResult(_countries.AsEnumerable());
+        
+        return Task.FromResult(_countries.Where(c => 
+            c.Name.Contains(value, StringComparison.OrdinalIgnoreCase) ||
+            (c.Code != null && c.Code.Contains(value, StringComparison.OrdinalIgnoreCase))));
+    }
+    
+    private Task<IEnumerable<State>> SearchStates(string value, CancellationToken token)
+    {
+        if (string.IsNullOrEmpty(value))
+            return Task.FromResult(_states.AsEnumerable());
+        
+        return Task.FromResult(_states.Where(s => 
+            s.Name.Contains(value, StringComparison.OrdinalIgnoreCase) ||
+            (s.Code != null && s.Code.Contains(value, StringComparison.OrdinalIgnoreCase))));
+    }
+    
+    private Task<IEnumerable<City>> SearchCities(string value, CancellationToken token)
+    {
+        if (string.IsNullOrEmpty(value))
+            return Task.FromResult(_cities.AsEnumerable());
+        
+        return Task.FromResult(_cities.Where(c => 
+            c.Name.Contains(value, StringComparison.OrdinalIgnoreCase) ||
+            (c.Code != null && c.Code.Contains(value, StringComparison.OrdinalIgnoreCase))));
+    }
+    
+    private async Task OnCountrySelected(Country? country)
+    {
+        _selectedCountry = country;
+        Branch.CountryId = country?.Id;
         Branch.StateId = null;
         Branch.CityId = null;
+        _selectedState = null;
+        _selectedCity = null;
         _states.Clear();
         _cities.Clear();
         
-        if (countryId.HasValue)
+        if (country != null)
         {
-            await LoadStates(countryId.Value);
+            await LoadStates(country.Id);
         }
     }
-
-    private async Task OnStateChanged(long? stateId)
+    
+    private async Task OnStateSelected(State? state)
     {
-        Branch.StateId = stateId;
+        _selectedState = state;
+        Branch.StateId = state?.Id;
         Branch.CityId = null;
+        _selectedCity = null;
         _cities.Clear();
         
-        if (stateId.HasValue)
+        if (state != null)
         {
-            await LoadCities(stateId.Value);
+            await LoadCities(state.Id);
         }
+    }
+    
+    private void OnCitySelected(City? city)
+    {
+        _selectedCity = city;
+        Branch.CityId = city?.Id;
     }
 
     private async Task Save()
