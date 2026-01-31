@@ -562,6 +562,103 @@ public class DatabaseInitializationService : BackgroundService
         {
             await dbContext.Database.EnsureCreatedAsync(stoppingToken);
 
+            // GL Module Tables - Native long-based IDs
+            await dbContext.Database.ExecuteSqlRawAsync(@"
+                CREATE TABLE IF NOT EXISTS ""GLAccountClassifications"" (
+                    ""Id"" BIGSERIAL PRIMARY KEY,
+                    ""CompanyId"" BIGINT,
+                    ""Name"" VARCHAR(200) NOT NULL,
+                    ""Description"" TEXT,
+                    ""IsActive"" BOOLEAN NOT NULL DEFAULT TRUE,
+                    ""IsDeleted"" BOOLEAN NOT NULL DEFAULT FALSE,
+                    ""IsDemo"" BOOLEAN NOT NULL DEFAULT FALSE,
+                    ""CreatedAt"" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    ""ModifiedAt"" TIMESTAMP WITH TIME ZONE,
+                    ""CreatedBy"" INT,
+                    ""ModifiedBy"" INT
+                );
+                CREATE UNIQUE INDEX IF NOT EXISTS ""IX_GLAccountClassifications_CompanyId_Name"" ON ""GLAccountClassifications"" (""CompanyId"", ""Name"");
+            ", stoppingToken);
+            _logger.LogInformation("GLAccountClassifications table ensured");
+
+            await dbContext.Database.ExecuteSqlRawAsync(@"
+                CREATE TABLE IF NOT EXISTS ""GLChartOfAccounts"" (
+                    ""Id"" BIGSERIAL PRIMARY KEY,
+                    ""CompanyId"" BIGINT,
+                    ""AccountCode"" VARCHAR(50) NOT NULL,
+                    ""AccountName"" VARCHAR(200) NOT NULL,
+                    ""AccountType"" VARCHAR(50),
+                    ""ParentId"" BIGINT REFERENCES ""GLChartOfAccounts""(""Id"") ON DELETE SET NULL,
+                    ""IsSystemAccount"" BOOLEAN NOT NULL DEFAULT FALSE,
+                    ""DisplayOrder"" INT NOT NULL DEFAULT 0,
+                    ""Description"" TEXT,
+                    ""AllowPosting"" BOOLEAN NOT NULL DEFAULT TRUE,
+                    ""Level"" INT NOT NULL DEFAULT 0,
+                    ""AccountClassificationId"" BIGINT REFERENCES ""GLAccountClassifications""(""Id"") ON DELETE SET NULL,
+                    ""ControlAccountType"" INT,
+                    ""DeactivatedDate"" TIMESTAMP WITH TIME ZONE,
+                    ""DeactivationReason"" TEXT,
+                    ""CreatedByUser"" VARCHAR(100),
+                    ""UpdatedByUser"" VARCHAR(100),
+                    ""DeactivatedByUserId"" VARCHAR(100),
+                    ""IsActive"" BOOLEAN NOT NULL DEFAULT TRUE,
+                    ""IsDeleted"" BOOLEAN NOT NULL DEFAULT FALSE,
+                    ""IsDemo"" BOOLEAN NOT NULL DEFAULT FALSE,
+                    ""CreatedAt"" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    ""ModifiedAt"" TIMESTAMP WITH TIME ZONE,
+                    ""CreatedBy"" INT,
+                    ""ModifiedBy"" INT
+                );
+                CREATE UNIQUE INDEX IF NOT EXISTS ""IX_GLChartOfAccounts_CompanyId_AccountCode"" ON ""GLChartOfAccounts"" (""CompanyId"", ""AccountCode"");
+            ", stoppingToken);
+            _logger.LogInformation("GLChartOfAccounts table ensured");
+
+            await dbContext.Database.ExecuteSqlRawAsync(@"
+                CREATE TABLE IF NOT EXISTS ""GLTaxCodes"" (
+                    ""Id"" BIGSERIAL PRIMARY KEY,
+                    ""CompanyId"" BIGINT,
+                    ""Code"" VARCHAR(20) NOT NULL,
+                    ""Description"" VARCHAR(200),
+                    ""Rate"" DECIMAL(18, 4) NOT NULL DEFAULT 0,
+                    ""TaxType"" VARCHAR(20),
+                    ""CreatedByUser"" VARCHAR(100),
+                    ""UpdatedByUser"" VARCHAR(100),
+                    ""IsActive"" BOOLEAN NOT NULL DEFAULT TRUE,
+                    ""IsDeleted"" BOOLEAN NOT NULL DEFAULT FALSE,
+                    ""IsDemo"" BOOLEAN NOT NULL DEFAULT FALSE,
+                    ""CreatedAt"" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    ""ModifiedAt"" TIMESTAMP WITH TIME ZONE,
+                    ""CreatedBy"" INT,
+                    ""ModifiedBy"" INT
+                );
+                CREATE UNIQUE INDEX IF NOT EXISTS ""IX_GLTaxCodes_CompanyId_Code"" ON ""GLTaxCodes"" (""CompanyId"", ""Code"");
+            ", stoppingToken);
+            _logger.LogInformation("GLTaxCodes table ensured");
+
+            await dbContext.Database.ExecuteSqlRawAsync(@"
+                CREATE TABLE IF NOT EXISTS ""GLVoucherNumberings"" (
+                    ""Id"" BIGSERIAL PRIMARY KEY,
+                    ""CompanyId"" BIGINT,
+                    ""TransactionType"" VARCHAR(50) NOT NULL,
+                    ""Prefix"" VARCHAR(20),
+                    ""Suffix"" VARCHAR(20),
+                    ""Separator"" VARCHAR(10) DEFAULT '-',
+                    ""NextNumber"" INT NOT NULL DEFAULT 1,
+                    ""NumberLength"" INT NOT NULL DEFAULT 6,
+                    ""IsLocked"" BOOLEAN NOT NULL DEFAULT FALSE,
+                    ""FinancialYearId"" BIGINT,
+                    ""IsActive"" BOOLEAN NOT NULL DEFAULT TRUE,
+                    ""IsDeleted"" BOOLEAN NOT NULL DEFAULT FALSE,
+                    ""IsDemo"" BOOLEAN NOT NULL DEFAULT FALSE,
+                    ""CreatedAt"" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    ""ModifiedAt"" TIMESTAMP WITH TIME ZONE,
+                    ""CreatedBy"" INT,
+                    ""ModifiedBy"" INT
+                );
+                CREATE UNIQUE INDEX IF NOT EXISTS ""IX_GLVoucherNumberings_CompanyId_TransactionType_FinancialYearId"" ON ""GLVoucherNumberings"" (""CompanyId"", ""TransactionType"", ""FinancialYearId"");
+            ", stoppingToken);
+            _logger.LogInformation("GLVoucherNumberings table ensured");
+
             await dbContext.Database.ExecuteSqlRawAsync(@"
                 CREATE TABLE IF NOT EXISTS ""ShipmentStatusGroups"" (
                     ""Id"" BIGSERIAL PRIMARY KEY,
