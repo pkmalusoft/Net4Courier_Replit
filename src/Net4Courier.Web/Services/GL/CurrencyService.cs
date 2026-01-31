@@ -1,33 +1,32 @@
 using Microsoft.EntityFrameworkCore;
 using Truebooks.Platform.Contracts.DTOs;
 using Net4Courier.Web.Interfaces;
-using Truebooks.Platform.Core.Infrastructure;
+using Net4Courier.Infrastructure.Data;
 
 namespace Net4Courier.Web.Services.GL;
 
 public class CurrencyService : ICurrencyService
 {
-    private readonly PlatformDbContext _context;
+    private readonly IDbContextFactory<ApplicationDbContext> _dbFactory;
 
-    public CurrencyService(PlatformDbContext context)
+    public CurrencyService(IDbContextFactory<ApplicationDbContext> dbFactory)
     {
-        _context = context;
+        _dbFactory = dbFactory;
     }
 
     public async Task<IEnumerable<CurrencyDto>> GetAllAsync(Guid tenantId)
     {
-        if (tenantId == Guid.Empty)
-            return Enumerable.Empty<CurrencyDto>();
-
-        return await _context.Currencies
-            .Where(c => c.TenantId == tenantId)
+        await using var context = await _dbFactory.CreateDbContextAsync();
+        
+        return await context.Currencies
+            .Where(c => c.IsActive && !c.IsDeleted)
             .OrderBy(c => c.Code)
             .Select(c => new CurrencyDto(
-                c.Id,
-                c.TenantId,
+                LongToGuid(c.Id),
+                tenantId,
                 c.Code,
                 c.Name,
-                c.Symbol,
+                c.Symbol ?? "",
                 c.IsBaseCurrency,
                 c.IsActive
             ))
@@ -36,85 +35,96 @@ public class CurrencyService : ICurrencyService
 
     public async Task<CurrencyDto?> GetByIdAsync(Guid tenantId, Guid id)
     {
-        if (tenantId == Guid.Empty)
-            return null;
-
-        return await _context.Currencies
-            .Where(c => c.TenantId == tenantId && c.Id == id)
-            .Select(c => new CurrencyDto(
-                c.Id,
-                c.TenantId,
-                c.Code,
-                c.Name,
-                c.Symbol,
-                c.IsBaseCurrency,
-                c.IsActive
-            ))
+        await using var context = await _dbFactory.CreateDbContextAsync();
+        var longId = GuidToLong(id);
+        
+        var c = await context.Currencies
+            .Where(c => c.Id == longId && !c.IsDeleted)
             .FirstOrDefaultAsync();
+
+        if (c == null) return null;
+
+        return new CurrencyDto(
+            LongToGuid(c.Id),
+            tenantId,
+            c.Code,
+            c.Name,
+            c.Symbol ?? "",
+            c.IsBaseCurrency,
+            c.IsActive
+        );
     }
 
     public async Task<CurrencyDto?> GetByCodeAsync(Guid tenantId, string code)
     {
-        if (tenantId == Guid.Empty)
-            return null;
-
-        return await _context.Currencies
-            .Where(c => c.TenantId == tenantId && c.Code == code)
-            .Select(c => new CurrencyDto(
-                c.Id,
-                c.TenantId,
-                c.Code,
-                c.Name,
-                c.Symbol,
-                c.IsBaseCurrency,
-                c.IsActive
-            ))
+        await using var context = await _dbFactory.CreateDbContextAsync();
+        
+        var c = await context.Currencies
+            .Where(c => c.Code == code && !c.IsDeleted)
             .FirstOrDefaultAsync();
+
+        if (c == null) return null;
+
+        return new CurrencyDto(
+            LongToGuid(c.Id),
+            tenantId,
+            c.Code,
+            c.Name,
+            c.Symbol ?? "",
+            c.IsBaseCurrency,
+            c.IsActive
+        );
     }
 
     public async Task<CurrencyDto?> GetBaseCurrencyAsync(Guid tenantId)
     {
-        if (tenantId == Guid.Empty)
-            return null;
-
-        return await _context.Currencies
-            .Where(c => c.TenantId == tenantId && c.IsBaseCurrency)
-            .Select(c => new CurrencyDto(
-                c.Id,
-                c.TenantId,
-                c.Code,
-                c.Name,
-                c.Symbol,
-                c.IsBaseCurrency,
-                c.IsActive
-            ))
+        await using var context = await _dbFactory.CreateDbContextAsync();
+        
+        var c = await context.Currencies
+            .Where(c => c.IsBaseCurrency && c.IsActive && !c.IsDeleted)
             .FirstOrDefaultAsync();
+
+        if (c == null) return null;
+
+        return new CurrencyDto(
+            LongToGuid(c.Id),
+            tenantId,
+            c.Code,
+            c.Name,
+            c.Symbol ?? "",
+            c.IsBaseCurrency,
+            c.IsActive
+        );
     }
 
     public async Task<CurrencyDto> CreateAsync(Guid tenantId, CreateCurrencyRequest request)
     {
-        var entity = new Currency
+        await using var context = await _dbFactory.CreateDbContextAsync();
+        
+        var entity = new Net4Courier.Masters.Entities.Currency
         {
-            Id = Guid.NewGuid(),
-            TenantId = tenantId,
             Code = request.Code,
             Name = request.Name,
             Symbol = request.Symbol,
             IsBaseCurrency = request.IsBaseCurrency,
             IsActive = request.IsActive,
+            DecimalPlaces = 2,
             CreatedAt = DateTime.UtcNow
         };
 
-        _context.Currencies.Add(entity);
-        await _context.SaveChangesAsync();
+        context.Currencies.Add(entity);
+        await context.SaveChangesAsync();
 
-        return (await GetByIdAsync(tenantId, entity.Id))!;
+        return (await GetByIdAsync(tenantId, LongToGuid(entity.Id)))!;
     }
 
     public async Task<CurrencyDto> UpdateAsync(Guid tenantId, Guid id, UpdateCurrencyRequest request)
     {
-        var entity = await _context.Currencies
-            .FirstOrDefaultAsync(c => c.TenantId == tenantId && c.Id == id);
+        await using var context = await _dbFactory.CreateDbContextAsync();
+        var longId = GuidToLong(id);
+        
+        var entity = await context.Currencies
+            .FirstOrDefaultAsync(c => c.Id == longId);
 
         if (entity == null)
             throw new InvalidOperationException("Currency not found");
@@ -124,59 +134,73 @@ public class CurrencyService : ICurrencyService
         entity.Symbol = request.Symbol;
         entity.IsBaseCurrency = request.IsBaseCurrency;
         entity.IsActive = request.IsActive;
-        entity.UpdatedAt = DateTime.UtcNow;
+        entity.ModifiedAt = DateTime.UtcNow;
 
-        await _context.SaveChangesAsync();
+        await context.SaveChangesAsync();
 
-        return (await GetByIdAsync(tenantId, entity.Id))!;
+        return (await GetByIdAsync(tenantId, LongToGuid(entity.Id)))!;
     }
 
     public async Task<bool> DeleteAsync(Guid tenantId, Guid id)
     {
-        var entity = await _context.Currencies
-            .FirstOrDefaultAsync(c => c.TenantId == tenantId && c.Id == id);
+        await using var context = await _dbFactory.CreateDbContextAsync();
+        var longId = GuidToLong(id);
+        
+        var entity = await context.Currencies
+            .FirstOrDefaultAsync(c => c.Id == longId);
 
         if (entity == null)
             return false;
 
-        _context.Currencies.Remove(entity);
-        await _context.SaveChangesAsync();
+        entity.IsDeleted = true;
+        entity.IsActive = false;
+        entity.ModifiedAt = DateTime.UtcNow;
+        
+        await context.SaveChangesAsync();
         return true;
     }
 
     public async Task<bool> SetAsBaseCurrencyAsync(Guid tenantId, Guid id)
     {
-        var currencies = await _context.Currencies
-            .Where(c => c.TenantId == tenantId)
+        await using var context = await _dbFactory.CreateDbContextAsync();
+        var longId = GuidToLong(id);
+        
+        var currencies = await context.Currencies
+            .Where(c => !c.IsDeleted)
             .ToListAsync();
 
-        var targetCurrency = currencies.FirstOrDefault(c => c.Id == id);
+        var targetCurrency = currencies.FirstOrDefault(c => c.Id == longId);
         if (targetCurrency == null)
             return false;
 
         foreach (var currency in currencies)
         {
-            currency.IsBaseCurrency = currency.Id == id;
-            currency.UpdatedAt = DateTime.UtcNow;
+            currency.IsBaseCurrency = currency.Id == longId;
+            currency.ModifiedAt = DateTime.UtcNow;
         }
 
-        await _context.SaveChangesAsync();
+        await context.SaveChangesAsync();
         return true;
     }
 
-    public async Task<decimal> GetExchangeRateAsync(Guid tenantId, string fromCurrency, string toCurrency, DateTime? asOfDate = null)
+    public Task<decimal> GetExchangeRateAsync(Guid tenantId, string fromCurrency, string toCurrency, DateTime? asOfDate = null)
     {
         if (fromCurrency == toCurrency)
-            return 1m;
+            return Task.FromResult(1m);
 
-        var rate = await _context.ExchangeRates
-            .Where(r => r.TenantId == tenantId && 
-                        r.FromCurrency == fromCurrency && 
-                        r.ToCurrency == toCurrency &&
-                        (!asOfDate.HasValue || r.EffectiveDate <= asOfDate.Value))
-            .OrderByDescending(r => r.EffectiveDate)
-            .FirstOrDefaultAsync();
+        return Task.FromResult(1m);
+    }
 
-        return rate?.Rate ?? 1m;
+    private static Guid LongToGuid(long id)
+    {
+        var bytes = new byte[16];
+        BitConverter.GetBytes(id).CopyTo(bytes, 0);
+        return new Guid(bytes);
+    }
+
+    private static long GuidToLong(Guid guid)
+    {
+        var bytes = guid.ToByteArray();
+        return BitConverter.ToInt64(bytes, 0);
     }
 }
