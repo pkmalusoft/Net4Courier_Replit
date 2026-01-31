@@ -202,6 +202,8 @@ builder.Services.AddAuthentication(options =>
     options.AccessDeniedPath = "/login";
     options.ExpireTimeSpan = TimeSpan.FromDays(7);
     options.SlidingExpiration = true;
+    options.Cookie.SameSite = SameSiteMode.None;
+    options.Cookie.SecurePolicy = CookieSecurePolicy.Always;
 });
 builder.Services.AddAuthorizationCore();
 builder.Services.AddCascadingAuthenticationState();
