@@ -67,6 +67,62 @@ git reset --hard origin/main
 
 ---
 
+## Updating Client Projects from Main Repository
+
+When you've made changes in the main project and need to sync them to client projects:
+
+### Complete Sync Process (Required Steps)
+
+**Important**: Just running `git reset` is NOT enough! You must also clean build artifacts.
+
+```bash
+# Step 1: Sync the code
+git fetch origin
+git reset --hard origin/main
+
+# Step 2: Clean ALL build artifacts (CRITICAL!)
+rm -rf src/Net4Courier.Web/bin src/Net4Courier.Web/obj
+rm -rf src/Net4Courier.Infrastructure/bin src/Net4Courier.Infrastructure/obj
+rm -rf src/Net4Courier.Finance/bin src/Net4Courier.Finance/obj
+rm -rf src/Net4Courier.Kernel/bin src/Net4Courier.Kernel/obj
+rm -rf src/Net4Courier.Masters/bin src/Net4Courier.Masters/obj
+rm -rf src/Net4Courier.Operations/bin src/Net4Courier.Operations/obj
+rm -rf src/Net4Courier.Shared/bin src/Net4Courier.Shared/obj
+
+# Step 3: Restore and rebuild
+dotnet restore src/Net4Courier.Web/Net4Courier.Web.csproj
+dotnet build src/Net4Courier.Web/Net4Courier.Web.csproj --configuration Release
+
+# Step 4: Restart the workflow
+```
+
+### Quick One-Liner Command
+
+Copy and paste this single command to do everything at once:
+
+```bash
+git fetch origin && git reset --hard origin/main && find . -type d \( -name "bin" -o -name "obj" \) -exec rm -rf {} + 2>/dev/null; dotnet restore src/Net4Courier.Web/Net4Courier.Web.csproj && dotnet build src/Net4Courier.Web/Net4Courier.Web.csproj
+```
+
+### After Syncing
+
+1. **Restart the workflow** in Replit
+2. **Redeploy** if this is a production deployment
+3. **Clear browser cache** (Ctrl+Shift+R or Cmd+Shift+R) to see UI changes
+
+### Why This Is Needed
+
+| What | Why |
+|------|-----|
+| `git reset --hard` | Updates source files (.cs, .razor, etc.) |
+| `rm -rf bin obj` | Removes old compiled assemblies that git ignores |
+| `dotnet restore` | Gets any new NuGet packages |
+| `dotnet build` | Compiles fresh with the new code |
+
+**Without cleaning bin/obj folders**, the app runs with old cached compiled code even though source files are updated.
+
+---
+
 ## Step 6: Verify Required Packages
 
 Ensure NuGet/packages/ folder contains:
