@@ -2,7 +2,7 @@
 @using Net4Courier.Infrastructure.Data
 @using Net4Courier.Masters.Entities
 @using Net4Courier.Kernel.Enums
-@inject ApplicationDbContext DbContext
+@inject IDbContextFactory<ApplicationDbContext> DbContextFactory
 
 <MudDialog>
     <TitleContent>
@@ -206,7 +206,8 @@
     {
         if (!IsNew && Branch.Id > 0)
         {
-            _awbConfigs = await DbContext.BranchAWBConfigs
+            await using var db = await DbContextFactory.CreateDbContextAsync();
+            _awbConfigs = await db.BranchAWBConfigs
                 .Where(c => c.BranchId == Branch.Id && !c.IsDeleted)
                 .ToListAsync();
         }
@@ -259,7 +260,8 @@
 
     private async Task LoadCountries()
     {
-        _countries = await DbContext.Countries
+        await using var db = await DbContextFactory.CreateDbContextAsync();
+        _countries = await db.Countries
             .Where(c => c.IsActive && !c.IsDeleted)
             .OrderBy(c => c.Name)
             .ToListAsync();
@@ -267,7 +269,8 @@
 
     private async Task LoadCurrencies()
     {
-        _currencies = await DbContext.Currencies
+        await using var db = await DbContextFactory.CreateDbContextAsync();
+        _currencies = await db.Currencies
             .Where(c => c.IsActive && !c.IsDeleted)
             .OrderBy(c => c.Code)
             .ToListAsync();
@@ -275,7 +278,8 @@
 
     private async Task LoadCompanies()
     {
-        _companies = await DbContext.Companies
+        await using var db = await DbContextFactory.CreateDbContextAsync();
+        _companies = await db.Companies
             .Where(c => !c.IsDeleted)
             .OrderBy(c => c.Name)
             .ToListAsync();
@@ -283,7 +287,8 @@
 
     private async Task LoadStates(long countryId)
     {
-        _states = await DbContext.States
+        await using var db = await DbContextFactory.CreateDbContextAsync();
+        _states = await db.States
             .Where(s => s.CountryId == countryId && s.IsActive && !s.IsDeleted)
             .OrderBy(s => s.Name)
             .ToListAsync();
@@ -291,7 +296,8 @@
 
     private async Task LoadCities(long stateId)
     {
-        _cities = await DbContext.Cities
+        await using var db = await DbContextFactory.CreateDbContextAsync();
+        _cities = await db.Cities
             .Where(c => c.StateId == stateId && c.IsActive && !c.IsDeleted)
             .OrderBy(c => c.Name)
             .ToListAsync();
@@ -328,24 +334,26 @@
         await _form.Validate();
         if (!_formIsValid) return;
 
+        await using var db = await DbContextFactory.CreateDbContextAsync();
+        
         if (IsNew)
         {
             Branch.CreatedAt = DateTime.UtcNow;
             Branch.AWBLastUsedNumber = Branch.AWBStartingNumber;
-            DbContext.Branches.Add(Branch);
-            await DbContext.SaveChangesAsync();
+            db.Branches.Add(Branch);
+            await db.SaveChangesAsync();
             
             foreach (var config in _awbConfigs)
             {
                 config.BranchId = Branch.Id;
                 config.CreatedAt = DateTime.UtcNow;
-                DbContext.BranchAWBConfigs.Add(config);
+                db.BranchAWBConfigs.Add(config);
             }
         }
         else
         {
             Branch.ModifiedAt = DateTime.UtcNow;
-            DbContext.Branches.Update(Branch);
+            db.Branches.Update(Branch);
             
             foreach (var config in _awbConfigs)
             {
@@ -354,16 +362,16 @@
                 {
                     config.BranchId = Branch.Id;
                     config.CreatedAt = DateTime.UtcNow;
-                    DbContext.BranchAWBConfigs.Add(config);
+                    db.BranchAWBConfigs.Add(config);
                 }
                 else
                 {
-                    DbContext.BranchAWBConfigs.Update(config);
+                    db.BranchAWBConfigs.Update(config);
                 }
             }
         }
 
-        await DbContext.SaveChangesAsync();
+        await db.SaveChangesAsync();
         MudDialog.Close(DialogResult.Ok(Branch));
     }
 
