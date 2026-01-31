@@ -14,7 +14,6 @@ public class Company : BaseEntity
     public string? TaxNumber { get; set; }
     public string? RegistrationNumber { get; set; }
     public string? Logo { get; set; }
-    public bool IsActive { get; set; } = true;
     
     public string? ContactPerson { get; set; }
     public string? ContactPersonPhone { get; set; }
