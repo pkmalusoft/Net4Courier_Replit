@@ -10,6 +10,7 @@ namespace Net4Courier.Web.Services;
 
 public interface IDemoDataService
 {
+    string? LastError { get; }
     Task<DemoDataStats> GetDemoDataStatsAsync();
     Task<AllDataStats> GetAllDataStatsAsync();
     Task<bool> CreateGLDataAsync();
@@ -78,14 +79,20 @@ public class DemoDataService : IDemoDataService
 {
     private readonly IDbContextFactory<ApplicationDbContext> _dbFactory;
     private readonly IDbContextFactory<TruebooksPlatform.PlatformDbContext> _platformDbFactory;
+    private readonly ILogger<DemoDataService> _logger;
     private static readonly Guid DemoTenantId = Guid.Parse("11111111-1111-1111-1111-111111111111");
+    
+    // Store last error for display in UI
+    public string? LastError { get; private set; }
 
     public DemoDataService(
         IDbContextFactory<ApplicationDbContext> dbFactory,
-        IDbContextFactory<TruebooksPlatform.PlatformDbContext> platformDbFactory)
+        IDbContextFactory<TruebooksPlatform.PlatformDbContext> platformDbFactory,
+        ILogger<DemoDataService> logger)
     {
         _dbFactory = dbFactory;
         _platformDbFactory = platformDbFactory;
+        _logger = logger;
     }
 
     public async Task<DemoDataStats> GetDemoDataStatsAsync()
@@ -258,10 +265,18 @@ public class DemoDataService : IDemoDataService
             platformContext.TaxCodes.AddRange(taxCodes);
 
             await platformContext.SaveChangesAsync();
+            LastError = null;
             return true;
         }
-        catch
+        catch (Exception ex)
         {
+            LastError = $"GL Data Creation Error: {ex.Message}";
+            _logger.LogError(ex, "Failed to create GL demo data. Error: {ErrorMessage}", ex.Message);
+            if (ex.InnerException != null)
+            {
+                _logger.LogError("Inner Exception: {InnerMessage}", ex.InnerException.Message);
+                LastError += $" | Inner: {ex.InnerException.Message}";
+            }
             return false;
         }
     }
@@ -270,11 +285,35 @@ public class DemoDataService : IDemoDataService
     {
         await using var context = await _dbFactory.CreateDbContextAsync();
 
-        // Ensure a company exists before creating parties
-        var company = await context.Companies.FirstOrDefaultAsync();
+        // Step 1: Get or create AED currency (always create if not exists)
+        var aedCurrency = await context.Currencies.FirstOrDefaultAsync(c => c.Code == "AED");
+        if (aedCurrency == null)
+        {
+            // Create AED currency for demo data
+            aedCurrency = new Net4Courier.Masters.Entities.Currency
+            {
+                Code = "AED",
+                Name = "UAE Dirham",
+                Symbol = "د.إ",
+                DecimalPlaces = 2,
+                IsActive = true,
+                CreatedAt = DateTime.UtcNow
+            };
+            context.Currencies.Add(aedCurrency);
+            await context.SaveChangesAsync();
+        }
+
+        // Step 2: Look for demo company first, then any company
+        var company = await context.Companies.FirstOrDefaultAsync(c => c.Code == "DEMO-CO" || c.IsDemo);
         if (company == null)
         {
-            // Create a demo company
+            // No demo company, check if any company exists
+            company = await context.Companies.FirstOrDefaultAsync();
+        }
+        
+        if (company == null)
+        {
+            // Create a demo company with CurrencyId set
             company = new Net4Courier.Masters.Entities.Company
             {
                 Code = "DEMO-CO",
@@ -285,11 +324,52 @@ public class DemoDataService : IDemoDataService
                 Website = "www.democourier.ae",
                 TaxNumber = "TRN100012345678901",
                 RegistrationNumber = "LLC-123456",
+                CurrencyId = aedCurrency.Id,
                 IsActive = true,
                 IsDemo = true,
                 CreatedAt = DateTime.UtcNow
             };
             context.Companies.Add(company);
+            await context.SaveChangesAsync();
+        }
+        else if (company.CurrencyId == null && company.IsDemo)
+        {
+            // Only update CurrencyId for demo companies that don't have one
+            company.CurrencyId = aedCurrency.Id;
+            await context.SaveChangesAsync();
+        }
+
+        // Step 3: Look for demo branch first, or branch belonging to this company
+        var branch = await context.Branches.FirstOrDefaultAsync(b => b.CompanyId == company.Id && (b.Code == "DXB-HQ" || b.IsDemo));
+        if (branch == null)
+        {
+            // Check if any branch exists for this company
+            branch = await context.Branches.FirstOrDefaultAsync(b => b.CompanyId == company.Id);
+        }
+        
+        if (branch == null)
+        {
+            // Create a demo branch with CurrencyId tied to the company
+            branch = new Net4Courier.Masters.Entities.Branch
+            {
+                CompanyId = company.Id,
+                Code = "DXB-HQ",
+                Name = "Dubai Main Branch",
+                Address = "Business Bay, Dubai",
+                Phone = "+971 4 123 4567",
+                Email = "dubai@democourier.ae",
+                CurrencyId = aedCurrency.Id,
+                IsActive = true,
+                IsDemo = true,
+                CreatedAt = DateTime.UtcNow
+            };
+            context.Branches.Add(branch);
+            await context.SaveChangesAsync();
+        }
+        else if (branch.CurrencyId == null && branch.IsDemo)
+        {
+            // Only update CurrencyId for demo branches that don't have one
+            branch.CurrencyId = aedCurrency.Id;
             await context.SaveChangesAsync();
         }
 
