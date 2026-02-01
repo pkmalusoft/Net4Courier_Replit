@@ -11,6 +11,12 @@
         </MudText>
     </TitleContent>
     <DialogContent>
+        @if (_loading)
+        {
+            <MudProgressCircular Indeterminate="true" Size="Size.Small" Class="d-block mx-auto my-4" />
+        }
+        else
+        {
         <MudForm @ref="_form" @bind-IsValid="_formIsValid">
             <MudGrid>
                 <MudItem xs="12">
@@ -44,6 +50,7 @@
                 </MudItem>
             </MudGrid>
         </MudForm>
+        }
     </DialogContent>
     <DialogActions>
         <MudButton OnClick="Cancel">Cancel</MudButton>
@@ -58,24 +65,38 @@
 
     private MudForm _form = null!;
     private bool _formIsValid;
+    private bool _loading = true;
     private List<Company> _companies = new();
     private DateTime? _startDate;
     private DateTime? _endDate;
 
     protected override async Task OnInitializedAsync()
     {
-        _companies = await DbContext.Companies.Where(c => c.IsActive && !c.IsDeleted).OrderBy(c => c.Name).ToListAsync();
-        
-        if (!IsNew)
+        _loading = true;
+        try
         {
-            _startDate = FinancialYear.StartDate.ToLocalTime();
-            _endDate = FinancialYear.EndDate.ToLocalTime();
+            _companies = await DbContext.Companies.Where(c => c.IsActive && !c.IsDeleted).OrderBy(c => c.Name).ToListAsync();
+            
+            if (!IsNew)
+            {
+                _startDate = FinancialYear.StartDate.ToLocalTime();
+                _endDate = FinancialYear.EndDate.ToLocalTime();
+            }
+            else
+            {
+                _startDate = new DateTime(DateTime.Now.Year, 4, 1);
+                _endDate = new DateTime(DateTime.Now.Year + 1, 3, 31);
+                FinancialYear.Name = $"{DateTime.Now.Year}-{DateTime.Now.Year + 1}";
+                
+                if (_companies.Any())
+                {
+                    FinancialYear.CompanyId = _companies.First().Id;
+                }
+            }
         }
-        else
+        finally
         {
-            _startDate = new DateTime(DateTime.Now.Year, 4, 1);
-            _endDate = new DateTime(DateTime.Now.Year + 1, 3, 31);
-            FinancialYear.Name = $"{DateTime.Now.Year}-{DateTime.Now.Year + 1}";
+            _loading = false;
         }
     }
 
