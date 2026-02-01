@@ -152,8 +152,58 @@ Calendar popups in dialogs work correctly with the z-index fix above. Use standa
 }
 ```
 
+### Native HTML Select Pattern (for Dialogs with MudBlazor v7+ Issues)
+When MudSelect dropdowns fail to display options inside MudDialog despite z-index and DisablePortal fixes, use native HTML selects styled with custom CSS:
+
+**CSS Classes (in app.css)**
+```css
+.native-select-wrapper { position: relative; width: 100%; }
+.native-select-wrapper label { display: block; font-size: 0.75rem; color: rgba(0,0,0,0.6); margin-bottom: 4px; }
+.native-select-wrapper label.required::after { content: " *"; color: #f44336; }
+.native-select { width: 100%; padding: 8px 12px; font-size: 0.875rem; border: 1px solid rgba(0,0,0,0.23); border-radius: 4px; background-color: transparent; }
+.native-select.dense { padding: 6px 10px; font-size: 0.8125rem; }
+```
+
+**Simple dropdown:**
+```razor
+<div class="native-select-wrapper">
+    <label class="required">Company</label>
+    <select class="native-select dense" @bind="Party.CompanyId">
+        @foreach (var company in _companies)
+        {
+            <option value="@company.Id">@company.Name</option>
+        }
+    </select>
+</div>
+```
+
+**Cascading dropdown with event handler:**
+```razor
+<div class="native-select-wrapper">
+    <label>Country</label>
+    <select class="native-select dense" value="@_countryId" @onchange="OnCountryChangedNative">
+        <option value="">-- Select --</option>
+        @foreach (var country in _countries)
+        {
+            <option value="@country.Id">@country.Name</option>
+        }
+    </select>
+</div>
+
+@code {
+    private async Task OnCountryChangedNative(ChangeEventArgs e)
+    {
+        long? countryId = null;
+        if (long.TryParse(e.Value?.ToString(), out var id))
+            countryId = id;
+        await OnCountryChanged(countryId);
+    }
+}
+```
+
 ### Key Troubleshooting Notes
-1. **Dropdown not visible in dialog**: Check ZIndex configuration in theme
+1. **Dropdown not visible in dialog**: Check ZIndex configuration in theme, or use native HTML select as fallback
 2. **Cascading dropdown not updating**: Ensure ValueChanged handler updates the backing field
 3. **Calendar popup behind dialog**: Same z-index fix applies
 4. **Value not binding**: Use correct generic type T (long vs long? vs string)
+5. **MudSelect still broken after all fixes**: Use native HTML select with custom CSS styling
