@@ -86,3 +86,69 @@ Key entity property names used in reports:
 - **Reporting**: QuestPDF
 - **Excel Handling**: ClosedXML
 - **Email**: Google Gmail API via Replit connector
+
+## Code Patterns
+
+### Drop-down Working Code (MudSelect Reference)
+Reference patterns for MudSelect dropdowns that work correctly with proper binding:
+
+**1. Transaction Category (Enum-based)**
+```razor
+<MudSelect Value="transaction.TransactionCategory"
+         ValueChanged="OnTransactionCategoryChanged"
+         Label="Transaction Category"
+         Variant="Variant.Outlined"
+         Required="true"
+         T="TransactionCategory"
+         HelperText="Select whether this is a GL transaction, customer receipt, or vendor payment">
+    <MudSelectItem Value="@TransactionCategory.GL">General Ledger</MudSelectItem>
+    <MudSelectItem Value="@TransactionCategory.PartyReceipt">Party - Receipt (Customer)</MudSelectItem>
+    <MudSelectItem Value="@TransactionCategory.PartyPayment">Party - Payment (Vendor)</MudSelectItem>
+</MudSelect>
+```
+
+**2. Customer (Nullable Guid with dynamic list)**
+```razor
+<MudSelect Value="transaction.CustomerId"
+         Label="Customer"
+         Variant="Variant.Outlined"
+         Required="true"
+         T="Guid?"
+         Clearable="true"
+         ValueChanged="OnCustomerSelected">
+    @foreach (var customer in customers)
+    {
+        <MudSelectItem Value="@((Guid?)customer.Id)">@customer.Name - @customer.CustomerCode</MudSelectItem>
+    }
+</MudSelect>
+```
+
+**3. Vendor (Nullable Guid with dynamic list)**
+```razor
+<MudSelect Value="transaction.VendorId"
+         Label="Vendor"
+         Variant="Variant.Outlined"
+         Required="true"
+         T="Guid?"
+         Clearable="true"
+         ValueChanged="OnVendorSelected">
+    @foreach (var vendor in vendors)
+    {
+        <MudSelectItem Value="@((Guid?)vendor.Id)">@vendor.Name - @vendor.VendorCode</MudSelectItem>
+    }
+</MudSelect>
+```
+
+**4. Branch (with ValueExpression)**
+```razor
+<MudSelect Value="selectedBranchIdForTxn" Label="Branch" Variant="Variant.Outlined" 
+           Clearable="true" T="Guid?" ValueChanged="OnTxnBranchChanged"
+           ValueExpression="@(() => selectedBranchIdForTxn)">
+    @foreach (var branch in branches)
+    {
+        <MudSelectItem Value="@((Guid?)branch.Id)">@branch.Code - @branch.Name</MudSelectItem>
+    }
+</MudSelect>
+```
+
+**Note**: If MudSelect dropdowns render behind dialogs (z-index issue), replace with native HTML `<select>` elements styled with fieldset tags (see BranchDialog.razor and PartyDialog.razor for examples).
