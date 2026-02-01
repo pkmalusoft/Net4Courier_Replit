@@ -2399,43 +2399,43 @@ The Import Inscan page displays shipment details in a comprehensive table with t
 
 ---
 
-## How to Sell Prepaid AWBs
+## How to Issue Prepaid AWBs
 
-**Navigation:** Customers & CRM → Prepaid AWB Sales
+**Navigation:** Customers & CRM → Customer AWB Issue
 
-**When to Use:** When selling prepaid AWBs to customers in advance.
+**When to Use:** When issuing prepaid AWBs to customers in advance.
+
+**Prerequisites:** Customer must have Account Type set to "Pre-paid" to appear in Prepaid AWB issue mode.
 
 **Detailed Steps:**
 
-1. **Access Prepaid Management**
-   - Go to **Customers & CRM → Prepaid AWB Sales**
+1. **Access Customer AWB Issue**
+   - Go to **Customers & CRM → Customer AWB Issue**
+   - Select **"Prepaid AWB"** option (default)
 
-2. **Create New Prepaid Sale**
-   - Click **"+ New Prepaid Sale"**
-   - Select customer from dropdown
-   - Enter prepaid details:
+2. **Fill Issue Details**
+   - Select customer (only Pre-paid account type customers shown)
+   - Enter AWB issue details:
    
    | Field | Description | Example |
    |-------|-------------|---------|
-   | Customer | Customer account | "ABC Trading LLC" |
-   | Quantity | Number of AWBs to sell | 50 |
+   | Customer | Pre-paid account customer | "ABC Trading LLC" |
+   | Origin | Origin city | "Dubai" |
+   | Destination | Destination city (required for prepaid) | "Abu Dhabi" |
+   | No. of AWBs | Number of AWBs to issue | 10 |
    | Rate per AWB | Price charged per AWB | 15.00 |
-   | Total Amount | Auto-calculated | 750.00 |
-   | Payment Mode | Cash / Bank / Cheque | "Cash" |
+   | Total Amount | Auto-calculated | 150.00 |
+   | Payment Mode | Cash / Bank | "Cash" |
 
-3. **AWB Allocation**
-   - System automatically allocates AWBs from stock
-   - AWB range assigned to customer
-   - Stock updated immediately
+3. **Payment Details**
+   - Select payment mode (Cash or Bank)
+   - Choose the corresponding account
+   - Enter bank reference if bank payment
 
-4. **Accounting Entry (Automatic)**
-   - Dr: Cash/Bank Account
-   - Cr: Prepaid AWB Control Account
-
-5. **When Customer Uses AWB**
-   - AWB validated during shipment entry
-   - Prepaid balance decremented
-   - Accounting: Dr Prepaid Control, Cr Revenue
+4. **Issue AWBs**
+   - Click "Issue AWBs" to complete
+   - System generates AWB numbers and updates balance
+   - Accounting entries created automatically
 
 ---
 
