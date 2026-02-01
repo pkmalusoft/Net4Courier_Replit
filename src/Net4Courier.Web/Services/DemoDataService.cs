@@ -1470,129 +1470,109 @@ public class DemoDataService : IDemoDataService
 
         await context.SaveChangesAsync();
 
-        long cashAccountId;
-        if (useGLAccounts)
-        {
-            var cashGL = glAccounts.FirstOrDefault(a => a.AccountName?.Contains("Cash") == true) ?? glAccounts[0];
-            cashAccountId = cashGL.Id;
-        }
-        else
+        if (!useGLAccounts && accountHeads.Count >= 2)
         {
             var cashAH = accountHeads.FirstOrDefault(a => a.Name?.Contains("Cash") == true) ?? accountHeads[0];
-            cashAccountId = cashAH.Id;
-        }
-
-        for (int i = 0; i < 3; i++)
-        {
-            var cashTransaction = new Net4Courier.Finance.Entities.CashBankTransaction
-            {
-                VoucherNo = $"DEMO-CR-{(i + 1):D4}",
-                VoucherDate = DateTime.UtcNow.AddDays(-5 + i),
-                TransactionType = TransactionType.Cash,
-                RecPayType = RecPayType.Receipt,
-                TransactionCategory = TransactionCategory.GL,
-                SourceAccountId = cashAccountId,
-                TotalAmount = 500 + (i * 250),
-                Status = CashBankStatus.Posted,
-                PostedDate = DateTime.UtcNow.AddDays(-4 + i),
-                Narration = $"Demo cash receipt {i + 1}",
-                FiscalYear = DateTime.UtcNow.Year,
-                IsActive = true,
-                IsDemo = true,
-                CreatedAt = DateTime.UtcNow
-            };
-
-            context.CashBankTransactions.Add(cashTransaction);
-        }
-
-        long bankAccountId;
-        if (useGLAccounts)
-        {
-            var bankGL = glAccounts.FirstOrDefault(a => a.AccountName?.Contains("Bank") == true) ?? glAccounts[Math.Min(1, glAccounts.Count - 1)];
-            bankAccountId = bankGL.Id;
-        }
-        else
-        {
             var bankAH = accountHeads.FirstOrDefault(a => a.Name?.Contains("Bank") == true) ?? accountHeads[Math.Min(1, accountHeads.Count - 1)];
-            bankAccountId = bankAH.Id;
-        }
 
-        for (int i = 0; i < 3; i++)
-        {
-            var bankTransaction = new Net4Courier.Finance.Entities.CashBankTransaction
+            for (int i = 0; i < 3; i++)
             {
-                VoucherNo = $"DEMO-BR-{(i + 1):D4}",
-                VoucherDate = DateTime.UtcNow.AddDays(-3 + i),
-                TransactionType = TransactionType.Bank,
-                RecPayType = i < 2 ? RecPayType.Receipt : RecPayType.Payment,
-                TransactionCategory = TransactionCategory.GL,
-                SourceAccountId = bankAccountId,
-                TotalAmount = 2000 + (i * 1000),
-                BankName = "Emirates NBD",
-                BranchName = "Dubai Main Branch",
-                ReferenceNo = $"REF-{300000 + i}",
-                Status = CashBankStatus.Posted,
-                PostedDate = DateTime.UtcNow.AddDays(-2 + i),
-                Narration = $"Demo bank {(i < 2 ? "receipt" : "payment")} {i + 1}",
-                FiscalYear = DateTime.UtcNow.Year,
-                IsActive = true,
-                IsDemo = true,
-                CreatedAt = DateTime.UtcNow
-            };
+                var cashTransaction = new Net4Courier.Finance.Entities.CashBankTransaction
+                {
+                    VoucherNo = $"DEMO-CR-{(i + 1):D4}",
+                    VoucherDate = DateTime.UtcNow.AddDays(-5 + i),
+                    TransactionType = TransactionType.Cash,
+                    RecPayType = RecPayType.Receipt,
+                    TransactionCategory = TransactionCategory.GL,
+                    SourceAccountId = cashAH.Id,
+                    TotalAmount = 500 + (i * 250),
+                    Status = CashBankStatus.Posted,
+                    PostedDate = DateTime.UtcNow.AddDays(-4 + i),
+                    Narration = $"Demo cash receipt {i + 1}",
+                    FiscalYear = DateTime.UtcNow.Year,
+                    IsActive = true,
+                    IsDemo = true,
+                    CreatedAt = DateTime.UtcNow
+                };
+                context.CashBankTransactions.Add(cashTransaction);
+            }
 
-            context.CashBankTransactions.Add(bankTransaction);
-        }
-
-        await context.SaveChangesAsync();
-
-        var demoBankAccounts = await context.BankAccounts
-            .Where(b => b.Notes != null && b.Notes.Contains("[DEMO]"))
-            .ToListAsync();
-
-        if (!demoBankAccounts.Any())
-        {
-            var bankAccount = new Net4Courier.Finance.Entities.BankAccount
+            for (int i = 0; i < 3; i++)
             {
-                AccountNumber = "DEMO-1234567890",
-                AccountName = "DEMO Operations Account",
-                BankName = "Emirates NBD",
-                BranchName = "Dubai Main Branch",
-                SwiftCode = "EABORAEDXXX",
-                IbanNumber = "AE070331234567890123456",
-                OpeningBalance = 50000m,
-                OpeningBalanceDate = DateTime.UtcNow.AddMonths(-6).Date,
-                Notes = "[DEMO] Demo bank account for testing",
-                IsActive = true,
-                AccountHeadId = bankAccountId,
-                CompanyId = companyId,
-                BranchId = branchId,
-                CreatedAt = DateTime.UtcNow
-            };
+                var bankTransaction = new Net4Courier.Finance.Entities.CashBankTransaction
+                {
+                    VoucherNo = $"DEMO-BR-{(i + 1):D4}",
+                    VoucherDate = DateTime.UtcNow.AddDays(-3 + i),
+                    TransactionType = TransactionType.Bank,
+                    RecPayType = i < 2 ? RecPayType.Receipt : RecPayType.Payment,
+                    TransactionCategory = TransactionCategory.GL,
+                    SourceAccountId = bankAH.Id,
+                    TotalAmount = 2000 + (i * 1000),
+                    BankName = "Emirates NBD",
+                    BranchName = "Dubai Main Branch",
+                    ReferenceNo = $"REF-{300000 + i}",
+                    Status = CashBankStatus.Posted,
+                    PostedDate = DateTime.UtcNow.AddDays(-2 + i),
+                    Narration = $"Demo bank {(i < 2 ? "receipt" : "payment")} {i + 1}",
+                    FiscalYear = DateTime.UtcNow.Year,
+                    IsActive = true,
+                    IsDemo = true,
+                    CreatedAt = DateTime.UtcNow
+                };
+                context.CashBankTransactions.Add(bankTransaction);
+            }
 
-            context.BankAccounts.Add(bankAccount);
             await context.SaveChangesAsync();
 
-            var reconciliation = new Net4Courier.Finance.Entities.BankReconciliation
-            {
-                CompanyId = companyId,
-                BranchId = branchId,
-                BankAccountId = bankAccount.Id,
-                ReconciliationNumber = "DEMO-RECON-001",
-                StatementDate = DateTime.UtcNow.AddDays(-1).Date,
-                StatementOpeningBalance = 50000m,
-                StatementClosingBalance = 55000m,
-                BookOpeningBalance = 50000m,
-                BookClosingBalance = 54500m,
-                DifferenceAmount = 500m,
-                Status = ReconciliationStatus.Draft,
-                Notes = "Demo reconciliation",
-                IsActive = true,
-                IsDemo = true,
-                CreatedAt = DateTime.UtcNow
-            };
+            var demoBankAccounts = await context.BankAccounts
+                .Where(b => b.Notes != null && b.Notes.Contains("[DEMO]"))
+                .ToListAsync();
 
-            context.BankReconciliations.Add(reconciliation);
-            await context.SaveChangesAsync();
+            if (!demoBankAccounts.Any())
+            {
+                var bankAccount = new Net4Courier.Finance.Entities.BankAccount
+                {
+                    AccountNumber = "DEMO-1234567890",
+                    AccountName = "DEMO Operations Account",
+                    BankName = "Emirates NBD",
+                    BranchName = "Dubai Main Branch",
+                    SwiftCode = "EABORAEDXXX",
+                    IbanNumber = "AE070331234567890123456",
+                    OpeningBalance = 50000m,
+                    OpeningBalanceDate = DateTime.UtcNow.AddMonths(-6).Date,
+                    Notes = "[DEMO] Demo bank account for testing",
+                    IsActive = true,
+                    AccountHeadId = bankAH.Id,
+                    CompanyId = companyId,
+                    BranchId = branchId,
+                    CreatedAt = DateTime.UtcNow
+                };
+
+                context.BankAccounts.Add(bankAccount);
+                await context.SaveChangesAsync();
+
+                var reconciliation = new Net4Courier.Finance.Entities.BankReconciliation
+                {
+                    CompanyId = companyId,
+                    BranchId = branchId,
+                    BankAccountId = bankAccount.Id,
+                    ReconciliationNumber = "DEMO-RECON-001",
+                    StatementDate = DateTime.UtcNow.AddDays(-1).Date,
+                    StatementOpeningBalance = 50000m,
+                    StatementClosingBalance = 55000m,
+                    BookOpeningBalance = 50000m,
+                    BookClosingBalance = 54500m,
+                    DifferenceAmount = 500m,
+                    Status = ReconciliationStatus.Draft,
+                    Notes = "Demo reconciliation",
+                    IsActive = true,
+                    IsDemo = true,
+                    CreatedAt = DateTime.UtcNow
+                };
+
+                context.BankReconciliations.Add(reconciliation);
+                await context.SaveChangesAsync();
+            }
         }
 
         return true;
