@@ -1,0 +1,599 @@
+@page "/customer-awb-issue"
+@using Net4Courier.Infrastructure.Data
+@using OpEntities = Net4Courier.Operations.Entities
+@using Net4Courier.Operations.Entities
+@using Net4Courier.Masters.Entities
+@using Net4Courier.Finance.Entities
+@using Microsoft.EntityFrameworkCore
+@using Microsoft.AspNetCore.Components.Authorization
+@inject IDbContextFactory<ApplicationDbContext> DbContextFactory
+@inject ISnackbar Snackbar
+@inject IDialogService DialogService
+@inject AuthenticationStateProvider AuthStateProvider
+@rendermode InteractiveServer
+
+<PageTitle>Customer AWB Issue</PageTitle>
+
+<MudContainer MaxWidth="MaxWidth.ExtraLarge" Class="py-4">
+    <MudText Typo="Typo.h5" Class="mb-4">Customer Airwaybill Issue</MudText>
+
+    <MudGrid>
+        <MudItem xs="12" md="5">
+            <MudPaper Class="pa-4" Elevation="2">
+                <MudForm @ref="_form">
+                    <MudGrid>
+                        <MudItem xs="12">
+                            <MudText Typo="Typo.subtitle2" Class="mb-2">AWB Issue Type</MudText>
+                            <MudRadioGroup @bind-Value="_issueType" Class="mb-2">
+                                <MudRadio Value="AwbIssueType.Prepaid" Color="Color.Primary">Prepaid AWB</MudRadio>
+                                <MudRadio Value="AwbIssueType.NonPrepaid" Color="Color.Secondary">Non-Prepaid AWB</MudRadio>
+                            </MudRadioGroup>
+                        </MudItem>
+
+                        <MudItem xs="6">
+                            <MudTextField @bind-Value="_issueNo" Label="Issue No." Variant="Variant.Outlined" ReadOnly="true" />
+                        </MudItem>
+                        <MudItem xs="6">
+                            <MudDatePicker @bind-Date="_issueDate" Label="Issue Date" Variant="Variant.Outlined" DateFormat="dd-MM-yyyy" />
+                        </MudItem>
+
+                        <MudItem xs="12">
+                            <MudAutocomplete T="Party" Label="Customer" @bind-Value="_selectedCustomer"
+                                             SearchFunc="SearchCustomers" ToStringFunc="@(p => p?.Name ?? "")"
+                                             Variant="Variant.Outlined" Required="true"
+                                             RequiredError="Customer is required" />
+                        </MudItem>
+
+                        @if (_issueType == AwbIssueType.Prepaid)
+                        {
+                            <MudItem xs="6">
+                                <MudTextField @bind-Value="_origin" Label="Origin" Variant="Variant.Outlined" />
+                            </MudItem>
+                            <MudItem xs="6">
+                                <MudTextField @bind-Value="_destination" Label="Destination" Variant="Variant.Outlined" Required="true" RequiredError="Destination is required for Prepaid AWB" />
+                            </MudItem>
+                        }
+
+                        <MudItem xs="4">
+                            <MudNumericField @bind-Value="_noOfAwbs" Label="No. of AWBs" Min="1" Variant="Variant.Outlined" Required="true" />
+                        </MudItem>
+
+                        @if (_issueType == AwbIssueType.Prepaid)
+                        {
+                            <MudItem xs="4">
+                                <MudNumericField @bind-Value="_ratePerAwb" Label="Rate per AWB" Format="N2" Variant="Variant.Outlined" Required="true" />
+                            </MudItem>
+                            <MudItem xs="4">
+                                <MudNumericField Value="@TotalAmount" Label="Total Amount" Format="N2" Variant="Variant.Outlined" ReadOnly="true" />
+                            </MudItem>
+
+                            <MudItem xs="12">
+                                <MudDivider Class="my-2" />
+                                <MudText Typo="Typo.subtitle2" Class="mb-2">Payment Details (Mandatory for Prepaid)</MudText>
+                            </MudItem>
+
+                            <MudItem xs="6">
+                                <MudSelect T="AwbIssuePaymentMode?" Label="Payment Mode" @bind-Value="_paymentMode" Variant="Variant.Outlined" Required="true" RequiredError="Payment mode is required">
+                                    <MudSelectItem T="AwbIssuePaymentMode?" Value="@((AwbIssuePaymentMode?)null)">-- Select --</MudSelectItem>
+                                    <MudSelectItem T="AwbIssuePaymentMode?" Value="AwbIssuePaymentMode.Cash">Cash</MudSelectItem>
+                                    <MudSelectItem T="AwbIssuePaymentMode?" Value="AwbIssuePaymentMode.Bank">Bank</MudSelectItem>
+                                </MudSelect>
+                            </MudItem>
+
+                            @if (_paymentMode == AwbIssuePaymentMode.Cash)
+                            {
+                                <MudItem xs="6">
+                                    <MudSelect T="long?" Label="Cash Account" @bind-Value="_cashAccountId" Variant="Variant.Outlined" Required="true" RequiredError="Cash account is required">
+                                        <MudSelectItem T="long?" Value="@((long?)null)">-- Select --</MudSelectItem>
+                                        @foreach (var acc in _cashAccounts)
+                                        {
+                                            <MudSelectItem T="long?" Value="@acc.Id">@acc.AccountName</MudSelectItem>
+                                        }
+                                    </MudSelect>
+                                </MudItem>
+                            }
+
+                            @if (_paymentMode == AwbIssuePaymentMode.Bank)
+                            {
+                                <MudItem xs="6">
+                                    <MudSelect T="long?" Label="Bank Account" @bind-Value="_bankAccountId" Variant="Variant.Outlined" Required="true" RequiredError="Bank account is required">
+                                        <MudSelectItem T="long?" Value="@((long?)null)">-- Select --</MudSelectItem>
+                                        @foreach (var bank in _bankAccounts)
+                                        {
+                                            <MudSelectItem T="long?" Value="@bank.Id">@bank.AccountName - @bank.BankName</MudSelectItem>
+                                        }
+                                    </MudSelect>
+                                </MudItem>
+                                <MudItem xs="6">
+                                    <MudTextField @bind-Value="_bankReferenceNo" Label="Bank Reference No." Variant="Variant.Outlined" />
+                                </MudItem>
+                            }
+
+                            <MudItem xs="6">
+                                <MudDatePicker @bind-Date="_paymentDate" Label="Payment Date" Variant="Variant.Outlined" DateFormat="dd-MM-yyyy" />
+                            </MudItem>
+                        }
+
+                        <MudItem xs="12">
+                            <MudTextField @bind-Value="_remarks" Label="Remarks" Variant="Variant.Outlined" Lines="2" />
+                        </MudItem>
+
+                        <MudItem xs="12">
+                            <MudStack Row="true" Justify="Justify.Center" Spacing="2" Class="mt-2">
+                                <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="SaveIssue" Disabled="@_isSaving">
+                                    @if (_isSaving)
+                                    {
+                                        <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" />
+                                    }
+                                    Issue AWBs
+                                </MudButton>
+                                <MudButton Variant="Variant.Outlined" Color="Color.Default" OnClick="ClearForm">Clear</MudButton>
+                            </MudStack>
+                        </MudItem>
+                    </MudGrid>
+                </MudForm>
+            </MudPaper>
+
+            @if (_customerBalance != null)
+            {
+                <MudPaper Class="pa-4 mt-4" Elevation="2">
+                    <MudText Typo="Typo.subtitle2" Class="mb-2">Customer Prepaid Balance</MudText>
+                    <MudGrid>
+                        <MudItem xs="6">
+                            <MudText Typo="Typo.body2" Color="Color.Default">AWBs Purchased:</MudText>
+                            <MudText Typo="Typo.h6">@_customerBalance.TotalAwbsPurchased</MudText>
+                        </MudItem>
+                        <MudItem xs="6">
+                            <MudText Typo="Typo.body2" Color="Color.Default">AWBs Used:</MudText>
+                            <MudText Typo="Typo.h6">@_customerBalance.AwbsUsed</MudText>
+                        </MudItem>
+                        <MudItem xs="6">
+                            <MudText Typo="Typo.body2" Color="Color.Default">AWBs Balance:</MudText>
+                            <MudText Typo="Typo.h6" Color="Color.Primary">@_customerBalance.AwbsBalance</MudText>
+                        </MudItem>
+                        <MudItem xs="6">
+                            <MudText Typo="Typo.body2" Color="Color.Default">Advance Balance:</MudText>
+                            <MudText Typo="Typo.h6" Color="Color.Success">@_customerBalance.BalanceAmount.ToString("N2")</MudText>
+                        </MudItem>
+                    </MudGrid>
+                </MudPaper>
+            }
+        </MudItem>
+
+        <MudItem xs="12" md="7">
+            <MudPaper Class="pa-4" Elevation="2">
+                <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center" Class="mb-3">
+                    <MudText Typo="Typo.h6">AWB Issues</MudText>
+                    <MudStack Row="true" Spacing="2">
+                        <MudSelect T="int" Label="Show" @bind-Value="_pageSize" Dense="true" Style="width:80px">
+                            <MudSelectItem Value="10">10</MudSelectItem>
+                            <MudSelectItem Value="25">25</MudSelectItem>
+                            <MudSelectItem Value="50">50</MudSelectItem>
+                        </MudSelect>
+                        <MudTextField @bind-Value="_searchText" Label="Search" Variant="Variant.Outlined"
+                                      Adornment="Adornment.End" AdornmentIcon="@Icons.Material.Filled.Search"
+                                      Dense="true" Immediate="true" />
+                    </MudStack>
+                </MudStack>
+
+                @if (_loadingIssues)
+                {
+                    <MudProgressLinear Color="Color.Primary" Indeterminate="true" />
+                }
+                else
+                {
+                    <MudTable Items="@FilteredIssues" Dense="true" Hover="true" Striped="true" FixedHeader="true" Height="500px">
+                        <HeaderContent>
+                            <MudTh>Issue No.</MudTh>
+                            <MudTh>Date</MudTh>
+                            <MudTh>Customer</MudTh>
+                            <MudTh>Type</MudTh>
+                            <MudTh>AWBs</MudTh>
+                            <MudTh>Amount</MudTh>
+                            <MudTh>Status</MudTh>
+                            <MudTh>Actions</MudTh>
+                        </HeaderContent>
+                        <RowTemplate>
+                            <MudTd DataLabel="Issue No.">@context.IssueNo</MudTd>
+                            <MudTd DataLabel="Date">@context.IssueDate.ToString("dd-MM-yyyy")</MudTd>
+                            <MudTd DataLabel="Customer">@context.CustomerName</MudTd>
+                            <MudTd DataLabel="Type">
+                                <MudChip T="string" Size="Size.Small" Color="@(context.IssueType == AwbIssueType.Prepaid ? Color.Primary : Color.Secondary)">
+                                    @context.IssueType
+                                </MudChip>
+                            </MudTd>
+                            <MudTd DataLabel="AWBs">@context.NoOfAWBs</MudTd>
+                            <MudTd DataLabel="Amount">@context.TotalAmount.ToString("N2")</MudTd>
+                            <MudTd DataLabel="Status">
+                                <MudChip T="string" Size="Size.Small" Color="@GetStatusColor(context.Status)">
+                                    @context.Status
+                                </MudChip>
+                            </MudTd>
+                            <MudTd DataLabel="Actions">
+                                <MudIconButton Icon="@Icons.Material.Filled.Visibility" Size="Size.Small" 
+                                               OnClick="@(() => ViewIssueDetails(context))" Title="View Details" />
+                                <MudIconButton Icon="@Icons.Material.Filled.Print" Size="Size.Small" 
+                                               OnClick="@(() => PrintIssue(context))" Title="Print" />
+                            </MudTd>
+                        </RowTemplate>
+                        <PagerContent>
+                            <MudTablePager PageSizeOptions="new int[] { 10, 25, 50 }" />
+                        </PagerContent>
+                    </MudTable>
+                }
+            </MudPaper>
+        </MudItem>
+    </MudGrid>
+</MudContainer>
+
+@code {
+    private MudForm _form = null!;
+    private bool _isSaving;
+    private bool _loadingIssues;
+
+    private long _companyId;
+    private long _branchId;
+    private long? _financialYearId;
+    private int _userId;
+    private string _userName = "";
+
+    private AwbIssueType _issueType = AwbIssueType.Prepaid;
+    private string _issueNo = "";
+    private DateTime? _issueDate = DateTime.Today;
+    private Party? _selectedCustomer;
+    private string? _origin;
+    private string? _destination;
+    private int _noOfAwbs = 1;
+    private decimal _ratePerAwb;
+    private AwbIssuePaymentMode? _paymentMode;
+    private long? _cashAccountId;
+    private long? _bankAccountId;
+    private string? _bankReferenceNo;
+    private DateTime? _paymentDate = DateTime.Today;
+    private string? _remarks;
+
+    private decimal TotalAmount => _noOfAwbs * _ratePerAwb;
+
+    private List<OpEntities.CustomerAwbIssue> _issues = new();
+    private List<BankAccount> _bankAccounts = new();
+    private List<GLChartOfAccount> _cashAccounts = new();
+    private OpEntities.CustomerAwbBalance? _customerBalance;
+
+    private int _pageSize = 10;
+    private string _searchText = "";
+
+    private IEnumerable<OpEntities.CustomerAwbIssue> FilteredIssues => string.IsNullOrEmpty(_searchText)
+        ? _issues
+        : _issues.Where(i => i.IssueNo.Contains(_searchText, StringComparison.OrdinalIgnoreCase) ||
+                            (i.CustomerName?.Contains(_searchText, StringComparison.OrdinalIgnoreCase) ?? false));
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadUserContext();
+        await LoadData();
+        await GenerateNewIssueNo();
+    }
+
+    private async Task LoadUserContext()
+    {
+        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+        var user = authState.User;
+
+        if (user.Identity?.IsAuthenticated == true)
+        {
+            var userIdClaim = user.FindFirst("UserId")?.Value;
+            var branchIdClaim = user.FindFirst("BranchId")?.Value;
+            var companyIdClaim = user.FindFirst("CompanyId")?.Value;
+            var fyIdClaim = user.FindFirst("FinancialYearId")?.Value;
+
+            if (int.TryParse(userIdClaim, out var uid)) _userId = uid;
+            if (long.TryParse(branchIdClaim, out var bid)) _branchId = bid;
+            if (long.TryParse(companyIdClaim, out var cid)) _companyId = cid;
+            if (long.TryParse(fyIdClaim, out var fyid)) _financialYearId = fyid;
+            _userName = user.Identity.Name ?? "";
+        }
+    }
+
+    private async Task LoadData()
+    {
+        _loadingIssues = true;
+        try
+        {
+            await using var db = await DbContextFactory.CreateDbContextAsync();
+            
+            _issues = await db.CustomerAwbIssues
+                .Where(i => i.CompanyId == _companyId && i.BranchId == _branchId && !i.IsDeleted)
+                .OrderByDescending(i => i.IssueDate)
+                .ThenByDescending(i => i.Id)
+                .Take(100)
+                .ToListAsync();
+
+            _bankAccounts = await db.BankAccounts
+                .Where(b => b.CompanyId == _companyId && b.IsActive)
+                .OrderBy(b => b.AccountName)
+                .ToListAsync();
+
+            _cashAccounts = await db.GLChartOfAccounts
+                .Where(a => a.CompanyId == _companyId && a.AccountType == "Cash" && a.IsActive && !a.IsDeleted)
+                .OrderBy(a => a.AccountName)
+                .ToListAsync();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error loading data: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _loadingIssues = false;
+        }
+    }
+
+    private async Task GenerateNewIssueNo()
+    {
+        await using var db = await DbContextFactory.CreateDbContextAsync();
+        
+        var prefix = _issueType == AwbIssueType.Prepaid ? "PAI" : "NAI";
+        var today = DateTime.Today;
+        var yearMonth = today.ToString("yyMM");
+        
+        var lastIssue = await db.CustomerAwbIssues
+            .Where(i => i.CompanyId == _companyId && i.BranchId == _branchId && i.IssueNo.StartsWith(prefix + yearMonth))
+            .OrderByDescending(i => i.Id)
+            .FirstOrDefaultAsync();
+
+        int nextNumber = 1;
+        if (lastIssue != null)
+        {
+            var lastNoStr = lastIssue.IssueNo.Substring((prefix + yearMonth).Length);
+            if (int.TryParse(lastNoStr, out int lastNo))
+            {
+                nextNumber = lastNo + 1;
+            }
+        }
+
+        _issueNo = $"{prefix}{yearMonth}{nextNumber:D4}";
+    }
+
+    private async Task<IEnumerable<Party>> SearchCustomers(string value, CancellationToken cancellationToken)
+    {
+        await using var db = await DbContextFactory.CreateDbContextAsync();
+        
+        var query = db.Parties
+            .Where(p => p.PartyType == PartyType.Customer && p.IsActive && !p.IsDeleted && p.CompanyId == _companyId);
+
+        if (!string.IsNullOrEmpty(value))
+        {
+            query = query.Where(p => p.Name.Contains(value) || (p.Code != null && p.Code.Contains(value)));
+        }
+
+        return await query.Take(20).ToListAsync(cancellationToken);
+    }
+
+    private async Task LoadCustomerBalance()
+    {
+        if (_selectedCustomer == null) return;
+
+        await using var db = await DbContextFactory.CreateDbContextAsync();
+        
+        _customerBalance = await db.CustomerAwbBalances
+            .Where(b => b.CustomerId == _selectedCustomer.Id && b.BranchId == _branchId && !b.IsDeleted)
+            .FirstOrDefaultAsync();
+    }
+
+    private async Task SaveIssue()
+    {
+        await _form.Validate();
+        if (!_form.IsValid) return;
+
+        if (_selectedCustomer == null)
+        {
+            Snackbar.Add("Please select a customer", Severity.Warning);
+            return;
+        }
+
+        if (_issueType == AwbIssueType.Prepaid)
+        {
+            if (string.IsNullOrWhiteSpace(_destination))
+            {
+                Snackbar.Add("Destination is mandatory for Prepaid AWB", Severity.Warning);
+                return;
+            }
+            if (_paymentMode == null)
+            {
+                Snackbar.Add("Payment mode is mandatory for Prepaid AWB", Severity.Warning);
+                return;
+            }
+            if (_paymentMode == AwbIssuePaymentMode.Cash && _cashAccountId == null)
+            {
+                Snackbar.Add("Please select a cash account", Severity.Warning);
+                return;
+            }
+            if (_paymentMode == AwbIssuePaymentMode.Bank && _bankAccountId == null)
+            {
+                Snackbar.Add("Please select a bank account", Severity.Warning);
+                return;
+            }
+            if (TotalAmount <= 0)
+            {
+                Snackbar.Add("Total amount must be greater than zero for Prepaid AWB", Severity.Warning);
+                return;
+            }
+        }
+
+        _isSaving = true;
+        try
+        {
+            await using var db = await DbContextFactory.CreateDbContextAsync();
+            
+            string? cashAccountName = null;
+            string? bankAccountName = null;
+
+            if (_paymentMode == AwbIssuePaymentMode.Cash && _cashAccountId.HasValue)
+            {
+                var cashAcc = await db.GLChartOfAccounts.FindAsync(_cashAccountId.Value);
+                cashAccountName = cashAcc?.AccountName;
+            }
+            if (_paymentMode == AwbIssuePaymentMode.Bank && _bankAccountId.HasValue)
+            {
+                var bankAcc = await db.BankAccounts.FindAsync(_bankAccountId.Value);
+                bankAccountName = bankAcc != null ? $"{bankAcc.AccountName} - {bankAcc.BankName}" : null;
+            }
+
+            var issue = new OpEntities.CustomerAwbIssue
+            {
+                CompanyId = _companyId,
+                BranchId = _branchId,
+                FinancialYearId = _financialYearId,
+                IssueNo = _issueNo,
+                IssueDate = _issueDate ?? DateTime.Today,
+                CustomerId = _selectedCustomer.Id,
+                CustomerName = _selectedCustomer.Name,
+                IssueType = _issueType,
+                Origin = _origin,
+                Destination = _destination,
+                DestinationLocked = _issueType == AwbIssueType.Prepaid,
+                NoOfAWBs = _noOfAwbs,
+                RatePerAWB = _issueType == AwbIssueType.Prepaid ? _ratePerAwb : 0,
+                TotalAmount = _issueType == AwbIssueType.Prepaid ? TotalAmount : 0,
+                PaymentMode = _issueType == AwbIssueType.Prepaid ? _paymentMode : null,
+                CashAccountId = _paymentMode == AwbIssuePaymentMode.Cash ? _cashAccountId : null,
+                CashAccountName = cashAccountName,
+                BankAccountId = _paymentMode == AwbIssuePaymentMode.Bank ? _bankAccountId : null,
+                BankAccountName = bankAccountName,
+                BankReferenceNo = _bankReferenceNo,
+                PaymentDate = _issueType == AwbIssueType.Prepaid ? _paymentDate : null,
+                Remarks = _remarks,
+                Status = AwbIssueStatus.Issued,
+                CreatedBy = _userId,
+                CreatedByName = _userName
+            };
+
+            for (int i = 1; i <= _noOfAwbs; i++)
+            {
+                var awbNo = await GenerateAwbNumber(db);
+                issue.Details.Add(new OpEntities.CustomerAwbIssueDetail
+                {
+                    AWBNo = awbNo,
+                    Status = AwbDetailStatus.Issued,
+                    CreatedBy = _userId
+                });
+            }
+
+            db.CustomerAwbIssues.Add(issue);
+
+            if (_issueType == AwbIssueType.Prepaid)
+            {
+                var balance = await db.CustomerAwbBalances
+                    .Where(b => b.CustomerId == _selectedCustomer.Id && b.BranchId == _branchId && !b.IsDeleted)
+                    .FirstOrDefaultAsync();
+
+                if (balance == null)
+                {
+                    balance = new OpEntities.CustomerAwbBalance
+                    {
+                        CompanyId = _companyId,
+                        BranchId = _branchId,
+                        CustomerId = _selectedCustomer.Id,
+                        CustomerName = _selectedCustomer.Name,
+                        CreatedBy = _userId
+                    };
+                    db.CustomerAwbBalances.Add(balance);
+                }
+
+                balance.TotalAwbsPurchased += _noOfAwbs;
+                balance.AwbsBalance += _noOfAwbs;
+                balance.TotalAdvanceAmount += TotalAmount;
+                balance.BalanceAmount += TotalAmount;
+                balance.LastPurchaseDate = DateTime.Now;
+                balance.ModifiedAt = DateTime.UtcNow;
+                balance.ModifiedBy = _userId;
+            }
+
+            await db.SaveChangesAsync();
+
+            Snackbar.Add($"AWB Issue {_issueNo} saved successfully with {_noOfAwbs} AWB(s)", Severity.Success);
+
+            ClearForm();
+            await LoadData();
+            await GenerateNewIssueNo();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error saving issue: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _isSaving = false;
+        }
+    }
+
+    private async Task<string> GenerateAwbNumber(ApplicationDbContext db)
+    {
+        var branch = await db.Branches.AsNoTracking().FirstOrDefaultAsync(b => b.Id == _branchId);
+        var prefix = branch?.AWBPrefix ?? "AWB";
+        var lastNumber = branch?.AWBLastUsedNumber ?? 0;
+        var increment = branch?.AWBIncrement ?? 1;
+        var startingNumber = branch?.AWBStartingNumber ?? 1;
+
+        var nextNumber = lastNumber == 0 ? startingNumber : lastNumber + increment;
+
+        if (branch != null)
+        {
+            branch.AWBLastUsedNumber = nextNumber;
+            db.Branches.Attach(branch);
+            db.Entry(branch).Property(b => b.AWBLastUsedNumber).IsModified = true;
+        }
+
+        return $"{prefix}{nextNumber:D8}";
+    }
+
+    private void ClearForm()
+    {
+        _selectedCustomer = null;
+        _origin = null;
+        _destination = null;
+        _noOfAwbs = 1;
+        _ratePerAwb = 0;
+        _paymentMode = null;
+        _cashAccountId = null;
+        _bankAccountId = null;
+        _bankReferenceNo = null;
+        _paymentDate = DateTime.Today;
+        _remarks = null;
+        _customerBalance = null;
+        _issueDate = DateTime.Today;
+        StateHasChanged();
+    }
+
+    private Color GetStatusColor(AwbIssueStatus status) => status switch
+    {
+        AwbIssueStatus.Issued => Color.Success,
+        AwbIssueStatus.PartiallyUsed => Color.Warning,
+        AwbIssueStatus.FullyUsed => Color.Info,
+        AwbIssueStatus.Cancelled => Color.Error,
+        _ => Color.Default
+    };
+
+    private async Task ViewIssueDetails(OpEntities.CustomerAwbIssue issue)
+    {
+        await using var db = await DbContextFactory.CreateDbContextAsync();
+        
+        var details = await db.CustomerAwbIssueDetails
+            .Where(d => d.CustomerAwbIssueId == issue.Id)
+            .ToListAsync();
+
+        var parameters = new DialogParameters<CustomerAwbIssueDetailsDialog>
+        {
+            { x => x.Issue, issue },
+            { x => x.Details, details }
+        };
+
+        var options = new DialogOptions { MaxWidth = MaxWidth.Medium, FullWidth = true };
+        await DialogService.ShowAsync<CustomerAwbIssueDetailsDialog>("AWB Issue Details", parameters, options);
+    }
+
+    private async Task PrintIssue(OpEntities.CustomerAwbIssue issue)
+    {
+        Snackbar.Add("Print functionality will be implemented", Severity.Info);
+    }
+}

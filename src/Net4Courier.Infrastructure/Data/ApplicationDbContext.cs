@@ -145,6 +145,10 @@ public class ApplicationDbContext : DbContext
     public DbSet<TransferOrder> TransferOrders => Set<TransferOrder>();
     public DbSet<TransferOrderItem> TransferOrderItems => Set<TransferOrderItem>();
     public DbSet<TransferOrderEvent> TransferOrderEvents => Set<TransferOrderEvent>();
+    
+    public DbSet<CustomerAwbIssue> CustomerAwbIssues => Set<CustomerAwbIssue>();
+    public DbSet<CustomerAwbIssueDetail> CustomerAwbIssueDetails => Set<CustomerAwbIssueDetail>();
+    public DbSet<CustomerAwbBalance> CustomerAwbBalances => Set<CustomerAwbBalance>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -1128,6 +1132,50 @@ public class ApplicationDbContext : DbContext
             entity.HasIndex(e => e.DocumentType);
             entity.HasOne(e => e.ImportMaster).WithMany().HasForeignKey(e => e.ImportMasterId)
                   .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<CustomerAwbIssue>(entity =>
+        {
+            entity.ToTable("CustomerAwbIssues");
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.IssueNo).HasMaxLength(50).IsRequired();
+            entity.Property(e => e.CustomerName).HasMaxLength(200);
+            entity.Property(e => e.Origin).HasMaxLength(100);
+            entity.Property(e => e.Destination).HasMaxLength(100);
+            entity.Property(e => e.CashAccountName).HasMaxLength(200);
+            entity.Property(e => e.BankAccountName).HasMaxLength(200);
+            entity.Property(e => e.BankReferenceNo).HasMaxLength(100);
+            entity.Property(e => e.Remarks).HasMaxLength(500);
+            entity.Property(e => e.RatePerAWB).HasPrecision(18, 2);
+            entity.Property(e => e.TotalAmount).HasPrecision(18, 2);
+            entity.HasIndex(e => e.IssueNo);
+            entity.HasIndex(e => new { e.CustomerId, e.IssueDate });
+            entity.HasIndex(e => new { e.BranchId, e.IssueDate });
+            entity.HasIndex(e => e.IssueType);
+        });
+
+        modelBuilder.Entity<CustomerAwbIssueDetail>(entity =>
+        {
+            entity.ToTable("CustomerAwbIssueDetails");
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.AWBNo).HasMaxLength(50).IsRequired();
+            entity.HasIndex(e => e.AWBNo);
+            entity.HasIndex(e => new { e.CustomerAwbIssueId, e.Status });
+            entity.HasOne(e => e.CustomerAwbIssue)
+                  .WithMany(c => c.Details)
+                  .HasForeignKey(e => e.CustomerAwbIssueId)
+                  .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<CustomerAwbBalance>(entity =>
+        {
+            entity.ToTable("CustomerAwbBalances");
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.CustomerName).HasMaxLength(200);
+            entity.Property(e => e.TotalAdvanceAmount).HasPrecision(18, 2);
+            entity.Property(e => e.UsedAmount).HasPrecision(18, 2);
+            entity.Property(e => e.BalanceAmount).HasPrecision(18, 2);
+            entity.HasIndex(e => new { e.CustomerId, e.BranchId }).IsUnique();
         });
     }
 
