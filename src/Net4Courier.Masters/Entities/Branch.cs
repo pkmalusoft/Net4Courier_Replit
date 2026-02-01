@@ -32,6 +32,9 @@ public class Branch : BaseEntity
     // Display Settings
     public bool HideAccountCodes { get; set; } = false;
     
+    // Feature Toggles
+    public bool UseAwbStockManagement { get; set; } = true;
+    
     public virtual Company Company { get; set; } = null!;
     public virtual Country? Country { get; set; }
     public virtual State? State { get; set; }

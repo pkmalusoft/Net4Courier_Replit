@@ -30,7 +30,7 @@ The application is built on .NET 8 Blazor Server, adopting a modular architectur
 - **Entity Management**: Comprehensive CRUD operations for core entities (Company, Branch, User, Role, Financial Year, Parties, AWB, Invoices, Receipts).
 - **Financial Features**: Includes invoice/receipt management, journaling, self-referential account heads, financial period management, dynamic other charges, AR/AP, Cash/Bank Vouchers, Bank Account Management, and 23 comprehensive financial reports.
 - **Operations Workflow**: Covers AWB entry/generation, pickup management, outscan/DRS, AWB tracking, POD, RTS, MAWB processing, COD Remittance, and Transfer Order management.
-- **Prepaid AWB Management**: AWB Stock Management and Prepaid AWB Sales module with integrated accounting. AWB stock fields (Origin, Destination, No. of AWBs, Courier Charge, AWB Stock, Start/End AWB Number) can be enabled/disabled per company via Company Settings toggle.
+- **Prepaid AWB Management**: AWB Stock Management and Prepaid AWB Sales module with integrated accounting. AWB stock fields (Origin, Destination, No. of AWBs, Courier Charge, AWB Stock, Start/End AWB Number) can be enabled/disabled per branch via Branch Settings toggle.
 - **Enhanced Dashboards**: Unified dispatcher view and global autocomplete search across AWBs, Customers, and Invoices.
 - **Unified Shipment Processing**: Single pages for Import Shipment Charges, Warehouse Inscan, and Shipment Lists for both domestic and import AWBs.
 - **Master Data Management**: Configurable Rate Card Management, Service Type, Shipment Mode, Port Master, Currency, Geographic Master Data, and enhanced Customer Master with configurable account types and SLA management.
