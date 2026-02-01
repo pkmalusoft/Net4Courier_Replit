@@ -1,0 +1,222 @@
+@page "/customer-new"
+@attribute [Authorize]
+@inject ApplicationDbContext DbContext
+@inject ISnackbar Snackbar
+@inject IDialogService DialogService
+@using Microsoft.EntityFrameworkCore
+@using Microsoft.AspNetCore.Authorization
+@using Net4Courier.Infrastructure.Data
+@using Net4Courier.Masters.Entities
+
+<PageTitle>Customer New</PageTitle>
+
+<MudContainer MaxWidth="MaxWidth.ExtraLarge" Class="mt-4">
+    <MudCard Elevation="0" Outlined="true">
+        <MudCardHeader>
+            <CardHeaderAvatar>
+                <MudAvatar Color="Color.Primary" Variant="Variant.Outlined">
+                    <MudIcon Icon="@Icons.Material.Filled.PersonAdd" />
+                </MudAvatar>
+            </CardHeaderAvatar>
+            <CardHeaderContent>
+                <MudText Typo="Typo.h5">Customer New</MudText>
+                <MudText Typo="Typo.body2" Color="Color.Secondary">Manage customers with enhanced dialog</MudText>
+            </CardHeaderContent>
+            <CardHeaderActions>
+                <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add" OnClick="OpenCreateDialog">
+                    Add Customer
+                </MudButton>
+            </CardHeaderActions>
+        </MudCardHeader>
+        
+        <MudCardContent>
+            <MudStack Row="true" Spacing="2" Class="mb-4">
+                <MudTextField @bind-Value="_searchString" Placeholder="Search customers..." Variant="Variant.Outlined" 
+                              Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Filled.Search" Immediate="true" Dense="true"
+                              Style="max-width: 400px;" />
+                <MudSpacer />
+                <MudIconButton Icon="@Icons.Material.Filled.Refresh" Color="Color.Primary" OnClick="LoadCustomers" Title="Refresh" />
+            </MudStack>
+
+            @if (_loading)
+            {
+                <MudProgressLinear Color="Color.Primary" Indeterminate="true" Class="mb-4" />
+            }
+
+            <MudTable Items="@_customers" Dense="true" Hover="true" Striped="true" Bordered="false" Elevation="0" 
+                      Filter="new Func<Party, bool>(FilterFunc)" Loading="@_loading">
+                <HeaderContent>
+                    <MudTh>Code</MudTh>
+                    <MudTh>Account No</MudTh>
+                    <MudTh>Name</MudTh>
+                    <MudTh>Type</MudTh>
+                    <MudTh>Contact</MudTh>
+                    <MudTh>Email</MudTh>
+                    <MudTh>Phone</MudTh>
+                    <MudTh>Status</MudTh>
+                    <MudTh Style="text-align:right">Actions</MudTh>
+                </HeaderContent>
+                <RowTemplate>
+                    <MudTd DataLabel="Code">@context.Code</MudTd>
+                    <MudTd DataLabel="Account No">@context.CustomerAccountNo</MudTd>
+                    <MudTd DataLabel="Name">
+                        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+                            @if (!string.IsNullOrEmpty(context.Logo))
+                            {
+                                <MudAvatar Size="Size.Small">
+                                    <MudImage Src="@context.Logo" />
+                                </MudAvatar>
+                            }
+                            <MudText Typo="Typo.body2" Style="font-weight:500;">@context.Name</MudText>
+                        </MudStack>
+                    </MudTd>
+                    <MudTd DataLabel="Type">
+                        <MudChip T="string" Size="Size.Small" Color="@GetPartyTypeColor(context.PartyType)" Variant="Variant.Outlined">
+                            @context.PartyType.ToString()
+                        </MudChip>
+                    </MudTd>
+                    <MudTd DataLabel="Contact">@context.ContactPerson</MudTd>
+                    <MudTd DataLabel="Email">@context.Email</MudTd>
+                    <MudTd DataLabel="Phone">@(context.Phone ?? context.Mobile)</MudTd>
+                    <MudTd DataLabel="Status">
+                        @if (context.IsActive)
+                        {
+                            <MudChip T="string" Size="Size.Small" Color="Color.Success" Variant="Variant.Text">Active</MudChip>
+                        }
+                        else
+                        {
+                            <MudChip T="string" Size="Size.Small" Color="Color.Default" Variant="Variant.Text">Inactive</MudChip>
+                        }
+                    </MudTd>
+                    <MudTd DataLabel="Actions" Style="text-align:right">
+                        <MudIconButton Icon="@Icons.Material.Filled.Edit" Size="Size.Small" Color="Color.Primary" OnClick="@(() => OpenEditDialog(context))" Title="Edit" />
+                        <MudIconButton Icon="@Icons.Material.Filled.LocationOn" Size="Size.Small" Color="Color.Info" OnClick="@(() => OpenAddressesDialog(context))" Title="Addresses" />
+                        <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" Color="Color.Error" OnClick="@(() => DeleteCustomer(context))" Title="Delete" />
+                    </MudTd>
+                </RowTemplate>
+                <PagerContent>
+                    <MudTablePager PageSizeOptions="new int[] { 10, 25, 50, 100 }" />
+                </PagerContent>
+                <NoRecordsContent>
+                    <MudAlert Severity="Severity.Info" Variant="Variant.Outlined">No customers found.</MudAlert>
+                </NoRecordsContent>
+            </MudTable>
+        </MudCardContent>
+    </MudCard>
+</MudContainer>
+
+@code {
+    private List<Party> _customers = new();
+    private string _searchString = "";
+    private bool _loading = true;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadCustomers();
+    }
+
+    private async Task LoadCustomers()
+    {
+        _loading = true;
+        try
+        {
+            _customers = await DbContext.Parties
+                .Where(p => !p.IsDeleted && (
+                    p.PartyType == PartyType.Customer || 
+                    p.PartyType == PartyType.DeliveryAgent || 
+                    p.PartyType == PartyType.CoLoader))
+                .OrderBy(p => p.Name)
+                .ToListAsync();
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private bool FilterFunc(Party party)
+    {
+        if (string.IsNullOrWhiteSpace(_searchString))
+            return true;
+
+        return (party.Name?.Contains(_searchString, StringComparison.OrdinalIgnoreCase) ?? false) ||
+               (party.Code?.Contains(_searchString, StringComparison.OrdinalIgnoreCase) ?? false) ||
+               (party.CustomerAccountNo?.Contains(_searchString, StringComparison.OrdinalIgnoreCase) ?? false) ||
+               (party.ContactPerson?.Contains(_searchString, StringComparison.OrdinalIgnoreCase) ?? false) ||
+               (party.Email?.Contains(_searchString, StringComparison.OrdinalIgnoreCase) ?? false);
+    }
+
+    private Color GetPartyTypeColor(PartyType type) => type switch
+    {
+        PartyType.Customer => Color.Primary,
+        PartyType.DeliveryAgent => Color.Warning,
+        PartyType.CoLoader => Color.Info,
+        _ => Color.Default
+    };
+
+    private async Task OpenCreateDialog()
+    {
+        var newParty = new Party { PartyType = PartyType.Customer, IsActive = true };
+        var allowedTypes = new List<PartyType> { PartyType.Customer, PartyType.DeliveryAgent, PartyType.CoLoader };
+        var parameters = new DialogParameters<CustomerNewDialog> 
+        { 
+            { x => x.Party, newParty }, 
+            { x => x.IsNew, true },
+            { x => x.AllowedPartyTypes, allowedTypes }
+        };
+        var options = new DialogOptions { MaxWidth = MaxWidth.Medium, FullWidth = true };
+        var dialog = await DialogService.ShowAsync<CustomerNewDialog>("Add Customer", parameters, options);
+        var result = await dialog.Result;
+        
+        if (!result!.Canceled)
+        {
+            await LoadCustomers();
+            Snackbar.Add("Customer created successfully", Severity.Success);
+        }
+    }
+
+    private async Task OpenEditDialog(Party customer)
+    {
+        var allowedTypes = new List<PartyType> { PartyType.Customer, PartyType.DeliveryAgent, PartyType.CoLoader };
+        var parameters = new DialogParameters<CustomerNewDialog> 
+        { 
+            { x => x.Party, customer }, 
+            { x => x.IsNew, false },
+            { x => x.AllowedPartyTypes, allowedTypes }
+        };
+        var options = new DialogOptions { MaxWidth = MaxWidth.Medium, FullWidth = true };
+        var dialog = await DialogService.ShowAsync<CustomerNewDialog>("Edit Customer", parameters, options);
+        var result = await dialog.Result;
+        
+        if (!result!.Canceled)
+        {
+            await LoadCustomers();
+            Snackbar.Add("Customer updated successfully", Severity.Success);
+        }
+    }
+
+    private async Task OpenAddressesDialog(Party customer)
+    {
+        var parameters = new DialogParameters<PartyAddressesDialog> { { x => x.Party, customer } };
+        var options = new DialogOptions { MaxWidth = MaxWidth.Medium, FullWidth = true };
+        await DialogService.ShowAsync<PartyAddressesDialog>("Manage Addresses", parameters, options);
+    }
+
+    private async Task DeleteCustomer(Party customer)
+    {
+        var confirm = await DialogService.ShowMessageBox(
+            "Confirm Delete",
+            $"Are you sure you want to delete '{customer.Name}'?",
+            yesText: "Delete", cancelText: "Cancel");
+
+        if (confirm == true)
+        {
+            customer.IsDeleted = true;
+            customer.ModifiedAt = DateTime.UtcNow;
+            DbContext.Parties.Update(customer);
+            await DbContext.SaveChangesAsync();
+            await LoadCustomers();
+            Snackbar.Add("Customer deleted successfully", Severity.Success);
+        }
+    }
+}
