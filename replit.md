@@ -43,6 +43,7 @@ The application is built on .NET 8 Blazor Server, adopting a modular architectur
 - **Demo Data & Setup**: Admin feature to create/delete demo data, initial setup dialog for new deployments, and a secure initial setup wizard at `/setup`.
 - **Platform Administration**: Dedicated admin section with Tenant Settings, Subscription Management, and user management features.
 - **Utility Features**: CLI password reset utility, AWB barcode generation, tracking/shipment invoice PDF generation via API, customer CRM with complaints/tickets, branch display settings, branch currency as default, and a "Delete All Business Data" feature for platform admins.
+- **Application Launchpad**: Card-based dashboard at `/launchpad` showing 8 module categories with role-based access control. Unauthorized modules are hidden (not disabled) from users based on RolePermissions.MenuCode. Includes search functionality across all permitted items.
 
 ## External Dependencies
 - **Database**: PostgreSQL
