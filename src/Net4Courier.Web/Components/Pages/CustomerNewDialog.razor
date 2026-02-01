@@ -1,0 +1,638 @@
+@inject ApplicationDbContext DbContext
+@inject IWebHostEnvironment Environment
+@inject ISnackbar Snackbar
+@inject IDialogService DialogService
+@using Microsoft.EntityFrameworkCore
+@using Microsoft.AspNetCore.Components.Forms
+@using Net4Courier.Infrastructure.Data
+@using Net4Courier.Masters.Entities
+
+<MudDialog>
+    <TitleContent>
+        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+            <MudAvatar Color="Color.Primary" Variant="Variant.Outlined" Size="Size.Small">
+                <MudIcon Icon="@(IsNew ? Icons.Material.Filled.PersonAdd : Icons.Material.Filled.Edit)" />
+            </MudAvatar>
+            <MudText Typo="Typo.h6">
+                @(IsNew ? "New Customer Onboarding" : $"Edit Customer: {Party.Name}")
+            </MudText>
+        </MudStack>
+    </TitleContent>
+    <DialogContent>
+        <MudContainer MaxWidth="MaxWidth.False" Class="pa-0">
+            <MudTabs Elevation="0" Rounded="true" ApplyEffectsToContainer="true" PanelClass="pt-4" Color="Color.Transparent">
+                
+                <MudTabPanel Text="Profile & Details" Icon="@Icons.Material.Filled.AssignmentInd">
+                    <MudForm @ref="_form" @bind-IsValid="_formIsValid">
+                        <MudGrid Spacing="3">
+                            
+                            <MudItem xs="12">
+                                <MudCard Outlined="true" Elevation="0">
+                                    <MudCardHeader>
+                                        <CardHeaderContent>
+                                            <MudText Typo="Typo.subtitle2" Color="Color.Primary"><b>Core Identity</b></MudText>
+                                        </CardHeaderContent>
+                                    </MudCardHeader>
+                                    <MudCardContent>
+                                        <MudGrid>
+                                            <MudItem xs="12" md="4">
+                                                <MudSelect Value="Party.CompanyId" Label="Company Entity" Variant="Variant.Outlined" Dense="true"
+                                                           Required="true" T="long" ValueChanged="@((long val) => Party.CompanyId = val)"
+                                                           AnchorOrigin="Origin.BottomCenter" TransformOrigin="Origin.TopCenter">
+                                                    @foreach (var company in _companies)
+                                                    {
+                                                        <MudSelectItem Value="@company.Id">@company.Name</MudSelectItem>
+                                                    }
+                                                </MudSelect>
+                                            </MudItem>
+
+                                            <MudItem xs="12" md="4">
+                                                <MudSelect Value="Party.PartyType" Label="Party Type" Variant="Variant.Outlined" Dense="true"
+                                                           T="PartyType" ValueChanged="OnPartyTypeChanged"
+                                                           AnchorOrigin="Origin.BottomCenter" TransformOrigin="Origin.TopCenter">
+                                                    @if (AllowedPartyTypes == null || AllowedPartyTypes.Contains(PartyType.Customer)) { <MudSelectItem Value="@PartyType.Customer">Customer</MudSelectItem> }
+                                                    @if (AllowedPartyTypes == null || AllowedPartyTypes.Contains(PartyType.DeliveryAgent)) { <MudSelectItem Value="@PartyType.DeliveryAgent">Delivery Agent</MudSelectItem> }
+                                                    @if (AllowedPartyTypes == null || AllowedPartyTypes.Contains(PartyType.CoLoader)) { <MudSelectItem Value="@PartyType.CoLoader">Co-Loader</MudSelectItem> }
+                                                    @if (AllowedPartyTypes == null || AllowedPartyTypes.Contains(PartyType.Supplier)) { <MudSelectItem Value="@PartyType.Supplier">Supplier</MudSelectItem> }
+                                                    @if (AllowedPartyTypes == null || AllowedPartyTypes.Contains(PartyType.ForwardingAgent)) { <MudSelectItem Value="@PartyType.ForwardingAgent">Forwarding Agent</MudSelectItem> }
+                                                </MudSelect>
+                                            </MudItem>
+
+                                            <MudItem xs="12" md="4">
+                                                <MudSelect Value="_accountTypeId" ValueChanged="OnAccountTypeChanged" Label="Account Type"
+                                                           Variant="Variant.Outlined" Required="true" T="long" Dense="true"
+                                                           AnchorOrigin="Origin.BottomCenter" TransformOrigin="Origin.TopCenter">
+                                                    <MudSelectItem Value="0L">-- Select --</MudSelectItem>
+                                                    @foreach (var accType in _accountTypes)
+                                                    {
+                                                        <MudSelectItem Value="@accType.Id">@accType.Name</MudSelectItem>
+                                                    }
+                                                </MudSelect>
+                                            </MudItem>
+                                        </MudGrid>
+                                    </MudCardContent>
+                                </MudCard>
+                            </MudItem>
+
+                            <MudItem xs="12" md="6">
+                                <MudCard Outlined="true" Elevation="0" Style="height:100%;">
+                                    <MudCardHeader>
+                                        <CardHeaderContent>
+                                            <MudText Typo="Typo.subtitle2" Color="Color.Primary"><b>Business Details</b></MudText>
+                                        </CardHeaderContent>
+                                    </MudCardHeader>
+                                    <MudCardContent>
+                                        <MudStack Spacing="2">
+                                            <MudTextField @bind-Value="Party.Name" Label="Customer Name" Required="true" RequiredError="Required" 
+                                                          Variant="Variant.Outlined" Dense="true" Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Filled.Business" />
+                                            
+                                            <MudStack Row="true">
+                                                <MudTextField @bind-Value="Party.Code" Label="Short Code" Variant="Variant.Outlined" Dense="true" />
+                                                @if (Party.PartyType == PartyType.Customer)
+                                                {
+                                                    <MudTextField @bind-Value="Party.CustomerAccountNo" Label="Account No" Variant="Variant.Outlined" Dense="true"
+                                                                  Disabled="@_autoGenerateAccountNo"
+                                                                  Adornment="Adornment.End" AdornmentIcon="@(_autoGenerateAccountNo ? Icons.Material.Filled.AutoMode : Icons.Material.Filled.Edit)"
+                                                                  OnAdornmentClick="ToggleAutoGenerate" />
+                                                }
+                                            </MudStack>
+
+                                            <MudDivider Class="my-2"/>
+                                            
+                                            <MudTextField @bind-Value="Party.ContactPerson" Label="Contact Person" Variant="Variant.Outlined" Dense="true" Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Filled.Person" />
+                                            <MudTextField @bind-Value="Party.Email" Label="Email Address" InputType="InputType.Email" Variant="Variant.Outlined" Dense="true" Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Filled.Email" />
+                                            <MudStack Row="true">
+                                                <MudTextField @bind-Value="Party.Phone" Label="Phone" Variant="Variant.Outlined" Dense="true" Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Filled.Phone" />
+                                                <MudTextField @bind-Value="Party.Mobile" Label="Mobile" Variant="Variant.Outlined" Dense="true" Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Filled.Smartphone" />
+                                            </MudStack>
+                                            <MudTextField @bind-Value="Party.TaxNumber" Label="Tax / TRN Number" Variant="Variant.Outlined" Dense="true" />
+                                        </MudStack>
+                                    </MudCardContent>
+                                </MudCard>
+                            </MudItem>
+
+                            <MudItem xs="12" md="6">
+                                <MudCard Outlined="true" Elevation="0" Style="height:100%;">
+                                    <MudCardHeader>
+                                        <CardHeaderContent>
+                                            <MudText Typo="Typo.subtitle2" Color="Color.Primary"><b>Location & Address</b></MudText>
+                                        </CardHeaderContent>
+                                    </MudCardHeader>
+                                    <MudCardContent>
+                                        <MudStack Spacing="2">
+                                            <MudTextField @bind-Value="Party.ClientAddress" Label="Street Address / PO Box" Lines="3" Variant="Variant.Outlined" Dense="true" />
+                                            
+                                            <MudSelect Value="_countryId" Label="Country" Variant="Variant.Outlined" Dense="true" T="long?" Clearable="true" ValueChanged="OnCountryChanged"
+                                                       AnchorOrigin="Origin.BottomCenter" TransformOrigin="Origin.TopCenter" Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Filled.Public">
+                                                @foreach (var country in _countries)
+                                                {
+                                                    <MudSelectItem Value="@((long?)country.Id)">@country.Name</MudSelectItem>
+                                                }
+                                            </MudSelect>
+
+                                            <MudStack Row="true">
+                                                <MudSelect Value="_cityId" Label="City" Variant="Variant.Outlined" Dense="true" T="long?" Clearable="true" Disabled="@(!_countryId.HasValue)" ValueChanged="OnCityChanged"
+                                                           AnchorOrigin="Origin.BottomCenter" TransformOrigin="Origin.TopCenter">
+                                                    @foreach (var city in _cities)
+                                                    {
+                                                        <MudSelectItem Value="@((long?)city.Id)">@city.Name</MudSelectItem>
+                                                    }
+                                                </MudSelect>
+                                                
+                                                <MudSelect Value="_location" Label="Area/Locality" Variant="Variant.Outlined" Dense="true" T="string" Clearable="true" Disabled="@(!_cityId.HasValue)" ValueChanged="OnLocationChanged"
+                                                           AnchorOrigin="Origin.BottomCenter" TransformOrigin="Origin.TopCenter">
+                                                    @foreach (var loc in _locations)
+                                                    {
+                                                        <MudSelectItem Value="@loc.Name">@loc.Name</MudSelectItem>
+                                                    }
+                                                </MudSelect>
+                                            </MudStack>
+                                        </MudStack>
+                                    </MudCardContent>
+                                </MudCard>
+                            </MudItem>
+
+                            <MudItem xs="12">
+                                <MudCard Outlined="true" Elevation="0">
+                                    <MudCardContent>
+                                        <MudGrid>
+                                            <MudItem xs="12" md="6">
+                                                <MudText Typo="Typo.subtitle2" Color="Color.Primary" Class="mb-3"><b>Credit Terms</b></MudText>
+                                                <MudStack Row="true">
+                                                    <MudNumericField @bind-Value="Party.CreditLimit" Label="Credit Limit" Variant="Variant.Outlined" Dense="true" Format="N0" Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Filled.AttachMoney" />
+                                                    <MudNumericField @bind-Value="Party.CreditDays" Label="Days" Variant="Variant.Outlined" Dense="true" Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Filled.CalendarToday" />
+                                                </MudStack>
+                                                <MudSwitch @bind-Value="Party.IsActive" Label="Status Active" Color="Color.Success" Class="mt-2" />
+                                            </MudItem>
+                                            
+                                            <MudItem xs="12" md="6">
+                                                 @if (Party.PartyType == PartyType.Customer)
+                                                 {
+                                                    <MudText Typo="Typo.subtitle2" Color="Color.Primary" Class="mb-3"><b>Branding</b></MudText>
+                                                    <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="3">
+                                                        <MudFileUpload T="IBrowserFile" FilesChanged="OnLogoFileChanged" Accept=".png,.jpg,.jpeg,.gif,.svg">
+                                                            <ActivatorContent>
+                                                                <MudButton Variant="Variant.Outlined" Color="Color.Primary" StartIcon="@Icons.Material.Filled.CloudUpload">
+                                                                    Upload Logo
+                                                                </MudButton>
+                                                            </ActivatorContent>
+                                                        </MudFileUpload>
+                                                        
+                                                        @if (!string.IsNullOrEmpty(Party.Logo))
+                                                        {
+                                                            <MudPaper Class="pa-1 d-flex align-center justify-center" Outlined="true" Style="background:#f5f5f5;">
+                                                                <MudImage Src="@Party.Logo" Alt="Logo" Height="40" ObjectFit="ObjectFit.Contain" />
+                                                            </MudPaper>
+                                                            <MudIconButton Icon="@Icons.Material.Filled.Delete" Color="Color.Error" Size="Size.Small" OnClick="RemoveLogo" />
+                                                        }
+                                                    </MudStack>
+                                                 }
+                                            </MudItem>
+                                        </MudGrid>
+                                    </MudCardContent>
+                                </MudCard>
+                            </MudItem>
+
+                        </MudGrid>
+                    </MudForm>
+                </MudTabPanel>
+
+                @if (Party.PartyType == PartyType.Customer && !IsNew)
+                {
+                    <MudTabPanel Text="Branches & Depts" Icon="@Icons.Material.Filled.Store">
+                        <MudCard Outlined="true" Elevation="0" Class="mt-2">
+                             <MudCardHeader>
+                                <CardHeaderContent>
+                                    <MudText Typo="Typo.h6">Branch Network</MudText>
+                                    <MudText Typo="Typo.body2" Color="Color.Secondary">Manage sub-offices and departments for this customer.</MudText>
+                                </CardHeaderContent>
+                                <CardHeaderActions>
+                                    <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add" OnClick="AddBranch">Add Branch</MudButton>
+                                </CardHeaderActions>
+                            </MudCardHeader>
+                            <MudCardContent>
+                                @if (_branches.Any())
+                                {
+                                    <MudTable Items="@_branches" Dense="true" Hover="true" Striped="true" Elevation="0" Breakpoint="Breakpoint.Sm">
+                                        <HeaderContent>
+                                            <MudTh>Branch Name</MudTh>
+                                            <MudTh>Contact Person</MudTh>
+                                            <MudTh>Phone / Mobile</MudTh>
+                                            <MudTh>City</MudTh>
+                                            <MudTh Style="text-align:right">Actions</MudTh>
+                                        </HeaderContent>
+                                        <RowTemplate>
+                                            <MudTd DataLabel="Name">
+                                                <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="1">
+                                                    @if (context.IsHeadOffice) { <MudIcon Icon="@Icons.Material.Filled.Star" Size="Size.Small" Color="Color.Warning" Title="Head Office" /> }
+                                                    <MudText Typo="Typo.body2" Style="font-weight:500;">@context.Name</MudText>
+                                                </MudStack>
+                                            </MudTd>
+                                            <MudTd DataLabel="Contact">@context.ContactName</MudTd>
+                                            <MudTd DataLabel="Phone">@(context.Phone ?? context.Mobile)</MudTd>
+                                            <MudTd DataLabel="City">@context.City</MudTd>
+                                            <MudTd DataLabel="Actions" Style="text-align:right">
+                                                <MudIconButton Icon="@Icons.Material.Filled.Edit" Size="Size.Small" Color="Color.Primary" OnClick="@(() => EditBranch(context))" />
+                                                <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" Color="Color.Error" OnClick="@(() => DeleteBranch(context))" />
+                                            </MudTd>
+                                        </RowTemplate>
+                                    </MudTable>
+                                }
+                                else
+                                {
+                                    <MudAlert Severity="Severity.Info" Variant="Variant.Outlined" Class="mt-2">No branches found. Click "Add Branch" to create the first one.</MudAlert>
+                                }
+                            </MudCardContent>
+                        </MudCard>
+                    </MudTabPanel>
+                }
+
+            </MudTabs>
+        </MudContainer>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Cancel" Variant="Variant.Text">Cancel</MudButton>
+        <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="Save" Disabled="!_formIsValid" Class="ml-2">@(IsNew ? "Create Customer" : "Save Changes")</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] MudDialogInstance MudDialog { get; set; } = null!;
+    [Parameter] public Party Party { get; set; } = new();
+    [Parameter] public bool IsNew { get; set; }
+    [Parameter] public List<PartyType>? AllowedPartyTypes { get; set; }
+
+    private MudForm _form = null!;
+    private bool _formIsValid;
+    private List<Company> _companies = new();
+    private List<Country> _countries = new();
+    private List<City> _cities = new();
+    private List<Location> _locations = new();
+    private List<AccountType> _accountTypes = new();
+    private List<CustomerBranch> _branches = new();
+    private long _accountTypeId;
+    private long? _countryId;
+    private long? _cityId;
+    private string? _location;
+    private bool _autoGenerateAccountNo = true;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _companies = await DbContext.Companies.Where(c => c.IsActive && !c.IsDeleted).OrderBy(c => c.Name).ToListAsync();
+        _countries = await DbContext.Countries.Where(c => c.IsActive && !c.IsDeleted).OrderBy(c => c.Name).ToListAsync();
+        _accountTypes = await DbContext.AccountTypes.Where(a => a.IsActive && !a.IsDeleted).OrderBy(a => a.SortOrder).ToListAsync();
+
+        if (IsNew)
+        {
+            if (_companies.Any())
+                Party.CompanyId = _companies.First().Id;
+            
+            var india = _countries.FirstOrDefault(c => c.Name == "India");
+            if (india != null)
+            {
+                _countryId = india.Id;
+                _cities = await DbContext.Cities.Where(c => c.CountryId == india.Id && c.IsActive && !c.IsDeleted).OrderBy(c => c.Name).ToListAsync();
+            }
+            
+            if (_accountTypes.Any())
+            {
+                _accountTypeId = _accountTypes.First().Id;
+                Party.AccountTypeId = _accountTypeId;
+            }
+            
+            _autoGenerateAccountNo = true;
+            await GenerateNextAccountNo();
+        }
+        else
+        {
+            _accountTypeId = Party.AccountTypeId ?? 0;
+            _autoGenerateAccountNo = string.IsNullOrEmpty(Party.CustomerAccountNo);
+            if (_autoGenerateAccountNo)
+            {
+                await GenerateNextAccountNo();
+            }
+            await LoadExistingPartyAddress();
+            await LoadBranches();
+        }
+    }
+
+    private async Task LoadBranches()
+    {
+        _branches = await DbContext.CustomerBranches
+            .Where(b => b.PartyId == Party.Id && !b.IsDeleted && b.IsActive)
+            .OrderByDescending(b => b.IsHeadOffice)
+            .ThenBy(b => b.Name)
+            .ToListAsync();
+    }
+    
+    private async Task GenerateNextAccountNo()
+    {
+        if (Party.PartyType != PartyType.Customer) return;
+        
+        var maxAccountNo = await DbContext.Parties
+            .Where(p => p.PartyType == PartyType.Customer && !p.IsDeleted && p.CustomerAccountNo != null)
+            .Select(p => p.CustomerAccountNo)
+            .ToListAsync();
+        
+        long maxNum = 0;
+        foreach (var accNo in maxAccountNo)
+        {
+            if (long.TryParse(accNo, out var num) && num > maxNum)
+                maxNum = num;
+        }
+        
+        Party.CustomerAccountNo = (maxNum + 1).ToString().PadLeft(6, '0');
+    }
+
+    private async Task ToggleAutoGenerate()
+    {
+        _autoGenerateAccountNo = !_autoGenerateAccountNo;
+        if (_autoGenerateAccountNo && Party.PartyType == PartyType.Customer)
+        {
+            await GenerateNextAccountNo();
+        }
+        StateHasChanged();
+    }
+
+    private async Task OnPartyTypeChanged(PartyType newType)
+    {
+        Party.PartyType = newType;
+        
+        if (newType == PartyType.Customer && _autoGenerateAccountNo)
+        {
+            await GenerateNextAccountNo();
+        }
+        else if (newType != PartyType.Customer)
+        {
+            Party.CustomerAccountNo = null;
+        }
+        
+        StateHasChanged();
+    }
+
+    private void OnAccountTypeChanged(long accountTypeId)
+    {
+        _accountTypeId = accountTypeId;
+        Party.AccountTypeId = accountTypeId > 0 ? accountTypeId : null;
+        StateHasChanged();
+    }
+
+    private async Task LoadExistingPartyAddress()
+    {
+        var primaryAddress = await DbContext.PartyAddresses
+            .Where(a => a.PartyId == Party.Id && !a.IsDeleted)
+            .OrderByDescending(a => a.IsDefault)
+            .FirstOrDefaultAsync();
+
+        if (primaryAddress != null)
+        {
+            var country = _countries.FirstOrDefault(c => c.Name == primaryAddress.Country);
+            if (country != null)
+            {
+                _countryId = country.Id;
+                _cities = await DbContext.Cities.Where(c => c.CountryId == country.Id && c.IsActive && !c.IsDeleted).OrderBy(c => c.Name).ToListAsync();
+
+                var city = _cities.FirstOrDefault(c => c.Name == primaryAddress.City);
+                if (city != null)
+                {
+                    _cityId = city.Id;
+                    _locations = await DbContext.Locations.Where(l => l.CityId == city.Id && l.IsActive && !l.IsDeleted).OrderBy(l => l.Name).ToListAsync();
+                    _location = primaryAddress.Landmark;
+                }
+            }
+        }
+    }
+
+    private async Task OnCountryChanged(long? countryId)
+    {
+        _countryId = countryId;
+        _cityId = null;
+        _location = null;
+        _cities.Clear();
+        _locations.Clear();
+
+        if (countryId.HasValue)
+        {
+            _cities = await DbContext.Cities.Where(c => c.CountryId == countryId && c.IsActive && !c.IsDeleted).OrderBy(c => c.Name).ToListAsync();
+        }
+        StateHasChanged();
+    }
+
+    private async Task OnCityChanged(long? cityId)
+    {
+        _cityId = cityId;
+        _location = null;
+        _locations.Clear();
+
+        if (cityId.HasValue)
+        {
+            _locations = await DbContext.Locations.Where(l => l.CityId == cityId && l.IsActive && !l.IsDeleted).OrderBy(l => l.Name).ToListAsync();
+        }
+        StateHasChanged();
+    }
+
+    private void OnLocationChanged(string? locationName)
+    {
+        _location = locationName;
+        StateHasChanged();
+    }
+
+    private async Task AddBranch()
+    {
+        var branch = new CustomerBranch { PartyId = Party.Id, IsActive = true };
+        var result = await ShowBranchDialog(branch, true);
+        if (result)
+        {
+            await LoadBranches();
+        }
+    }
+
+    private async Task EditBranch(CustomerBranch branch)
+    {
+        var result = await ShowBranchDialog(branch, false);
+        if (result)
+        {
+            await LoadBranches();
+        }
+    }
+
+    private async Task<bool> ShowBranchDialog(CustomerBranch branch, bool isNew)
+    {
+        var parameters = new DialogParameters<CustomerBranchDialog>
+        {
+            { x => x.Branch, branch },
+            { x => x.IsNew, isNew }
+        };
+
+        var options = new DialogOptions { MaxWidth = MaxWidth.Small, FullWidth = true };
+        var dialog = await DialogService.ShowAsync<CustomerBranchDialog>(
+            isNew ? "Add Branch" : "Edit Branch", parameters, options);
+        var result = await dialog.Result;
+        
+        return result is { Canceled: false };
+    }
+
+    private async Task DeleteBranch(CustomerBranch branch)
+    {
+        branch.IsDeleted = true;
+        branch.ModifiedAt = DateTime.UtcNow;
+        DbContext.CustomerBranches.Update(branch);
+        await DbContext.SaveChangesAsync();
+        await LoadBranches();
+        Snackbar.Add("Branch deleted", Severity.Success);
+    }
+
+    private async Task Save()
+    {
+        await _form.Validate();
+        if (!_formIsValid) return;
+
+        if (Party.PartyType == PartyType.Customer && _autoGenerateAccountNo)
+        {
+            await GenerateNextAccountNo();
+        }
+
+        if (IsNew)
+        {
+            Party.CreatedAt = DateTime.UtcNow;
+            
+            if (Party.PartyType == PartyType.Customer && (Party.CreditLimit > 0 || Party.CreditDays > 0))
+            {
+                Party.CreditApprovalStatus = CreditApprovalStatus.Pending;
+            }
+            else
+            {
+                Party.CreditApprovalStatus = CreditApprovalStatus.NotApplicable;
+            }
+            
+            DbContext.Parties.Add(Party);
+            await DbContext.SaveChangesAsync();
+
+            if (_countryId.HasValue || _cityId.HasValue || !string.IsNullOrEmpty(_location))
+            {
+                var address = new PartyAddress
+                {
+                    PartyId = Party.Id,
+                    AddressType = "Primary",
+                    IsDefault = true,
+                    Country = _countries.FirstOrDefault(c => c.Id == _countryId)?.Name,
+                    City = _cities.FirstOrDefault(c => c.Id == _cityId)?.Name,
+                    Landmark = _location,
+                    CreatedAt = DateTime.UtcNow
+                };
+                DbContext.PartyAddresses.Add(address);
+                await DbContext.SaveChangesAsync();
+            }
+        }
+        else
+        {
+            Party.ModifiedAt = DateTime.UtcNow;
+            
+            if (Party.PartyType == PartyType.Customer)
+            {
+                bool hasCredit = Party.CreditLimit > 0 || Party.CreditDays > 0;
+                
+                if (hasCredit)
+                {
+                    if (Party.CreditApprovalStatus == CreditApprovalStatus.NotApplicable || 
+                        Party.CreditApprovalStatus == CreditApprovalStatus.Rejected)
+                    {
+                        Party.CreditApprovalStatus = CreditApprovalStatus.Pending;
+                    }
+                }
+            }
+            
+            DbContext.Parties.Update(Party);
+
+            var primaryAddress = await DbContext.PartyAddresses
+                .Where(a => a.PartyId == Party.Id && !a.IsDeleted)
+                .OrderByDescending(a => a.IsDefault)
+                .FirstOrDefaultAsync();
+
+            if (primaryAddress != null)
+            {
+                primaryAddress.Country = _countries.FirstOrDefault(c => c.Id == _countryId)?.Name;
+                primaryAddress.City = _cities.FirstOrDefault(c => c.Id == _cityId)?.Name;
+                primaryAddress.Landmark = _location;
+                primaryAddress.ModifiedAt = DateTime.UtcNow;
+                DbContext.PartyAddresses.Update(primaryAddress);
+            }
+            else if (_countryId.HasValue || _cityId.HasValue || !string.IsNullOrEmpty(_location))
+            {
+                var address = new PartyAddress
+                {
+                    PartyId = Party.Id,
+                    AddressType = "Primary",
+                    IsDefault = true,
+                    Country = _countries.FirstOrDefault(c => c.Id == _countryId)?.Name,
+                    City = _cities.FirstOrDefault(c => c.Id == _cityId)?.Name,
+                    Landmark = _location,
+                    CreatedAt = DateTime.UtcNow
+                };
+                DbContext.PartyAddresses.Add(address);
+            }
+
+            await DbContext.SaveChangesAsync();
+        }
+
+        MudDialog.Close(DialogResult.Ok(Party));
+    }
+
+    private void Cancel() => MudDialog.Cancel();
+
+    private async Task OnLogoFileChanged(IBrowserFile file)
+    {
+        try
+        {
+            if (file.Size > 2 * 1024 * 1024)
+            {
+                Snackbar.Add("Logo file size must be less than 2MB", Severity.Warning);
+                return;
+            }
+
+            var allowedExtensions = new[] { ".png", ".jpg", ".jpeg", ".gif", ".svg" };
+            var extension = Path.GetExtension(file.Name).ToLowerInvariant();
+            if (!allowedExtensions.Contains(extension))
+            {
+                Snackbar.Add("Invalid file type. Please upload PNG, JPG, GIF, or SVG", Severity.Warning);
+                return;
+            }
+
+            var uploadsFolder = Path.Combine(Environment.WebRootPath, "uploads", "logos");
+            Directory.CreateDirectory(uploadsFolder);
+
+            var fileName = $"customer_{(Party.Id > 0 ? Party.Id : DateTime.UtcNow.Ticks)}_{Guid.NewGuid():N}{extension}";
+            var filePath = Path.Combine(uploadsFolder, fileName);
+
+            await using var stream = new FileStream(filePath, FileMode.Create);
+            await file.OpenReadStream(maxAllowedSize: 2 * 1024 * 1024).CopyToAsync(stream);
+
+            if (!string.IsNullOrEmpty(Party.Logo))
+            {
+                var oldPath = Path.Combine(Environment.WebRootPath, Party.Logo.TrimStart('/'));
+                if (File.Exists(oldPath))
+                    File.Delete(oldPath);
+            }
+
+            Party.Logo = $"/uploads/logos/{fileName}";
+            Snackbar.Add("Logo uploaded successfully", Severity.Success);
+            StateHasChanged();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error uploading logo: {ex.Message}", Severity.Error);
+        }
+    }
+
+    private void RemoveLogo()
+    {
+        if (!string.IsNullOrEmpty(Party.Logo))
+        {
+            var filePath = Path.Combine(Environment.WebRootPath, Party.Logo.TrimStart('/'));
+            if (File.Exists(filePath))
+                File.Delete(filePath);
+        }
+        Party.Logo = null;
+        StateHasChanged();
+    }
+}
