@@ -1351,6 +1351,18 @@ public class DemoDataService : IDemoDataService
 
         if (accountHeads.Count < 2)
         {
+            LastError = "At least 2 Account Heads are required to create Finance data. Please create Account Heads first.";
+            _logger.LogWarning("CreateFinanceDataAsync skipped: Not enough Account Heads available ({Count})", accountHeads.Count);
+            return false;
+        }
+
+        var existingDemoJournals = await context.Journals
+            .Where(j => j.IsDemo)
+            .AnyAsync();
+        
+        if (existingDemoJournals)
+        {
+            _logger.LogInformation("Demo finance data already exists, skipping creation");
             return true;
         }
 
