@@ -278,6 +278,19 @@ public class DemoDataService : IDemoDataService
             };
             context.GLTaxCodes.AddRange(taxCodes);
 
+            var existingDemoCurrencies = await context.Currencies.Where(c => c.IsDemo).AnyAsync();
+            if (!existingDemoCurrencies)
+            {
+                var demoCurrencies = new List<Net4Courier.Masters.Entities.Currency>
+                {
+                    new Net4Courier.Masters.Entities.Currency { Code = "DEMO-AED", Name = "DEMO UAE Dirham", Symbol = "د.إ", DecimalPlaces = 2, IsActive = true, IsDemo = true, CreatedAt = now },
+                    new Net4Courier.Masters.Entities.Currency { Code = "DEMO-USD", Name = "DEMO US Dollar", Symbol = "$", DecimalPlaces = 2, IsActive = true, IsDemo = true, CreatedAt = now },
+                    new Net4Courier.Masters.Entities.Currency { Code = "DEMO-EUR", Name = "DEMO Euro", Symbol = "€", DecimalPlaces = 2, IsActive = true, IsDemo = true, CreatedAt = now },
+                    new Net4Courier.Masters.Entities.Currency { Code = "DEMO-INR", Name = "DEMO Indian Rupee", Symbol = "₹", DecimalPlaces = 2, IsActive = true, IsDemo = true, CreatedAt = now }
+                };
+                context.Currencies.AddRange(demoCurrencies);
+            }
+
             await context.SaveChangesAsync();
             LastError = null;
             return true;
@@ -1344,15 +1357,23 @@ public class DemoDataService : IDemoDataService
         if (company == null) return false;
         var companyId = company.Id;
 
+        var branch = await context.Branches.FirstOrDefaultAsync(b => b.CompanyId == companyId);
+        var branchId = branch?.Id ?? 1;
+
         var accountHeads = await context.AccountHeads
             .Where(a => a.IsActive)
             .Take(10)
             .ToListAsync();
 
-        if (accountHeads.Count < 2)
+        var glAccounts = await context.GLChartOfAccounts
+            .Where(a => a.IsActive && a.AllowPosting && a.IsDemo)
+            .Take(10)
+            .ToListAsync();
+
+        if (accountHeads.Count < 2 && glAccounts.Count < 2)
         {
-            LastError = "At least 2 Account Heads are required to create Finance data. Please create Account Heads first.";
-            _logger.LogWarning("CreateFinanceDataAsync skipped: Not enough Account Heads available ({Count})", accountHeads.Count);
+            LastError = "At least 2 Account Heads or GL Chart of Accounts are required. Please create GL Data first.";
+            _logger.LogWarning("CreateFinanceDataAsync skipped: Not enough accounts available (AccountHeads: {AH}, GLAccounts: {GL})", accountHeads.Count, glAccounts.Count);
             return false;
         }
 
@@ -1366,6 +1387,8 @@ public class DemoDataService : IDemoDataService
             return true;
         }
 
+        bool useGLAccounts = accountHeads.Count < 2;
+
         for (int i = 0; i < 3; i++)
         {
             var journal = new Journal
@@ -1373,7 +1396,7 @@ public class DemoDataService : IDemoDataService
                 VoucherNo = $"DEMO-JV-{(i + 1):D4}",
                 VoucherDate = DateTime.UtcNow.AddDays(-10 + i),
                 CompanyId = companyId,
-                BranchId = 1,
+                BranchId = branchId,
                 VoucherType = "JV",
                 Narration = $"Demo journal entry {i + 1} - Manual adjustment",
                 TotalDebit = 1000 + (i * 500),
@@ -1388,15 +1411,38 @@ public class DemoDataService : IDemoDataService
             context.Journals.Add(journal);
             await context.SaveChangesAsync();
 
-            var debitAccount = accountHeads[i % accountHeads.Count];
-            var creditAccount = accountHeads[(i + 1) % accountHeads.Count];
+            long debitAccountId, creditAccountId;
+            string debitCode, creditCode, debitName, creditName;
+
+            if (useGLAccounts)
+            {
+                var debitGL = glAccounts[i % glAccounts.Count];
+                var creditGL = glAccounts[(i + 1) % glAccounts.Count];
+                debitAccountId = debitGL.Id;
+                creditAccountId = creditGL.Id;
+                debitCode = debitGL.AccountCode ?? "";
+                creditCode = creditGL.AccountCode ?? "";
+                debitName = debitGL.AccountName ?? "";
+                creditName = creditGL.AccountName ?? "";
+            }
+            else
+            {
+                var debitAH = accountHeads[i % accountHeads.Count];
+                var creditAH = accountHeads[(i + 1) % accountHeads.Count];
+                debitAccountId = debitAH.Id;
+                creditAccountId = creditAH.Id;
+                debitCode = debitAH.Code ?? "";
+                creditCode = creditAH.Code ?? "";
+                debitName = debitAH.Name ?? "";
+                creditName = creditAH.Name ?? "";
+            }
 
             var debitEntry = new Net4Courier.Finance.Entities.JournalEntry
             {
                 JournalId = journal.Id,
-                AccountHeadId = debitAccount.Id,
-                AccountCode = debitAccount.Code,
-                AccountName = debitAccount.Name,
+                AccountHeadId = debitAccountId,
+                AccountCode = debitCode,
+                AccountName = debitName,
                 Debit = 1000 + (i * 500),
                 Credit = 0,
                 Narration = "Demo debit entry",
@@ -1408,9 +1454,9 @@ public class DemoDataService : IDemoDataService
             var creditEntry = new Net4Courier.Finance.Entities.JournalEntry
             {
                 JournalId = journal.Id,
-                AccountHeadId = creditAccount.Id,
-                AccountCode = creditAccount.Code,
-                AccountName = creditAccount.Name,
+                AccountHeadId = creditAccountId,
+                AccountCode = creditCode,
+                AccountName = creditName,
                 Debit = 0,
                 Credit = 1000 + (i * 500),
                 Narration = "Demo credit entry",
@@ -1424,7 +1470,17 @@ public class DemoDataService : IDemoDataService
 
         await context.SaveChangesAsync();
 
-        var cashAccountHead = accountHeads.FirstOrDefault(a => a.Name?.Contains("Cash") == true) ?? accountHeads[0];
+        long cashAccountId;
+        if (useGLAccounts)
+        {
+            var cashGL = glAccounts.FirstOrDefault(a => a.AccountName?.Contains("Cash") == true) ?? glAccounts[0];
+            cashAccountId = cashGL.Id;
+        }
+        else
+        {
+            var cashAH = accountHeads.FirstOrDefault(a => a.Name?.Contains("Cash") == true) ?? accountHeads[0];
+            cashAccountId = cashAH.Id;
+        }
 
         for (int i = 0; i < 3; i++)
         {
@@ -1435,7 +1491,7 @@ public class DemoDataService : IDemoDataService
                 TransactionType = TransactionType.Cash,
                 RecPayType = RecPayType.Receipt,
                 TransactionCategory = TransactionCategory.GL,
-                SourceAccountId = cashAccountHead.Id,
+                SourceAccountId = cashAccountId,
                 TotalAmount = 500 + (i * 250),
                 Status = CashBankStatus.Posted,
                 PostedDate = DateTime.UtcNow.AddDays(-4 + i),
@@ -1449,6 +1505,18 @@ public class DemoDataService : IDemoDataService
             context.CashBankTransactions.Add(cashTransaction);
         }
 
+        long bankAccountId;
+        if (useGLAccounts)
+        {
+            var bankGL = glAccounts.FirstOrDefault(a => a.AccountName?.Contains("Bank") == true) ?? glAccounts[Math.Min(1, glAccounts.Count - 1)];
+            bankAccountId = bankGL.Id;
+        }
+        else
+        {
+            var bankAH = accountHeads.FirstOrDefault(a => a.Name?.Contains("Bank") == true) ?? accountHeads[Math.Min(1, accountHeads.Count - 1)];
+            bankAccountId = bankAH.Id;
+        }
+
         for (int i = 0; i < 3; i++)
         {
             var bankTransaction = new Net4Courier.Finance.Entities.CashBankTransaction
@@ -1458,7 +1526,7 @@ public class DemoDataService : IDemoDataService
                 TransactionType = TransactionType.Bank,
                 RecPayType = i < 2 ? RecPayType.Receipt : RecPayType.Payment,
                 TransactionCategory = TransactionCategory.GL,
-                SourceAccountId = accountHeads.Count > 1 ? accountHeads[1].Id : accountHeads[0].Id,
+                SourceAccountId = bankAccountId,
                 TotalAmount = 2000 + (i * 1000),
                 BankName = "Emirates NBD",
                 BranchName = "Dubai Main Branch",
@@ -1495,9 +1563,9 @@ public class DemoDataService : IDemoDataService
                 OpeningBalanceDate = DateTime.UtcNow.AddMonths(-6).Date,
                 Notes = "[DEMO] Demo bank account for testing",
                 IsActive = true,
-                AccountHeadId = accountHeads.Count > 1 ? accountHeads[1].Id : accountHeads[0].Id,
+                AccountHeadId = bankAccountId,
                 CompanyId = companyId,
-                BranchId = 1,
+                BranchId = branchId,
                 CreatedAt = DateTime.UtcNow
             };
 
@@ -1507,7 +1575,7 @@ public class DemoDataService : IDemoDataService
             var reconciliation = new Net4Courier.Finance.Entities.BankReconciliation
             {
                 CompanyId = companyId,
-                BranchId = 1,
+                BranchId = branchId,
                 BankAccountId = bankAccount.Id,
                 ReconciliationNumber = "DEMO-RECON-001",
                 StatementDate = DateTime.UtcNow.AddDays(-1).Date,
