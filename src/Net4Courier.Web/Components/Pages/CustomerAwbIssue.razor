@@ -153,11 +153,15 @@
                     <MudPaper Class="pa-3 mb-3" Elevation="1" Style="background-color: var(--mud-palette-background-grey);">
                         <MudGrid>
                             <MudItem xs="6" md="3">
-                                <MudTextField @bind-Value="_origin" Label="Origin" Variant="Variant.Outlined" Dense="true" />
+                                <MudAutocomplete T="City" Label="Origin" @bind-Value="_selectedOrigin"
+                                                 SearchFunc="SearchCities" ToStringFunc="@(c => c?.Name ?? "")"
+                                                 Variant="Variant.Outlined" Dense="true" />
                             </MudItem>
                             <MudItem xs="6" md="3">
-                                <MudTextField @bind-Value="_destination" Label="Destination" Variant="Variant.Outlined" Dense="true" 
-                                              Required="@(_issueType == AwbIssueType.Prepaid)" RequiredError="Destination is required for Prepaid AWB" />
+                                <MudAutocomplete T="City" Label="Destination" @bind-Value="_selectedDestination"
+                                                 SearchFunc="SearchCities" ToStringFunc="@(c => c?.Name ?? "")"
+                                                 Variant="Variant.Outlined" Dense="true" 
+                                                 Required="@(_issueType == AwbIssueType.Prepaid)" RequiredError="Destination is required for Prepaid AWB" />
                             </MudItem>
                             <MudItem xs="4" md="2">
                                 <MudNumericField @bind-Value="_noOfAwbs" Label="No. of AWBs" Min="1" Variant="Variant.Outlined" Dense="true" Required="true" />
@@ -261,8 +265,8 @@
     private string _issueNo = "";
     private DateTime? _issueDate = DateTime.Today;
     private Party? _selectedCustomer;
-    private string? _origin;
-    private string? _destination;
+    private City? _selectedOrigin;
+    private City? _selectedDestination;
     private int _noOfAwbs = 1;
     private decimal _ratePerAwb;
     private AwbIssuePaymentMode? _paymentMode;
@@ -389,6 +393,21 @@
         return await query.Take(20).ToListAsync(cancellationToken);
     }
 
+    private async Task<IEnumerable<City>> SearchCities(string value, CancellationToken cancellationToken)
+    {
+        await using var db = await DbContextFactory.CreateDbContextAsync();
+        
+        var query = db.Cities
+            .Where(c => c.IsActive && !c.IsDeleted);
+
+        if (!string.IsNullOrEmpty(value))
+        {
+            query = query.Where(c => c.Name.Contains(value) || (c.Code != null && c.Code.Contains(value)));
+        }
+
+        return await query.OrderBy(c => c.Name).Take(20).ToListAsync(cancellationToken);
+    }
+
     private async Task LoadCustomerBalance()
     {
         if (_selectedCustomer == null) return;
@@ -425,7 +444,7 @@
 
         if (_issueType == AwbIssueType.Prepaid)
         {
-            if (string.IsNullOrWhiteSpace(_destination))
+            if (_selectedDestination == null)
             {
                 Snackbar.Add("Destination is mandatory for Prepaid AWB", Severity.Warning);
                 return;
@@ -481,8 +500,8 @@
                 CustomerId = _selectedCustomer.Id,
                 CustomerName = _selectedCustomer.Name,
                 IssueType = _issueType,
-                Origin = _origin,
-                Destination = _destination,
+                Origin = _selectedOrigin?.Name,
+                Destination = _selectedDestination?.Name,
                 DestinationLocked = _issueType == AwbIssueType.Prepaid,
                 NoOfAWBs = _noOfAwbs,
                 RatePerAWB = _issueType == AwbIssueType.Prepaid ? _ratePerAwb : 0,
@@ -582,8 +601,8 @@
     private void ClearForm()
     {
         _selectedCustomer = null;
-        _origin = null;
-        _destination = null;
+        _selectedOrigin = null;
+        _selectedDestination = null;
         _noOfAwbs = 1;
         _ratePerAwb = 0;
         _paymentMode = null;
