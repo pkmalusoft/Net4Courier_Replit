@@ -75,11 +75,12 @@ MudBlazor's default Popover z-index (1200) is lower than Dialog z-index (1400), 
 ```
 
 ### MudSelect Dropdown Pattern (in Dialogs)
-Use Value + ValueChanged pattern for cascading dropdowns, or @bind-Value for simple dropdowns:
+**CRITICAL: Always use `DisablePortal="true"` for MudSelect inside MudDialog** - Without this, dropdowns render to `<body>` and get hidden/clipped inside dialogs.
 
-**Pattern 1: Simple dropdown with @bind-Value**
+**Pattern 1: Simple dropdown with @bind-Value (inside dialog)**
 ```razor
-<MudSelect T="long" @bind-Value="_selectedCurrencyId" Label="Currency" Variant="Variant.Outlined">
+<MudSelect T="long" @bind-Value="_selectedCurrencyId" Label="Currency" Variant="Variant.Outlined"
+           DisablePortal="true">
     <MudSelectItem T="long" Value="0L">-- Select --</MudSelectItem>
     @foreach (var currency in _currencies)
     {
@@ -88,11 +89,11 @@ Use Value + ValueChanged pattern for cascading dropdowns, or @bind-Value for sim
 </MudSelect>
 ```
 
-**Pattern 2: Cascading dropdown with Value + ValueChanged**
+**Pattern 2: Cascading dropdown with Value + ValueChanged (inside dialog)**
 ```razor
 <!-- Country dropdown triggers city reload -->
 <MudSelect T="long?" Value="_countryId" Label="Country" Variant="Variant.Outlined"
-           Clearable="true" ValueChanged="OnCountryChanged">
+           Clearable="true" ValueChanged="OnCountryChanged" DisablePortal="true">
     @foreach (var country in _countries)
     {
         <MudSelectItem T="long?" Value="@((long?)country.Id)">@country.Name</MudSelectItem>
@@ -101,7 +102,7 @@ Use Value + ValueChanged pattern for cascading dropdowns, or @bind-Value for sim
 
 <!-- City dropdown depends on country selection -->
 <MudSelect T="long?" Value="_cityId" Label="City" Variant="Variant.Outlined"
-           Clearable="true" Disabled="@(!_countryId.HasValue)" ValueChanged="OnCityChanged">
+           Clearable="true" Disabled="@(!_countryId.HasValue)" ValueChanged="OnCityChanged" DisablePortal="true">
     @foreach (var city in _cities)
     {
         <MudSelectItem T="long?" Value="@((long?)city.Id)">@city.Name</MudSelectItem>
