@@ -6,11 +6,17 @@ using Net4Courier.Masters.Entities;
 
 namespace Net4Courier.Infrastructure.Services;
 
+public interface IAdminEmailNotifier
+{
+    Task<bool> SendAdminCredentialsEmailAsync(string toEmail, string fullName, string username, string password, string loginUrl);
+}
+
 public interface ISetupService
 {
     Task<bool> IsSetupRequiredAsync();
     Task<bool> IsSetupEnabledAsync();
     Task<bool> ValidateSetupKeyAsync(string setupKey);
+    Task<(bool Success, string Message, bool IsUpdate)> CreateOrUpdateAdminAsync(string setupKey, string username, string email, string fullName, string password);
     Task<(bool Success, string Message)> CreateInitialAdminAsync(string setupKey, string username, string email, string fullName, string password);
     Task<(bool Success, string Message)> ResetPasswordAsync(string setupKey, string username, string newPassword);
     Task<List<(long Id, string Username, string FullName, string? RoleName, bool IsActive)>> GetUsersAsync(string setupKey);
@@ -52,26 +58,14 @@ public class SetupService : ISetupService
         return Task.FromResult(setupKey == configuredKey);
     }
 
-    public async Task<(bool Success, string Message)> CreateInitialAdminAsync(string setupKey, string username, string email, string fullName, string password)
+    public async Task<(bool Success, string Message, bool IsUpdate)> CreateOrUpdateAdminAsync(string setupKey, string username, string email, string fullName, string password)
     {
         try
         {
-            var isSetupRequired = await IsSetupRequiredAsync();
-            if (!isSetupRequired)
-            {
-                return (false, "Setup has already been completed. Cannot create additional administrators through setup.");
-            }
-
             var isValidKey = await ValidateSetupKeyAsync(setupKey);
             if (!isValidKey)
             {
-                return (false, "Invalid setup key. Administrator creation denied.");
-            }
-
-            var existingUser = await _context.Users.AnyAsync(u => u.Username == username);
-            if (existingUser)
-            {
-                return (false, "A user with this username already exists");
+                return (false, "Invalid setup key. Administrator creation denied.", false);
             }
 
             var adminRole = await _context.Roles.FirstOrDefaultAsync(r => r.Name == "Administrator");
@@ -87,39 +81,66 @@ public class SetupService : ISetupService
                 await _context.SaveChangesAsync();
             }
 
-            var adminUser = new User
-            {
-                Username = username,
-                Email = email,
-                FullName = fullName,
-                PasswordHash = BCrypt.Net.BCrypt.HashPassword(password),
-                RoleId = adminRole.Id,
-                IsActive = true,
-                CreatedAt = DateTime.UtcNow
-            };
+            var existingUser = await _context.Users.FirstOrDefaultAsync(u => u.Username == username && !u.IsDeleted);
             
-            _context.Users.Add(adminUser);
-            await _context.SaveChangesAsync();
-
-            var defaultBranch = await _context.Branches.FirstOrDefaultAsync(b => b.IsActive);
-            if (defaultBranch != null)
+            if (existingUser != null)
             {
-                var userBranch = new UserBranch
-                {
-                    UserId = adminUser.Id,
-                    BranchId = defaultBranch.Id,
-                    IsDefault = true
-                };
-                _context.UserBranches.Add(userBranch);
+                existingUser.Email = email;
+                existingUser.FullName = fullName;
+                existingUser.PasswordHash = BCrypt.Net.BCrypt.HashPassword(password);
+                existingUser.RoleId = adminRole.Id;
+                existingUser.IsActive = true;
+                existingUser.ModifiedAt = DateTime.UtcNow;
+                
                 await _context.SaveChangesAsync();
+                return (true, "Admin user have been successfully updated and an email has been sent to your admin mail id", true);
             }
+            else
+            {
+                var adminUser = new User
+                {
+                    Username = username,
+                    Email = email,
+                    FullName = fullName,
+                    PasswordHash = BCrypt.Net.BCrypt.HashPassword(password),
+                    RoleId = adminRole.Id,
+                    IsActive = true,
+                    CreatedAt = DateTime.UtcNow
+                };
+                
+                _context.Users.Add(adminUser);
+                await _context.SaveChangesAsync();
 
-            return (true, "Administrator account created successfully");
+                var defaultBranch = await _context.Branches.FirstOrDefaultAsync(b => b.IsActive);
+                if (defaultBranch != null)
+                {
+                    var existingUserBranch = await _context.UserBranches.AnyAsync(ub => ub.UserId == adminUser.Id && ub.BranchId == defaultBranch.Id);
+                    if (!existingUserBranch)
+                    {
+                        var userBranch = new UserBranch
+                        {
+                            UserId = adminUser.Id,
+                            BranchId = defaultBranch.Id,
+                            IsDefault = true
+                        };
+                        _context.UserBranches.Add(userBranch);
+                        await _context.SaveChangesAsync();
+                    }
+                }
+
+                return (true, "Admin user have been successfully created and an email has been sent to your admin mail id", false);
+            }
         }
         catch (Exception ex)
         {
-            return (false, $"Error creating administrator: {ex.Message}");
+            return (false, $"Error creating/updating administrator: {ex.Message}", false);
         }
+    }
+
+    public async Task<(bool Success, string Message)> CreateInitialAdminAsync(string setupKey, string username, string email, string fullName, string password)
+    {
+        var result = await CreateOrUpdateAdminAsync(setupKey, username, email, fullName, password);
+        return (result.Success, result.Message);
     }
 
     public Task<bool> IsSetupEnabledAsync()

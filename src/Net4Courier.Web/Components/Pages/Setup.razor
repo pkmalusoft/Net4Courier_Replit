@@ -2,6 +2,7 @@
 @layout EmptyLayout
 @using Net4Courier.Infrastructure.Services
 @inject ISetupService SetupService
+@inject IAdminEmailNotifier AdminEmailNotifier
 @inject NavigationManager NavigationManager
 @inject ISnackbar Snackbar
 
@@ -384,12 +385,22 @@
 
         try
         {
-            var (success, message) = await SetupService.CreateInitialAdminAsync(_setupKey, _username, _email, _fullName, _password);
+            var (success, message, isUpdate) = await SetupService.CreateOrUpdateAdminAsync(_setupKey, _username, _email, _fullName, _password);
             
             if (success)
             {
+                var loginUrl = NavigationManager.BaseUri.TrimEnd('/') + "/login";
+                var emailSent = await AdminEmailNotifier.SendAdminCredentialsEmailAsync(_email, _fullName, _username, _password, loginUrl);
+                
+                if (!emailSent)
+                {
+                    message = isUpdate 
+                        ? "Admin user have been successfully updated but email could not be sent. Please check email configuration."
+                        : "Admin user have been successfully created but email could not be sent. Please check email configuration.";
+                }
+                
                 Snackbar.Add(message, Severity.Success);
-                NavigationManager.NavigateTo("/login");
+                await LoadUsers();
             }
             else
             {
@@ -398,7 +409,7 @@
         }
         catch (Exception ex)
         {
-            _createError = $"Error creating administrator: {ex.Message}";
+            _createError = $"Error creating/updating administrator: {ex.Message}";
         }
         finally
         {

@@ -175,6 +175,7 @@ builder.Services.AddScoped<PrepaidService>();
 builder.Services.AddScoped<ISetupService, SetupService>();
 builder.Services.AddHttpClient();
 builder.Services.AddScoped<IGmailEmailService, GmailEmailService>();
+builder.Services.AddScoped<IAdminEmailNotifier, AdminEmailNotifier>();
 
 // TrueBooks GL Module Services
 builder.Services.AddScoped<Truebooks.Platform.Core.MultiTenancy.ITenantContext, Net4Courier.Web.Services.SingleTenantContext>();
