@@ -1,0 +1,197 @@
+@inject IDbContextFactory<ApplicationDbContext> DbContextFactory
+@inject ISnackbar Snackbar
+@inject Microsoft.AspNetCore.Components.Authorization.AuthenticationStateProvider AuthStateProvider
+@using Microsoft.EntityFrameworkCore
+@using Net4Courier.Infrastructure.Data
+@using Net4Courier.Operations.Entities
+@using Net4Courier.Masters.Entities
+
+<MudDialog>
+    <TitleContent>
+        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+            <MudIcon Icon="@Icons.Material.Filled.SupportAgent" Color="Color.Primary" />
+            <MudText Typo="Typo.h6">Create New Ticket</MudText>
+        </MudStack>
+    </TitleContent>
+    <DialogContent>
+        <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-4">
+            Please provide details about your issue or complaint. Our team will respond as soon as possible.
+        </MudText>
+        
+        <MudGrid Spacing="3">
+            <MudItem xs="12" sm="6">
+                <MudSelect T="long" @bind-Value="_categoryId" Label="Category *" Variant="Variant.Outlined" Required="true">
+                    <MudSelectItem T="long" Value="0L">-- Select Category --</MudSelectItem>
+                    @foreach (var cat in Categories)
+                    {
+                        <MudSelectItem T="long" Value="@cat.Id">@cat.Name</MudSelectItem>
+                    }
+                </MudSelect>
+            </MudItem>
+            <MudItem xs="12" sm="6">
+                <MudSelect T="TicketPriority" @bind-Value="_priority" Label="Priority" Variant="Variant.Outlined">
+                    <MudSelectItem T="TicketPriority" Value="@TicketPriority.Low">Low</MudSelectItem>
+                    <MudSelectItem T="TicketPriority" Value="@TicketPriority.Medium">Medium</MudSelectItem>
+                    <MudSelectItem T="TicketPriority" Value="@TicketPriority.High">High</MudSelectItem>
+                    <MudSelectItem T="TicketPriority" Value="@TicketPriority.Urgent">Urgent</MudSelectItem>
+                </MudSelect>
+            </MudItem>
+            <MudItem xs="12">
+                <MudTextField @bind-Value="_subject" Label="Subject *" Variant="Variant.Outlined" Required="true" 
+                              Placeholder="Brief description of your issue" MaxLength="200" />
+            </MudItem>
+            <MudItem xs="12">
+                <MudTextField @bind-Value="_description" Label="Description *" Variant="Variant.Outlined" Lines="5" Required="true"
+                              Placeholder="Please provide detailed information about your issue including any relevant dates, times, or reference numbers" />
+            </MudItem>
+            <MudItem xs="12">
+                <MudAutocomplete T="InscanMaster" @bind-Value="_selectedAWB" Label="Related Shipment (Optional)" Variant="Variant.Outlined"
+                                 SearchFunc="SearchAWBs" ToStringFunc="@(a => a == null ? "" : $"{a.AWBNo} - {a.Consignee}")"
+                                 Dense="true" Clearable="true" Placeholder="Search by AWB number" />
+                <MudText Typo="Typo.caption" Color="Color.Secondary">Link this ticket to a specific shipment if applicable</MudText>
+            </MudItem>
+        </MudGrid>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Cancel" Variant="Variant.Text">Cancel</MudButton>
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="Save" Disabled="_saving">
+            @if (_saving)
+            {
+                <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" />
+            }
+            Submit Ticket
+        </MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] MudDialogInstance MudDialog { get; set; } = default!;
+    [Parameter] public long CustomerId { get; set; }
+    [Parameter] public string CustomerName { get; set; } = "";
+    [Parameter] public List<TicketCategory> Categories { get; set; } = new();
+
+    private long _categoryId;
+    private string _subject = "";
+    private string _description = "";
+    private TicketPriority _priority = TicketPriority.Medium;
+    private InscanMaster? _selectedAWB;
+    private bool _saving;
+
+    private async Task<IEnumerable<InscanMaster>> SearchAWBs(string value, CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(value) || value.Length < 2)
+            return Enumerable.Empty<InscanMaster>();
+
+        await using var db = await DbContextFactory.CreateDbContextAsync();
+        return await db.InscanMasters
+            .Where(a => !a.IsDeleted && a.CustomerId == CustomerId &&
+                       EF.Functions.ILike(a.AWBNo, $"%{value}%"))
+            .OrderByDescending(a => a.TransactionDate)
+            .Take(20)
+            .ToListAsync(cancellationToken);
+    }
+
+    private void Cancel() => MudDialog.Cancel();
+
+    private async Task Save()
+    {
+        if (_categoryId == 0)
+        {
+            Snackbar.Add("Please select a category", Severity.Warning);
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(_subject))
+        {
+            Snackbar.Add("Subject is required", Severity.Warning);
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(_description))
+        {
+            Snackbar.Add("Description is required", Severity.Warning);
+            return;
+        }
+
+        _saving = true;
+        StateHasChanged();
+
+        try
+        {
+            var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+            var user = authState.User;
+            long verifiedCustomerId = 0;
+            string verifiedCustomerName = "";
+            
+            if (user.Identity?.IsAuthenticated == true)
+            {
+                var customerIdClaim = user.FindFirst("CustomerId")?.Value;
+                var customerNameClaim = user.FindFirst("CustomerName")?.Value;
+                if (long.TryParse(customerIdClaim, out var cid))
+                {
+                    verifiedCustomerId = cid;
+                    verifiedCustomerName = customerNameClaim ?? "";
+                }
+            }
+            
+            if (verifiedCustomerId == 0)
+            {
+                Snackbar.Add("Session expired. Please log in again.", Severity.Error);
+                return;
+            }
+            
+            await using var db = await DbContextFactory.CreateDbContextAsync();
+            
+            var category = Categories.FirstOrDefault(c => c.Id == _categoryId);
+            
+            var ticket = new Ticket
+            {
+                TicketNo = await GenerateTicketNo(db),
+                Subject = _subject.Trim(),
+                Description = _description.Trim(),
+                CategoryId = _categoryId,
+                CategoryName = category?.Name,
+                PartyId = verifiedCustomerId,
+                PartyName = verifiedCustomerName,
+                Priority = _priority,
+                Status = TicketStatus.Open,
+                CreatedAt = DateTime.UtcNow,
+                AWBId = _selectedAWB?.Id,
+                AWBNo = _selectedAWB?.AWBNo
+            };
+
+            db.Tickets.Add(ticket);
+            await db.SaveChangesAsync();
+            
+            Snackbar.Add($"Ticket {ticket.TicketNo} created successfully. We'll respond as soon as possible.", Severity.Success);
+            MudDialog.Close(DialogResult.Ok(ticket));
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error creating ticket: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _saving = false;
+        }
+    }
+
+    private async Task<string> GenerateTicketNo(ApplicationDbContext db)
+    {
+        var today = DateTime.UtcNow;
+        var prefix = $"TKT{today:yyMM}";
+        var lastTicket = await db.Tickets
+            .Where(t => t.TicketNo.StartsWith(prefix))
+            .OrderByDescending(t => t.TicketNo)
+            .FirstOrDefaultAsync();
+
+        int nextNum = 1;
+        if (lastTicket != null && lastTicket.TicketNo.Length > prefix.Length)
+        {
+            if (int.TryParse(lastTicket.TicketNo.Substring(prefix.Length), out int lastNum))
+                nextNum = lastNum + 1;
+        }
+
+        return $"{prefix}{nextNum:D4}";
+    }
+}

@@ -1,0 +1,327 @@
+@page "/customer/my-tickets"
+@layout CustomerLayout
+@inject IDbContextFactory<ApplicationDbContext> DbContextFactory
+@inject ISnackbar Snackbar
+@inject IDialogService DialogService
+@inject NavigationManager NavigationManager
+@inject Microsoft.AspNetCore.Components.Authorization.AuthenticationStateProvider AuthStateProvider
+@using Microsoft.EntityFrameworkCore
+@using Net4Courier.Infrastructure.Data
+@using Net4Courier.Operations.Entities
+@using Net4Courier.Masters.Entities
+@using Net4Courier.Web.Components.Layout
+
+<PageTitle>My Complaints & Tickets - Net4Courier</PageTitle>
+
+<MudContainer MaxWidth="MaxWidth.Large" Class="py-4">
+    <MudPaper Class="pa-4" Elevation="1">
+        <MudToolBar Dense="true" Class="pl-0">
+            <MudText Typo="Typo.h6">My Complaints & Tickets</MudText>
+            <MudSpacer />
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add" OnClick="OpenCreateDialog">
+                New Ticket
+            </MudButton>
+        </MudToolBar>
+
+        <MudGrid Class="mb-3 mt-2">
+            <MudItem xs="12" sm="4">
+                <MudTextField @bind-Value="_searchText" Label="Search" Variant="Variant.Outlined" Margin="Margin.Dense"
+                              Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Filled.Search"
+                              Immediate="true" DebounceInterval="300" OnDebounceIntervalElapsed="LoadData" />
+            </MudItem>
+            <MudItem xs="12" sm="3">
+                <MudSelect T="TicketStatus?" Value="_statusFilter" Label="Status" Variant="Variant.Outlined" Margin="Margin.Dense" Clearable="true" ValueChanged="OnStatusFilterChanged">
+                    <MudSelectItem T="TicketStatus?" Value="@TicketStatus.Open">Open</MudSelectItem>
+                    <MudSelectItem T="TicketStatus?" Value="@TicketStatus.InProgress">In Progress</MudSelectItem>
+                    <MudSelectItem T="TicketStatus?" Value="@TicketStatus.PendingCustomer">Pending Your Response</MudSelectItem>
+                    <MudSelectItem T="TicketStatus?" Value="@TicketStatus.Resolved">Resolved</MudSelectItem>
+                    <MudSelectItem T="TicketStatus?" Value="@TicketStatus.Closed">Closed</MudSelectItem>
+                </MudSelect>
+            </MudItem>
+            <MudItem xs="12" sm="3">
+                <MudSelect T="long?" Value="_categoryFilter" Label="Category" Variant="Variant.Outlined" Margin="Margin.Dense" Clearable="true" ValueChanged="OnCategoryFilterChanged">
+                    @foreach (var cat in _categories)
+                    {
+                        <MudSelectItem T="long?" Value="@cat.Id">@cat.Name</MudSelectItem>
+                    }
+                </MudSelect>
+            </MudItem>
+            <MudItem xs="12" sm="2" Class="d-flex align-center">
+                <MudButton Variant="Variant.Text" OnClick="ClearFilters" Size="Size.Small">Clear Filters</MudButton>
+            </MudItem>
+        </MudGrid>
+
+        @if (_loading)
+        {
+            <MudProgressLinear Indeterminate="true" Color="Color.Primary" />
+        }
+        else if (!_tickets.Any())
+        {
+            <MudAlert Severity="Severity.Info" Class="mt-3">
+                No tickets found. Click "New Ticket" to create your first complaint or support request.
+            </MudAlert>
+        }
+        else
+        {
+            <MudTable Items="_tickets" Hover="true" Dense="true" OnRowClick="@((TableRowClickEventArgs<Ticket> args) => ViewTicket(args.Item))" Class="cursor-pointer">
+                <HeaderContent>
+                    <MudTh>Ticket No</MudTh>
+                    <MudTh>Subject</MudTh>
+                    <MudTh>Category</MudTh>
+                    <MudTh>Priority</MudTh>
+                    <MudTh>Status</MudTh>
+                    <MudTh>Created</MudTh>
+                    <MudTh>Last Updated</MudTh>
+                </HeaderContent>
+                <RowTemplate>
+                    <MudTd>
+                        <MudText Typo="Typo.body2" Style="font-weight: 600; color: #556ee6;">@context.TicketNo</MudText>
+                    </MudTd>
+                    <MudTd>
+                        <MudText Typo="Typo.body2">@context.Subject</MudText>
+                        @if (!string.IsNullOrEmpty(context.AWBNo))
+                        {
+                            <MudText Typo="Typo.caption" Color="Color.Secondary">AWB: @context.AWBNo</MudText>
+                        }
+                    </MudTd>
+                    <MudTd>
+                        <MudChip T="string" Size="Size.Small" Style="@GetCategoryStyle(context.CategoryId)">
+                            @context.CategoryName
+                        </MudChip>
+                    </MudTd>
+                    <MudTd>
+                        <MudChip T="string" Size="Size.Small" Color="@GetPriorityColor(context.Priority)">
+                            @context.Priority.ToString()
+                        </MudChip>
+                    </MudTd>
+                    <MudTd>
+                        <MudChip T="string" Size="Size.Small" Color="@GetStatusColor(context.Status)">
+                            @GetStatusText(context.Status)
+                        </MudChip>
+                    </MudTd>
+                    <MudTd>@context.CreatedAt.ToString("dd MMM yyyy")</MudTd>
+                    <MudTd>@(context.ModifiedAt?.ToString("dd MMM yyyy HH:mm") ?? "-")</MudTd>
+                </RowTemplate>
+            </MudTable>
+        }
+    </MudPaper>
+
+    <MudGrid Class="mt-4">
+        <MudItem xs="12" sm="4">
+            <MudCard Elevation="1">
+                <MudCardContent>
+                    <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="3">
+                        <MudIcon Icon="@Icons.Material.Filled.ErrorOutline" Color="Color.Primary" Size="Size.Large" />
+                        <MudStack Spacing="0">
+                            <MudText Typo="Typo.h4" Color="Color.Primary">@_openCount</MudText>
+                            <MudText Typo="Typo.body2">Open Tickets</MudText>
+                        </MudStack>
+                    </MudStack>
+                </MudCardContent>
+            </MudCard>
+        </MudItem>
+        <MudItem xs="12" sm="4">
+            <MudCard Elevation="1">
+                <MudCardContent>
+                    <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="3">
+                        <MudIcon Icon="@Icons.Material.Filled.HourglassTop" Color="Color.Warning" Size="Size.Large" />
+                        <MudStack Spacing="0">
+                            <MudText Typo="Typo.h4" Color="Color.Warning">@_pendingResponseCount</MudText>
+                            <MudText Typo="Typo.body2">Awaiting Your Response</MudText>
+                        </MudStack>
+                    </MudStack>
+                </MudCardContent>
+            </MudCard>
+        </MudItem>
+        <MudItem xs="12" sm="4">
+            <MudCard Elevation="1">
+                <MudCardContent>
+                    <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="3">
+                        <MudIcon Icon="@Icons.Material.Filled.CheckCircle" Color="Color.Success" Size="Size.Large" />
+                        <MudStack Spacing="0">
+                            <MudText Typo="Typo.h4" Color="Color.Success">@_resolvedCount</MudText>
+                            <MudText Typo="Typo.body2">Resolved</MudText>
+                        </MudStack>
+                    </MudStack>
+                </MudCardContent>
+            </MudCard>
+        </MudItem>
+    </MudGrid>
+</MudContainer>
+
+@code {
+    private List<Ticket> _tickets = new();
+    private List<TicketCategory> _categories = new();
+    private bool _loading = true;
+    private string? _searchText;
+    private TicketStatus? _statusFilter;
+    private long? _categoryFilter;
+    
+    private long _customerId;
+    private string _customerName = "";
+    
+    private int _openCount;
+    private int _pendingResponseCount;
+    private int _resolvedCount;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadUserContext();
+        if (_customerId > 0)
+        {
+            await LoadCategories();
+            await LoadData();
+            await LoadStats();
+        }
+    }
+
+    private async Task LoadUserContext()
+    {
+        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+        var user = authState.User;
+
+        if (user.Identity?.IsAuthenticated == true)
+        {
+            var customerIdClaim = user.FindFirst("CustomerId")?.Value;
+            var customerNameClaim = user.FindFirst("CustomerName")?.Value;
+            
+            if (long.TryParse(customerIdClaim, out var cid))
+            {
+                _customerId = cid;
+                _customerName = customerNameClaim ?? "";
+            }
+        }
+    }
+
+    private async Task LoadCategories()
+    {
+        await using var db = await DbContextFactory.CreateDbContextAsync();
+        _categories = await db.TicketCategories
+            .Where(c => !c.IsDeleted && c.IsActive)
+            .OrderBy(c => c.SortOrder)
+            .ToListAsync();
+    }
+
+    private async Task LoadData()
+    {
+        _loading = true;
+        StateHasChanged();
+        
+        await using var db = await DbContextFactory.CreateDbContextAsync();
+        var query = db.Tickets.Where(t => !t.IsDeleted && t.PartyId == _customerId);
+
+        if (!string.IsNullOrWhiteSpace(_searchText))
+        {
+            query = query.Where(t => 
+                EF.Functions.ILike(t.TicketNo, $"%{_searchText}%") ||
+                EF.Functions.ILike(t.Subject, $"%{_searchText}%") ||
+                (t.AWBNo != null && EF.Functions.ILike(t.AWBNo, $"%{_searchText}%")));
+        }
+
+        if (_statusFilter.HasValue)
+            query = query.Where(t => t.Status == _statusFilter.Value);
+
+        if (_categoryFilter.HasValue)
+            query = query.Where(t => t.CategoryId == _categoryFilter.Value);
+
+        _tickets = await query
+            .OrderByDescending(t => t.CreatedAt)
+            .Take(100)
+            .ToListAsync();
+
+        _loading = false;
+        StateHasChanged();
+    }
+
+    private async Task LoadStats()
+    {
+        await using var db = await DbContextFactory.CreateDbContextAsync();
+        var baseQuery = db.Tickets.Where(t => !t.IsDeleted && t.PartyId == _customerId);
+        
+        _openCount = await baseQuery.CountAsync(t => t.Status == TicketStatus.Open || t.Status == TicketStatus.InProgress);
+        _pendingResponseCount = await baseQuery.CountAsync(t => t.Status == TicketStatus.PendingCustomer);
+        _resolvedCount = await baseQuery.CountAsync(t => t.Status == TicketStatus.Resolved || t.Status == TicketStatus.Closed);
+    }
+
+    private async Task OnStatusFilterChanged(TicketStatus? value)
+    {
+        _statusFilter = value;
+        await LoadData();
+    }
+
+    private async Task OnCategoryFilterChanged(long? value)
+    {
+        _categoryFilter = value;
+        await LoadData();
+    }
+
+    private void ClearFilters()
+    {
+        _searchText = null;
+        _statusFilter = null;
+        _categoryFilter = null;
+        _ = LoadData();
+    }
+
+    private async Task OpenCreateDialog()
+    {
+        var parameters = new DialogParameters<CustomerTicketDialog>
+        {
+            { x => x.CustomerId, _customerId },
+            { x => x.CustomerName, _customerName },
+            { x => x.Categories, _categories }
+        };
+        var options = new DialogOptions { MaxWidth = MaxWidth.Medium, FullWidth = true, CloseOnEscapeKey = true };
+        var dialog = await DialogService.ShowAsync<CustomerTicketDialog>("Create New Ticket", parameters, options);
+        var result = await dialog.Result;
+        if (result != null && !result.Canceled)
+        {
+            await LoadData();
+            await LoadStats();
+        }
+    }
+
+    private void ViewTicket(Ticket ticket)
+    {
+        NavigationManager.NavigateTo($"/customer/ticket/{ticket.Id}");
+    }
+
+    private string GetCategoryStyle(long categoryId)
+    {
+        var category = _categories.FirstOrDefault(c => c.Id == categoryId);
+        if (category?.Color != null)
+            return $"background-color: {category.Color}; color: white;";
+        return "";
+    }
+
+    private Color GetPriorityColor(TicketPriority priority) => priority switch
+    {
+        TicketPriority.Urgent => Color.Error,
+        TicketPriority.High => Color.Warning,
+        TicketPriority.Medium => Color.Info,
+        TicketPriority.Low => Color.Default,
+        _ => Color.Default
+    };
+
+    private Color GetStatusColor(TicketStatus status) => status switch
+    {
+        TicketStatus.Open => Color.Primary,
+        TicketStatus.InProgress => Color.Info,
+        TicketStatus.PendingCustomer => Color.Warning,
+        TicketStatus.Resolved => Color.Success,
+        TicketStatus.Closed => Color.Default,
+        TicketStatus.Cancelled => Color.Error,
+        _ => Color.Default
+    };
+
+    private string GetStatusText(TicketStatus status) => status switch
+    {
+        TicketStatus.Open => "Open",
+        TicketStatus.InProgress => "In Progress",
+        TicketStatus.PendingCustomer => "Awaiting Your Response",
+        TicketStatus.Resolved => "Resolved",
+        TicketStatus.Closed => "Closed",
+        TicketStatus.Cancelled => "Cancelled",
+        _ => status.ToString()
+    };
+}
