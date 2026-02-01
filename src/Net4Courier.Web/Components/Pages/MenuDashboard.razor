@@ -1,0 +1,550 @@
+@page "/launchpad"
+@page "/menu-dashboard"
+@using Net4Courier.Infrastructure.Data
+@using Net4Courier.Masters.Entities
+@using Microsoft.EntityFrameworkCore
+@using Microsoft.AspNetCore.Components.Authorization
+@using System.Security.Claims
+@inject IDbContextFactory<ApplicationDbContext> DbContextFactory
+@inject NavigationManager NavigationManager
+@inject AuthenticationStateProvider AuthStateProvider
+@rendermode InteractiveServer
+
+<PageTitle>Application Launchpad</PageTitle>
+
+<style>
+    .launchpad-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 24px;
+        flex-wrap: wrap;
+        gap: 16px;
+    }
+
+    .module-card {
+        height: 100%;
+        transition: transform 0.2s, box-shadow 0.2s;
+    }
+
+    .module-card:hover {
+        transform: translateY(-4px);
+        box-shadow: 0 6px 16px rgba(0,0,0,0.12);
+    }
+
+    .card-header-primary { background: linear-gradient(135deg, #594AE2 0%, #7B6FE8 100%); }
+    .card-header-info { background: linear-gradient(135deg, #2196F3 0%, #64B5F6 100%); }
+    .card-header-success { background: linear-gradient(135deg, #00C853 0%, #69F0AE 100%); }
+    .card-header-warning { background: linear-gradient(135deg, #FF9800 0%, #FFB74D 100%); }
+    .card-header-secondary { background: linear-gradient(135deg, #FF4081 0%, #FF80AB 100%); }
+    .card-header-dark { background: linear-gradient(135deg, #424242 0%, #616161 100%); }
+
+    .card-header-content {
+        padding: 16px;
+        display: flex;
+        align-items: center;
+        gap: 16px;
+        color: white;
+    }
+
+    .header-avatar {
+        width: 44px;
+        height: 44px;
+        background-color: rgba(255,255,255,0.2);
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+
+    .card-title {
+        font-size: 1.15rem;
+        font-weight: 500;
+    }
+
+    .menu-list {
+        max-height: 380px;
+        overflow-y: auto;
+    }
+
+    .menu-list::-webkit-scrollbar {
+        width: 6px;
+    }
+
+    .menu-list::-webkit-scrollbar-thumb {
+        background-color: #e0e0e0;
+        border-radius: 3px;
+    }
+
+    .group-title {
+        padding: 12px 16px 4px 16px;
+        font-size: 0.7rem;
+        font-weight: 700;
+        color: var(--mud-palette-text-secondary);
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+    }
+
+    .menu-item {
+        padding: 10px 16px;
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        cursor: pointer;
+        transition: background 0.15s;
+        text-decoration: none;
+        color: inherit;
+        border-radius: 4px;
+        margin: 2px 8px;
+    }
+
+    .menu-item:hover {
+        background-color: rgba(0,0,0,0.04);
+    }
+
+    .menu-item-icon {
+        color: var(--mud-palette-text-secondary);
+    }
+
+    .menu-item-text {
+        font-size: 0.875rem;
+    }
+
+    .no-results {
+        text-align: center;
+        padding: 40px;
+        color: var(--mud-palette-text-secondary);
+    }
+</style>
+
+<MudContainer MaxWidth="MaxWidth.ExtraLarge" Class="py-4">
+    <div class="launchpad-header">
+        <div>
+            <MudText Typo="Typo.h5" Color="Color.Primary" Style="font-weight: 500;">Application Launchpad</MudText>
+            <MudText Typo="Typo.body2" Color="Color.Secondary">Access all modules and subsystems from a single view.</MudText>
+        </div>
+        <MudTextField @bind-Value="_searchText" Placeholder="Search modules (e.g., 'Invoice')..."
+                      Variant="Variant.Outlined" Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Filled.Search"
+                      Immediate="true" Style="width: 320px;" Dense="true" />
+    </div>
+
+    @if (_loading)
+    {
+        <MudProgressLinear Color="Color.Primary" Indeterminate="true" />
+    }
+    else if (!FilteredCategories.Any())
+    {
+        <div class="no-results">
+            <MudIcon Icon="@Icons.Material.Filled.SearchOff" Size="Size.Large" Color="Color.Secondary" />
+            <MudText Typo="Typo.h6" Class="mt-2">No modules found</MudText>
+            <MudText Typo="Typo.body2" Color="Color.Secondary">Try a different search term</MudText>
+        </div>
+    }
+    else
+    {
+        <MudGrid Spacing="4">
+            @foreach (var category in FilteredCategories)
+            {
+                <MudItem xs="12" sm="6" md="4" lg="4">
+                    <MudCard Class="module-card" Elevation="2">
+                        <div class="@GetHeaderClass(category.ColorTheme)">
+                            <div class="card-header-content">
+                                <div class="header-avatar">
+                                    <MudIcon Icon="@category.Icon" Size="Size.Medium" />
+                                </div>
+                                <span class="card-title">@category.Title</span>
+                            </div>
+                        </div>
+                        <MudCardContent Class="pa-0">
+                            <div class="menu-list">
+                                @foreach (var group in category.Groups)
+                                {
+                                    @if (group.Items.Any())
+                                    {
+                                        @if (!string.IsNullOrEmpty(group.Title))
+                                        {
+                                            <div class="group-title">@group.Title</div>
+                                        }
+                                        @foreach (var item in group.Items)
+                                        {
+                                            <div class="menu-item" @onclick="@(() => NavigateToMenu(item.Route))">
+                                                <MudIcon Icon="@item.Icon" Size="Size.Small" Class="menu-item-icon" />
+                                                <span class="menu-item-text">@item.Title</span>
+                                            </div>
+                                        }
+                                    }
+                                }
+                            </div>
+                        </MudCardContent>
+                    </MudCard>
+                </MudItem>
+            }
+        </MudGrid>
+    }
+</MudContainer>
+
+@code {
+    private bool _loading = true;
+    private string _searchText = "";
+    private string _userRole = "";
+    private HashSet<string> _allowedMenuCodes = new();
+    private List<MenuCategory> _categories = new();
+
+    private IEnumerable<MenuCategory> FilteredCategories
+    {
+        get
+        {
+            var result = new List<MenuCategory>();
+            foreach (var category in _categories)
+            {
+                var filteredGroups = new List<MenuGroup>();
+                foreach (var group in category.Groups)
+                {
+                    var filteredItems = GetFilteredItems(group.Items).ToList();
+                    if (filteredItems.Any())
+                    {
+                        filteredGroups.Add(new MenuGroup { Title = group.Title, Items = filteredItems });
+                    }
+                }
+                if (filteredGroups.Any())
+                {
+                    result.Add(new MenuCategory
+                    {
+                        Title = category.Title,
+                        Icon = category.Icon,
+                        ColorTheme = category.ColorTheme,
+                        Groups = filteredGroups
+                    });
+                }
+            }
+            return result;
+        }
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadUserPermissions();
+        InitializeMenuStructure();
+        _loading = false;
+    }
+
+    private async Task LoadUserPermissions()
+    {
+        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+        var user = authState.User;
+
+        if (user.Identity?.IsAuthenticated == true)
+        {
+            _userRole = user.FindFirst(ClaimTypes.Role)?.Value ?? "";
+            
+            var roleIdClaim = user.FindFirst("RoleId")?.Value;
+            if (long.TryParse(roleIdClaim, out var roleId))
+            {
+                await using var db = await DbContextFactory.CreateDbContextAsync();
+                var permissions = await db.RolePermissions
+                    .Where(p => p.RoleId == roleId && p.CanView)
+                    .Select(p => p.MenuCode)
+                    .ToListAsync();
+                
+                _allowedMenuCodes = permissions.ToHashSet();
+            }
+
+            if (_userRole == "Administrator" || _userRole == "PlatformAdmin")
+            {
+                _allowedMenuCodes.Clear();
+            }
+        }
+    }
+
+    private bool IsMenuAllowed(string menuCode)
+    {
+        if (_userRole == "Administrator" || _userRole == "PlatformAdmin")
+            return true;
+        
+        if (string.IsNullOrEmpty(menuCode))
+            return true;
+
+        return _allowedMenuCodes.Contains(menuCode);
+    }
+
+    private void NavigateToMenu(string route)
+    {
+        if (!string.IsNullOrEmpty(route))
+        {
+            NavigationManager.NavigateTo(route);
+        }
+    }
+
+    private string GetHeaderClass(string theme) => theme switch
+    {
+        "primary" => "card-header-primary",
+        "info" => "card-header-info",
+        "success" => "card-header-success",
+        "warning" => "card-header-warning",
+        "secondary" => "card-header-secondary",
+        "dark" => "card-header-dark",
+        _ => "card-header-primary"
+    };
+
+    private IEnumerable<MenuItem> GetFilteredItems(List<MenuItem> items)
+    {
+        var allowedItems = items.Where(i => IsMenuAllowed(i.MenuCode));
+        
+        if (string.IsNullOrWhiteSpace(_searchText))
+            return allowedItems;
+        
+        return allowedItems.Where(i => i.Title.Contains(_searchText, StringComparison.OrdinalIgnoreCase));
+    }
+
+    private void InitializeMenuStructure()
+    {
+        _categories = new List<MenuCategory>
+        {
+            new MenuCategory
+            {
+                Title = "Dashboards",
+                Icon = Icons.Material.Filled.Dashboard,
+                ColorTheme = "primary",
+                Groups = new List<MenuGroup>
+                {
+                    new MenuGroup
+                    {
+                        Items = new List<MenuItem>
+                        {
+                            new("Global Dashboard", Icons.Material.Filled.Home, "/", "DASHBOARD"),
+                            new("Operations Dashboard", Icons.Material.Filled.Speed, "/operational-desktop", "OPS_DASHBOARD"),
+                            new("Customer Dashboard", Icons.Material.Filled.People, "/customer/dashboard", "CUST_DASHBOARD")
+                        }
+                    }
+                }
+            },
+            new MenuCategory
+            {
+                Title = "Operations",
+                Icon = Icons.Material.Filled.LocalShipping,
+                ColorTheme = "info",
+                Groups = new List<MenuGroup>
+                {
+                    new MenuGroup
+                    {
+                        Title = "Pickup",
+                        Items = new List<MenuItem>
+                        {
+                            new("Pickup Dashboard", Icons.Material.Filled.Dashboard, "/pickup-dashboard", "PICKUP_DASHBOARD"),
+                            new("Pickup Schedules", Icons.Material.Filled.Schedule, "/pickup-schedules", "PICKUP_SCHEDULES"),
+                            new("Courier Commitments", Icons.Material.Filled.AssignmentTurnedIn, "/pickup-commitments", "PICKUP_COMMITMENTS")
+                        }
+                    },
+                    new MenuGroup
+                    {
+                        Title = "Warehouse",
+                        Items = new List<MenuItem>
+                        {
+                            new("Inscan", Icons.Material.Filled.QrCodeScanner, "/pickup-inscan", "INSCAN"),
+                            new("Outscan (DRS)", Icons.Material.Filled.ExitToApp, "/outscan", "OUTSCAN"),
+                            new("POD Scanner", Icons.Material.Filled.CameraAlt, "/pod-scanner", "POD"),
+                            new("Transfer Orders", Icons.Material.Filled.TransferWithinAStation, "/transfer-orders", "TRANSFER"),
+                            new("RTS / RTO", Icons.Material.Filled.SwapHoriz, "/rts-list", "RTS")
+                        }
+                    },
+                    new MenuGroup
+                    {
+                        Title = "Reports",
+                        Items = new List<MenuItem>
+                        {
+                            new("Shipments", Icons.Material.Filled.ListAlt, "/awb-list", "AWB_LIST"),
+                            new("AWB Register", Icons.Material.Filled.ListAlt, "/reports/ops/awb-register", "AWB_REGISTER"),
+                            new("COD Pending", Icons.Material.Filled.AttachMoney, "/reports/ops/cod-pending", "COD_PENDING")
+                        }
+                    }
+                }
+            },
+            new MenuCategory
+            {
+                Title = "Finance",
+                Icon = Icons.Material.Filled.AccountBalance,
+                ColorTheme = "success",
+                Groups = new List<MenuGroup>
+                {
+                    new MenuGroup
+                    {
+                        Title = "Receivables (AR)",
+                        Items = new List<MenuItem>
+                        {
+                            new("Generate Invoice", Icons.Material.Filled.Add, "/invoice-generation", "INVOICE_GEN"),
+                            new("Invoices", Icons.Material.Filled.Receipt, "/invoices", "INVOICES"),
+                            new("Receipts", Icons.Material.Filled.ReceiptLong, "/receipts", "RECEIPTS"),
+                            new("Outstanding Report", Icons.Material.Filled.Warning, "/reports/ar/outstanding", "AR_OUTSTANDING")
+                        }
+                    },
+                    new MenuGroup
+                    {
+                        Title = "Payables (AP)",
+                        Items = new List<MenuItem>
+                        {
+                            new("Vendor Bills", Icons.Material.Filled.Receipt, "/vendor-bills", "VENDOR_BILLS"),
+                            new("Payments", Icons.Material.Filled.Payments, "/payments", "PAYMENTS")
+                        }
+                    },
+                    new MenuGroup
+                    {
+                        Title = "General Ledger",
+                        Items = new List<MenuItem>
+                        {
+                            new("Journal Entry", Icons.Material.Filled.Book, "/journal-vouchers", "JOURNAL"),
+                            new("Chart of Accounts", Icons.Material.Filled.AccountTree, "/gl-chart-of-accounts", "COA"),
+                            new("Profit & Loss", Icons.Material.Filled.TrendingUp, "/reports/gl/profit-loss", "PL_REPORT")
+                        }
+                    }
+                }
+            },
+            new MenuCategory
+            {
+                Title = "CRM & Sales",
+                Icon = Icons.Material.Filled.Contacts,
+                ColorTheme = "warning",
+                Groups = new List<MenuGroup>
+                {
+                    new MenuGroup
+                    {
+                        Items = new List<MenuItem>
+                        {
+                            new("Customer Profiles", Icons.Material.Filled.Person, "/customers", "CUSTOMERS"),
+                            new("New Customer", Icons.Material.Filled.PersonAdd, "/customer-new", "CUSTOMER_NEW"),
+                            new("Contracts & Pricing", Icons.Material.Filled.Handshake, "/contracts-pricing", "CONTRACTS"),
+                            new("SLA Management", Icons.Material.Filled.Verified, "/sla-management", "SLA"),
+                            new("Customer AWB Issue", Icons.Material.Filled.Assignment, "/customer-awb-issue", "AWB_ISSUE"),
+                            new("Complaints / Tickets", Icons.Material.Filled.SupportAgent, "/complaints", "TICKETS")
+                        }
+                    }
+                }
+            },
+            new MenuCategory
+            {
+                Title = "Pricing",
+                Icon = Icons.Material.Filled.PriceChange,
+                ColorTheme = "secondary",
+                Groups = new List<MenuGroup>
+                {
+                    new MenuGroup
+                    {
+                        Items = new List<MenuItem>
+                        {
+                            new("Rate Calculator", Icons.Material.Filled.Calculate, "/rate-enquiry", "RATE_CALC"),
+                            new("Rate Cards", Icons.Material.Filled.TableChart, "/rate-cards", "RATE_CARDS"),
+                            new("Rate Simulator", Icons.Material.Filled.Science, "/rate-simulator", "RATE_SIM"),
+                            new("Zone Management", Icons.Material.Filled.Map, "/zone-matrix", "ZONES"),
+                            new("Fuel Surcharge", Icons.Material.Filled.LocalGasStation, "/fuel-surcharge", "FUEL")
+                        }
+                    }
+                }
+            },
+            new MenuCategory
+            {
+                Title = "Compliance",
+                Icon = Icons.Material.Filled.VerifiedUser,
+                ColorTheme = "dark",
+                Groups = new List<MenuGroup>
+                {
+                    new MenuGroup
+                    {
+                        Items = new List<MenuItem>
+                        {
+                            new("Audit Logs", Icons.Material.Filled.History, "/audit-logs", "AUDIT"),
+                            new("Empost Settlements", Icons.Material.Filled.Receipt, "/empost-settlements", "EMPOST"),
+                            new("Regulatory Reports", Icons.Material.Filled.Gavel, "/empost-regulatory", "REGULATORY")
+                        }
+                    }
+                }
+            },
+            new MenuCategory
+            {
+                Title = "Masters",
+                Icon = Icons.Material.Filled.Settings,
+                ColorTheme = "primary",
+                Groups = new List<MenuGroup>
+                {
+                    new MenuGroup
+                    {
+                        Title = "Organization",
+                        Items = new List<MenuItem>
+                        {
+                            new("Companies", Icons.Material.Filled.Domain, "/companies", "COMPANIES"),
+                            new("Branches", Icons.Material.Filled.AccountTree, "/branches", "BRANCHES"),
+                            new("Users", Icons.Material.Filled.People, "/users", "USERS"),
+                            new("Roles", Icons.Material.Filled.Security, "/roles", "ROLES")
+                        }
+                    },
+                    new MenuGroup
+                    {
+                        Title = "Geography",
+                        Items = new List<MenuItem>
+                        {
+                            new("Countries", Icons.Material.Filled.Flag, "/countries", "COUNTRIES"),
+                            new("States", Icons.Material.Filled.Map, "/states", "STATES"),
+                            new("Cities", Icons.Material.Filled.LocationCity, "/cities", "CITIES"),
+                            new("Locations", Icons.Material.Filled.Place, "/locations", "LOCATIONS")
+                        }
+                    },
+                    new MenuGroup
+                    {
+                        Title = "Operations",
+                        Items = new List<MenuItem>
+                        {
+                            new("Service Types", Icons.Material.Filled.Category, "/service-types", "SERVICE_TYPES"),
+                            new("Shipment Modes", Icons.Material.Filled.LocalShipping, "/shipment-modes", "SHIPMENT_MODES"),
+                            new("Vehicles", Icons.Material.Filled.DirectionsCar, "/vehicles", "VEHICLES")
+                        }
+                    }
+                }
+            },
+            new MenuCategory
+            {
+                Title = "Import / Export",
+                Icon = Icons.Material.Filled.Flight,
+                ColorTheme = "info",
+                Groups = new List<MenuGroup>
+                {
+                    new MenuGroup
+                    {
+                        Items = new List<MenuItem>
+                        {
+                            new("Import Manifest", Icons.Material.Filled.FlightLand, "/import-dashboard", "IMPORT"),
+                            new("Customs Processing", Icons.Material.Filled.Gavel, "/import-customs", "CUSTOMS")
+                        }
+                    }
+                }
+            }
+        };
+    }
+
+    private class MenuCategory
+    {
+        public string Title { get; set; } = "";
+        public string Icon { get; set; } = "";
+        public string ColorTheme { get; set; } = "primary";
+        public List<MenuGroup> Groups { get; set; } = new();
+    }
+
+    private class MenuGroup
+    {
+        public string? Title { get; set; }
+        public List<MenuItem> Items { get; set; } = new();
+    }
+
+    private class MenuItem
+    {
+        public string Title { get; set; }
+        public string Icon { get; set; }
+        public string Route { get; set; }
+        public string MenuCode { get; set; }
+
+        public MenuItem(string title, string icon, string route, string menuCode)
+        {
+            Title = title;
+            Icon = icon;
+            Route = route;
+            MenuCode = menuCode;
+        }
+    }
+}
