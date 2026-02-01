@@ -114,7 +114,6 @@ public class DemoDataService : IDemoDataService
     public async Task<DemoDataStats> GetDemoDataStatsAsync()
     {
         await using var context = await _dbFactory.CreateDbContextAsync();
-        await using var platformContext = await _platformDbFactory.CreateDbContextAsync();
 
         int ticketCount = 0;
         try
@@ -127,9 +126,9 @@ public class DemoDataService : IDemoDataService
         int currenciesCount = 0;
         int taxCodesCount = 0;
         
-        try { chartOfAccountsCount = await platformContext.ChartOfAccounts.CountAsync(c => c.TenantId == DemoTenantId && c.AccountName.StartsWith("DEMO-")); } catch { }
-        try { currenciesCount = await platformContext.Currencies.CountAsync(c => c.TenantId == DemoTenantId && c.Name.StartsWith("DEMO-")); } catch { }
-        try { taxCodesCount = await platformContext.TaxCodes.CountAsync(t => t.TenantId == DemoTenantId && t.Description != null && t.Description.StartsWith("DEMO-")); } catch { }
+        try { chartOfAccountsCount = await context.GLChartOfAccounts.CountAsync(c => c.IsDemo); } catch { }
+        try { currenciesCount = await context.Currencies.CountAsync(c => c.IsDemo); } catch { }
+        try { taxCodesCount = await context.GLTaxCodes.CountAsync(t => t.IsDemo); } catch { }
 
         return new DemoDataStats
         {
@@ -161,126 +160,125 @@ public class DemoDataService : IDemoDataService
     {
         try
         {
-            await using var platformContext = await _platformDbFactory.CreateDbContextAsync();
+            await using var context = await _dbFactory.CreateDbContextAsync();
 
-            var existingAccounts = await platformContext.ChartOfAccounts
-                .Where(c => c.TenantId == DemoTenantId && c.AccountName.StartsWith("DEMO-"))
+            var existingAccounts = await context.GLChartOfAccounts
+                .Where(c => c.IsDemo)
                 .AnyAsync();
 
-        if (existingAccounts)
-        {
-            return true;
-        }
-
-        var now = DateTime.UtcNow;
-        var accounts = new List<TruebooksPlatform.ChartOfAccount>();
-        var accountMappings = new Dictionary<string, Guid>();
-
-        var chartData = new List<(string Code, string Name, TruebooksPlatform.AccountType Type, bool AllowPosting, string? ParentCode)>
-        {
-            ("1000", "DEMO-Assets", TruebooksPlatform.AccountType.Asset, false, null),
-            ("1100", "DEMO-Cash & Bank", TruebooksPlatform.AccountType.Asset, false, "1000"),
-            ("1110", "DEMO-Petty Cash", TruebooksPlatform.AccountType.Asset, true, "1100"),
-            ("1120", "DEMO-Bank - Dubai Islamic Bank", TruebooksPlatform.AccountType.Asset, true, "1100"),
-            ("1130", "DEMO-Bank - Emirates NBD", TruebooksPlatform.AccountType.Asset, true, "1100"),
-            ("1200", "DEMO-Accounts Receivable", TruebooksPlatform.AccountType.Asset, false, "1000"),
-            ("1210", "DEMO-Trade Receivables", TruebooksPlatform.AccountType.Asset, true, "1200"),
-            ("1220", "DEMO-Staff Advances", TruebooksPlatform.AccountType.Asset, true, "1200"),
-            ("1300", "DEMO-Prepaid & Deposits", TruebooksPlatform.AccountType.Asset, false, "1000"),
-            ("1310", "DEMO-Prepaid AWB Deposits", TruebooksPlatform.AccountType.Asset, true, "1300"),
-            ("1320", "DEMO-Security Deposits", TruebooksPlatform.AccountType.Asset, true, "1300"),
-            ("1400", "DEMO-Fixed Assets", TruebooksPlatform.AccountType.Asset, false, "1000"),
-            ("1410", "DEMO-Vehicles", TruebooksPlatform.AccountType.Asset, true, "1400"),
-            ("1420", "DEMO-Office Equipment", TruebooksPlatform.AccountType.Asset, true, "1400"),
-            ("1430", "DEMO-Computer Equipment", TruebooksPlatform.AccountType.Asset, true, "1400"),
-
-            ("2000", "DEMO-Liabilities", TruebooksPlatform.AccountType.Liability, false, null),
-            ("2100", "DEMO-Accounts Payable", TruebooksPlatform.AccountType.Liability, false, "2000"),
-            ("2110", "DEMO-Trade Payables", TruebooksPlatform.AccountType.Liability, true, "2100"),
-            ("2120", "DEMO-Agent Payables", TruebooksPlatform.AccountType.Liability, true, "2100"),
-            ("2200", "DEMO-Accrued Expenses", TruebooksPlatform.AccountType.Liability, false, "2000"),
-            ("2210", "DEMO-Accrued Salaries", TruebooksPlatform.AccountType.Liability, true, "2200"),
-            ("2220", "DEMO-Accrued Rent", TruebooksPlatform.AccountType.Liability, true, "2200"),
-            ("2300", "DEMO-Customer Deposits", TruebooksPlatform.AccountType.Liability, false, "2000"),
-            ("2310", "DEMO-COD Payable to Customers", TruebooksPlatform.AccountType.Liability, true, "2300"),
-            ("2320", "DEMO-Prepaid Balance Liability", TruebooksPlatform.AccountType.Liability, true, "2300"),
-            ("2400", "DEMO-Tax Liabilities", TruebooksPlatform.AccountType.Liability, false, "2000"),
-            ("2410", "DEMO-VAT Payable", TruebooksPlatform.AccountType.Liability, true, "2400"),
-
-            ("3000", "DEMO-Equity", TruebooksPlatform.AccountType.Equity, false, null),
-            ("3100", "DEMO-Capital", TruebooksPlatform.AccountType.Equity, false, "3000"),
-            ("3110", "DEMO-Owner's Capital", TruebooksPlatform.AccountType.Equity, true, "3100"),
-            ("3200", "DEMO-Retained Earnings", TruebooksPlatform.AccountType.Equity, false, "3000"),
-            ("3210", "DEMO-Retained Earnings Account", TruebooksPlatform.AccountType.Equity, true, "3200"),
-            ("3220", "DEMO-Current Year Earnings", TruebooksPlatform.AccountType.Equity, true, "3200"),
-
-            ("4000", "DEMO-Revenue", TruebooksPlatform.AccountType.Revenue, false, null),
-            ("4100", "DEMO-Courier Income", TruebooksPlatform.AccountType.Revenue, false, "4000"),
-            ("4110", "DEMO-Domestic Courier Revenue", TruebooksPlatform.AccountType.Revenue, true, "4100"),
-            ("4120", "DEMO-International Courier Revenue", TruebooksPlatform.AccountType.Revenue, true, "4100"),
-            ("4130", "DEMO-Express Delivery Revenue", TruebooksPlatform.AccountType.Revenue, true, "4100"),
-            ("4200", "DEMO-Other Income", TruebooksPlatform.AccountType.Revenue, false, "4000"),
-            ("4210", "DEMO-COD Collection Fees", TruebooksPlatform.AccountType.Revenue, true, "4200"),
-            ("4220", "DEMO-Insurance Fees", TruebooksPlatform.AccountType.Revenue, true, "4200"),
-            ("4230", "DEMO-Packaging Income", TruebooksPlatform.AccountType.Revenue, true, "4200"),
-
-            ("5000", "DEMO-Expenses", TruebooksPlatform.AccountType.Expense, false, null),
-            ("5100", "DEMO-Operations", TruebooksPlatform.AccountType.Expense, false, "5000"),
-            ("5110", "DEMO-Fuel & Transport", TruebooksPlatform.AccountType.Expense, true, "5100"),
-            ("5120", "DEMO-Vehicle Maintenance", TruebooksPlatform.AccountType.Expense, true, "5100"),
-            ("5130", "DEMO-Courier Subcontracting", TruebooksPlatform.AccountType.Expense, true, "5100"),
-            ("5200", "DEMO-Staff Costs", TruebooksPlatform.AccountType.Expense, false, "5000"),
-            ("5210", "DEMO-Salaries & Wages", TruebooksPlatform.AccountType.Expense, true, "5200"),
-            ("5220", "DEMO-Staff Benefits", TruebooksPlatform.AccountType.Expense, true, "5200"),
-            ("5230", "DEMO-Overtime", TruebooksPlatform.AccountType.Expense, true, "5200"),
-            ("5300", "DEMO-Admin Expenses", TruebooksPlatform.AccountType.Expense, false, "5000"),
-            ("5310", "DEMO-Rent", TruebooksPlatform.AccountType.Expense, true, "5300"),
-            ("5320", "DEMO-Utilities", TruebooksPlatform.AccountType.Expense, true, "5300"),
-            ("5330", "DEMO-Office Supplies", TruebooksPlatform.AccountType.Expense, true, "5300"),
-            ("5340", "DEMO-Communication", TruebooksPlatform.AccountType.Expense, true, "5300")
-        };
-
-        foreach (var (code, name, type, allowPosting, parentCode) in chartData)
-        {
-            var id = Guid.NewGuid();
-            accountMappings[code] = id;
-            accounts.Add(new TruebooksPlatform.ChartOfAccount
+            if (existingAccounts)
             {
-                Id = id,
-                TenantId = DemoTenantId,
-                AccountCode = code,
-                AccountName = name,
-                AccountType = type,
-                AllowPosting = allowPosting,
-                IsActive = true,
-                IsSystemAccount = false,
-                CreatedAt = now
-            });
-        }
-
-        foreach (var account in accounts)
-        {
-            var chartItem = chartData.First(c => c.Code == account.AccountCode);
-            if (chartItem.ParentCode != null && accountMappings.TryGetValue(chartItem.ParentCode, out var parentId))
-            {
-                account.ParentAccountId = parentId;
+                return true;
             }
-        }
 
-        platformContext.ChartOfAccounts.AddRange(accounts);
+            var now = DateTime.UtcNow;
+            var accounts = new List<GLChartOfAccount>();
+            var accountMappings = new Dictionary<string, long>();
 
-        // NOTE: Skip TrueBooks Currency creation - the Currencies table uses bigint IDs (Net4Courier schema)
-        // while TrueBooks expects UUID IDs. Currencies already exist from Net4Courier master data.
+            var chartData = new List<(string Code, string Name, string Type, bool AllowPosting, string? ParentCode)>
+            {
+                ("1000", "DEMO-Assets", "Asset", false, null),
+                ("1100", "DEMO-Cash & Bank", "Asset", false, "1000"),
+                ("1110", "DEMO-Petty Cash", "Asset", true, "1100"),
+                ("1120", "DEMO-Bank - Dubai Islamic Bank", "Asset", true, "1100"),
+                ("1130", "DEMO-Bank - Emirates NBD", "Asset", true, "1100"),
+                ("1200", "DEMO-Accounts Receivable", "Asset", false, "1000"),
+                ("1210", "DEMO-Trade Receivables", "Asset", true, "1200"),
+                ("1220", "DEMO-Staff Advances", "Asset", true, "1200"),
+                ("1300", "DEMO-Prepaid & Deposits", "Asset", false, "1000"),
+                ("1310", "DEMO-Prepaid AWB Deposits", "Asset", true, "1300"),
+                ("1320", "DEMO-Security Deposits", "Asset", true, "1300"),
+                ("1400", "DEMO-Fixed Assets", "Asset", false, "1000"),
+                ("1410", "DEMO-Vehicles", "Asset", true, "1400"),
+                ("1420", "DEMO-Office Equipment", "Asset", true, "1400"),
+                ("1430", "DEMO-Computer Equipment", "Asset", true, "1400"),
 
-        var taxCodes = new List<TruebooksPlatform.TaxCode>
-        {
-            new TruebooksPlatform.TaxCode { Id = Guid.NewGuid(), TenantId = DemoTenantId, Code = "VAT5", Description = "DEMO-5% VAT", Rate = 5m, IsActive = true, CreatedAt = now },
-            new TruebooksPlatform.TaxCode { Id = Guid.NewGuid(), TenantId = DemoTenantId, Code = "VAT0", Description = "DEMO-Zero Rated", Rate = 0m, IsActive = true, CreatedAt = now },
-            new TruebooksPlatform.TaxCode { Id = Guid.NewGuid(), TenantId = DemoTenantId, Code = "EXEMPT", Description = "DEMO-Exempt from VAT", Rate = 0m, IsActive = true, CreatedAt = now }
+                ("2000", "DEMO-Liabilities", "Liability", false, null),
+                ("2100", "DEMO-Accounts Payable", "Liability", false, "2000"),
+                ("2110", "DEMO-Trade Payables", "Liability", true, "2100"),
+                ("2120", "DEMO-Agent Payables", "Liability", true, "2100"),
+                ("2200", "DEMO-Accrued Expenses", "Liability", false, "2000"),
+                ("2210", "DEMO-Accrued Salaries", "Liability", true, "2200"),
+                ("2220", "DEMO-Accrued Rent", "Liability", true, "2200"),
+                ("2300", "DEMO-Customer Deposits", "Liability", false, "2000"),
+                ("2310", "DEMO-COD Payable to Customers", "Liability", true, "2300"),
+                ("2320", "DEMO-Prepaid Balance Liability", "Liability", true, "2300"),
+                ("2400", "DEMO-Tax Liabilities", "Liability", false, "2000"),
+                ("2410", "DEMO-VAT Payable", "Liability", true, "2400"),
+
+                ("3000", "DEMO-Equity", "Equity", false, null),
+                ("3100", "DEMO-Capital", "Equity", false, "3000"),
+                ("3110", "DEMO-Owner's Capital", "Equity", true, "3100"),
+                ("3200", "DEMO-Retained Earnings", "Equity", false, "3000"),
+                ("3210", "DEMO-Retained Earnings Account", "Equity", true, "3200"),
+                ("3220", "DEMO-Current Year Earnings", "Equity", true, "3200"),
+
+                ("4000", "DEMO-Revenue", "Revenue", false, null),
+                ("4100", "DEMO-Courier Income", "Revenue", false, "4000"),
+                ("4110", "DEMO-Domestic Courier Revenue", "Revenue", true, "4100"),
+                ("4120", "DEMO-International Courier Revenue", "Revenue", true, "4100"),
+                ("4130", "DEMO-Express Delivery Revenue", "Revenue", true, "4100"),
+                ("4200", "DEMO-Other Income", "Revenue", false, "4000"),
+                ("4210", "DEMO-COD Collection Fees", "Revenue", true, "4200"),
+                ("4220", "DEMO-Insurance Fees", "Revenue", true, "4200"),
+                ("4230", "DEMO-Packaging Income", "Revenue", true, "4200"),
+
+                ("5000", "DEMO-Expenses", "Expense", false, null),
+                ("5100", "DEMO-Operations", "Expense", false, "5000"),
+                ("5110", "DEMO-Fuel & Transport", "Expense", true, "5100"),
+                ("5120", "DEMO-Vehicle Maintenance", "Expense", true, "5100"),
+                ("5130", "DEMO-Courier Subcontracting", "Expense", true, "5100"),
+                ("5200", "DEMO-Staff Costs", "Expense", false, "5000"),
+                ("5210", "DEMO-Salaries & Wages", "Expense", true, "5200"),
+                ("5220", "DEMO-Staff Benefits", "Expense", true, "5200"),
+                ("5230", "DEMO-Overtime", "Expense", true, "5200"),
+                ("5300", "DEMO-Admin Expenses", "Expense", false, "5000"),
+                ("5310", "DEMO-Rent", "Expense", true, "5300"),
+                ("5320", "DEMO-Utilities", "Expense", true, "5300"),
+                ("5330", "DEMO-Office Supplies", "Expense", true, "5300"),
+                ("5340", "DEMO-Communication", "Expense", true, "5300")
             };
-            platformContext.TaxCodes.AddRange(taxCodes);
 
-            await platformContext.SaveChangesAsync();
+            foreach (var (code, name, type, allowPosting, parentCode) in chartData)
+            {
+                var account = new GLChartOfAccount
+                {
+                    AccountCode = code,
+                    AccountName = name,
+                    AccountType = type,
+                    AllowPosting = allowPosting,
+                    IsActive = true,
+                    IsSystemAccount = false,
+                    IsDemo = true,
+                    CreatedAt = now
+                };
+                context.GLChartOfAccounts.Add(account);
+                await context.SaveChangesAsync();
+                accountMappings[code] = account.Id;
+            }
+
+            foreach (var (code, name, type, allowPosting, parentCode) in chartData)
+            {
+                if (parentCode != null && accountMappings.TryGetValue(parentCode, out var parentId))
+                {
+                    var account = await context.GLChartOfAccounts.FirstOrDefaultAsync(a => a.AccountCode == code && a.IsDemo);
+                    if (account != null)
+                    {
+                        account.ParentId = parentId;
+                    }
+                }
+            }
+            await context.SaveChangesAsync();
+
+            var taxCodes = new List<GLTaxCode>
+            {
+                new GLTaxCode { Code = "VAT5", Description = "DEMO-5% VAT", Rate = 5m, TaxType = "Standard", IsActive = true, IsDemo = true, CreatedAt = now },
+                new GLTaxCode { Code = "VAT0", Description = "DEMO-Zero Rated", Rate = 0m, TaxType = "ZeroRated", IsActive = true, IsDemo = true, CreatedAt = now },
+                new GLTaxCode { Code = "EXEMPT", Description = "DEMO-Exempt from VAT", Rate = 0m, TaxType = "Exempt", IsActive = true, IsDemo = true, CreatedAt = now }
+            };
+            context.GLTaxCodes.AddRange(taxCodes);
+
+            await context.SaveChangesAsync();
             LastError = null;
             return true;
         }
@@ -1811,24 +1809,22 @@ public class DemoDataService : IDemoDataService
 
         try
         {
-            await using var platformContext = await _platformDbFactory.CreateDbContextAsync();
-
-            var demoTaxCodes = await platformContext.TaxCodes
-                .Where(t => t.TenantId == DemoTenantId && t.Description != null && t.Description.StartsWith("DEMO-"))
+            var demoTaxCodes = await context.GLTaxCodes
+                .Where(t => t.IsDemo)
                 .ToListAsync();
-            platformContext.TaxCodes.RemoveRange(demoTaxCodes);
+            context.GLTaxCodes.RemoveRange(demoTaxCodes);
 
-            var demoCurrencies = await platformContext.Currencies
-                .Where(c => c.TenantId == DemoTenantId && c.Name.StartsWith("DEMO-"))
+            var demoCurrencies = await context.Currencies
+                .Where(c => c.IsDemo)
                 .ToListAsync();
-            platformContext.Currencies.RemoveRange(demoCurrencies);
+            context.Currencies.RemoveRange(demoCurrencies);
 
-            var demoAccounts = await platformContext.ChartOfAccounts
-                .Where(c => c.TenantId == DemoTenantId && c.AccountName.StartsWith("DEMO-"))
+            var demoAccounts = await context.GLChartOfAccounts
+                .Where(c => c.IsDemo)
                 .ToListAsync();
-            platformContext.ChartOfAccounts.RemoveRange(demoAccounts);
+            context.GLChartOfAccounts.RemoveRange(demoAccounts);
 
-            await platformContext.SaveChangesAsync();
+            await context.SaveChangesAsync();
         }
         catch { }
 
