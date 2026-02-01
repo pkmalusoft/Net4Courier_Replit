@@ -1,0 +1,134 @@
+@page "/account-types"
+@using Microsoft.EntityFrameworkCore
+@using Net4Courier.Infrastructure.Data
+@using Net4Courier.Masters.Entities
+@inject ApplicationDbContext DbContext
+@inject IDialogService DialogService
+@inject ISnackbar Snackbar
+
+<PageTitle>Customer Types</PageTitle>
+
+<MudContainer MaxWidth="MaxWidth.Large" Class="mt-4">
+    <MudPaper Elevation="2" Class="pa-4">
+        <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center" Class="mb-4">
+            <MudText Typo="Typo.h5">Customer Types</MudText>
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add" OnClick="OpenCreateDialog">
+                Add Customer Type
+            </MudButton>
+        </MudStack>
+
+        <MudTable Items="@_accountTypes" Hover="true" Striped="true" Loading="@_loading" LoadingProgressColor="Color.Primary">
+            <HeaderContent>
+                <MudTh>Code</MudTh>
+                <MudTh>Name</MudTh>
+                <MudTh>Description</MudTh>
+                <MudTh>Sort Order</MudTh>
+                <MudTh>Status</MudTh>
+                <MudTh>Customers</MudTh>
+                <MudTh Style="width: 150px;">Actions</MudTh>
+            </HeaderContent>
+            <RowTemplate>
+                <MudTd DataLabel="Code">@context.Code</MudTd>
+                <MudTd DataLabel="Name">@context.Name</MudTd>
+                <MudTd DataLabel="Description">@context.Description</MudTd>
+                <MudTd DataLabel="Sort Order">@context.SortOrder</MudTd>
+                <MudTd DataLabel="Status">
+                    <MudChip T="string" Color="@(context.IsActive ? Color.Success : Color.Default)" Size="Size.Small">
+                        @(context.IsActive ? "Active" : "Inactive")
+                    </MudChip>
+                </MudTd>
+                <MudTd DataLabel="Customers">@context.Parties.Count</MudTd>
+                <MudTd DataLabel="Actions">
+                    <MudIconButton Icon="@Icons.Material.Filled.Edit" Color="Color.Primary" Size="Size.Small" OnClick="@(() => OpenEditDialog(context))" />
+                    <MudIconButton Icon="@Icons.Material.Filled.Delete" Color="Color.Error" Size="Size.Small" OnClick="@(() => DeleteAccountType(context))" />
+                </MudTd>
+            </RowTemplate>
+            <NoRecordsContent>
+                <MudText>No customer types found.</MudText>
+            </NoRecordsContent>
+        </MudTable>
+    </MudPaper>
+</MudContainer>
+
+@code {
+    private List<AccountType> _accountTypes = new();
+    private bool _loading = true;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadAccountTypes();
+    }
+
+    private async Task LoadAccountTypes()
+    {
+        _loading = true;
+        _accountTypes = await DbContext.AccountTypes
+            .Include(at => at.Parties)
+            .Where(at => !at.IsDeleted)
+            .OrderBy(at => at.SortOrder)
+            .ThenBy(at => at.Name)
+            .ToListAsync();
+        _loading = false;
+    }
+
+    private async Task OpenCreateDialog()
+    {
+        var maxSortOrder = _accountTypes.Any() ? _accountTypes.Max(at => at.SortOrder) : 0;
+        var parameters = new DialogParameters<AccountTypeDialog>
+        {
+            { x => x.AccountType, new AccountType { SortOrder = maxSortOrder + 1, IsActive = true } },
+            { x => x.IsNew, true }
+        };
+
+        var options = new DialogOptions { CloseOnEscapeKey = true, MaxWidth = MaxWidth.Small, FullWidth = true };
+        var dialog = await DialogService.ShowAsync<AccountTypeDialog>("Add Customer Type", parameters, options);
+        var result = await dialog.Result;
+
+        if (result != null && !result.Canceled)
+        {
+            await LoadAccountTypes();
+            Snackbar.Add("Customer type created successfully", Severity.Success);
+        }
+    }
+
+    private async Task OpenEditDialog(AccountType accountType)
+    {
+        var parameters = new DialogParameters<AccountTypeDialog>
+        {
+            { x => x.AccountType, accountType },
+            { x => x.IsNew, false }
+        };
+
+        var options = new DialogOptions { CloseOnEscapeKey = true, MaxWidth = MaxWidth.Small, FullWidth = true };
+        var dialog = await DialogService.ShowAsync<AccountTypeDialog>("Edit Customer Type", parameters, options);
+        var result = await dialog.Result;
+
+        if (result != null && !result.Canceled)
+        {
+            await LoadAccountTypes();
+            Snackbar.Add("Customer type updated successfully", Severity.Success);
+        }
+    }
+
+    private async Task DeleteAccountType(AccountType accountType)
+    {
+        if (accountType.Parties.Any())
+        {
+            Snackbar.Add($"Cannot delete '{accountType.Name}' - it has {accountType.Parties.Count} customers assigned", Severity.Warning);
+            return;
+        }
+
+        var confirm = await DialogService.ShowMessageBox(
+            "Confirm Delete",
+            $"Are you sure you want to delete '{accountType.Name}'?",
+            yesText: "Delete", cancelText: "Cancel");
+
+        if (confirm == true)
+        {
+            accountType.IsDeleted = true;
+            await DbContext.SaveChangesAsync();
+            await LoadAccountTypes();
+            Snackbar.Add("Customer type deleted successfully", Severity.Success);
+        }
+    }
+}
