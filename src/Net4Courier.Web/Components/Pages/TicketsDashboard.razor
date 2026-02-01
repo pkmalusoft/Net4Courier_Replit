@@ -1,0 +1,435 @@
+@page "/tickets-dashboard"
+@page "/complaints-dashboard"
+@layout MainLayout
+@attribute [Authorize]
+@inject IDbContextFactory<ApplicationDbContext> DbContextFactory
+@inject ISnackbar Snackbar
+@inject IDialogService DialogService
+@inject NavigationManager NavigationManager
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.EntityFrameworkCore
+@using Net4Courier.Infrastructure.Data
+@using Net4Courier.Operations.Entities
+@using Net4Courier.Masters.Entities
+@using Net4Courier.Web.Components.Layout
+
+<PageTitle>Tickets Dashboard - Net4Courier</PageTitle>
+
+<MudPaper Class="pa-4 mb-4" Elevation="0">
+    <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
+        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+            <MudIcon Icon="@Icons.Material.Filled.Dashboard" Size="Size.Large" Color="Color.Primary" />
+            <MudText Typo="Typo.h5">Tickets Dashboard</MudText>
+        </MudStack>
+        <MudStack Row="true" Spacing="2">
+            <MudButton Variant="Variant.Outlined" StartIcon="@Icons.Material.Filled.List" Href="/tickets">
+                All Tickets
+            </MudButton>
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add" OnClick="OpenCreateDialog">
+                Create Ticket
+            </MudButton>
+        </MudStack>
+    </MudStack>
+</MudPaper>
+
+<MudGrid Spacing="3" Class="mb-4">
+    <MudItem xs="12" sm="6" md="2">
+        <MudCard Elevation="2" Style="cursor: pointer;" @onclick="@(() => NavigateWithFilter(null))">
+            <MudCardContent Class="d-flex flex-column align-center pa-4">
+                <MudIcon Icon="@Icons.Material.Filled.ConfirmationNumber" Size="Size.Large" Color="Color.Primary" />
+                <MudText Typo="Typo.h3" Class="mt-2">@_totalCount</MudText>
+                <MudText Typo="Typo.body2" Color="Color.Secondary">Total Tickets</MudText>
+            </MudCardContent>
+        </MudCard>
+    </MudItem>
+    <MudItem xs="12" sm="6" md="2">
+        <MudCard Elevation="2" Style="cursor: pointer;" @onclick="@(() => NavigateWithFilter(TicketStatus.Open))">
+            <MudCardContent Class="d-flex flex-column align-center pa-4">
+                <MudIcon Icon="@Icons.Material.Filled.FiberNew" Size="Size.Large" Color="Color.Info" />
+                <MudText Typo="Typo.h3" Class="mt-2" Color="Color.Info">@_openCount</MudText>
+                <MudText Typo="Typo.body2" Color="Color.Secondary">Open</MudText>
+            </MudCardContent>
+        </MudCard>
+    </MudItem>
+    <MudItem xs="12" sm="6" md="2">
+        <MudCard Elevation="2" Style="cursor: pointer;" @onclick="@(() => NavigateWithFilter(TicketStatus.InProgress))">
+            <MudCardContent Class="d-flex flex-column align-center pa-4">
+                <MudIcon Icon="@Icons.Material.Filled.Autorenew" Size="Size.Large" Color="Color.Warning" />
+                <MudText Typo="Typo.h3" Class="mt-2" Color="Color.Warning">@_inProgressCount</MudText>
+                <MudText Typo="Typo.body2" Color="Color.Secondary">In Progress</MudText>
+            </MudCardContent>
+        </MudCard>
+    </MudItem>
+    <MudItem xs="12" sm="6" md="2">
+        <MudCard Elevation="2" Style="cursor: pointer;" @onclick="@(() => NavigateWithFilter(TicketStatus.PendingCustomer))">
+            <MudCardContent Class="d-flex flex-column align-center pa-4">
+                <MudIcon Icon="@Icons.Material.Filled.HourglassEmpty" Size="Size.Large" Color="Color.Secondary" />
+                <MudText Typo="Typo.h3" Class="mt-2">@_pendingCustomerCount</MudText>
+                <MudText Typo="Typo.body2" Color="Color.Secondary">Pending Customer</MudText>
+            </MudCardContent>
+        </MudCard>
+    </MudItem>
+    <MudItem xs="12" sm="6" md="2">
+        <MudCard Elevation="2" Style="cursor: pointer;" @onclick="@(() => NavigateWithFilter(TicketStatus.Resolved))">
+            <MudCardContent Class="d-flex flex-column align-center pa-4">
+                <MudIcon Icon="@Icons.Material.Filled.CheckCircle" Size="Size.Large" Color="Color.Success" />
+                <MudText Typo="Typo.h3" Class="mt-2" Color="Color.Success">@_resolvedCount</MudText>
+                <MudText Typo="Typo.body2" Color="Color.Secondary">Resolved</MudText>
+            </MudCardContent>
+        </MudCard>
+    </MudItem>
+    <MudItem xs="12" sm="6" md="2">
+        <MudCard Elevation="2" Style="cursor: pointer;" @onclick="@(() => NavigateWithFilter(TicketStatus.Closed))">
+            <MudCardContent Class="d-flex flex-column align-center pa-4">
+                <MudIcon Icon="@Icons.Material.Filled.Lock" Size="Size.Large" Color="Color.Dark" />
+                <MudText Typo="Typo.h3" Class="mt-2">@_closedCount</MudText>
+                <MudText Typo="Typo.body2" Color="Color.Secondary">Closed</MudText>
+            </MudCardContent>
+        </MudCard>
+    </MudItem>
+</MudGrid>
+
+<MudGrid Spacing="3">
+    <MudItem xs="12" md="6">
+        <MudPaper Elevation="2" Class="pa-4">
+            <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center" Class="mb-3">
+                <MudText Typo="Typo.h6">
+                    <MudIcon Icon="@Icons.Material.Filled.Warning" Color="Color.Error" Class="mr-1" />
+                    Urgent & Overdue Tickets
+                </MudText>
+                <MudChip T="string" Size="Size.Small" Color="Color.Error">@_urgentTickets.Count</MudChip>
+            </MudStack>
+            @if (_loading)
+            {
+                <MudProgressLinear Indeterminate="true" Color="Color.Primary" />
+            }
+            else if (_urgentTickets.Count == 0)
+            {
+                <MudAlert Severity="Severity.Success" Dense="true">No urgent or overdue tickets!</MudAlert>
+            }
+            else
+            {
+                <MudList T="Ticket" Dense="true">
+                    @foreach (var ticket in _urgentTickets.Take(5))
+                    {
+                        <MudListItem T="Ticket" OnClick="@(() => ViewTicket(ticket))">
+                            <div class="d-flex justify-space-between align-center" style="width: 100%;">
+                                <div>
+                                    <MudText Typo="Typo.body2" Style="font-weight: 600;">@ticket.TicketNo</MudText>
+                                    <MudText Typo="Typo.caption" Color="Color.Secondary">@TruncateText(ticket.Subject, 40)</MudText>
+                                    <MudText Typo="Typo.caption">@ticket.PartyName</MudText>
+                                </div>
+                                <div class="d-flex flex-column align-end">
+                                    <MudChip T="string" Size="Size.Small" Color="@GetPriorityColor(ticket.Priority)">@ticket.Priority</MudChip>
+                                    <MudText Typo="Typo.caption" Color="Color.Error">@GetAgeText(ticket.CreatedAt)</MudText>
+                                </div>
+                            </div>
+                        </MudListItem>
+                        <MudDivider />
+                    }
+                </MudList>
+            }
+        </MudPaper>
+    </MudItem>
+    
+    <MudItem xs="12" md="6">
+        <MudPaper Elevation="2" Class="pa-4">
+            <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center" Class="mb-3">
+                <MudText Typo="Typo.h6">
+                    <MudIcon Icon="@Icons.Material.Filled.PersonOff" Color="Color.Warning" Class="mr-1" />
+                    Unassigned Tickets
+                </MudText>
+                <MudChip T="string" Size="Size.Small" Color="Color.Warning">@_unassignedTickets.Count</MudChip>
+            </MudStack>
+            @if (_loading)
+            {
+                <MudProgressLinear Indeterminate="true" Color="Color.Primary" />
+            }
+            else if (_unassignedTickets.Count == 0)
+            {
+                <MudAlert Severity="Severity.Success" Dense="true">All tickets are assigned!</MudAlert>
+            }
+            else
+            {
+                <MudList T="Ticket" Dense="true">
+                    @foreach (var ticket in _unassignedTickets.Take(5))
+                    {
+                        <MudListItem T="Ticket">
+                            <div class="d-flex justify-space-between align-center" style="width: 100%;">
+                                <div style="flex: 1; cursor: pointer;" @onclick="@(() => ViewTicket(ticket))">
+                                    <MudText Typo="Typo.body2" Style="font-weight: 600;">@ticket.TicketNo</MudText>
+                                    <MudText Typo="Typo.caption" Color="Color.Secondary">@TruncateText(ticket.Subject, 30)</MudText>
+                                </div>
+                                <MudButton Size="Size.Small" Variant="Variant.Outlined" Color="Color.Primary" 
+                                           OnClick="@(() => OpenAssignDialog(ticket))">
+                                    Assign
+                                </MudButton>
+                            </div>
+                        </MudListItem>
+                        <MudDivider />
+                    }
+                </MudList>
+            }
+        </MudPaper>
+    </MudItem>
+    
+    <MudItem xs="12" md="6">
+        <MudPaper Elevation="2" Class="pa-4">
+            <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center" Class="mb-3">
+                <MudText Typo="Typo.h6">
+                    <MudIcon Icon="@Icons.Material.Filled.FiberNew" Color="Color.Info" Class="mr-1" />
+                    Recently Created
+                </MudText>
+            </MudStack>
+            @if (_loading)
+            {
+                <MudProgressLinear Indeterminate="true" Color="Color.Primary" />
+            }
+            else if (_recentTickets.Count == 0)
+            {
+                <MudText Typo="Typo.body2" Color="Color.Secondary">No recent tickets</MudText>
+            }
+            else
+            {
+                <MudList T="Ticket" Dense="true">
+                    @foreach (var ticket in _recentTickets)
+                    {
+                        <MudListItem T="Ticket" OnClick="@(() => ViewTicket(ticket))">
+                            <div class="d-flex justify-space-between align-center" style="width: 100%;">
+                                <div>
+                                    <MudText Typo="Typo.body2" Style="font-weight: 600;">@ticket.TicketNo</MudText>
+                                    <MudText Typo="Typo.caption" Color="Color.Secondary">@TruncateText(ticket.Subject, 40)</MudText>
+                                </div>
+                                <div class="d-flex flex-column align-end">
+                                    <MudChip T="string" Size="Size.Small" Color="@GetStatusColor(ticket.Status)">@ticket.Status</MudChip>
+                                    <MudText Typo="Typo.caption">@ticket.CreatedAt.ToString("dd MMM, HH:mm")</MudText>
+                                </div>
+                            </div>
+                        </MudListItem>
+                        <MudDivider />
+                    }
+                </MudList>
+            }
+        </MudPaper>
+    </MudItem>
+    
+    <MudItem xs="12" md="6">
+        <MudPaper Elevation="2" Class="pa-4">
+            <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center" Class="mb-3">
+                <MudText Typo="Typo.h6">
+                    <MudIcon Icon="@Icons.Material.Filled.Category" Color="Color.Primary" Class="mr-1" />
+                    By Category
+                </MudText>
+            </MudStack>
+            @if (_loading)
+            {
+                <MudProgressLinear Indeterminate="true" Color="Color.Primary" />
+            }
+            else if (_categoryStats.Count == 0)
+            {
+                <MudText Typo="Typo.body2" Color="Color.Secondary">No category data</MudText>
+            }
+            else
+            {
+                <MudSimpleTable Dense="true" Hover="true">
+                    <thead>
+                        <tr>
+                            <th>Category</th>
+                            <th style="text-align: center;">Open</th>
+                            <th style="text-align: center;">In Progress</th>
+                            <th style="text-align: center;">Total</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var stat in _categoryStats)
+                        {
+                            <tr>
+                                <td>@stat.CategoryName</td>
+                                <td style="text-align: center;">
+                                    <MudChip T="string" Size="Size.Small" Color="Color.Info">@stat.OpenCount</MudChip>
+                                </td>
+                                <td style="text-align: center;">
+                                    <MudChip T="string" Size="Size.Small" Color="Color.Warning">@stat.InProgressCount</MudChip>
+                                </td>
+                                <td style="text-align: center;">
+                                    <MudChip T="string" Size="Size.Small">@stat.TotalCount</MudChip>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </MudSimpleTable>
+            }
+        </MudPaper>
+    </MudItem>
+</MudGrid>
+
+@code {
+    private bool _loading = true;
+    private int _totalCount;
+    private int _openCount;
+    private int _inProgressCount;
+    private int _pendingCustomerCount;
+    private int _resolvedCount;
+    private int _closedCount;
+    
+    private List<Ticket> _urgentTickets = new();
+    private List<Ticket> _unassignedTickets = new();
+    private List<Ticket> _recentTickets = new();
+    private List<CategoryStat> _categoryStats = new();
+    private List<User> _users = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadData();
+    }
+
+    private async Task LoadData()
+    {
+        _loading = true;
+        StateHasChanged();
+        
+        await using var db = await DbContextFactory.CreateDbContextAsync();
+        
+        var baseQuery = db.Tickets.Where(t => !t.IsDeleted);
+        
+        _totalCount = await baseQuery.CountAsync();
+        _openCount = await baseQuery.CountAsync(t => t.Status == TicketStatus.Open);
+        _inProgressCount = await baseQuery.CountAsync(t => t.Status == TicketStatus.InProgress);
+        _pendingCustomerCount = await baseQuery.CountAsync(t => t.Status == TicketStatus.PendingCustomer);
+        _resolvedCount = await baseQuery.CountAsync(t => t.Status == TicketStatus.Resolved);
+        _closedCount = await baseQuery.CountAsync(t => t.Status == TicketStatus.Closed);
+        
+        var threeDaysAgo = DateTime.UtcNow.AddDays(-3);
+        _urgentTickets = await baseQuery
+            .Where(t => (t.Priority == TicketPriority.Urgent || t.Priority == TicketPriority.High || t.CreatedAt < threeDaysAgo)
+                        && t.Status != TicketStatus.Resolved && t.Status != TicketStatus.Closed && t.Status != TicketStatus.Cancelled)
+            .OrderByDescending(t => t.Priority)
+            .ThenBy(t => t.CreatedAt)
+            .Take(10)
+            .ToListAsync();
+        
+        _unassignedTickets = await baseQuery
+            .Where(t => t.AssignedToUserId == null 
+                        && t.Status != TicketStatus.Resolved && t.Status != TicketStatus.Closed && t.Status != TicketStatus.Cancelled)
+            .OrderByDescending(t => t.Priority)
+            .ThenBy(t => t.CreatedAt)
+            .Take(10)
+            .ToListAsync();
+        
+        _recentTickets = await baseQuery
+            .OrderByDescending(t => t.CreatedAt)
+            .Take(5)
+            .ToListAsync();
+        
+        _categoryStats = await baseQuery
+            .Where(t => t.Status != TicketStatus.Resolved && t.Status != TicketStatus.Closed && t.Status != TicketStatus.Cancelled)
+            .GroupBy(t => new { t.CategoryId, t.CategoryName })
+            .Select(g => new CategoryStat
+            {
+                CategoryId = g.Key.CategoryId,
+                CategoryName = g.Key.CategoryName ?? "Uncategorized",
+                OpenCount = g.Count(t => t.Status == TicketStatus.Open),
+                InProgressCount = g.Count(t => t.Status == TicketStatus.InProgress),
+                TotalCount = g.Count()
+            })
+            .OrderByDescending(s => s.TotalCount)
+            .Take(6)
+            .ToListAsync();
+        
+        _users = await db.Users
+            .Where(u => u.IsActive && !u.IsDeleted)
+            .OrderBy(u => u.FullName)
+            .ToListAsync();
+        
+        _loading = false;
+        StateHasChanged();
+    }
+
+    private void NavigateWithFilter(TicketStatus? status)
+    {
+        if (status.HasValue)
+            NavigationManager.NavigateTo($"/tickets?status={status.Value}");
+        else
+            NavigationManager.NavigateTo("/tickets");
+    }
+
+    private void ViewTicket(Ticket ticket)
+    {
+        NavigationManager.NavigateTo($"/ticket/{ticket.Id}");
+    }
+
+    private async Task OpenCreateDialog()
+    {
+        var parameters = new DialogParameters<TicketDialog>();
+        var options = new DialogOptions { MaxWidth = MaxWidth.Medium, FullWidth = true, CloseButton = true };
+        var dialog = await DialogService.ShowAsync<TicketDialog>("Create Ticket", parameters, options);
+        var result = await dialog.Result;
+        
+        if (!result.Canceled)
+        {
+            await LoadData();
+        }
+    }
+
+    private async Task OpenAssignDialog(Ticket ticket)
+    {
+        var parameters = new DialogParameters<TicketAssignDialog>
+        {
+            { x => x.Ticket, ticket },
+            { x => x.Users, _users }
+        };
+        var options = new DialogOptions { MaxWidth = MaxWidth.Small, FullWidth = true, CloseButton = true };
+        var dialog = await DialogService.ShowAsync<TicketAssignDialog>("Assign Ticket", parameters, options);
+        var result = await dialog.Result;
+        
+        if (!result.Canceled)
+        {
+            await LoadData();
+            Snackbar.Add("Ticket assigned successfully", Severity.Success);
+        }
+    }
+
+    private Color GetPriorityColor(TicketPriority priority) => priority switch
+    {
+        TicketPriority.Urgent => Color.Error,
+        TicketPriority.High => Color.Warning,
+        TicketPriority.Medium => Color.Info,
+        _ => Color.Default
+    };
+
+    private Color GetStatusColor(TicketStatus status) => status switch
+    {
+        TicketStatus.Open => Color.Info,
+        TicketStatus.InProgress => Color.Warning,
+        TicketStatus.PendingCustomer => Color.Secondary,
+        TicketStatus.Resolved => Color.Success,
+        TicketStatus.Closed => Color.Dark,
+        TicketStatus.Cancelled => Color.Error,
+        _ => Color.Default
+    };
+
+    private string GetAgeText(DateTime createdAt)
+    {
+        var age = DateTime.UtcNow - createdAt;
+        if (age.TotalDays >= 1)
+            return $"{(int)age.TotalDays}d ago";
+        if (age.TotalHours >= 1)
+            return $"{(int)age.TotalHours}h ago";
+        return $"{(int)age.TotalMinutes}m ago";
+    }
+
+    private class CategoryStat
+    {
+        public long CategoryId { get; set; }
+        public string CategoryName { get; set; } = "";
+        public int OpenCount { get; set; }
+        public int InProgressCount { get; set; }
+        public int TotalCount { get; set; }
+    }
+    
+    private static string TruncateText(string? value, int maxLength)
+    {
+        if (string.IsNullOrEmpty(value)) return value ?? "";
+        return value.Length <= maxLength ? value : value[..maxLength] + "...";
+    }
+}
