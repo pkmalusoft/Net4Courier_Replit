@@ -1730,6 +1730,21 @@ public class DatabaseInitializationService : BackgroundService
                 _logger.LogInformation("Seeded OtherChargeTypes data");
             }
 
+            if (!await dbContext.AccountTypes.AnyAsync(stoppingToken))
+            {
+                var accountTypes = new[]
+                {
+                    new Net4Courier.Masters.Entities.AccountType { Code = "CREDIT", Name = "Credit", Description = "Credit account - payment after delivery", SortOrder = 1, IsActive = true, CreatedAt = DateTime.UtcNow },
+                    new Net4Courier.Masters.Entities.AccountType { Code = "COD", Name = "COD", Description = "Cash on Delivery", SortOrder = 2, IsActive = true, CreatedAt = DateTime.UtcNow },
+                    new Net4Courier.Masters.Entities.AccountType { Code = "PREPAID", Name = "Pre-paid", Description = "Payment before service", SortOrder = 3, IsActive = true, CreatedAt = DateTime.UtcNow },
+                    new Net4Courier.Masters.Entities.AccountType { Code = "CASH", Name = "Cash", Description = "Cash payment", SortOrder = 4, IsActive = true, CreatedAt = DateTime.UtcNow },
+                    new Net4Courier.Masters.Entities.AccountType { Code = "TRANS", Name = "Trans-shipment", Description = "Trans-shipment account", SortOrder = 5, IsActive = true, CreatedAt = DateTime.UtcNow }
+                };
+                dbContext.AccountTypes.AddRange(accountTypes);
+                await dbContext.SaveChangesAsync(stoppingToken);
+                _logger.LogInformation("Seeded Customer Account Types");
+            }
+
             var shipmentStatusService = scope.ServiceProvider.GetRequiredService<ShipmentStatusService>();
             await shipmentStatusService.SeedDefaultStatuses();
             await shipmentStatusService.SeedRTSStatuses();
