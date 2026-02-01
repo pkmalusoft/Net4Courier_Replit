@@ -675,8 +675,16 @@ public class DemoDataService : IDemoDataService
             new { Code = "DEMO-EMP-005", Name = "Fatima Khan", Role = "Dispatcher", Phone = "+971 50 555 5555" }
         };
 
+        var existingEmployeeCodes = await context.Employees
+            .Where(e => e.Code != null && e.Code.StartsWith("DEMO-"))
+            .Select(e => e.Code)
+            .ToListAsync();
+
         foreach (var emp in employeeData)
         {
+            if (existingEmployeeCodes.Contains(emp.Code))
+                continue;
+
             var employee = new Employee
             {
                 Code = emp.Code,
@@ -701,8 +709,16 @@ public class DemoDataService : IDemoDataService
                 new { VehicleNo = "DEMO-DXB-9012", Type = "Truck", Make = "Isuzu", Model = "NPR", Capacity = 3000m }
             };
 
+            var existingVehicleNos = await context.Vehicles
+                .Where(v => v.VehicleNo != null && v.VehicleNo.StartsWith("DEMO-"))
+                .Select(v => v.VehicleNo)
+                .ToListAsync();
+
             foreach (var veh in vehicleData)
             {
+                if (existingVehicleNos.Contains(veh.VehicleNo))
+                    continue;
+
                 var vehicle = new Vehicle
                 {
                     CompanyId = companyId,
