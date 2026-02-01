@@ -35,6 +35,8 @@ public class Company : BaseEntity
     public long? CurrencyId { get; set; }
     public virtual Currency? Currency { get; set; }
     
+    public bool UseAwbStockManagement { get; set; } = true;
+    
     public virtual ICollection<Branch> Branches { get; set; } = new List<Branch>();
     public virtual ICollection<FinancialYear> FinancialYears { get; set; } = new List<FinancialYear>();
 }
