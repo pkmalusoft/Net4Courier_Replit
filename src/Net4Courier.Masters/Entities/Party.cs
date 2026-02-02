@@ -20,6 +20,7 @@ public class Party : BaseEntity
     public string? Logo { get; set; }
     public decimal CreditLimit { get; set; }
     public int CreditDays { get; set; }
+    public long? CustomerZoneId { get; set; }
     public bool IsActive { get; set; } = true;
     
     public CreditApprovalStatus CreditApprovalStatus { get; set; } = CreditApprovalStatus.NotApplicable;
@@ -34,6 +35,7 @@ public class Party : BaseEntity
     
     public virtual Company Company { get; set; } = null!;
     public virtual AccountType? AccountType { get; set; }
+    public virtual CustomerZone? CustomerZone { get; set; }
     public virtual ICollection<PartyAddress> Addresses { get; set; } = new List<PartyAddress>();
     public virtual ICollection<CustomerBranch> Branches { get; set; } = new List<CustomerBranch>();
 }

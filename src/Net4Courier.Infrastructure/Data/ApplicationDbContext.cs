@@ -38,6 +38,9 @@ public class ApplicationDbContext : DbContext
     public DbSet<State> States => Set<State>();
     public DbSet<City> Cities => Set<City>();
     public DbSet<Location> Locations => Set<Location>();
+    public DbSet<CustomerZone> CustomerZones => Set<CustomerZone>();
+    public DbSet<CustomerZoneCity> CustomerZoneCities => Set<CustomerZoneCity>();
+    public DbSet<CustomerZoneCourier> CustomerZoneCouriers => Set<CustomerZoneCourier>();
     public DbSet<Currency> Currencies => Set<Currency>();
     public DbSet<Employee> Employees => Set<Employee>();
     public DbSet<Designation> Designations => Set<Designation>();
@@ -447,6 +450,10 @@ public class ApplicationDbContext : DbContext
                   .WithOne(b => b.Party)
                   .HasForeignKey(b => b.PartyId)
                   .OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne(e => e.CustomerZone)
+                  .WithMany(z => z.Customers)
+                  .HasForeignKey(e => e.CustomerZoneId)
+                  .OnDelete(DeleteBehavior.SetNull);
         });
 
         modelBuilder.Entity<AccountType>(entity =>
@@ -569,6 +576,40 @@ public class ApplicationDbContext : DbContext
             entity.HasOne(e => e.City).WithMany(c => c.Locations).HasForeignKey(e => e.CityId)
                   .OnDelete(DeleteBehavior.Restrict);
             entity.HasOne(e => e.Branch).WithMany().HasForeignKey(e => e.BranchId)
+                  .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        modelBuilder.Entity<CustomerZone>(entity =>
+        {
+            entity.ToTable("CustomerZones");
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Name).HasMaxLength(100).IsRequired();
+            entity.Property(e => e.Code).HasMaxLength(20);
+            entity.Property(e => e.Description).HasMaxLength(500);
+            entity.HasIndex(e => new { e.BranchId, e.Code }).IsUnique();
+            entity.HasOne(e => e.Branch).WithMany().HasForeignKey(e => e.BranchId)
+                  .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        modelBuilder.Entity<CustomerZoneCity>(entity =>
+        {
+            entity.ToTable("CustomerZoneCities");
+            entity.HasKey(e => e.Id);
+            entity.HasIndex(e => new { e.CustomerZoneId, e.CityId }).IsUnique();
+            entity.HasOne(e => e.CustomerZone).WithMany(z => z.Cities).HasForeignKey(e => e.CustomerZoneId)
+                  .OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne(e => e.City).WithMany().HasForeignKey(e => e.CityId)
+                  .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        modelBuilder.Entity<CustomerZoneCourier>(entity =>
+        {
+            entity.ToTable("CustomerZoneCouriers");
+            entity.HasKey(e => e.Id);
+            entity.HasIndex(e => new { e.CustomerZoneId, e.UserId }).IsUnique();
+            entity.HasOne(e => e.CustomerZone).WithMany(z => z.Couriers).HasForeignKey(e => e.CustomerZoneId)
+                  .OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne(e => e.User).WithMany().HasForeignKey(e => e.UserId)
                   .OnDelete(DeleteBehavior.Restrict);
         });
 
