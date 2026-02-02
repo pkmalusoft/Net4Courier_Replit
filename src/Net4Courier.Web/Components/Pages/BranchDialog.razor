@@ -2,6 +2,7 @@
 @using Microsoft.EntityFrameworkCore
 @using Net4Courier.Infrastructure.Data
 @using Net4Courier.Masters.Entities
+@using Net4Courier.Kernel.Enums
 
 <MudDialog>
     <TitleContent>
@@ -109,6 +110,34 @@
                 <MudItem xs="12" md="6">
                     <MudSwitch @bind-Value="Branch.HideAccountCodes" Label="Hide Account Codes" Color="Color.Primary" Class="mt-0" />
                 </MudItem>
+
+                <MudItem xs="12">
+                    <MudDivider Class="my-2" />
+                    <MudText Typo="Typo.subtitle2" Class="mb-2">AWB Configuration</MudText>
+                </MudItem>
+
+                @foreach (var config in _awbConfigs)
+                {
+                    <MudItem xs="12">
+                        <MudPaper Elevation="1" Class="pa-3 mb-2">
+                            <MudText Typo="Typo.subtitle2" Class="mb-2">@GetMovementTypeLabel(config.MovementType)</MudText>
+                            <MudGrid>
+                                <MudItem xs="12" md="3">
+                                    <MudTextField @bind-Value="config.AWBPrefix" Label="AWB Prefix" Variant="Variant.Outlined" Margin="Margin.Dense" />
+                                </MudItem>
+                                <MudItem xs="12" md="3">
+                                    <MudNumericField @bind-Value="config.StartingNumber" Label="Starting Number" Variant="Variant.Outlined" Margin="Margin.Dense" Min="1" />
+                                </MudItem>
+                                <MudItem xs="12" md="3">
+                                    <MudNumericField @bind-Value="config.IncrementBy" Label="Increment By" Variant="Variant.Outlined" Margin="Margin.Dense" Min="1" />
+                                </MudItem>
+                                <MudItem xs="12" md="3">
+                                    <MudNumericField @bind-Value="config.LastUsedNumber" Label="Last Used Number" Variant="Variant.Outlined" Margin="Margin.Dense" />
+                                </MudItem>
+                            </MudGrid>
+                        </MudPaper>
+                    </MudItem>
+                }
             </MudGrid>
         </MudForm>
         }
@@ -134,6 +163,7 @@
     private List<State> _states = new();
     private List<City> _cities = new();
     private List<Currency> _currencies = new();
+    private List<BranchAWBConfig> _awbConfigs = new();
     
     private long _selectedCountryId;
     private long _selectedStateId;
@@ -170,8 +200,52 @@
             _cities = await db.Cities.Where(c => c.StateId == _selectedStateId && c.IsActive && !c.IsDeleted).OrderBy(c => c.Name).ToListAsync();
         }
         
+        // Load existing AWB configs or create defaults for each movement type
+        if (!IsNew && Branch.Id > 0)
+        {
+            _awbConfigs = await db.Set<BranchAWBConfig>()
+                .Where(c => c.BranchId == Branch.Id && !c.IsDeleted)
+                .ToListAsync();
+        }
+        
+        // Ensure all movement types have a config entry
+        var movementTypes = new[] { MovementType.Domestic, MovementType.InternationalExport, MovementType.InternationalImport, MovementType.Transhipment };
+        foreach (var mt in movementTypes)
+        {
+            if (!_awbConfigs.Any(c => c.MovementType == mt))
+            {
+                _awbConfigs.Add(new BranchAWBConfig
+                {
+                    BranchId = Branch.Id,
+                    MovementType = mt,
+                    AWBPrefix = GetDefaultPrefix(mt),
+                    StartingNumber = 1,
+                    IncrementBy = 1,
+                    LastUsedNumber = 0
+                });
+            }
+        }
+        
         _isLoading = false;
     }
+    
+    private string GetDefaultPrefix(MovementType mt) => mt switch
+    {
+        MovementType.Domestic => "DOM",
+        MovementType.InternationalExport => "EXP",
+        MovementType.InternationalImport => "IMP",
+        MovementType.Transhipment => "TRN",
+        _ => ""
+    };
+    
+    private string GetMovementTypeLabel(MovementType mt) => mt switch
+    {
+        MovementType.Domestic => "Domestic",
+        MovementType.InternationalExport => "Export",
+        MovementType.InternationalImport => "Import",
+        MovementType.Transhipment => "Transhipment",
+        _ => mt.ToString()
+    };
 
     private async Task OnCountryChanged(long countryId)
     {
@@ -221,11 +295,36 @@
             Branch.CreatedAt = DateTime.UtcNow;
             Branch.AWBLastUsedNumber = Branch.AWBStartingNumber;
             db.Branches.Add(Branch);
+            await db.SaveChangesAsync();
+            
+            // Set BranchId for new AWB configs after branch is saved
+            foreach (var config in _awbConfigs)
+            {
+                config.BranchId = Branch.Id;
+                config.CreatedAt = DateTime.UtcNow;
+                db.Set<BranchAWBConfig>().Add(config);
+            }
         }
         else
         {
             Branch.ModifiedAt = DateTime.UtcNow;
             db.Branches.Update(Branch);
+            
+            // Save AWB configs
+            foreach (var config in _awbConfigs)
+            {
+                config.BranchId = Branch.Id;
+                if (config.Id == 0)
+                {
+                    config.CreatedAt = DateTime.UtcNow;
+                    db.Set<BranchAWBConfig>().Add(config);
+                }
+                else
+                {
+                    config.ModifiedAt = DateTime.UtcNow;
+                    db.Set<BranchAWBConfig>().Update(config);
+                }
+            }
         }
 
         await db.SaveChangesAsync();
