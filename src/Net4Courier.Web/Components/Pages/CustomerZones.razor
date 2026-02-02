@@ -1,0 +1,496 @@
+@page "/customer-zones"
+@using Microsoft.EntityFrameworkCore
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.AspNetCore.Authorization
+@using Net4Courier.Infrastructure.Data
+@using Net4Courier.Masters.Entities
+@attribute [Authorize(Roles = "Administrator,PlatformAdmin,Manager")]
+@inject ApplicationDbContext DbContext
+@inject IDialogService DialogService
+@inject ISnackbar Snackbar
+@inject AuthenticationStateProvider AuthStateProvider
+
+<PageTitle>Customer Zones</PageTitle>
+
+<MudContainer MaxWidth="MaxWidth.ExtraLarge" Class="mt-4">
+    <MudPaper Elevation="2" Class="pa-4">
+        <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center" Class="mb-4">
+            <MudText Typo="Typo.h5">Customer Zones</MudText>
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add" OnClick="OpenCreateDialog">
+                Add Zone
+            </MudButton>
+        </MudStack>
+
+        <MudTable Items="@_zones" T="CustomerZone" Hover="true" Striped="true" Loading="@_loading" LoadingProgressColor="Color.Primary" Dense="true"
+                  OnRowClick="@((args) => SelectZone(args.Item))">
+            <HeaderContent>
+                <MudTh>Name</MudTh>
+                <MudTh>Code</MudTh>
+                <MudTh>Cities</MudTh>
+                <MudTh>Customers</MudTh>
+                <MudTh>Couriers</MudTh>
+                <MudTh>Status</MudTh>
+                <MudTh Style="width: 160px;">Actions</MudTh>
+            </HeaderContent>
+            <RowTemplate>
+                <MudTd DataLabel="Name">@context.Name</MudTd>
+                <MudTd DataLabel="Code">@context.Code</MudTd>
+                <MudTd DataLabel="Cities">
+                    @if (context.Cities?.Any() == true)
+                    {
+                        <MudChip T="string" Color="Color.Info" Size="Size.Small">@context.Cities.Count cities</MudChip>
+                    }
+                    else
+                    {
+                        <MudText Typo="Typo.caption" Color="Color.Default">No cities</MudText>
+                    }
+                </MudTd>
+                <MudTd DataLabel="Customers">
+                    @if (context.Customers?.Any() == true)
+                    {
+                        <MudChip T="string" Color="Color.Primary" Size="Size.Small">@context.Customers.Count customers</MudChip>
+                    }
+                    else
+                    {
+                        <MudText Typo="Typo.caption" Color="Color.Default">No customers</MudText>
+                    }
+                </MudTd>
+                <MudTd DataLabel="Couriers">
+                    @if (context.Couriers?.Any() == true)
+                    {
+                        <MudChip T="string" Color="Color.Secondary" Size="Size.Small">@context.Couriers.Count couriers</MudChip>
+                    }
+                    else
+                    {
+                        <MudText Typo="Typo.caption" Color="Color.Default">No couriers</MudText>
+                    }
+                </MudTd>
+                <MudTd DataLabel="Status">
+                    <MudChip T="string" Color="@(context.IsActive ? Color.Success : Color.Default)" Size="Size.Small">
+                        @(context.IsActive ? "Active" : "Inactive")
+                    </MudChip>
+                </MudTd>
+                <MudTd DataLabel="Actions">
+                    <MudIconButton Icon="@Icons.Material.Filled.Edit" Color="Color.Primary" Size="Size.Small" OnClick="@(() => OpenEditDialog(context))" />
+                    <MudIconButton Icon="@Icons.Material.Filled.People" Color="Color.Info" Size="Size.Small" OnClick="@(() => OpenCustomersDialog(context))" Title="Manage Customers" />
+                    <MudIconButton Icon="@Icons.Material.Filled.DeliveryDining" Color="Color.Secondary" Size="Size.Small" OnClick="@(() => OpenCouriersDialog(context))" Title="Manage Couriers" />
+                    <MudIconButton Icon="@Icons.Material.Filled.Delete" Color="Color.Error" Size="Size.Small" OnClick="@(() => DeleteZone(context))" />
+                </MudTd>
+            </RowTemplate>
+            <NoRecordsContent>
+                <MudText>No customer zones found. Click "Add Zone" to create one.</MudText>
+            </NoRecordsContent>
+        </MudTable>
+    </MudPaper>
+</MudContainer>
+
+<MudDialog @bind-Visible="_showZoneDialog" Options="_dialogOptions">
+    <TitleContent>
+        <MudText Typo="Typo.h6">@(_isEditing ? "Edit Zone" : "Add Zone")</MudText>
+    </TitleContent>
+    <DialogContent>
+        <MudGrid>
+            <MudItem xs="12" md="6">
+                <MudTextField @bind-Value="_editZone.Name" Label="Zone Name" Variant="Variant.Outlined" Required="true" />
+            </MudItem>
+            <MudItem xs="12" md="6">
+                <MudTextField @bind-Value="_editZone.Code" Label="Code" Variant="Variant.Outlined" />
+            </MudItem>
+            <MudItem xs="12">
+                <MudTextField @bind-Value="_editZone.Description" Label="Description" Variant="Variant.Outlined" Lines="2" />
+            </MudItem>
+            <MudItem xs="12">
+                <MudText Typo="Typo.subtitle2" Class="mb-2">Select Cities</MudText>
+                <MudSelect T="long" MultiSelection="true" @bind-SelectedValues="_selectedCityIds" Label="Cities" Variant="Variant.Outlined"
+                           MultiSelectionTextFunc="@(selected => $"{selected.Count()} cities selected")" Clearable="true">
+                    @foreach (var city in _allCities)
+                    {
+                        <MudSelectItem T="long" Value="@city.Id">@city.Name (@city.State?.Name, @city.Country?.Name)</MudSelectItem>
+                    }
+                </MudSelect>
+            </MudItem>
+            <MudItem xs="12">
+                <MudSwitch @bind-Value="_editZone.IsActive" Label="Active" Color="Color.Primary" />
+            </MudItem>
+        </MudGrid>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="@(() => _showZoneDialog = false)">Cancel</MudButton>
+        <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="SaveZone" Disabled="@_saving">
+            @if (_saving)
+            {
+                <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" />
+            }
+            Save
+        </MudButton>
+    </DialogActions>
+</MudDialog>
+
+<MudDialog @bind-Visible="_showCustomersDialog" Options="_dialogOptions">
+    <TitleContent>
+        <MudText Typo="Typo.h6">Manage Customers - @_selectedZone?.Name</MudText>
+    </TitleContent>
+    <DialogContent>
+        <MudStack Spacing="3">
+            <MudAutocomplete T="Party" Label="Add Customer" @bind-Value="_selectedCustomer" SearchFunc="SearchCustomers"
+                             ToStringFunc="@(p => p?.Name ?? "")" Variant="Variant.Outlined" Dense="true"
+                             AdornmentIcon="@Icons.Material.Filled.Search" AdornmentColor="Color.Primary">
+                <ItemTemplate>
+                    <MudText>@context.Name (@context.Code)</MudText>
+                </ItemTemplate>
+            </MudAutocomplete>
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add" 
+                       OnClick="AddCustomerToZone" Disabled="@(_selectedCustomer == null)">
+                Add Customer
+            </MudButton>
+            
+            <MudDivider Class="my-2" />
+            
+            <MudText Typo="Typo.subtitle2">Assigned Customers</MudText>
+            @if (_zoneCustomers?.Any() == true)
+            {
+                <MudChipSet T="string">
+                    @foreach (var customer in _zoneCustomers)
+                    {
+                        <MudChip T="string" Color="Color.Primary" OnClose="@(() => RemoveCustomerFromZone(customer))">
+                            @customer.Name
+                        </MudChip>
+                    }
+                </MudChipSet>
+            }
+            else
+            {
+                <MudText Typo="Typo.body2" Color="Color.Default">No customers assigned to this zone.</MudText>
+            }
+        </MudStack>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="@(() => _showCustomersDialog = false)">Close</MudButton>
+    </DialogActions>
+</MudDialog>
+
+<MudDialog @bind-Visible="_showCouriersDialog" Options="_dialogOptions">
+    <TitleContent>
+        <MudText Typo="Typo.h6">Manage Couriers - @_selectedZone?.Name</MudText>
+    </TitleContent>
+    <DialogContent>
+        <MudStack Spacing="3">
+            <MudAutocomplete T="User" Label="Add Courier" @bind-Value="_selectedCourier" SearchFunc="SearchCouriers"
+                             ToStringFunc="@(u => u?.FullName ?? "")" Variant="Variant.Outlined" Dense="true"
+                             AdornmentIcon="@Icons.Material.Filled.Search" AdornmentColor="Color.Primary">
+                <ItemTemplate>
+                    <MudText>@context.FullName (@context.Username)</MudText>
+                </ItemTemplate>
+            </MudAutocomplete>
+            <MudButton Variant="Variant.Filled" Color="Color.Secondary" StartIcon="@Icons.Material.Filled.Add" 
+                       OnClick="AddCourierToZone" Disabled="@(_selectedCourier == null)">
+                Add Courier
+            </MudButton>
+            
+            <MudDivider Class="my-2" />
+            
+            <MudText Typo="Typo.subtitle2">Assigned Couriers</MudText>
+            @if (_zoneCouriers?.Any() == true)
+            {
+                <MudChipSet T="string">
+                    @foreach (var courier in _zoneCouriers)
+                    {
+                        <MudChip T="string" Color="Color.Secondary" OnClose="@(() => RemoveCourierFromZone(courier))">
+                            @courier.User?.FullName
+                        </MudChip>
+                    }
+                </MudChipSet>
+            }
+            else
+            {
+                <MudText Typo="Typo.body2" Color="Color.Default">No couriers assigned to this zone.</MudText>
+            }
+        </MudStack>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="@(() => _showCouriersDialog = false)">Close</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    private List<CustomerZone> _zones = new();
+    private List<City> _allCities = new();
+    private bool _loading = true;
+    private bool _saving = false;
+    
+    private bool _showZoneDialog = false;
+    private bool _isEditing = false;
+    private CustomerZone _editZone = new();
+    private IEnumerable<long> _selectedCityIds = new List<long>();
+    
+    private bool _showCustomersDialog = false;
+    private CustomerZone? _selectedZone;
+    private List<Party> _zoneCustomers = new();
+    private Party? _selectedCustomer;
+    
+    private bool _showCouriersDialog = false;
+    private List<CustomerZoneCourier> _zoneCouriers = new();
+    private User? _selectedCourier;
+    
+    private DialogOptions _dialogOptions = new() { MaxWidth = MaxWidth.Medium, FullWidth = true };
+    
+    private int _userId;
+    private long _branchId;
+    private long _companyId;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadUserContext();
+        await LoadData();
+    }
+
+    private async Task LoadUserContext()
+    {
+        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+        var user = authState.User;
+
+        if (user.Identity?.IsAuthenticated == true)
+        {
+            var userIdClaim = user.FindFirst("UserId")?.Value;
+            var branchIdClaim = user.FindFirst("BranchId")?.Value;
+            var companyIdClaim = user.FindFirst("CompanyId")?.Value;
+
+            if (int.TryParse(userIdClaim, out var uid)) _userId = uid;
+            if (long.TryParse(branchIdClaim, out var bid)) _branchId = bid;
+            if (long.TryParse(companyIdClaim, out var cid)) _companyId = cid;
+        }
+    }
+
+    private async Task LoadData()
+    {
+        _loading = true;
+        
+        _zones = await DbContext.CustomerZones
+            .Include(z => z.Cities).ThenInclude(zc => zc.City)
+            .Include(z => z.Couriers).ThenInclude(zc => zc.User)
+            .Include(z => z.Customers)
+            .Where(z => !z.IsDeleted && z.BranchId == _branchId)
+            .OrderBy(z => z.Name)
+            .ToListAsync();
+            
+        _allCities = await DbContext.Cities
+            .Include(c => c.State)
+            .Include(c => c.Country)
+            .Where(c => c.IsActive && !c.IsDeleted)
+            .OrderBy(c => c.Name)
+            .ToListAsync();
+            
+        _loading = false;
+    }
+
+    private void SelectZone(CustomerZone zone)
+    {
+        _selectedZone = zone;
+    }
+
+    private void OpenCreateDialog()
+    {
+        _isEditing = false;
+        _editZone = new CustomerZone { IsActive = true };
+        _selectedCityIds = new List<long>();
+        _showZoneDialog = true;
+    }
+
+    private void OpenEditDialog(CustomerZone zone)
+    {
+        _isEditing = true;
+        _editZone = zone;
+        _selectedCityIds = zone.Cities?.Select(c => c.CityId).ToList() ?? new List<long>();
+        _showZoneDialog = true;
+    }
+
+    private async Task SaveZone()
+    {
+        if (string.IsNullOrWhiteSpace(_editZone.Name))
+        {
+            Snackbar.Add("Zone name is required", Severity.Warning);
+            return;
+        }
+
+        _saving = true;
+        try
+        {
+            if (_isEditing)
+            {
+                var existing = await DbContext.CustomerZones
+                    .Include(z => z.Cities)
+                    .FirstOrDefaultAsync(z => z.Id == _editZone.Id);
+                    
+                if (existing != null)
+                {
+                    existing.Name = _editZone.Name;
+                    existing.Code = _editZone.Code;
+                    existing.Description = _editZone.Description;
+                    existing.IsActive = _editZone.IsActive;
+                    existing.ModifiedAt = DateTime.UtcNow;
+                    existing.ModifiedBy = _userId;
+                    
+                    DbContext.CustomerZoneCities.RemoveRange(existing.Cities);
+                    foreach (var cityId in _selectedCityIds)
+                    {
+                        existing.Cities.Add(new CustomerZoneCity { CustomerZoneId = existing.Id, CityId = cityId });
+                    }
+                }
+            }
+            else
+            {
+                _editZone.BranchId = _branchId;
+                _editZone.CreatedAt = DateTime.UtcNow;
+                _editZone.CreatedBy = _userId;
+                DbContext.CustomerZones.Add(_editZone);
+                await DbContext.SaveChangesAsync();
+                
+                foreach (var cityId in _selectedCityIds)
+                {
+                    DbContext.CustomerZoneCities.Add(new CustomerZoneCity { CustomerZoneId = _editZone.Id, CityId = cityId });
+                }
+            }
+            
+            await DbContext.SaveChangesAsync();
+            Snackbar.Add(_isEditing ? "Zone updated successfully" : "Zone created successfully", Severity.Success);
+            _showZoneDialog = false;
+            await LoadData();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error saving zone: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _saving = false;
+        }
+    }
+
+    private async Task DeleteZone(CustomerZone zone)
+    {
+        var confirm = await DialogService.ShowMessageBox(
+            "Confirm Delete",
+            $"Are you sure you want to delete zone '{zone.Name}'?",
+            yesText: "Delete", cancelText: "Cancel");
+            
+        if (confirm == true)
+        {
+            zone.IsDeleted = true;
+            zone.ModifiedAt = DateTime.UtcNow;
+            await DbContext.SaveChangesAsync();
+            Snackbar.Add("Zone deleted successfully", Severity.Success);
+            await LoadData();
+        }
+    }
+
+    private async Task OpenCustomersDialog(CustomerZone zone)
+    {
+        _selectedZone = zone;
+        _zoneCustomers = await DbContext.Parties
+            .Where(p => p.CustomerZoneId == zone.Id && !p.IsDeleted && p.PartyType == PartyType.Customer)
+            .OrderBy(p => p.Name)
+            .ToListAsync();
+        _selectedCustomer = null;
+        _showCustomersDialog = true;
+    }
+
+    private async Task<IEnumerable<Party>> SearchCustomers(string value, CancellationToken token)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return new List<Party>();
+            
+        return await DbContext.Parties
+            .Where(p => !p.IsDeleted && p.IsActive && p.PartyType == PartyType.Customer && 
+                       (p.CustomerZoneId == null || p.CustomerZoneId == _selectedZone!.Id) &&
+                       (p.Name.Contains(value) || (p.Code != null && p.Code.Contains(value))))
+            .OrderBy(p => p.Name)
+            .Take(20)
+            .ToListAsync(token);
+    }
+
+    private async Task AddCustomerToZone()
+    {
+        if (_selectedCustomer == null || _selectedZone == null) return;
+        
+        _selectedCustomer.CustomerZoneId = _selectedZone.Id;
+        await DbContext.SaveChangesAsync();
+        Snackbar.Add($"{_selectedCustomer.Name} added to zone", Severity.Success);
+        
+        _zoneCustomers = await DbContext.Parties
+            .Where(p => p.CustomerZoneId == _selectedZone.Id && !p.IsDeleted)
+            .OrderBy(p => p.Name)
+            .ToListAsync();
+        _selectedCustomer = null;
+        await LoadData();
+    }
+
+    private async Task RemoveCustomerFromZone(Party customer)
+    {
+        customer.CustomerZoneId = null;
+        await DbContext.SaveChangesAsync();
+        Snackbar.Add($"{customer.Name} removed from zone", Severity.Success);
+        _zoneCustomers.Remove(customer);
+        await LoadData();
+    }
+
+    private async Task OpenCouriersDialog(CustomerZone zone)
+    {
+        _selectedZone = zone;
+        _zoneCouriers = await DbContext.CustomerZoneCouriers
+            .Include(zc => zc.User)
+            .Where(zc => zc.CustomerZoneId == zone.Id && !zc.IsDeleted)
+            .ToListAsync();
+        _selectedCourier = null;
+        _showCouriersDialog = true;
+    }
+
+    private async Task<IEnumerable<User>> SearchCouriers(string value, CancellationToken token)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return new List<User>();
+        
+        var existingCourierIds = _zoneCouriers.Select(zc => zc.UserId).ToList();
+            
+        return await DbContext.Users
+            .Include(u => u.Role)
+            .Where(u => !u.IsDeleted && u.IsActive && 
+                       u.Role != null && u.Role.Name == "Courier" &&
+                       !existingCourierIds.Contains(u.Id) &&
+                       (u.FullName.Contains(value) || u.Username.Contains(value)))
+            .OrderBy(u => u.FullName)
+            .Take(20)
+            .ToListAsync(token);
+    }
+
+    private async Task AddCourierToZone()
+    {
+        if (_selectedCourier == null || _selectedZone == null) return;
+        
+        var assignment = new CustomerZoneCourier
+        {
+            CustomerZoneId = _selectedZone.Id,
+            UserId = _selectedCourier.Id,
+            CreatedAt = DateTime.UtcNow
+        };
+        DbContext.CustomerZoneCouriers.Add(assignment);
+        await DbContext.SaveChangesAsync();
+        Snackbar.Add($"{_selectedCourier.FullName} added to zone", Severity.Success);
+        
+        _zoneCouriers = await DbContext.CustomerZoneCouriers
+            .Include(zc => zc.User)
+            .Where(zc => zc.CustomerZoneId == _selectedZone.Id && !zc.IsDeleted)
+            .ToListAsync();
+        _selectedCourier = null;
+        await LoadData();
+    }
+
+    private async Task RemoveCourierFromZone(CustomerZoneCourier courier)
+    {
+        courier.IsDeleted = true;
+        courier.ModifiedAt = DateTime.UtcNow;
+        await DbContext.SaveChangesAsync();
+        Snackbar.Add($"{courier.User?.FullName} removed from zone", Severity.Success);
+        _zoneCouriers.Remove(courier);
+        await LoadData();
+    }
+}
