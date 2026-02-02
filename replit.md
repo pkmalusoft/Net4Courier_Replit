@@ -44,6 +44,7 @@ The application is built on .NET 8 Blazor Server, adopting a modular architectur
 - **Platform Administration**: Dedicated admin section with Tenant Settings, Subscription Management, and user management features.
 - **Utility Features**: CLI password reset utility, AWB barcode generation, tracking/shipment invoice PDF generation via API, customer CRM with complaints/tickets, branch display settings, branch currency as default, and a "Delete All Business Data" feature for platform admins.
 - **Favourites Dashboard**: User-personalized menu dashboard at `/favourites` allowing users to save frequently-used menu items. Users can add items via the Add button dialog and remove via X button on cards. Stored in UserFavorites table with soft-delete. Replaces the previous Application Launchpad.
+- **Audit Log System**: Comprehensive audit logging automatically tracking all entity changes (Create, Update, Delete). Captures user ID, username, branch, timestamp, old/new values as JSON. Implemented via SaveChangesAsync override in ApplicationDbContext. Dashboard at `/audit-logs` with filters by date, entity, action, user. Includes Excel export via API endpoint. Access restricted to Administrator, PlatformAdmin, and Manager roles.
 
 ## External Dependencies
 - **Database**: PostgreSQL

@@ -1913,25 +1913,25 @@ public class ApplicationDbContext : DbContext
             entity.HasIndex(e => new { e.EntityName, e.EntityId });
         });
     }
-}
-
-public class AuditEntry
-{
-    public EntityEntry Entry { get; }
-    public string EntityName { get; set; } = string.Empty;
-    public AuditAction Action { get; set; }
-    public long? UserId { get; set; }
-    public string? UserName { get; set; }
-    public long? BranchId { get; set; }
-    public string? BranchName { get; set; }
-    public string? IPAddress { get; set; }
-    public Dictionary<string, object?> KeyValues { get; } = new();
-    public Dictionary<string, object?> OldValues { get; } = new();
-    public Dictionary<string, object?> NewValues { get; } = new();
-    public bool HasTemporaryKey { get; set; }
-
-    public AuditEntry(EntityEntry entry)
+    
+    public class AuditEntry
     {
-        Entry = entry;
+        public EntityEntry Entry { get; }
+        public string EntityName { get; set; } = string.Empty;
+        public AuditAction Action { get; set; }
+        public long? UserId { get; set; }
+        public string? UserName { get; set; }
+        public long? BranchId { get; set; }
+        public string? BranchName { get; set; }
+        public string? IPAddress { get; set; }
+        public Dictionary<string, object?> KeyValues { get; } = new();
+        public Dictionary<string, object?> OldValues { get; } = new();
+        public Dictionary<string, object?> NewValues { get; } = new();
+        public bool HasTemporaryKey { get; set; }
+
+        public AuditEntry(EntityEntry entry)
+        {
+            Entry = entry;
+        }
     }
 }

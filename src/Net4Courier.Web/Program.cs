@@ -499,6 +499,92 @@ app.MapGet("/api/report/sla-agreement/{id:long}", async (long id, ISLAPdfService
     }
 });
 
+app.MapGet("/api/export/audit-logs", async (
+    HttpContext context,
+    ApplicationDbContext db,
+    DateTime? fromDate,
+    DateTime? toDate,
+    string? entityName,
+    int? action,
+    long? userId) =>
+{
+    try
+    {
+        var query = db.AuditLogs.AsQueryable();
+
+        if (fromDate.HasValue)
+        {
+            var fromUtc = DateTime.SpecifyKind(fromDate.Value.Date, DateTimeKind.Utc);
+            query = query.Where(a => a.Timestamp >= fromUtc);
+        }
+
+        if (toDate.HasValue)
+        {
+            var toUtc = DateTime.SpecifyKind(toDate.Value.Date.AddDays(1), DateTimeKind.Utc);
+            query = query.Where(a => a.Timestamp < toUtc);
+        }
+
+        if (!string.IsNullOrEmpty(entityName))
+            query = query.Where(a => a.EntityName == entityName);
+
+        if (action.HasValue)
+        {
+            var auditAction = (Net4Courier.Kernel.Entities.AuditAction)action.Value;
+            query = query.Where(a => a.Action == auditAction);
+        }
+
+        if (userId.HasValue)
+            query = query.Where(a => a.UserId == userId.Value);
+
+        var logs = await query.OrderByDescending(a => a.Timestamp).Take(5000).ToListAsync();
+
+        using var workbook = new ClosedXML.Excel.XLWorkbook();
+        var worksheet = workbook.Worksheets.Add("Audit Logs");
+
+        worksheet.Cell(1, 1).Value = "Timestamp";
+        worksheet.Cell(1, 2).Value = "Entity";
+        worksheet.Cell(1, 3).Value = "Record ID";
+        worksheet.Cell(1, 4).Value = "Action";
+        worksheet.Cell(1, 5).Value = "User";
+        worksheet.Cell(1, 6).Value = "Branch";
+        worksheet.Cell(1, 7).Value = "IP Address";
+        worksheet.Cell(1, 8).Value = "Old Values";
+        worksheet.Cell(1, 9).Value = "New Values";
+
+        var headerRange = worksheet.Range(1, 1, 1, 9);
+        headerRange.Style.Font.Bold = true;
+        headerRange.Style.Fill.BackgroundColor = ClosedXML.Excel.XLColor.LightBlue;
+
+        int row = 2;
+        foreach (var log in logs)
+        {
+            worksheet.Cell(row, 1).Value = log.Timestamp.ToString("dd/MM/yyyy HH:mm:ss");
+            worksheet.Cell(row, 2).Value = log.EntityName;
+            worksheet.Cell(row, 3).Value = log.EntityId;
+            worksheet.Cell(row, 4).Value = log.Action.ToString();
+            worksheet.Cell(row, 5).Value = log.UserName ?? "";
+            worksheet.Cell(row, 6).Value = log.BranchName ?? "";
+            worksheet.Cell(row, 7).Value = log.IPAddress ?? "";
+            worksheet.Cell(row, 8).Value = log.OldValues ?? "";
+            worksheet.Cell(row, 9).Value = log.NewValues ?? "";
+            row++;
+        }
+
+        worksheet.Columns().AdjustToContents();
+
+        using var stream = new MemoryStream();
+        workbook.SaveAs(stream);
+        var content = stream.ToArray();
+
+        return Results.File(content, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", 
+            $"AuditLogs_{DateTime.Now:yyyyMMdd_HHmmss}.xlsx");
+    }
+    catch (Exception ex)
+    {
+        return Results.Problem($"Export failed: {ex.Message}");
+    }
+});
+
 app.MapPost("/api/bookings/webhook/{integrationId}", async (
     string integrationId, 
     BookingWebhookPayload payload, 
