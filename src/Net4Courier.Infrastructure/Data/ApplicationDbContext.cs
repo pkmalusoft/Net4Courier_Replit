@@ -16,6 +16,7 @@ public class ApplicationDbContext : DbContext
     public DbSet<BranchAWBConfig> BranchAWBConfigs => Set<BranchAWBConfig>();
     public DbSet<User> Users => Set<User>();
     public DbSet<UserBranch> UserBranches => Set<UserBranch>();
+    public DbSet<UserFavorite> UserFavorites => Set<UserFavorite>();
     public DbSet<Warehouse> Warehouses => Set<Warehouse>();
     public DbSet<Role> Roles => Set<Role>();
     public DbSet<RolePermission> RolePermissions => Set<RolePermission>();

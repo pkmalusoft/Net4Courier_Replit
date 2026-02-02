@@ -1,16 +1,21 @@
 @page "/launchpad"
+@page "/favourites"
 @page "/menu-dashboard"
 @using Net4Courier.Infrastructure.Data
 @using Net4Courier.Masters.Entities
+@using Net4Courier.Web.Services
 @using Microsoft.EntityFrameworkCore
 @using Microsoft.AspNetCore.Components.Authorization
 @using System.Security.Claims
 @inject IDbContextFactory<ApplicationDbContext> DbContextFactory
 @inject NavigationManager NavigationManager
 @inject AuthenticationStateProvider AuthStateProvider
+@inject FavoriteService FavoriteService
+@inject ISnackbar Snackbar
+@inject IDialogService DialogService
 @rendermode InteractiveServer
 
-<PageTitle>Application Launchpad</PageTitle>
+<PageTitle>Favourites</PageTitle>
 
 <style>
     .launchpad-header {
@@ -22,12 +27,13 @@
         gap: 16px;
     }
 
-    .module-card {
+    .favorite-card {
         height: 100%;
         transition: transform 0.2s, box-shadow 0.2s;
+        cursor: pointer;
     }
 
-    .module-card:hover {
+    .favorite-card:hover {
         transform: translateY(-4px);
         box-shadow: 0 6px 16px rgba(0,0,0,0.12);
     }
@@ -36,144 +42,126 @@
     .card-header-info { background: linear-gradient(135deg, #2196F3 0%, #64B5F6 100%); }
     .card-header-success { background: linear-gradient(135deg, #00C853 0%, #69F0AE 100%); }
     .card-header-warning { background: linear-gradient(135deg, #FF9800 0%, #FFB74D 100%); }
-    .card-header-secondary { background: linear-gradient(135deg, #FF4081 0%, #FF80AB 100%); }
-    .card-header-dark { background: linear-gradient(135deg, #424242 0%, #616161 100%); }
 
-    .card-header-content {
+    .favorite-item {
         padding: 16px;
         display: flex;
         align-items: center;
         gap: 16px;
-        color: white;
+        position: relative;
     }
 
-    .header-avatar {
-        width: 44px;
-        height: 44px;
-        background-color: rgba(255,255,255,0.2);
-        border-radius: 50%;
+    .favorite-icon {
+        width: 48px;
+        height: 48px;
+        background: linear-gradient(135deg, #594AE2 0%, #7B6FE8 100%);
+        border-radius: 12px;
         display: flex;
         align-items: center;
         justify-content: center;
+        color: white;
     }
 
-    .card-title {
-        font-size: 1.15rem;
+    .favorite-text {
+        flex: 1;
+    }
+
+    .favorite-title {
         font-weight: 500;
+        font-size: 0.95rem;
     }
 
-    .menu-list {
-        max-height: 380px;
-        overflow-y: auto;
-    }
-
-    .menu-list::-webkit-scrollbar {
-        width: 6px;
-    }
-
-    .menu-list::-webkit-scrollbar-thumb {
-        background-color: #e0e0e0;
-        border-radius: 3px;
-    }
-
-    .group-title {
-        padding: 12px 16px 4px 16px;
-        font-size: 0.7rem;
-        font-weight: 700;
+    .favorite-route {
+        font-size: 0.75rem;
         color: var(--mud-palette-text-secondary);
-        text-transform: uppercase;
-        letter-spacing: 0.5px;
     }
 
-    .menu-item {
-        padding: 10px 16px;
+    .remove-btn {
+        position: absolute;
+        top: 8px;
+        right: 8px;
+        opacity: 0;
+        transition: opacity 0.2s;
+    }
+
+    .favorite-card:hover .remove-btn {
+        opacity: 1;
+    }
+
+    .empty-state {
+        text-align: center;
+        padding: 60px 20px;
+    }
+
+    .category-section {
+        margin-bottom: 32px;
+    }
+
+    .category-header {
         display: flex;
         align-items: center;
         gap: 12px;
-        cursor: pointer;
-        transition: background 0.15s;
-        text-decoration: none;
-        color: inherit;
-        border-radius: 4px;
-        margin: 2px 8px;
-    }
-
-    .menu-item:hover {
-        background-color: rgba(0,0,0,0.04);
-    }
-
-    .menu-item-icon {
-        color: var(--mud-palette-text-secondary);
-    }
-
-    .menu-item-text {
-        font-size: 0.875rem;
-    }
-
-    .no-results {
-        text-align: center;
-        padding: 40px;
-        color: var(--mud-palette-text-secondary);
+        margin-bottom: 16px;
+        padding-bottom: 8px;
+        border-bottom: 2px solid var(--mud-palette-primary);
     }
 </style>
 
 <MudContainer MaxWidth="MaxWidth.ExtraLarge" Class="py-4">
     <div class="launchpad-header">
         <div>
-            <MudText Typo="Typo.h5" Color="Color.Primary" Style="font-weight: 500;">Application Launchpad</MudText>
-            <MudText Typo="Typo.body2" Color="Color.Secondary">Access all modules and subsystems from a single view.</MudText>
+            <MudText Typo="Typo.h5" Color="Color.Primary" Style="font-weight: 500;">
+                <MudIcon Icon="@Icons.Material.Filled.Star" Class="mr-2" />Favourites
+            </MudText>
+            <MudText Typo="Typo.body2" Color="Color.Secondary">Your frequently used modules. Click "Add" to add more.</MudText>
         </div>
-        <MudTextField @bind-Value="_searchText" Placeholder="Search modules (e.g., 'Invoice')..."
-                      Variant="Variant.Outlined" Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Filled.Search"
-                      Immediate="true" Style="width: 320px;" Dense="true" />
+        <MudStack Row="true" Spacing="2">
+            <MudTextField @bind-Value="_searchText" Placeholder="Search favourites..."
+                          Variant="Variant.Outlined" Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Filled.Search"
+                          Immediate="true" Style="width: 280px;" Dense="true" />
+            <MudButton Variant="Variant.Outlined" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add" OnClick="OpenAddDialog">
+                Add
+            </MudButton>
+        </MudStack>
     </div>
 
     @if (_loading)
     {
         <MudProgressLinear Color="Color.Primary" Indeterminate="true" />
     }
-    else if (!FilteredCategories.Any())
+    else if (!_favorites.Any())
     {
-        <div class="no-results">
-            <MudIcon Icon="@Icons.Material.Filled.SearchOff" Size="Size.Large" Color="Color.Secondary" />
-            <MudText Typo="Typo.h6" Class="mt-2">No modules found</MudText>
-            <MudText Typo="Typo.body2" Color="Color.Secondary">Try a different search term</MudText>
+        <div class="empty-state">
+            <MudIcon Icon="@Icons.Material.Filled.StarBorder" Size="Size.Large" Color="Color.Secondary" Style="font-size: 4rem;" />
+            <MudText Typo="Typo.h6" Class="mt-4">No favourites yet</MudText>
+            <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-4">
+                Click "Add" to add your frequently used menus here, or right-click any navigation menu item.
+            </MudText>
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add" OnClick="OpenAddDialog">
+                Add Your First Favourite
+            </MudButton>
         </div>
     }
     else
     {
-        <MudGrid Spacing="4">
-            @foreach (var category in FilteredCategories)
+        <MudGrid Spacing="3">
+            @foreach (var favorite in FilteredFavorites)
             {
-                <MudItem xs="12" sm="6" md="4" lg="4">
-                    <MudCard Class="module-card" Elevation="2">
-                        <div class="@GetHeaderClass(category.ColorTheme)">
-                            <div class="card-header-content">
-                                <div class="header-avatar">
-                                    <MudIcon Icon="@category.Icon" Size="Size.Medium" />
-                                </div>
-                                <span class="card-title">@category.Title</span>
-                            </div>
-                        </div>
+                <MudItem xs="12" sm="6" md="4" lg="3">
+                    <MudCard Class="favorite-card" @onclick="() => NavigateTo(favorite.Route)">
                         <MudCardContent Class="pa-0">
-                            <div class="menu-list">
-                                @foreach (var group in category.Groups)
-                                {
-                                    @if (group.Items.Any())
-                                    {
-                                        @if (!string.IsNullOrEmpty(group.Title))
-                                        {
-                                            <div class="group-title">@group.Title</div>
-                                        }
-                                        @foreach (var item in group.Items)
-                                        {
-                                            <div class="menu-item" @onclick="@(() => NavigateToMenu(item.Route))">
-                                                <MudIcon Icon="@item.Icon" Size="Size.Small" Class="menu-item-icon" />
-                                                <span class="menu-item-text">@item.Title</span>
-                                            </div>
-                                        }
-                                    }
-                                }
+                            <div class="favorite-item">
+                                <div class="favorite-icon">
+                                    <MudIcon Icon="@(favorite.MenuIcon ?? Icons.Material.Filled.Link)" />
+                                </div>
+                                <div class="favorite-text">
+                                    <div class="favorite-title">@favorite.MenuName</div>
+                                    <div class="favorite-route">@favorite.Route</div>
+                                </div>
+                                <MudIconButton Icon="@Icons.Material.Filled.Close" Size="Size.Small" 
+                                               Class="remove-btn" Color="Color.Error"
+                                               OnClick="@(async () => await RemoveFavorite(favorite))" 
+                                               OnClick:stopPropagation="true" />
                             </div>
                         </MudCardContent>
                     </MudCard>
@@ -183,91 +171,83 @@
     }
 </MudContainer>
 
+<MudDialog @bind-Visible="_showAddDialog" Options="@(new DialogOptions { MaxWidth = MaxWidth.Small, FullWidth = true })">
+    <TitleContent>
+        <MudText Typo="Typo.h6">
+            <MudIcon Icon="@Icons.Material.Filled.Add" Class="mr-2" />Add to Favourites
+        </MudText>
+    </TitleContent>
+    <DialogContent>
+        <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-4">
+            Select a menu item to add to your favourites.
+        </MudText>
+        <MudTextField @bind-Value="_menuSearchText" Label="Search menus..." Variant="Variant.Outlined" 
+                      Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Filled.Search"
+                      Immediate="true" Class="mb-4" />
+        <MudPaper MaxHeight="400px" Style="overflow-y: auto;">
+            <MudList T="AvailableMenuItem" Clickable="true" Dense="true">
+                @foreach (var item in FilteredAvailableMenus)
+                {
+                    <MudListItem T="AvailableMenuItem" Icon="@item.Icon" OnClick="() => AddMenuItem(item)">
+                        <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center" Style="width: 100%;">
+                            <div>
+                                <MudText>@item.Title</MudText>
+                                <MudText Typo="Typo.caption" Color="Color.Secondary">@item.Category</MudText>
+                            </div>
+                            @if (_existingCodes.Contains(item.MenuCode))
+                            {
+                                <MudChip T="string" Size="Size.Small" Color="Color.Success" Variant="Variant.Text">Added</MudChip>
+                            }
+                        </MudStack>
+                    </MudListItem>
+                }
+            </MudList>
+        </MudPaper>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="() => _showAddDialog = false">Close</MudButton>
+    </DialogActions>
+</MudDialog>
+
 @code {
     private bool _loading = true;
     private string _searchText = "";
-    private string _userRole = "";
-    private HashSet<string> _allowedMenuCodes = new();
-    private List<MenuCategory> _categories = new();
+    private string _menuSearchText = "";
+    private long _userId = 0;
+    private List<UserFavorite> _favorites = new();
+    private HashSet<string> _existingCodes = new();
+    private bool _showAddDialog = false;
+    private List<AvailableMenuItem> _availableMenus = new();
 
-    private IEnumerable<MenuCategory> FilteredCategories
-    {
-        get
-        {
-            var result = new List<MenuCategory>();
-            foreach (var category in _categories)
-            {
-                var filteredGroups = new List<MenuGroup>();
-                foreach (var group in category.Groups)
-                {
-                    var filteredItems = GetFilteredItems(group.Items).ToList();
-                    if (filteredItems.Any())
-                    {
-                        filteredGroups.Add(new MenuGroup { Title = group.Title, Items = filteredItems });
-                    }
-                }
-                if (filteredGroups.Any())
-                {
-                    result.Add(new MenuCategory
-                    {
-                        Title = category.Title,
-                        Icon = category.Icon,
-                        ColorTheme = category.ColorTheme,
-                        Groups = filteredGroups
-                    });
-                }
-            }
-            return result;
-        }
-    }
+    private IEnumerable<UserFavorite> FilteredFavorites => string.IsNullOrWhiteSpace(_searchText)
+        ? _favorites
+        : _favorites.Where(f => f.MenuName.Contains(_searchText, StringComparison.OrdinalIgnoreCase));
+
+    private IEnumerable<AvailableMenuItem> FilteredAvailableMenus => string.IsNullOrWhiteSpace(_menuSearchText)
+        ? _availableMenus
+        : _availableMenus.Where(m => m.Title.Contains(_menuSearchText, StringComparison.OrdinalIgnoreCase) || 
+                                      m.Category.Contains(_menuSearchText, StringComparison.OrdinalIgnoreCase));
 
     protected override async Task OnInitializedAsync()
     {
-        await LoadUserPermissions();
-        InitializeMenuStructure();
+        await LoadUserAndFavorites();
+        InitializeAvailableMenus();
         _loading = false;
     }
 
-    private async Task LoadUserPermissions()
+    private async Task LoadUserAndFavorites()
     {
         var authState = await AuthStateProvider.GetAuthenticationStateAsync();
-        var user = authState.User;
-
-        if (user.Identity?.IsAuthenticated == true)
+        var userIdClaim = authState.User?.FindFirst("UserId")?.Value;
+        if (long.TryParse(userIdClaim, out var userId))
         {
-            _userRole = user.FindFirst(ClaimTypes.Role)?.Value ?? "";
-            
-            var roleIdClaim = user.FindFirst("RoleId")?.Value;
-            if (long.TryParse(roleIdClaim, out var roleId))
-            {
-                await using var db = await DbContextFactory.CreateDbContextAsync();
-                var permissions = await db.RolePermissions
-                    .Where(p => p.RoleId == roleId && p.CanView)
-                    .Select(p => p.MenuCode)
-                    .ToListAsync();
-                
-                _allowedMenuCodes = permissions.ToHashSet();
-            }
-
-            if (_userRole == "Administrator" || _userRole == "PlatformAdmin")
-            {
-                _allowedMenuCodes.Clear();
-            }
+            _userId = userId;
+            _favorites = await FavoriteService.GetUserFavoritesAsync(userId);
+            _existingCodes = _favorites.Select(f => f.MenuCode).ToHashSet();
         }
     }
 
-    private bool IsMenuAllowed(string menuCode)
-    {
-        if (_userRole == "Administrator" || _userRole == "PlatformAdmin")
-            return true;
-        
-        if (string.IsNullOrEmpty(menuCode))
-            return true;
-
-        return _allowedMenuCodes.Contains(menuCode);
-    }
-
-    private void NavigateToMenu(string route)
+    private void NavigateTo(string? route)
     {
         if (!string.IsNullOrEmpty(route))
         {
@@ -275,276 +255,125 @@
         }
     }
 
-    private string GetHeaderClass(string theme) => theme switch
+    private async Task RemoveFavorite(UserFavorite favorite)
     {
-        "primary" => "card-header-primary",
-        "info" => "card-header-info",
-        "success" => "card-header-success",
-        "warning" => "card-header-warning",
-        "secondary" => "card-header-secondary",
-        "dark" => "card-header-dark",
-        _ => "card-header-primary"
-    };
+        var confirm = await DialogService.ShowMessageBox(
+            "Remove Favourite",
+            $"Remove '{favorite.MenuName}' from your favourites?",
+            yesText: "Remove", cancelText: "Cancel");
 
-    private IEnumerable<MenuItem> GetFilteredItems(List<MenuItem> items)
-    {
-        var allowedItems = items.Where(i => IsMenuAllowed(i.MenuCode));
-        
-        if (string.IsNullOrWhiteSpace(_searchText))
-            return allowedItems;
-        
-        return allowedItems.Where(i => i.Title.Contains(_searchText, StringComparison.OrdinalIgnoreCase));
+        if (confirm == true)
+        {
+            await FavoriteService.RemoveFavoriteByIdAsync(favorite.Id);
+            _favorites.Remove(favorite);
+            _existingCodes.Remove(favorite.MenuCode);
+            Snackbar.Add("Removed from Favourites", Severity.Info);
+        }
     }
 
-    private void InitializeMenuStructure()
+    private void OpenAddDialog()
     {
-        _categories = new List<MenuCategory>
+        _menuSearchText = "";
+        _showAddDialog = true;
+    }
+
+    private async Task AddMenuItem(AvailableMenuItem item)
+    {
+        if (_existingCodes.Contains(item.MenuCode))
         {
-            new MenuCategory
-            {
-                Title = "Dashboards",
-                Icon = Icons.Material.Filled.Dashboard,
-                ColorTheme = "primary",
-                Groups = new List<MenuGroup>
-                {
-                    new MenuGroup
-                    {
-                        Items = new List<MenuItem>
-                        {
-                            new("Global Dashboard", Icons.Material.Filled.Home, "/", "DASHBOARD"),
-                            new("Operations Dashboard", Icons.Material.Filled.Speed, "/operational-desktop", "OPS_DASHBOARD"),
-                            new("Customer Dashboard", Icons.Material.Filled.People, "/customer/dashboard", "CUST_DASHBOARD")
-                        }
-                    }
-                }
-            },
-            new MenuCategory
-            {
-                Title = "Operations",
-                Icon = Icons.Material.Filled.LocalShipping,
-                ColorTheme = "info",
-                Groups = new List<MenuGroup>
-                {
-                    new MenuGroup
-                    {
-                        Title = "Pickup",
-                        Items = new List<MenuItem>
-                        {
-                            new("Pickup Dashboard", Icons.Material.Filled.Dashboard, "/pickup-dashboard", "PICKUP_DASHBOARD"),
-                            new("Pickup Schedules", Icons.Material.Filled.Schedule, "/pickup-schedules", "PICKUP_SCHEDULES"),
-                            new("Courier Commitments", Icons.Material.Filled.AssignmentTurnedIn, "/pickup-commitments", "PICKUP_COMMITMENTS")
-                        }
-                    },
-                    new MenuGroup
-                    {
-                        Title = "Warehouse",
-                        Items = new List<MenuItem>
-                        {
-                            new("Inscan", Icons.Material.Filled.QrCodeScanner, "/pickup-inscan", "INSCAN"),
-                            new("Outscan (DRS)", Icons.Material.Filled.ExitToApp, "/outscan", "OUTSCAN"),
-                            new("POD Scanner", Icons.Material.Filled.CameraAlt, "/pod-scanner", "POD"),
-                            new("Transfer Orders", Icons.Material.Filled.TransferWithinAStation, "/transfer-orders", "TRANSFER"),
-                            new("RTS / RTO", Icons.Material.Filled.SwapHoriz, "/rts-list", "RTS")
-                        }
-                    },
-                    new MenuGroup
-                    {
-                        Title = "Reports",
-                        Items = new List<MenuItem>
-                        {
-                            new("Shipments", Icons.Material.Filled.ListAlt, "/awb-list", "AWB_LIST"),
-                            new("AWB Register", Icons.Material.Filled.ListAlt, "/reports/ops/awb-register", "AWB_REGISTER"),
-                            new("COD Pending", Icons.Material.Filled.AttachMoney, "/reports/ops/cod-pending", "COD_PENDING")
-                        }
-                    }
-                }
-            },
-            new MenuCategory
-            {
-                Title = "Finance",
-                Icon = Icons.Material.Filled.AccountBalance,
-                ColorTheme = "success",
-                Groups = new List<MenuGroup>
-                {
-                    new MenuGroup
-                    {
-                        Title = "Receivables (AR)",
-                        Items = new List<MenuItem>
-                        {
-                            new("Generate Invoice", Icons.Material.Filled.Add, "/invoice-generation", "INVOICE_GEN"),
-                            new("Invoices", Icons.Material.Filled.Receipt, "/invoices", "INVOICES"),
-                            new("Receipts", Icons.Material.Filled.ReceiptLong, "/receipts", "RECEIPTS"),
-                            new("Outstanding Report", Icons.Material.Filled.Warning, "/reports/ar/outstanding", "AR_OUTSTANDING")
-                        }
-                    },
-                    new MenuGroup
-                    {
-                        Title = "Payables (AP)",
-                        Items = new List<MenuItem>
-                        {
-                            new("Vendor Bills", Icons.Material.Filled.Receipt, "/vendor-bills", "VENDOR_BILLS"),
-                            new("Payments", Icons.Material.Filled.Payments, "/payments", "PAYMENTS")
-                        }
-                    },
-                    new MenuGroup
-                    {
-                        Title = "General Ledger",
-                        Items = new List<MenuItem>
-                        {
-                            new("Journal Entry", Icons.Material.Filled.Book, "/journal-vouchers", "JOURNAL"),
-                            new("Chart of Accounts", Icons.Material.Filled.AccountTree, "/gl-chart-of-accounts", "COA"),
-                            new("Profit & Loss", Icons.Material.Filled.TrendingUp, "/reports/gl/profit-loss", "PL_REPORT")
-                        }
-                    }
-                }
-            },
-            new MenuCategory
-            {
-                Title = "CRM & Sales",
-                Icon = Icons.Material.Filled.Contacts,
-                ColorTheme = "warning",
-                Groups = new List<MenuGroup>
-                {
-                    new MenuGroup
-                    {
-                        Items = new List<MenuItem>
-                        {
-                            new("Customer Profiles", Icons.Material.Filled.Person, "/customers", "CUSTOMERS"),
-                            new("New Customer", Icons.Material.Filled.PersonAdd, "/customer-new", "CUSTOMER_NEW"),
-                            new("Contracts & Pricing", Icons.Material.Filled.Handshake, "/contracts-pricing", "CONTRACTS"),
-                            new("SLA Management", Icons.Material.Filled.Verified, "/sla-management", "SLA"),
-                            new("Customer AWB Issue", Icons.Material.Filled.Assignment, "/customer-awb-issue", "AWB_ISSUE"),
-                            new("Complaints / Tickets", Icons.Material.Filled.SupportAgent, "/complaints", "TICKETS")
-                        }
-                    }
-                }
-            },
-            new MenuCategory
-            {
-                Title = "Pricing",
-                Icon = Icons.Material.Filled.PriceChange,
-                ColorTheme = "secondary",
-                Groups = new List<MenuGroup>
-                {
-                    new MenuGroup
-                    {
-                        Items = new List<MenuItem>
-                        {
-                            new("Rate Calculator", Icons.Material.Filled.Calculate, "/rate-enquiry", "RATE_CALC"),
-                            new("Rate Cards", Icons.Material.Filled.TableChart, "/rate-cards", "RATE_CARDS"),
-                            new("Rate Simulator", Icons.Material.Filled.Science, "/rate-simulator", "RATE_SIM"),
-                            new("Zone Management", Icons.Material.Filled.Map, "/zone-matrix", "ZONES"),
-                            new("Fuel Surcharge", Icons.Material.Filled.LocalGasStation, "/fuel-surcharge", "FUEL")
-                        }
-                    }
-                }
-            },
-            new MenuCategory
-            {
-                Title = "Compliance",
-                Icon = Icons.Material.Filled.VerifiedUser,
-                ColorTheme = "dark",
-                Groups = new List<MenuGroup>
-                {
-                    new MenuGroup
-                    {
-                        Items = new List<MenuItem>
-                        {
-                            new("Audit Logs", Icons.Material.Filled.History, "/audit-logs", "AUDIT"),
-                            new("Empost Settlements", Icons.Material.Filled.Receipt, "/empost-settlements", "EMPOST"),
-                            new("Regulatory Reports", Icons.Material.Filled.Gavel, "/empost-regulatory", "REGULATORY")
-                        }
-                    }
-                }
-            },
-            new MenuCategory
-            {
-                Title = "Masters",
-                Icon = Icons.Material.Filled.Settings,
-                ColorTheme = "primary",
-                Groups = new List<MenuGroup>
-                {
-                    new MenuGroup
-                    {
-                        Title = "Organization",
-                        Items = new List<MenuItem>
-                        {
-                            new("Companies", Icons.Material.Filled.Domain, "/companies", "COMPANIES"),
-                            new("Branches", Icons.Material.Filled.AccountTree, "/branches", "BRANCHES"),
-                            new("Users", Icons.Material.Filled.People, "/users", "USERS"),
-                            new("Roles", Icons.Material.Filled.Security, "/roles", "ROLES")
-                        }
-                    },
-                    new MenuGroup
-                    {
-                        Title = "Geography",
-                        Items = new List<MenuItem>
-                        {
-                            new("Countries", Icons.Material.Filled.Flag, "/countries", "COUNTRIES"),
-                            new("States", Icons.Material.Filled.Map, "/states", "STATES"),
-                            new("Cities", Icons.Material.Filled.LocationCity, "/cities", "CITIES"),
-                            new("Locations", Icons.Material.Filled.Place, "/locations", "LOCATIONS")
-                        }
-                    },
-                    new MenuGroup
-                    {
-                        Title = "Operations",
-                        Items = new List<MenuItem>
-                        {
-                            new("Service Types", Icons.Material.Filled.Category, "/service-types", "SERVICE_TYPES"),
-                            new("Shipment Modes", Icons.Material.Filled.LocalShipping, "/shipment-modes", "SHIPMENT_MODES"),
-                            new("Vehicles", Icons.Material.Filled.DirectionsCar, "/vehicles", "VEHICLES")
-                        }
-                    }
-                }
-            },
-            new MenuCategory
-            {
-                Title = "Import / Export",
-                Icon = Icons.Material.Filled.Flight,
-                ColorTheme = "info",
-                Groups = new List<MenuGroup>
-                {
-                    new MenuGroup
-                    {
-                        Items = new List<MenuItem>
-                        {
-                            new("Import Manifest", Icons.Material.Filled.FlightLand, "/import-dashboard", "IMPORT"),
-                            new("Customs Processing", Icons.Material.Filled.Gavel, "/import-customs", "CUSTOMS")
-                        }
-                    }
-                }
-            }
+            Snackbar.Add("Already in your favourites", Severity.Info);
+            return;
+        }
+
+        try
+        {
+            var favorite = await FavoriteService.AddFavoriteAsync(_userId, item.MenuCode, item.Title, item.Icon, item.Route, item.Category);
+            _favorites.Add(favorite);
+            _existingCodes.Add(item.MenuCode);
+            Snackbar.Add($"Added '{item.Title}' to Favourites!", Severity.Success);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Failed to add: {ex.Message}", Severity.Error);
+        }
+    }
+
+    private void InitializeAvailableMenus()
+    {
+        _availableMenus = new List<AvailableMenuItem>
+        {
+            new("Global Dashboard", Icons.Material.Filled.Home, "/", "DASHBOARD", "Dashboards"),
+            new("Operations Dashboard", Icons.Material.Filled.Speed, "/operational-desktop", "OPS_DASHBOARD", "Dashboards"),
+            new("Customer Dashboard", Icons.Material.Filled.People, "/customer/dashboard", "CUST_DASHBOARD", "Dashboards"),
+            
+            new("Pickup Dashboard", Icons.Material.Filled.Dashboard, "/pickup-dashboard", "PICKUP_DASHBOARD", "Operations"),
+            new("Pickup Schedules", Icons.Material.Filled.Schedule, "/pickup-schedules", "PICKUP_SCHEDULES", "Operations"),
+            new("Courier Commitments", Icons.Material.Filled.AssignmentTurnedIn, "/pickup-commitments", "PICKUP_COMMITMENTS", "Operations"),
+            new("Inscan", Icons.Material.Filled.QrCodeScanner, "/pickup-inscan", "INSCAN", "Operations"),
+            new("Outscan (DRS)", Icons.Material.Filled.ExitToApp, "/outscan", "OUTSCAN", "Operations"),
+            new("Proof of Delivery", Icons.Material.Filled.CameraAlt, "/pod-scanner", "POD", "Operations"),
+            new("Transfer Orders", Icons.Material.Filled.TransferWithinAStation, "/transfer-orders", "TRANSFER", "Operations"),
+            new("RTS / RTO", Icons.Material.Filled.SwapHoriz, "/rts-list", "RTS", "Operations"),
+            new("Shipments", Icons.Material.Filled.ListAlt, "/awb-list", "AWB_LIST", "Operations"),
+            
+            new("Import Manifest", Icons.Material.Filled.FlightLand, "/import-dashboard", "IMPORT", "Import/Export"),
+            new("Customs Processing", Icons.Material.Filled.Gavel, "/import-customs", "CUSTOMS", "Import/Export"),
+            
+            new("Customer Profiles", Icons.Material.Filled.Person, "/customers", "CUSTOMERS", "Customers & CRM"),
+            new("New Customer", Icons.Material.Filled.PersonAdd, "/customer-new", "CUSTOMER_NEW", "Customers & CRM"),
+            new("Contracts & Pricing", Icons.Material.Filled.Handshake, "/contracts-pricing", "CONTRACTS", "Customers & CRM"),
+            new("SLA Management", Icons.Material.Filled.Verified, "/sla-management", "SLA", "Customers & CRM"),
+            new("Customer AWB Issue", Icons.Material.Filled.Assignment, "/customer-awb-issue", "AWB_ISSUE", "Customers & CRM"),
+            new("Tickets Dashboard", Icons.Material.Filled.Dashboard, "/tickets-dashboard", "TICKETS_DASHBOARD", "Customers & CRM"),
+            new("Complaints / Tickets", Icons.Material.Filled.SupportAgent, "/complaints", "TICKETS", "Customers & CRM"),
+            
+            new("Rate Calculator", Icons.Material.Filled.Calculate, "/rate-enquiry", "RATE_CALC", "Pricing"),
+            new("Rate Cards", Icons.Material.Filled.TableChart, "/rate-cards", "RATE_CARDS", "Pricing"),
+            new("Rate Simulator", Icons.Material.Filled.Science, "/rate-simulator", "RATE_SIM", "Pricing"),
+            new("Zone Categories", Icons.Material.Filled.Category, "/zone-categories", "ZONE_CAT", "Pricing"),
+            new("Zones", Icons.Material.Filled.GridOn, "/zone-matrix", "ZONES", "Pricing"),
+            new("Fuel Surcharge", Icons.Material.Filled.LocalGasStation, "/fuel-surcharge", "FUEL", "Pricing"),
+            
+            new("Invoicing", Icons.Material.Filled.Description, "/customer-invoices", "INVOICES", "Finance"),
+            new("Generate Invoice", Icons.Material.Filled.Add, "/customer-invoicing", "INVOICE_GEN", "Finance"),
+            new("Receipts", Icons.Material.Filled.ReceiptLong, "/receipts", "RECEIPTS", "Finance"),
+            new("Vendor Bills", Icons.Material.Filled.Receipt, "/vendor-bills", "VENDOR_BILLS", "Finance"),
+            new("Payments", Icons.Material.Filled.Payments, "/payments", "PAYMENTS", "Finance"),
+            new("Journal Entry", Icons.Material.Filled.Book, "/gl/journal-entry", "JOURNAL", "Finance"),
+            new("Chart of Accounts", Icons.Material.Filled.AccountTree, "/gl/chart-of-accounts", "COA", "Finance"),
+            new("Cash & Bank", Icons.Material.Filled.Payments, "/cash-bank-transactions", "CASH_BANK", "Finance"),
+            
+            new("Companies", Icons.Material.Filled.Domain, "/companies", "COMPANIES", "Masters"),
+            new("Branches", Icons.Material.Filled.AccountTree, "/branches", "BRANCHES", "Masters"),
+            new("Users", Icons.Material.Filled.People, "/users", "USERS", "Masters"),
+            new("Roles", Icons.Material.Filled.Security, "/roles", "ROLES", "Masters"),
+            new("Employees", Icons.Material.Filled.Badge, "/employees", "EMPLOYEES", "Masters"),
+            new("Countries", Icons.Material.Filled.Flag, "/countries", "COUNTRIES", "Masters"),
+            new("States", Icons.Material.Filled.Map, "/states", "STATES", "Masters"),
+            new("Cities", Icons.Material.Filled.LocationCity, "/cities", "CITIES", "Masters"),
+            new("Locations", Icons.Material.Filled.Place, "/locations", "LOCATIONS", "Masters"),
+            new("Service Types", Icons.Material.Filled.Category, "/service-types", "SERVICE_TYPES", "Masters"),
+            
+            new("Audit Logs", Icons.Material.Filled.History, "/audit-logs", "AUDIT", "Compliance"),
+            new("Empost Settlements", Icons.Material.Filled.Receipt, "/empost-settlements", "EMPOST", "Compliance"),
         };
     }
 
-    private class MenuCategory
-    {
-        public string Title { get; set; } = "";
-        public string Icon { get; set; } = "";
-        public string ColorTheme { get; set; } = "primary";
-        public List<MenuGroup> Groups { get; set; } = new();
-    }
-
-    private class MenuGroup
-    {
-        public string? Title { get; set; }
-        public List<MenuItem> Items { get; set; } = new();
-    }
-
-    private class MenuItem
+    private class AvailableMenuItem
     {
         public string Title { get; set; }
         public string Icon { get; set; }
         public string Route { get; set; }
         public string MenuCode { get; set; }
+        public string Category { get; set; }
 
-        public MenuItem(string title, string icon, string route, string menuCode)
+        public AvailableMenuItem(string title, string icon, string route, string menuCode, string category)
         {
             Title = title;
             Icon = icon;
             Route = route;
             MenuCode = menuCode;
+            Category = category;
         }
     }
 }
