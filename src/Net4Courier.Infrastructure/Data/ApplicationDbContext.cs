@@ -1,4 +1,7 @@
+using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.ChangeTracking;
+using Net4Courier.Kernel.Entities;
 using Net4Courier.Masters.Entities;
 using Net4Courier.Operations.Entities;
 using Net4Courier.Finance.Entities;
@@ -150,6 +153,143 @@ public class ApplicationDbContext : DbContext
     public DbSet<CustomerAwbIssue> CustomerAwbIssues => Set<CustomerAwbIssue>();
     public DbSet<CustomerAwbIssueDetail> CustomerAwbIssueDetails => Set<CustomerAwbIssueDetail>();
     public DbSet<CustomerAwbBalance> CustomerAwbBalances => Set<CustomerAwbBalance>();
+    
+    public DbSet<AuditLog> AuditLogs => Set<AuditLog>();
+    
+    // Audit context - set these before SaveChanges for audit logging
+    public long? CurrentUserId { get; set; }
+    public string? CurrentUserName { get; set; }
+    public long? CurrentBranchId { get; set; }
+    public string? CurrentBranchName { get; set; }
+    public string? CurrentIPAddress { get; set; }
+    
+    // Entities to exclude from audit logging
+    private static readonly HashSet<string> ExcludedFromAudit = new()
+    {
+        nameof(AuditLog),
+        nameof(AWBTracking),
+        nameof(ShipmentStatusHistory),
+        nameof(PickupStatusHistory)
+    };
+
+    public override async Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
+    {
+        var auditEntries = OnBeforeSaveChanges();
+        var result = await base.SaveChangesAsync(cancellationToken);
+        await OnAfterSaveChanges(auditEntries, cancellationToken);
+        return result;
+    }
+
+    private List<AuditEntry> OnBeforeSaveChanges()
+    {
+        ChangeTracker.DetectChanges();
+        var auditEntries = new List<AuditEntry>();
+
+        foreach (var entry in ChangeTracker.Entries())
+        {
+            if (entry.Entity is AuditLog || entry.State == EntityState.Detached || entry.State == EntityState.Unchanged)
+                continue;
+
+            var entityName = entry.Entity.GetType().Name;
+            if (ExcludedFromAudit.Contains(entityName))
+                continue;
+
+            var auditEntry = new AuditEntry(entry)
+            {
+                EntityName = entityName,
+                UserId = CurrentUserId,
+                UserName = CurrentUserName,
+                BranchId = CurrentBranchId,
+                BranchName = CurrentBranchName,
+                IPAddress = CurrentIPAddress
+            };
+
+            switch (entry.State)
+            {
+                case EntityState.Added:
+                    auditEntry.Action = AuditAction.Create;
+                    foreach (var property in entry.Properties)
+                    {
+                        if (property.Metadata.IsPrimaryKey())
+                        {
+                            auditEntry.KeyValues[property.Metadata.Name] = property.CurrentValue;
+                            auditEntry.HasTemporaryKey = property.IsTemporary;
+                        }
+                        auditEntry.NewValues[property.Metadata.Name] = property.CurrentValue;
+                    }
+                    break;
+
+                case EntityState.Modified:
+                    auditEntry.Action = AuditAction.Update;
+                    foreach (var property in entry.Properties)
+                    {
+                        if (property.Metadata.IsPrimaryKey())
+                        {
+                            auditEntry.KeyValues[property.Metadata.Name] = property.CurrentValue;
+                        }
+                        if (property.IsModified)
+                        {
+                            auditEntry.OldValues[property.Metadata.Name] = property.OriginalValue;
+                            auditEntry.NewValues[property.Metadata.Name] = property.CurrentValue;
+                        }
+                    }
+                    break;
+
+                case EntityState.Deleted:
+                    auditEntry.Action = AuditAction.Delete;
+                    foreach (var property in entry.Properties)
+                    {
+                        if (property.Metadata.IsPrimaryKey())
+                        {
+                            auditEntry.KeyValues[property.Metadata.Name] = property.CurrentValue;
+                        }
+                        auditEntry.OldValues[property.Metadata.Name] = property.OriginalValue;
+                    }
+                    break;
+            }
+
+            auditEntries.Add(auditEntry);
+        }
+
+        return auditEntries;
+    }
+
+    private async Task OnAfterSaveChanges(List<AuditEntry> auditEntries, CancellationToken cancellationToken)
+    {
+        if (auditEntries.Count == 0)
+            return;
+
+        foreach (var auditEntry in auditEntries)
+        {
+            // Get the generated primary key for new entities
+            if (auditEntry.HasTemporaryKey)
+            {
+                foreach (var prop in auditEntry.Entry.Properties.Where(p => p.Metadata.IsPrimaryKey()))
+                {
+                    auditEntry.KeyValues[prop.Metadata.Name] = prop.CurrentValue;
+                }
+            }
+
+            var entityId = auditEntry.KeyValues.Values.FirstOrDefault();
+            
+            AuditLogs.Add(new AuditLog
+            {
+                EntityName = auditEntry.EntityName,
+                EntityId = entityId is long id ? id : 0,
+                Action = auditEntry.Action,
+                OldValues = auditEntry.OldValues.Count > 0 ? JsonSerializer.Serialize(auditEntry.OldValues) : null,
+                NewValues = auditEntry.NewValues.Count > 0 ? JsonSerializer.Serialize(auditEntry.NewValues) : null,
+                UserId = auditEntry.UserId,
+                UserName = auditEntry.UserName,
+                BranchId = auditEntry.BranchId,
+                BranchName = auditEntry.BranchName,
+                IPAddress = auditEntry.IPAddress,
+                Timestamp = DateTime.UtcNow
+            });
+        }
+
+        await base.SaveChangesAsync(cancellationToken);
+    }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -1757,5 +1897,41 @@ public class ApplicationDbContext : DbContext
             entity.Property(e => e.Separator).HasMaxLength(10);
             entity.HasIndex(e => new { e.CompanyId, e.TransactionType, e.FinancialYearId }).IsUnique();
         });
+        
+        modelBuilder.Entity<AuditLog>(entity =>
+        {
+            entity.ToTable("AuditLogs");
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.EntityName).HasMaxLength(100).IsRequired();
+            entity.Property(e => e.UserName).HasMaxLength(100);
+            entity.Property(e => e.BranchName).HasMaxLength(100);
+            entity.Property(e => e.IPAddress).HasMaxLength(50);
+            entity.Property(e => e.AdditionalInfo).HasMaxLength(500);
+            entity.HasIndex(e => e.Timestamp);
+            entity.HasIndex(e => e.EntityName);
+            entity.HasIndex(e => e.UserId);
+            entity.HasIndex(e => new { e.EntityName, e.EntityId });
+        });
+    }
+}
+
+public class AuditEntry
+{
+    public EntityEntry Entry { get; }
+    public string EntityName { get; set; } = string.Empty;
+    public AuditAction Action { get; set; }
+    public long? UserId { get; set; }
+    public string? UserName { get; set; }
+    public long? BranchId { get; set; }
+    public string? BranchName { get; set; }
+    public string? IPAddress { get; set; }
+    public Dictionary<string, object?> KeyValues { get; } = new();
+    public Dictionary<string, object?> OldValues { get; } = new();
+    public Dictionary<string, object?> NewValues { get; } = new();
+    public bool HasTemporaryKey { get; set; }
+
+    public AuditEntry(EntityEntry entry)
+    {
+        Entry = entry;
     }
 }
