@@ -31,8 +31,9 @@
                                   Variant="Variant.Outlined" />
                 </MudItem>
                 <MudItem xs="12" md="4">
-                    <MudNumericField @bind-Value="Stock.Qty" Label="Qty" Min="1"
-                                     Variant="Variant.Outlined" Required="true" />
+                    <MudNumericField T="int" Value="Stock.Qty" Label="Qty" Min="1"
+                                     Variant="Variant.Outlined" Required="true"
+                                     Immediate="true" ValueChanged="@OnQtyChanged" />
                 </MudItem>
                 <MudItem xs="12" md="4">
                     <MudNumericField @bind-Value="Stock.Rate" Label="Rate" Format="N2"
@@ -42,17 +43,14 @@
                     <MudNumericField Value="@(Stock.Qty * Stock.Rate)" Label="Amount" Format="N2"
                                      Variant="Variant.Outlined" ReadOnly="true" />
                 </MudItem>
-                <MudItem xs="12" md="4">
-                    <MudNumericField @bind-Value="Stock.AWBCount" Label="AWB Count" Min="1"
-                                     Variant="Variant.Outlined" Required="true" />
+                <MudItem xs="12" md="6">
+                    <MudTextField T="string" Value="Stock.AWBNoFrom" Label="AWB NO. From"
+                                  Variant="Variant.Outlined" Required="true" RequiredError="AWB From is required"
+                                  Immediate="true" ValueChanged="@OnAWBNoFromChanged" />
                 </MudItem>
-                <MudItem xs="12" md="4">
-                    <MudTextField @bind-Value="Stock.AWBNoFrom" Label="AWB NO. From"
-                                  Variant="Variant.Outlined" Required="true" RequiredError="AWB From is required" />
-                </MudItem>
-                <MudItem xs="12" md="4">
-                    <MudTextField @bind-Value="Stock.AWBNoTo" Label="AWB NO. To"
-                                  Variant="Variant.Outlined" Required="true" RequiredError="AWB To is required" />
+                <MudItem xs="12" md="6">
+                    <MudTextField Value="@_awbNoTo" Label="AWB NO. To"
+                                  Variant="Variant.Outlined" ReadOnly="true" />
                 </MudItem>
                 <MudItem xs="12">
                     <MudTextField @bind-Value="Stock.Remarks" Label="Remarks" Lines="2"
@@ -74,6 +72,48 @@
     [Parameter] public bool IsEdit { get; set; }
     
     private MudForm? _form;
+    private string _awbNoTo = "";
+
+    protected override void OnParametersSet()
+    {
+        CalculateAWBNoTo();
+    }
+
+    private void OnQtyChanged(int qty)
+    {
+        Stock.Qty = qty;
+        CalculateAWBNoTo();
+    }
+
+    private void OnAWBNoFromChanged(string awbNoFrom)
+    {
+        Stock.AWBNoFrom = awbNoFrom;
+        CalculateAWBNoTo();
+    }
+
+    private void CalculateAWBNoTo()
+    {
+        if (!string.IsNullOrWhiteSpace(Stock.AWBNoFrom) && Stock.Qty > 0)
+        {
+            if (long.TryParse(Stock.AWBNoFrom, out long startNum))
+            {
+                long endNum = startNum + Stock.Qty - 1;
+                _awbNoTo = endNum.ToString();
+                Stock.AWBNoTo = _awbNoTo;
+                Stock.AWBCount = Stock.Qty;
+            }
+            else
+            {
+                _awbNoTo = "";
+                Stock.AWBNoTo = "";
+            }
+        }
+        else
+        {
+            _awbNoTo = "";
+            Stock.AWBNoTo = "";
+        }
+    }
     
     private async Task Submit()
     {
@@ -84,6 +124,7 @@
         }
         
         Stock.Amount = Stock.Qty * Stock.Rate;
+        Stock.AWBCount = Stock.Qty;
         MudDialog.Close(DialogResult.Ok(Stock));
     }
     
