@@ -13,6 +13,7 @@ public class RateCardSlabRule : AuditableEntity
     public decimal? FlatRate { get; set; }
     public decimal? CostFlatRate { get; set; }
     public decimal? CostPerKgRate { get; set; }
+    public decimal? Additional1KgRate { get; set; }
     public int SortOrder { get; set; }
     
     public virtual RateCardZone? RateCardZone { get; set; }
@@ -23,5 +24,6 @@ public enum SlabCalculationMode
     PerStep = 1,
     PerKg = 2,
     FlatAfter = 3,
-    FlatForSlab = 4
+    FlatForSlab = 4,
+    FlatPlusAdditional = 5
 }

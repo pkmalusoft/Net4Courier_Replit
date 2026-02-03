@@ -18,11 +18,19 @@ public class RateCardZone : AuditableEntity
     
     public TaxMode TaxMode { get; set; } = TaxMode.Exclusive;
     public long? ForwardingAgentId { get; set; }
+    
+    [System.Obsolete("Use TaxPercent instead")]
     public decimal? MarginPercentage { get; set; }
+    [System.Obsolete("Currency is now inherited from Branch")]
     public long? CurrencyId { get; set; }
+    [System.Obsolete("Currency is now inherited from Branch")]
     public string? CurrencyCode { get; set; }
     public decimal? MinCharge { get; set; }
     public decimal? MaxCharge { get; set; }
+    
+    public decimal MinWeight { get; set; } = 1m;
+    public decimal MaxWeight { get; set; } = 5m;
+    public decimal TaxPercent { get; set; } = 0m;
     
     public decimal MarginBaseRate => SalesBaseRate - CostBaseRate;
     public decimal MarginPerKg => SalesPerKg - CostPerKg;
@@ -35,6 +43,5 @@ public class RateCardZone : AuditableEntity
 public enum TaxMode
 {
     Exclusive = 1,
-    Inclusive = 2,
-    WithTax = 3
+    Inclusive = 2
 }

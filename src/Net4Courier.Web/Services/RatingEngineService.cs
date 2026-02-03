@@ -128,27 +128,44 @@ public class RatingEngineService
                 result.SubTotal = zone.MaxCharge.Value;
             }
 
-            if (zone.MarginPercentage.HasValue && zone.MarginPercentage > 0)
+            if (zone.TaxPercent > 0)
             {
-                result.MarginPercentage = zone.MarginPercentage;
-                result.Margin = result.SubTotal * (zone.MarginPercentage.Value / 100m);
-                result.FormulaTrace.Add(new FormulaTraceStep
+                result.TaxPercent = zone.TaxPercent;
+                if (zone.TaxMode == TaxMode.Exclusive)
                 {
-                    Order = stepOrder++,
-                    Category = "Margin",
-                    Description = $"{zone.MarginPercentage.Value:N1}% of {result.SubTotal:N2}",
-                    Formula = $"{result.SubTotal:N2} x {zone.MarginPercentage.Value:N1}% = {result.Margin:N2}",
-                    Value = result.Margin
-                });
+                    result.TaxAmount = result.SubTotal * (zone.TaxPercent / 100m);
+                    result.FormulaTrace.Add(new FormulaTraceStep
+                    {
+                        Order = stepOrder++,
+                        Category = "Tax (Exclusive)",
+                        Description = $"{zone.TaxPercent:N2}% of {result.SubTotal:N2}",
+                        Formula = $"{result.SubTotal:N2} x {zone.TaxPercent:N2}% = {result.TaxAmount:N2}",
+                        Value = result.TaxAmount
+                    });
+                }
+                else
+                {
+                    result.TaxAmount = result.SubTotal - (result.SubTotal / (1 + (zone.TaxPercent / 100m)));
+                    result.FormulaTrace.Add(new FormulaTraceStep
+                    {
+                        Order = stepOrder++,
+                        Category = "Tax (Inclusive)",
+                        Description = $"Tax already included at {zone.TaxPercent:N2}%",
+                        Formula = $"Tax portion = {result.TaxAmount:N2}",
+                        Value = result.TaxAmount
+                    });
+                }
             }
 
-            result.TotalCharge = result.SubTotal + result.Margin;
+            result.TotalCharge = zone.TaxMode == TaxMode.Exclusive 
+                ? result.SubTotal + result.TaxAmount 
+                : result.SubTotal;
 
             result.FormulaTrace.Add(new FormulaTraceStep
             {
                 Order = stepOrder++,
                 Category = "Final Total",
-                Description = result.Margin > 0 ? $"{result.SubTotal:N2} + {result.Margin:N2}" : $"Total",
+                Description = result.TaxAmount > 0 ? $"{result.SubTotal:N2} + Tax {result.TaxAmount:N2}" : "Total",
                 Formula = $"Total Charge = {result.TotalCharge:N2}",
                 Value = result.TotalCharge
             });
@@ -289,9 +306,33 @@ public class RatingEngineService
     private (decimal baseCharge, decimal slabCharge, List<string> rules) CalculateCharges(RateCardZone zone, decimal weight)
     {
         var rules = new List<string>();
+        var slabRules = zone.SlabRules
+            .Where(s => !s.IsDeleted)
+            .OrderBy(s => s.FromWeight)
+            .ToList();
+
+        var hasFlatPlusAdditional = slabRules.Any(s => s.CalculationMode == SlabCalculationMode.FlatPlusAdditional);
+        
+        if (hasFlatPlusAdditional)
+        {
+            var slab = slabRules.First(s => s.CalculationMode == SlabCalculationMode.FlatPlusAdditional);
+            var flatRate = slab.FlatRate ?? 0;
+            var additionalRate = slab.Additional1KgRate ?? 0;
+            var maxWeight = slab.ToWeight;
+            var additionalWeight = Math.Max(0, weight - maxWeight);
+            var additionalCharge = additionalWeight * additionalRate;
+            var totalCharge = flatRate + additionalCharge;
+
+            if (additionalWeight > 0)
+                rules.Add($"Rate: {slab.FromWeight:N1}-{maxWeight:N1}kg = {flatRate:N2} (flat) + {additionalWeight:N3}kg × {additionalRate:N2}/kg = {totalCharge:N2}");
+            else
+                rules.Add($"Rate: {slab.FromWeight:N1}-{maxWeight:N1}kg = {flatRate:N2} (flat)");
+
+            return (0m, totalCharge, rules);
+        }
+
         var baseWeight = zone.BaseWeight;
         var baseRate = zone.BaseRate;
-
         rules.Add($"Base: {baseWeight:N3}kg @ {baseRate:N2}");
 
         if (weight <= baseWeight)
@@ -301,11 +342,6 @@ public class RatingEngineService
 
         decimal slabTotal = 0m;
         var remainingWeight = weight;
-
-        var slabRules = zone.SlabRules
-            .Where(s => !s.IsDeleted)
-            .OrderBy(s => s.FromWeight)
-            .ToList();
 
         foreach (var slab in slabRules)
         {
@@ -383,6 +419,9 @@ public class RatingResult
     public decimal BaseCharge { get; set; }
     public decimal SlabCharge { get; set; }
     public decimal SubTotal { get; set; }
+    public decimal TaxPercent { get; set; }
+    public decimal TaxAmount { get; set; }
+    [System.Obsolete("Use TaxAmount instead")]
     public decimal Margin { get; set; }
     public decimal TotalCharge { get; set; }
     public List<string> AppliedRules { get; set; } = new();

@@ -23,6 +23,7 @@ public class SlabRuleTemplateDetail : AuditableEntity
     public decimal FlatRate { get; set; }
     public decimal CostFlatRate { get; set; }
     public decimal CostPerKgRate { get; set; }
+    public decimal? Additional1KgRate { get; set; }
     public SlabCalculationMode CalculationMode { get; set; } = SlabCalculationMode.PerStep;
     public int SortOrder { get; set; }
     
