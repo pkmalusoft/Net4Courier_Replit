@@ -1,11 +1,14 @@
 @page "/invoice-view/{InvoiceId:long}"
 @using Net4Courier.Infrastructure.Data
 @using Net4Courier.Finance.Entities
+@using Net4Courier.Masters.Entities
 @using Net4Courier.Web.Services
 @using Net4Courier.Kernel.Enums
 @using Microsoft.EntityFrameworkCore
 @inject ApplicationDbContext Context
 @inject InvoicingService InvoicingService
+@inject ReportingService ReportingService
+@inject IGmailEmailService GmailEmailService
 @inject ISnackbar Snackbar
 @inject NavigationManager Navigation
 @rendermode InteractiveServer
@@ -43,6 +46,18 @@ else
                 <MudButton Variant="Variant.Outlined" Color="Color.Info" StartIcon="@Icons.Material.Filled.Download"
                            Href="@($"/api/report/invoice/{InvoiceId}")" Target="_blank">
                     Download PDF
+                </MudButton>
+                <MudButton Variant="Variant.Filled" Color="Color.Secondary" StartIcon="@Icons.Material.Filled.Email"
+                           OnClick="EmailInvoice" Disabled="@_sendingEmail">
+                    @if (_sendingEmail)
+                    {
+                        <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" />
+                        <span>Sending...</span>
+                    }
+                    else
+                    {
+                        <span>Email Invoice</span>
+                    }
                 </MudButton>
                 <MudButton Variant="Variant.Outlined" Color="Color.Default" StartIcon="@Icons.Material.Filled.ArrowBack"
                            Href="/customer-invoices">
@@ -201,7 +216,9 @@ else
     [Parameter] public long InvoiceId { get; set; }
 
     private bool _loading = true;
+    private bool _sendingEmail = false;
     private Invoice? _invoice;
+    private Party? _customer;
 
     protected override async Task OnInitializedAsync()
     {
@@ -219,6 +236,12 @@ else
                 .Include(i => i.Details)
                 .Include(i => i.SpecialCharges)
                 .FirstOrDefaultAsync(i => i.Id == InvoiceId);
+
+            if (_invoice?.CustomerId > 0)
+            {
+                _customer = await Context.Parties
+                    .FirstOrDefaultAsync(p => p.Id == _invoice.CustomerId);
+            }
         }
         finally
         {
@@ -250,4 +273,95 @@ else
         InvoiceStatus.Cancelled => Color.Error,
         _ => Color.Default
     };
+
+    private string BuildEmailBody(Invoice invoice, Party customer, string companyName)
+    {
+        var periodFrom = invoice.PeriodFrom?.ToString("dd-MMM-yyyy") ?? "N/A";
+        var periodTo = invoice.PeriodTo?.ToString("dd-MMM-yyyy") ?? "N/A";
+        var dueDate = invoice.DueDate?.ToString("dd-MMM-yyyy") ?? "N/A";
+        var netTotal = invoice.NetTotal?.ToString("N2") ?? "0.00";
+        var balance = invoice.BalanceAmount?.ToString("N2") ?? "0.00";
+
+        var sb = new System.Text.StringBuilder();
+        sb.AppendLine("<html>");
+        sb.AppendLine("<body style='font-family: Arial, sans-serif;'>");
+        sb.AppendLine($"<h2>Invoice {invoice.InvoiceNo}</h2>");
+        sb.AppendLine($"<p>Dear {customer.Name},</p>");
+        sb.AppendLine($"<p>Please find attached your invoice for the period {periodFrom} to {periodTo}.</p>");
+        sb.AppendLine("<table style='border-collapse: collapse; margin: 20px 0;'>");
+        sb.AppendLine($"<tr><td style='padding: 5px 15px 5px 0;'><strong>Invoice No:</strong></td><td>{invoice.InvoiceNo}</td></tr>");
+        sb.AppendLine($"<tr><td style='padding: 5px 15px 5px 0;'><strong>Invoice Date:</strong></td><td>{invoice.InvoiceDate:dd-MMM-yyyy}</td></tr>");
+        sb.AppendLine($"<tr><td style='padding: 5px 15px 5px 0;'><strong>Due Date:</strong></td><td>{dueDate}</td></tr>");
+        sb.AppendLine($"<tr><td style='padding: 5px 15px 5px 0;'><strong>Total AWBs:</strong></td><td>{invoice.TotalAWBs}</td></tr>");
+        sb.AppendLine($"<tr><td style='padding: 5px 15px 5px 0;'><strong>Net Total:</strong></td><td style='font-weight: bold; color: #2196F3;'>{netTotal}</td></tr>");
+        sb.AppendLine($"<tr><td style='padding: 5px 15px 5px 0;'><strong>Balance Due:</strong></td><td style='font-weight: bold; color: #f44336;'>{balance}</td></tr>");
+        sb.AppendLine("</table>");
+        sb.AppendLine("<p>Thank you for your business.</p>");
+        sb.AppendLine($"<p>Best regards,<br/>{companyName}</p>");
+        sb.AppendLine("</body>");
+        sb.AppendLine("</html>");
+        return sb.ToString();
+    }
+
+    private async Task EmailInvoice()
+    {
+        if (_invoice == null)
+        {
+            Snackbar.Add("Invoice not loaded", Severity.Error);
+            return;
+        }
+
+        if (_customer == null || string.IsNullOrWhiteSpace(_customer.Email))
+        {
+            Snackbar.Add("Customer email address not found. Please update the customer's email in Customer Master.", Severity.Warning);
+            return;
+        }
+
+        _sendingEmail = true;
+        StateHasChanged();
+
+        try
+        {
+            var pdfBytes = ReportingService.GenerateInvoicePdf(_invoice);
+
+            var company = await Context.Companies.FirstOrDefaultAsync(c => c.IsActive && !c.IsDeleted);
+            var companyName = company?.Name ?? "Net4Courier";
+            var companyEmail = company?.Email ?? "noreply@net4courier.com";
+
+            var subject = $"Invoice {_invoice.InvoiceNo} from {companyName}";
+            var htmlBody = BuildEmailBody(_invoice, _customer, companyName);
+
+            var fileName = $"Invoice_{_invoice.InvoiceNo}.pdf";
+
+            var success = await GmailEmailService.SendEmailWithAttachmentAsync(
+                to: _customer.Email,
+                toName: _customer.Name ?? "",
+                subject: subject,
+                htmlBody: htmlBody,
+                attachmentBytes: pdfBytes,
+                fileName: fileName,
+                contentType: "application/pdf",
+                fromEmail: companyEmail,
+                fromName: companyName
+            );
+
+            if (success)
+            {
+                Snackbar.Add($"Invoice emailed successfully to {_customer.Email}", Severity.Success);
+            }
+            else
+            {
+                Snackbar.Add("Failed to send email. Please check the Gmail integration is configured correctly.", Severity.Error);
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error sending email: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _sendingEmail = false;
+            StateHasChanged();
+        }
+    }
 }
