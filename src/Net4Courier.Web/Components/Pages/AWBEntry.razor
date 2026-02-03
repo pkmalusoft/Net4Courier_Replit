@@ -56,6 +56,16 @@
 <MudForm @ref="_form" @bind-IsValid="_formIsValid">
     <MudPaper Class="pa-3 mb-3" Elevation="2">
         <MudGrid Spacing="2">
+            <MudItem xs="6" md="1">
+                <MudSelect T="long?" Value="_inscan.ShipmentModeId" Label="Shipment Mode" 
+                           Variant="Variant.Outlined" Margin="Margin.Dense" AnchorOrigin="Origin.BottomCenter"
+                           ValueChanged="@OnShipmentModeChanged">
+                    @foreach (var mode in _shipmentModes)
+                    {
+                        <MudSelectItem T="long?" Value="@((long?)mode.Id)">@mode.Name</MudSelectItem>
+                    }
+                </MudSelect>
+            </MudItem>
             <MudItem xs="12" md="2">
                 <MudTextField @bind-Value="_inscan.AWBNo" @bind-Value:after="OnAWBNoChanged" Label="AWB Number" Required="true" RequiredError="Required"
                               Variant="Variant.Outlined" Margin="Margin.Dense" 
@@ -868,6 +878,21 @@
         _forwardingAgents = await DbContext.Parties.Where(p => p.PartyType == PartyType.ForwardingAgent && p.IsActive && !p.IsDeleted).OrderBy(p => p.Name).ToListAsync();
         _cities = await DbContext.Cities.Include(c => c.Country).Include(c => c.State).Where(c => c.IsActive).OrderBy(c => c.Name).ToListAsync();
         _shipmentModes = await DbContext.ShipmentModes.Where(s => s.IsActive && !s.IsDeleted).OrderBy(s => s.SortOrder).ToListAsync();
+        
+        // Set default Shipment Mode to "Air" for new AWBs
+        if (Id == 0 && !_inscan.ShipmentModeId.HasValue)
+        {
+            var airMode = _shipmentModes.FirstOrDefault(m => m.Name.Equals("Air", StringComparison.OrdinalIgnoreCase));
+            if (airMode != null)
+            {
+                _inscan.ShipmentModeId = airMode.Id;
+            }
+            else if (_shipmentModes.Any())
+            {
+                _inscan.ShipmentModeId = _shipmentModes.First().Id;
+            }
+        }
+        
         _serviceTypes = await DbContext.ServiceTypes.Where(s => s.IsActive && !s.IsDeleted).OrderBy(s => s.SortOrder).ToListAsync();
         _airports = await DbContext.Ports.Where(p => p.PortType == PortType.Airport && p.IsActive && !p.IsDeleted).OrderBy(p => p.Name).ToListAsync();
         _courierEmployees = await DbContext.Employees.Include(e => e.Designation).Include(e => e.Department).Where(e => e.IsActive && (e.Designation!.Name == "Courier" || e.Department!.Name == "Couriers")).OrderBy(e => e.Name).ToListAsync();
@@ -1178,6 +1203,7 @@
                 PaymentMode = _inscan.PaymentModeId,
                 ServiceTypeId = _inscan.ProductTypeId.HasValue ? (long)_inscan.ProductTypeId.Value : null,
                 ShipmentModeId = _inscan.ShipmentModeId,
+                DocumentType = _inscan.DocumentTypeId,
                 OriginCountryId = _selectedConsignorCity?.CountryId,
                 OriginCityId = _selectedConsignorCity?.Id,
                 DestinationCountryId = _selectedConsigneeCity?.CountryId,

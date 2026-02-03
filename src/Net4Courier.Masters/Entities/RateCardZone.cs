@@ -1,4 +1,5 @@
 using Net4Courier.Kernel.Entities;
+using Net4Courier.Kernel.Enums;
 
 namespace Net4Courier.Masters.Entities;
 
@@ -25,9 +26,14 @@ public class RateCardZone : AuditableEntity
     public long? ServiceTypeId { get; set; }
     
     /// <summary>
-    /// Optional: Filter rate by shipment mode (e.g., Document, Parcel)
+    /// Optional: Filter rate by shipment mode (e.g., Air, Sea, Land)
     /// </summary>
     public long? ShipmentModeId { get; set; }
+    
+    /// <summary>
+    /// Optional: Filter rate by shipment type (Letter, Document, Parcel Upto 30kg, Parcel Above 30kg)
+    /// </summary>
+    public DocumentType? DocumentType { get; set; }
     
     [System.Obsolete("Use TaxPercent instead")]
     public decimal? MarginPercentage { get; set; }

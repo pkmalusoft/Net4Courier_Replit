@@ -40,7 +40,7 @@ public class RatingEngineService
                 Formula = rateCardSource
             });
 
-            var (zone, zonePath) = await ResolveZoneWithTrace(rateCard.Id, request.DestinationCountryId, request.DestinationCityId, request.ServiceTypeId, request.ShipmentModeId);
+            var (zone, zonePath) = await ResolveZoneWithTrace(rateCard.Id, request.DestinationCountryId, request.DestinationCityId, request.ServiceTypeId, request.ShipmentModeId, request.DocumentType);
             if (zone == null)
             {
                 result.ErrorMessage = "No zone found for destination";
@@ -211,7 +211,7 @@ public class RatingEngineService
         return (fallbackCard, fallbackCard != null ? "Fallback: Most Recent Active Rate Card" : "No matching rate card found");
     }
 
-    private async Task<(RateCardZone? zone, string resolutionPath)> ResolveZoneWithTrace(long rateCardId, long? countryId, long? cityId, long? serviceTypeId = null, long? shipmentModeId = null)
+    private async Task<(RateCardZone? zone, string resolutionPath)> ResolveZoneWithTrace(long rateCardId, long? countryId, long? cityId, long? serviceTypeId = null, long? shipmentModeId = null, DocumentType? documentType = null)
     {
         var zones = await _dbContext.RateCardZones
             .Include(z => z.ZoneMatrix)
@@ -222,56 +222,36 @@ public class RatingEngineService
 
         if (!zones.Any()) return (null, "No zones configured for rate card");
 
-        // Priority-based matching for ServiceType and ShipmentMode
-        // 1. Exact match on both (if both request params provided)
-        // 2. Exact match on ServiceType + null ShipmentMode (if service provided)
-        // 3. Exact match on ShipmentMode + null ServiceType (if mode provided)
-        // 4. Both null (generic zone)
+        // Priority-based matching for ServiceType, ShipmentMode, and DocumentType
+        // Filter zones based on provided criteria with cascading fallback to generic zones
         
-        IEnumerable<RateCardZone> filteredZones;
-
-        if (serviceTypeId.HasValue && shipmentModeId.HasValue)
+        IEnumerable<RateCardZone> filteredZones = zones;
+        
+        // Helper function to check if zone matches criteria (null zone value matches any request)
+        bool MatchesServiceType(RateCardZone z) => !serviceTypeId.HasValue || z.ServiceTypeId == null || z.ServiceTypeId == serviceTypeId;
+        bool MatchesShipmentMode(RateCardZone z) => !shipmentModeId.HasValue || z.ShipmentModeId == null || z.ShipmentModeId == shipmentModeId;
+        bool MatchesDocumentType(RateCardZone z) => !documentType.HasValue || z.DocumentType == null || z.DocumentType == documentType;
+        
+        // First, filter by all criteria that match (zone null = matches any)
+        filteredZones = zones.Where(z => MatchesServiceType(z) && MatchesShipmentMode(z) && MatchesDocumentType(z));
+        
+        if (filteredZones.Any())
         {
-            // Try exact match on both
-            filteredZones = zones.Where(z => z.ServiceTypeId == serviceTypeId && z.ShipmentModeId == shipmentModeId);
-            if (!filteredZones.Any())
+            // Prioritize exact matches over generic (null) matches
+            var exactMatches = filteredZones.Where(z =>
+                (serviceTypeId.HasValue && z.ServiceTypeId == serviceTypeId) ||
+                (shipmentModeId.HasValue && z.ShipmentModeId == shipmentModeId) ||
+                (documentType.HasValue && z.DocumentType == documentType));
+            
+            if (exactMatches.Any())
             {
-                // Try exact ServiceType + generic ShipmentMode
-                filteredZones = zones.Where(z => z.ServiceTypeId == serviceTypeId && z.ShipmentModeId == null);
-            }
-            if (!filteredZones.Any())
-            {
-                // Try generic ServiceType + exact ShipmentMode
-                filteredZones = zones.Where(z => z.ServiceTypeId == null && z.ShipmentModeId == shipmentModeId);
-            }
-            if (!filteredZones.Any())
-            {
-                // Fall back to fully generic
-                filteredZones = zones.Where(z => z.ServiceTypeId == null && z.ShipmentModeId == null);
-            }
-        }
-        else if (serviceTypeId.HasValue)
-        {
-            // Match by ServiceType only
-            filteredZones = zones.Where(z => z.ServiceTypeId == serviceTypeId && z.ShipmentModeId == null);
-            if (!filteredZones.Any())
-            {
-                filteredZones = zones.Where(z => z.ServiceTypeId == null && z.ShipmentModeId == null);
-            }
-        }
-        else if (shipmentModeId.HasValue)
-        {
-            // Match by ShipmentMode only
-            filteredZones = zones.Where(z => z.ShipmentModeId == shipmentModeId && z.ServiceTypeId == null);
-            if (!filteredZones.Any())
-            {
-                filteredZones = zones.Where(z => z.ServiceTypeId == null && z.ShipmentModeId == null);
+                filteredZones = exactMatches;
             }
         }
         else
         {
-            // No filters - use only generic zones
-            filteredZones = zones.Where(z => z.ServiceTypeId == null && z.ShipmentModeId == null);
+            // Fall back to fully generic zones
+            filteredZones = zones.Where(z => z.ServiceTypeId == null && z.ShipmentModeId == null && z.DocumentType == null);
         }
 
         zones = filteredZones.Any() ? filteredZones.ToList() : zones;
@@ -448,6 +428,7 @@ public class RatingRequest
     public PaymentMode PaymentMode { get; set; } = PaymentMode.Prepaid;
     public long? ServiceTypeId { get; set; }
     public long? ShipmentModeId { get; set; }
+    public DocumentType? DocumentType { get; set; }
     public long? OriginCountryId { get; set; }
     public long? OriginCityId { get; set; }
     public long? DestinationCountryId { get; set; }

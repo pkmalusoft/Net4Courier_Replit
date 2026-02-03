@@ -1270,6 +1270,12 @@ public class DatabaseInitializationService : BackgroundService
                 ALTER TABLE ""AWBOtherCharges"" ADD COLUMN IF NOT EXISTS ""Notes"" VARCHAR(500);
             ", stoppingToken);
 
+            await dbContext.Database.ExecuteSqlRawAsync(@"
+                ALTER TABLE ""RateCardZones"" ADD COLUMN IF NOT EXISTS ""ServiceTypeId"" BIGINT;
+                ALTER TABLE ""RateCardZones"" ADD COLUMN IF NOT EXISTS ""ShipmentModeId"" BIGINT;
+                ALTER TABLE ""RateCardZones"" ADD COLUMN IF NOT EXISTS ""DocumentType"" INT;
+            ", stoppingToken);
+
             // Create Currencies table
             await dbContext.Database.ExecuteSqlRawAsync(@"
                 CREATE TABLE IF NOT EXISTS ""Currencies"" (
