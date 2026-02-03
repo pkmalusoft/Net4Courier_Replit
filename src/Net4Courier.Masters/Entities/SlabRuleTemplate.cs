@@ -20,6 +20,9 @@ public class SlabRuleTemplateDetail : AuditableEntity
     public decimal ToWeight { get; set; }
     public decimal IncrementWeight { get; set; } = 0.5m;
     public decimal IncrementRate { get; set; }
+    public decimal FlatRate { get; set; }
+    public decimal CostFlatRate { get; set; }
+    public decimal CostPerKgRate { get; set; }
     public SlabCalculationMode CalculationMode { get; set; } = SlabCalculationMode.PerStep;
     public int SortOrder { get; set; }
     

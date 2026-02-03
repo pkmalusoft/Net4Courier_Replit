@@ -186,26 +186,31 @@ public class RatingEngineService
             }
         }
 
-        var defaultCard = await _dbContext.RateCards
+        var baseQuery = _dbContext.RateCards
             .Where(r => r.Status == RateCardStatus.Active
                      && !r.IsDeleted
                      && r.MovementTypeId == request.MovementType
                      && r.PaymentModeId == request.PaymentMode
                      && r.ValidFrom <= today
-                     && (!r.ValidTo.HasValue || r.ValidTo >= today)
-                     && r.IsDefault)
+                     && (!r.ValidTo.HasValue || r.ValidTo >= today));
+
+        if (request.ServiceTypeId.HasValue)
+            baseQuery = baseQuery.Where(r => r.ServiceTypeId == request.ServiceTypeId || r.ServiceTypeId == null);
+        if (request.ShipmentModeId.HasValue)
+            baseQuery = baseQuery.Where(r => r.ShipmentModeId == request.ShipmentModeId || r.ShipmentModeId == null);
+
+        var defaultCard = await baseQuery
+            .Where(r => r.IsDefault)
+            .OrderByDescending(r => r.ServiceTypeId.HasValue)
+            .ThenByDescending(r => r.ShipmentModeId.HasValue)
             .FirstOrDefaultAsync();
 
         if (defaultCard != null) return (defaultCard, "Default Rate Card (IsDefault=true)");
 
-        var fallbackCard = await _dbContext.RateCards
-            .Where(r => r.Status == RateCardStatus.Active
-                     && !r.IsDeleted
-                     && r.MovementTypeId == request.MovementType
-                     && r.PaymentModeId == request.PaymentMode
-                     && r.ValidFrom <= today
-                     && (!r.ValidTo.HasValue || r.ValidTo >= today))
-            .OrderByDescending(r => r.CreatedAt)
+        var fallbackCard = await baseQuery
+            .OrderByDescending(r => r.ServiceTypeId.HasValue)
+            .ThenByDescending(r => r.ShipmentModeId.HasValue)
+            .ThenByDescending(r => r.CreatedAt)
             .FirstOrDefaultAsync();
 
         return (fallbackCard, fallbackCard != null ? "Fallback: Most Recent Active Rate Card" : "No matching rate card found");
@@ -316,14 +321,19 @@ public class RatingEngineService
 
             switch (slab.CalculationMode)
             {
+                case SlabCalculationMode.FlatForSlab:
+                    slabCharge = slab.FlatRate ?? 0;
+                    rules.Add($"Slab {slab.FromWeight:N1}-{slab.ToWeight:N1}kg: Flat for Slab = {slabCharge:N2}");
+                    break;
+
                 case SlabCalculationMode.PerKg:
                     slabCharge = slabWeight * slab.IncrementRate;
                     rules.Add($"Slab {slab.FromWeight:N1}-{slab.ToWeight:N1}kg: {slabWeight:N3}kg @ {slab.IncrementRate:N2}/kg = {slabCharge:N2}");
                     break;
 
                 case SlabCalculationMode.FlatAfter:
-                    slabCharge = slab.IncrementRate;
-                    rules.Add($"Slab {slab.FromWeight:N1}-{slab.ToWeight:N1}kg: Flat {slabCharge:N2}");
+                    slabCharge = slab.FlatRate ?? slab.IncrementRate;
+                    rules.Add($"Slab {slab.FromWeight:N1}-{slab.ToWeight:N1}kg: Flat After = {slabCharge:N2}");
                     break;
 
                 case SlabCalculationMode.PerStep:
@@ -346,6 +356,8 @@ public class RatingRequest
     public long? CustomerId { get; set; }
     public MovementType MovementType { get; set; } = MovementType.Domestic;
     public PaymentMode PaymentMode { get; set; } = PaymentMode.Prepaid;
+    public long? ServiceTypeId { get; set; }
+    public long? ShipmentModeId { get; set; }
     public long? OriginCountryId { get; set; }
     public long? OriginCityId { get; set; }
     public long? DestinationCountryId { get; set; }
