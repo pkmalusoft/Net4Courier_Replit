@@ -260,6 +260,149 @@ public class ReportingService
         return document.GeneratePdf();
     }
 
+    public byte[] GenerateShipmentInvoicePdf(Invoice invoice, InscanMaster shipment, string currency = "AED")
+    {
+        var document = Document.Create(container =>
+        {
+            container.Page(page =>
+            {
+                page.Size(PageSizes.A4);
+                page.Margin(1, Unit.Centimetre);
+                page.DefaultTextStyle(x => x.FontSize(10));
+
+                page.Content().Column(col =>
+                {
+                    col.Item().AlignCenter().Text("INVOICE").Bold().FontSize(24).FontColor("#1976d2");
+                    col.Item().PaddingVertical(15);
+
+                    col.Item().Border(1).Row(row =>
+                    {
+                        row.RelativeItem().BorderRight(1).Padding(10).Text(text =>
+                        {
+                            text.Span("AWB No. ").Bold();
+                            text.Span(shipment.AWBNo ?? "-");
+                        });
+                        row.RelativeItem().BorderRight(1).Padding(10).Text(text =>
+                        {
+                            text.Span("DATE: ").Bold();
+                            text.Span(shipment.TransactionDate.ToString("dd/MM/yyyy"));
+                        });
+                        row.RelativeItem().Padding(10).Text(text =>
+                        {
+                            text.Span("INVOICE No. ").Bold();
+                            text.Span(invoice.InvoiceNo ?? "-");
+                        });
+                    });
+
+                    col.Item().PaddingVertical(15);
+
+                    col.Item().Row(row =>
+                    {
+                        row.RelativeItem().Border(1).Column(c =>
+                        {
+                            c.Item().Background("#E3F2FD").Padding(8).Text($"SHIPMENT FROM: {shipment.ConsignorCountry ?? "N/A"}").Bold().FontSize(11);
+                            c.Item().Padding(10).Column(inner =>
+                            {
+                                inner.Item().Text(text => { text.Span("Name: ").Bold(); text.Span(shipment.Consignor ?? "-"); });
+                                inner.Item().Text(text => { text.Span("Address: ").Bold(); text.Span($"{shipment.ConsignorAddress1} {shipment.ConsignorAddress2}"); });
+                                inner.Item().Text(text => { text.Span("City: ").Bold(); text.Span(shipment.ConsignorCity ?? "-"); });
+                                inner.Item().Text(text => { text.Span("Country: ").Bold(); text.Span(shipment.ConsignorCountry ?? "-"); });
+                                inner.Item().Text(text => { text.Span("Tel.: ").Bold(); text.Span(!string.IsNullOrEmpty(shipment.ConsignorPhone) ? shipment.ConsignorPhone : shipment.ConsignorMobile ?? "-"); });
+                            });
+                        });
+
+                        row.RelativeItem().Border(1).Column(c =>
+                        {
+                            c.Item().Background("#E3F2FD").Padding(8).Text($"SHIPMENT TO: {shipment.ConsigneeCountry ?? "N/A"}").Bold().FontSize(11);
+                            c.Item().Padding(10).Column(inner =>
+                            {
+                                inner.Item().Text(text => { text.Span("Name: ").Bold(); text.Span(shipment.Consignee ?? "-"); });
+                                inner.Item().Text(text => { text.Span("Address: ").Bold(); text.Span($"{shipment.ConsigneeAddress1} {shipment.ConsigneeAddress2}"); });
+                                inner.Item().Text(text => { text.Span("City/Postal Code: ").Bold(); text.Span($"{shipment.ConsigneeCity} {shipment.ConsigneePostalCode}"); });
+                                inner.Item().Text(text => { text.Span("Country: ").Bold(); text.Span(shipment.ConsigneeCountry ?? "-"); });
+                                inner.Item().Text(text => { text.Span("Tel./Fax No.: ").Bold(); text.Span(!string.IsNullOrEmpty(shipment.ConsigneePhone) ? shipment.ConsigneePhone : shipment.ConsigneeMobile ?? "-"); });
+                            });
+                        });
+                    });
+
+                    col.Item().PaddingVertical(15);
+
+                    col.Item().Table(table =>
+                    {
+                        table.ColumnsDefinition(columns =>
+                        {
+                            columns.RelativeColumn(3);
+                            columns.RelativeColumn(1.2f);
+                            columns.RelativeColumn(1);
+                            columns.RelativeColumn(1.5f);
+                            columns.RelativeColumn(1.2f);
+                            columns.RelativeColumn(1.2f);
+                        });
+
+                        table.Header(header =>
+                        {
+                            header.Cell().Background("#E3F2FD").Border(1).Padding(6).AlignCenter().Text("Description of goods").Bold().FontSize(9);
+                            header.Cell().Background("#E3F2FD").Border(1).Padding(6).AlignCenter().Text("HS CODE").Bold().FontSize(9);
+                            header.Cell().Background("#E3F2FD").Border(1).Padding(6).AlignCenter().Text("Quantity").Bold().FontSize(9);
+                            header.Cell().Background("#E3F2FD").Border(1).Padding(6).AlignCenter().Text("Country of origin").Bold().FontSize(9);
+                            header.Cell().Background("#E3F2FD").Border(1).Padding(6).AlignCenter().Text($"Unit Value\n{currency}").Bold().FontSize(9);
+                            header.Cell().Background("#E3F2FD").Border(1).Padding(6).AlignCenter().Text($"Total value\n{currency}").Bold().FontSize(9);
+                        });
+
+                        var pieces = shipment.Pieces ?? 1;
+                        var totalValue = shipment.CustomsValue ?? 0;
+                        var unitValue = pieces > 0 ? totalValue / pieces : 0;
+
+                        table.Cell().Border(1).Padding(6).Text(shipment.CargoDescription ?? "General Goods");
+                        table.Cell().Border(1).Padding(6).AlignCenter().Text("");
+                        table.Cell().Border(1).Padding(6).AlignCenter().Text($"{pieces}");
+                        table.Cell().Border(1).Padding(6).AlignCenter().Text(shipment.ConsignorCountry ?? "");
+                        table.Cell().Border(1).Padding(6).AlignRight().Text($"{unitValue:N2}");
+                        table.Cell().Border(1).Padding(6).AlignRight().Text($"{totalValue:N2}");
+
+                        for (int i = 0; i < 6; i++)
+                        {
+                            table.Cell().Border(1).Padding(6).Text(" ");
+                            table.Cell().Border(1).Padding(6).Text("");
+                            table.Cell().Border(1).Padding(6).Text("");
+                            table.Cell().Border(1).Padding(6).Text("");
+                            table.Cell().Border(1).Padding(6).Text("");
+                            table.Cell().Border(1).Padding(6).Text("");
+                        }
+
+                        table.Cell().ColumnSpan(5).Border(1).Padding(6).AlignRight().Text($"Total value in {currency}").Bold();
+                        table.Cell().Border(1).Padding(6).AlignRight().Text($"{totalValue:N2}").Bold();
+                    });
+
+                    col.Item().PaddingVertical(15);
+
+                    col.Item().Column(summary =>
+                    {
+                        var weight = shipment.Weight ?? 0;
+                        var docType = shipment.DocumentTypeId == DocumentType.Document ? "Docs" : 
+                                     shipment.DocumentTypeId == DocumentType.Letter ? "Letter" : "Non-Docs";
+                        var transport = shipment.ShipmentModeId switch
+                        {
+                            1 => "Air Express",
+                            2 => "Sea Freight", 
+                            3 => "Land Transport",
+                            _ => "Air Express"
+                        };
+
+                        summary.Item().Text(text => { text.Span("Number of pieces: ").Bold(); text.Span($"{shipment.Pieces ?? 1}"); });
+                        summary.Item().Text(text => { text.Span("Total Gross Weight: ").Bold(); text.Span($"{weight:N2}kg"); });
+                        summary.Item().Text(text => { text.Span("Total Net Weight: ").Bold(); text.Span($"{weight * 0.9m:N2}kg"); });
+                        summary.Item().Text(text => { text.Span("Type: ").Bold(); text.Span(docType); });
+                        summary.Item().Text(text => { text.Span("Term of transportation: ").Bold(); text.Span(transport); });
+                        summary.Item().Text(text => { text.Span("Reason for Export: ").Bold(); text.Span("Final Export"); });
+                    });
+                });
+            });
+        });
+
+        return document.GeneratePdf();
+    }
+
     public byte[] GenerateReceiptPdf(Receipt receipt)
     {
         var document = Document.Create(container =>

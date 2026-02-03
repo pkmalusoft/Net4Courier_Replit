@@ -433,7 +433,31 @@ app.MapGet("/api/report/invoice/{id:long}", async (long id, ApplicationDbContext
 {
     var invoice = await db.Invoices.Include(i => i.Details).FirstOrDefaultAsync(i => i.Id == id);
     if (invoice == null) return Results.NotFound();
-    var pdf = reportService.GenerateInvoicePdf(invoice);
+    
+    Net4Courier.Operations.Entities.InscanMaster? shipment = null;
+    if (invoice.Details.Any())
+    {
+        var firstDetail = invoice.Details.First();
+        if (firstDetail.InscanId > 0)
+        {
+            shipment = await db.InscanMasters.FirstOrDefaultAsync(i => i.Id == firstDetail.InscanId);
+        }
+        else if (!string.IsNullOrEmpty(firstDetail.AWBNo))
+        {
+            shipment = await db.InscanMasters.FirstOrDefaultAsync(i => i.AWBNo == firstDetail.AWBNo && !i.IsDeleted);
+        }
+    }
+    
+    byte[] pdf;
+    if (shipment != null)
+    {
+        var currency = shipment.Currency ?? "AED";
+        pdf = reportService.GenerateShipmentInvoicePdf(invoice, shipment, currency);
+    }
+    else
+    {
+        pdf = reportService.GenerateInvoicePdf(invoice);
+    }
     return Results.File(pdf, "application/pdf", $"Invoice-{invoice.InvoiceNo}.pdf");
 });
 
