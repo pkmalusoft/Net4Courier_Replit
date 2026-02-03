@@ -1277,6 +1277,11 @@ public class DatabaseInitializationService : BackgroundService
                 ALTER TABLE ""RateCardZones"" ADD COLUMN IF NOT EXISTS ""ServiceTypeId"" BIGINT;
                 ALTER TABLE ""RateCardZones"" ADD COLUMN IF NOT EXISTS ""ShipmentModeId"" BIGINT;
                 ALTER TABLE ""RateCardZones"" ADD COLUMN IF NOT EXISTS ""DocumentType"" INT;
+                ALTER TABLE ""RateCardZones"" ADD COLUMN IF NOT EXISTS ""MinWeight"" NUMERIC NOT NULL DEFAULT 1;
+                ALTER TABLE ""RateCardZones"" ADD COLUMN IF NOT EXISTS ""MaxWeight"" NUMERIC NOT NULL DEFAULT 5;
+                ALTER TABLE ""RateCardZones"" ADD COLUMN IF NOT EXISTS ""TaxPercent"" NUMERIC NOT NULL DEFAULT 0;
+                ALTER TABLE ""RateCardZones"" ADD COLUMN IF NOT EXISTS ""AdditionalWeight"" NUMERIC NOT NULL DEFAULT 1;
+                ALTER TABLE ""RateCardZones"" ADD COLUMN IF NOT EXISTS ""AdditionalRate"" NUMERIC NOT NULL DEFAULT 0;
                 ALTER TABLE ""RateCards"" ADD COLUMN IF NOT EXISTS ""ServiceTypeId"" BIGINT;
                 ALTER TABLE ""RateCards"" ADD COLUMN IF NOT EXISTS ""ShipmentModeId"" BIGINT;
             ", stoppingToken);
