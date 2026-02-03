@@ -1288,6 +1288,17 @@ public class DatabaseInitializationService : BackgroundService
                 ALTER TABLE ""RateCardSlabRules"" ADD COLUMN IF NOT EXISTS ""CostFlatRate"" NUMERIC;
                 ALTER TABLE ""RateCardSlabRules"" ADD COLUMN IF NOT EXISTS ""CostPerKgRate"" NUMERIC;
                 ALTER TABLE ""RateCardSlabRules"" ADD COLUMN IF NOT EXISTS ""Additional1KgRate"" NUMERIC;
+                ALTER TABLE ""SlabRuleTemplateDetails"" ADD COLUMN IF NOT EXISTS ""FlatRate"" NUMERIC NOT NULL DEFAULT 0;
+                ALTER TABLE ""SlabRuleTemplateDetails"" ADD COLUMN IF NOT EXISTS ""CostFlatRate"" NUMERIC NOT NULL DEFAULT 0;
+                ALTER TABLE ""SlabRuleTemplateDetails"" ADD COLUMN IF NOT EXISTS ""CostPerKgRate"" NUMERIC NOT NULL DEFAULT 0;
+                ALTER TABLE ""SlabRuleTemplateDetails"" ADD COLUMN IF NOT EXISTS ""Additional1KgRate"" NUMERIC;
+                ALTER TABLE ""ZoneMatrixDetails"" ADD COLUMN IF NOT EXISTS ""StateId"" BIGINT;
+                ALTER TABLE ""ZoneMatrixDetails"" ADD COLUMN IF NOT EXISTS ""PostalCodeFrom"" VARCHAR(20);
+                ALTER TABLE ""ZoneMatrixDetails"" ADD COLUMN IF NOT EXISTS ""PostalCodeTo"" VARCHAR(20);
+                ALTER TABLE ""RateCards"" ADD COLUMN IF NOT EXISTS ""Description"" TEXT;
+                ALTER TABLE ""RateCards"" ADD COLUMN IF NOT EXISTS ""ForwardingAgentId"" BIGINT;
+                ALTER TABLE ""CustomerRateAssignments"" ADD COLUMN IF NOT EXISTS ""Remarks"" TEXT;
+                ALTER TABLE ""CustomerRateAssignments"" ADD COLUMN IF NOT EXISTS ""CompanyId"" BIGINT;
             ", stoppingToken);
 
             // Create Currencies table
