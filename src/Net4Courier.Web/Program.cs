@@ -1277,6 +1277,8 @@ public class DatabaseInitializationService : BackgroundService
                 ALTER TABLE ""RateCardZones"" ADD COLUMN IF NOT EXISTS ""ServiceTypeId"" BIGINT;
                 ALTER TABLE ""RateCardZones"" ADD COLUMN IF NOT EXISTS ""ShipmentModeId"" BIGINT;
                 ALTER TABLE ""RateCardZones"" ADD COLUMN IF NOT EXISTS ""DocumentType"" INT;
+                ALTER TABLE ""RateCards"" ADD COLUMN IF NOT EXISTS ""ServiceTypeId"" BIGINT;
+                ALTER TABLE ""RateCards"" ADD COLUMN IF NOT EXISTS ""ShipmentModeId"" BIGINT;
             ", stoppingToken);
 
             // Create Currencies table
