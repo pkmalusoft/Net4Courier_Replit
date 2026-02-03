@@ -429,7 +429,7 @@ app.MapGet("/api/report/tracking/{awbNo}", async (string awbNo, ApplicationDbCon
     return Results.File(pdf, "application/pdf", $"Tracking-{awb.AWBNo}.pdf");
 });
 
-app.MapGet("/api/report/invoice/{id:long}", async (long id, ApplicationDbContext db, ReportingService reportService, IHttpClientFactory httpClientFactory) =>
+app.MapGet("/api/report/invoice/{id:long}", async (long id, ApplicationDbContext db, ReportingService reportService, IWebHostEnvironment env) =>
 {
     var invoice = await db.Invoices.Include(i => i.Details).FirstOrDefaultAsync(i => i.Id == id);
     if (invoice == null) return Results.NotFound();
@@ -438,17 +438,25 @@ app.MapGet("/api/report/invoice/{id:long}", async (long id, ApplicationDbContext
     byte[]? logoData = null;
     if (!string.IsNullOrEmpty(company?.Logo))
     {
-        Console.WriteLine($"[Invoice PDF] Fetching logo from: {company.Logo}");
+        Console.WriteLine($"[Invoice PDF] Logo path: {company.Logo}");
         try
         {
-            using var httpClient = httpClientFactory.CreateClient();
-            httpClient.Timeout = TimeSpan.FromSeconds(10);
-            logoData = await httpClient.GetByteArrayAsync(company.Logo);
-            Console.WriteLine($"[Invoice PDF] Logo fetched successfully, size: {logoData?.Length ?? 0} bytes");
+            var logoPath = company.Logo.TrimStart('/');
+            var fullPath = Path.Combine(env.WebRootPath ?? env.ContentRootPath, logoPath);
+            Console.WriteLine($"[Invoice PDF] Full path: {fullPath}");
+            if (File.Exists(fullPath))
+            {
+                logoData = await File.ReadAllBytesAsync(fullPath);
+                Console.WriteLine($"[Invoice PDF] Logo loaded successfully, size: {logoData?.Length ?? 0} bytes");
+            }
+            else
+            {
+                Console.WriteLine($"[Invoice PDF] Logo file not found at: {fullPath}");
+            }
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"[Invoice PDF] Failed to fetch logo: {ex.Message}");
+            Console.WriteLine($"[Invoice PDF] Failed to load logo: {ex.Message}");
         }
     }
     else
