@@ -4,306 +4,316 @@
 @using Net4Courier.Infrastructure.Data
 @using Net4Courier.Finance.Entities
 @using Net4Courier.Masters.Entities
+@using Net4Courier.Operations.Entities
 @using Net4Courier.Kernel.Enums
 @using Net4Courier.Web.Services
 @using Microsoft.JSInterop
-@inject ApplicationDbContext DbContext
+@inject IDbContextFactory<ApplicationDbContext> DbContextFactory
 @inject ReportingService ReportingService
 @inject IJSRuntime JS
 @inject ISnackbar Snackbar
 @inject NavigationManager Navigation
+@inject AppAuthStateProvider AuthState
 @rendermode InteractiveServer
 
 <PageTitle>Print Invoice - Net4Courier</PageTitle>
 
+<style>
+    .invoice-container {
+        font-family: Arial, sans-serif;
+        max-width: 800px;
+        margin: 0 auto;
+        background: white;
+        padding: 30px;
+    }
+    .invoice-title {
+        text-align: center;
+        color: #1976d2;
+        font-size: 28px;
+        font-weight: bold;
+        margin-bottom: 20px;
+    }
+    .header-row {
+        display: flex;
+        border: 1px solid #333;
+        margin-bottom: 20px;
+    }
+    .header-cell {
+        flex: 1;
+        padding: 10px 15px;
+        border-right: 1px solid #333;
+        font-size: 13px;
+    }
+    .header-cell:last-child {
+        border-right: none;
+    }
+    .shipment-parties {
+        display: flex;
+        gap: 0;
+        margin-bottom: 20px;
+    }
+    .party-box {
+        flex: 1;
+        border: 1px solid #333;
+    }
+    .party-box:first-child {
+        border-right: none;
+    }
+    .party-header {
+        background: #e3f2fd;
+        padding: 8px 12px;
+        font-weight: bold;
+        font-size: 13px;
+        border-bottom: 1px solid #333;
+    }
+    .party-content {
+        padding: 12px;
+        font-size: 12px;
+        line-height: 1.6;
+    }
+    .goods-table {
+        width: 100%;
+        border-collapse: collapse;
+        margin-bottom: 20px;
+    }
+    .goods-table th {
+        background: #e3f2fd;
+        border: 1px solid #333;
+        padding: 8px;
+        text-align: center;
+        font-size: 11px;
+        font-weight: bold;
+    }
+    .goods-table td {
+        border: 1px solid #333;
+        padding: 8px;
+        font-size: 12px;
+    }
+    .goods-table td.number {
+        text-align: right;
+    }
+    .goods-table td.center {
+        text-align: center;
+    }
+    .goods-table tfoot td {
+        font-weight: bold;
+        background: #f5f5f5;
+    }
+    .summary-section {
+        font-size: 12px;
+        margin-top: 20px;
+        line-height: 1.8;
+    }
+    .company-logo {
+        max-height: 60px;
+        max-width: 180px;
+        display: block;
+        margin: 0 auto 15px auto;
+    }
+    @@media print {
+        .no-print { display: none !important; }
+        .invoice-container { padding: 0; max-width: 100%; }
+        body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    }
+</style>
+
 <MudContainer MaxWidth="MaxWidth.Large" Class="mt-4">
-    <MudPaper Class="pa-4" Elevation="2">
+    <MudPaper Class="pa-4 no-print" Elevation="2">
         <MudGrid>
             <MudItem xs="12" sm="6">
-                <MudText Typo="Typo.h5">Print Customer Invoice</MudText>
+                <MudText Typo="Typo.h5">Print Invoice</MudText>
             </MudItem>
             <MudItem xs="12" sm="6" Class="d-flex justify-end gap-2">
-                <MudButton Variant="Variant.Outlined" Color="Color.Error" StartIcon="@Icons.Material.Filled.PictureAsPdf" 
-                           OnClick="ExportPdf" Disabled="@(_invoice == null)">Download PDF</MudButton>
                 <MudButton Variant="Variant.Outlined" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Print" 
-                           OnClick="PrintInvoice" Disabled="@(_invoice == null)">Print</MudButton>
+                           OnClick="PrintPage" Disabled="@(_invoice == null)">Print</MudButton>
+                <MudButton Variant="Variant.Outlined" Color="Color.Default" StartIcon="@Icons.Material.Filled.ArrowBack"
+                           Href="@($"/invoice-view/{InvoiceId}")">Back</MudButton>
             </MudItem>
         </MudGrid>
-
-        @if (InvoiceId == 0)
-        {
-            <MudGrid Class="mt-4">
-                <MudItem xs="12" sm="4">
-                    <MudAutocomplete T="Invoice" Label="Search Invoice" @bind-Value="_selectedInvoice"
-                                     SearchFunc="@SearchInvoices" ToStringFunc="@(x => x?.InvoiceNo ?? "")"
-                                     Variant="Variant.Outlined" Dense="true" />
-                </MudItem>
-                <MudItem xs="12" sm="2">
-                    <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="LoadInvoice" FullWidth="true"
-                               Disabled="@(_selectedInvoice == null)">
-                        Load
-                    </MudButton>
-                </MudItem>
-            </MudGrid>
-        }
-
-        @if (_isLoading)
-        {
-            <MudProgressLinear Indeterminate="true" Class="mt-4" />
-        }
-        else if (_invoice != null)
-        {
-            <MudDivider Class="my-4" />
-            
-            <MudPaper Class="pa-6" Outlined="true">
-                <MudGrid>
-                    <MudItem xs="6">
-                        @if (!string.IsNullOrEmpty(_company?.Logo))
-                        {
-                            <img src="@_company.Logo" alt="@_company.Name" style="max-height: 60px; max-width: 180px; margin-bottom: 10px;" />
-                        }
-                        <MudText Typo="Typo.h4" Class="mb-2">@(_company?.Name ?? "Net4Courier")</MudText>
-                        <MudText Typo="Typo.body2">@(_company?.Address ?? "")</MudText>
-                        <MudText Typo="Typo.body2">@(_company?.City?.Name ?? ""), @(_company?.Country?.Name ?? "")</MudText>
-                        <MudText Typo="Typo.body2">Phone: @(_company?.Phone ?? "")</MudText>
-                        @if (!string.IsNullOrEmpty(_company?.TaxNumber))
-                        {
-                            <MudText Typo="Typo.body2">TRN: @_company.TaxNumber</MudText>
-                        }
-                    </MudItem>
-                    <MudItem xs="6" Class="text-right">
-                        <MudText Typo="Typo.h5" Color="Color.Primary">INVOICE</MudText>
-                        <MudText Typo="Typo.h6">@_invoice.InvoiceNo</MudText>
-                        <MudText Typo="Typo.body2">Date: @_invoice.InvoiceDate.ToString("dd-MMM-yyyy")</MudText>
-                        @if (_invoice.DueDate.HasValue)
-                        {
-                            <MudText Typo="Typo.body2">Due: @_invoice.DueDate.Value.ToString("dd-MMM-yyyy")</MudText>
-                        }
-                        <MudChip T="string" Size="Size.Small" Color="@GetStatusColor(_invoice.Status.ToString())" Class="mt-2">
-                            @_invoice.Status.ToString()
-                        </MudChip>
-                    </MudItem>
-                </MudGrid>
-
-                <MudDivider Class="my-4" />
-
-                <MudGrid>
-                    <MudItem xs="6">
-                        <MudText Typo="Typo.subtitle2" Color="Color.Primary">Bill To:</MudText>
-                        <MudText Typo="Typo.body1"><strong>@_invoice.CustomerName</strong></MudText>
-                        <MudText Typo="Typo.body2">@_invoice.CustomerAddress</MudText>
-                        @if (!string.IsNullOrEmpty(_invoice.CustomerTaxNo))
-                        {
-                            <MudText Typo="Typo.body2">TRN: @_invoice.CustomerTaxNo</MudText>
-                        }
-                    </MudItem>
-                    <MudItem xs="6">
-                        @if (_invoice.PeriodFrom.HasValue && _invoice.PeriodTo.HasValue)
-                        {
-                            <MudText Typo="Typo.body2">
-                                <strong>Period:</strong> @_invoice.PeriodFrom.Value.ToString("dd-MMM-yyyy") to @_invoice.PeriodTo.Value.ToString("dd-MMM-yyyy")
-                            </MudText>
-                        }
-                    </MudItem>
-                </MudGrid>
-
-                <MudTable Items="@_invoice.Details" Dense="true" Class="mt-4" Elevation="0" Outlined="true">
-                    <HeaderContent>
-                        <MudTh>#</MudTh>
-                        <MudTh>AWB No</MudTh>
-                        <MudTh>Date</MudTh>
-                        <MudTh>Origin</MudTh>
-                        <MudTh>Destination</MudTh>
-                        <MudTh Style="text-align: center">Pcs</MudTh>
-                        <MudTh Style="text-align: right">Weight</MudTh>
-                        <MudTh Style="text-align: right">Rate</MudTh>
-                        <MudTh Style="text-align: right">Amount</MudTh>
-                    </HeaderContent>
-                    <RowTemplate>
-                        @{
-                            var idx = _invoice.Details.ToList().IndexOf(context) + 1;
-                        }
-                        <MudTd>@idx</MudTd>
-                        <MudTd>@context.AWBNo</MudTd>
-                        <MudTd>@context.AWBDate?.ToString("dd-MMM")</MudTd>
-                        <MudTd>@context.Origin</MudTd>
-                        <MudTd>@context.Destination</MudTd>
-                        <MudTd Style="text-align: center">@context.Pieces</MudTd>
-                        <MudTd Style="text-align: right">@(context.Weight?.ToString("N2") ?? "0.00")</MudTd>
-                        <MudTd Style="text-align: right">@(context.CourierCharge?.ToString("N2") ?? "0.00")</MudTd>
-                        <MudTd Style="text-align: right">@(context.Total?.ToString("N2") ?? "0.00")</MudTd>
-                    </RowTemplate>
-                </MudTable>
-
-                <MudGrid Class="mt-4">
-                    <MudItem xs="6">
-                        @if (!string.IsNullOrEmpty(_invoice.Remarks))
-                        {
-                            <MudText Typo="Typo.body2"><strong>Remarks:</strong> @_invoice.Remarks</MudText>
-                        }
-                    </MudItem>
-                    <MudItem xs="6">
-                        <MudPaper Class="pa-3" Outlined="true">
-                            <MudStack Spacing="1">
-                                <div class="d-flex justify-space-between">
-                                    <MudText>Sub Total:</MudText>
-                                    <MudText>@((_invoice.SubTotal ?? 0).ToString("N2"))</MudText>
-                                </div>
-                                @if ((_invoice.TaxAmount ?? 0) > 0)
-                                {
-                                    <div class="d-flex justify-space-between">
-                                        <MudText>Tax (@(_invoice.TaxPercent ?? 0)%):</MudText>
-                                        <MudText>@((_invoice.TaxAmount ?? 0).ToString("N2"))</MudText>
-                                    </div>
-                                }
-                                @if ((_invoice.DiscountAmount ?? 0) > 0)
-                                {
-                                    <div class="d-flex justify-space-between">
-                                        <MudText>Discount:</MudText>
-                                        <MudText>-@((_invoice.DiscountAmount ?? 0).ToString("N2"))</MudText>
-                                    </div>
-                                }
-                                <MudDivider />
-                                <div class="d-flex justify-space-between">
-                                    <MudText Typo="Typo.subtitle1"><strong>Net Total:</strong></MudText>
-                                    <MudText Typo="Typo.subtitle1"><strong>@((_invoice.NetTotal ?? 0).ToString("N2"))</strong></MudText>
-                                </div>
-                                @if ((_invoice.PaidAmount ?? 0) > 0)
-                                {
-                                    <div class="d-flex justify-space-between">
-                                        <MudText>Paid:</MudText>
-                                        <MudText Color="Color.Success">@((_invoice.PaidAmount ?? 0).ToString("N2"))</MudText>
-                                    </div>
-                                    <div class="d-flex justify-space-between">
-                                        <MudText Typo="Typo.subtitle1"><strong>Balance:</strong></MudText>
-                                        <MudText Typo="Typo.subtitle1" Color="Color.Error"><strong>@((_invoice.BalanceAmount ?? 0).ToString("N2"))</strong></MudText>
-                                    </div>
-                                }
-                            </MudStack>
-                        </MudPaper>
-                    </MudItem>
-                </MudGrid>
-            </MudPaper>
-        }
-        else if (!_isLoading && InvoiceId > 0)
-        {
-            <MudAlert Severity="Severity.Warning" Class="mt-4">Invoice not found.</MudAlert>
-        }
     </MudPaper>
+
+    @if (_isLoading)
+    {
+        <MudProgressLinear Indeterminate="true" Class="mt-4" />
+    }
+    else if (_invoice != null && _shipment != null)
+    {
+        <div class="invoice-container mt-4" id="printable-invoice">
+            @if (!string.IsNullOrEmpty(_company?.Logo))
+            {
+                <img src="@_company.Logo" alt="@_company.Name" class="company-logo" />
+            }
+            
+            <div class="invoice-title">INVOICE</div>
+
+            <div class="header-row">
+                <div class="header-cell"><strong>AWB No.</strong> @_shipment.AWBNo</div>
+                <div class="header-cell"><strong>DATE:</strong> @_shipment.TransactionDate.ToString("dd/MM/yyyy")</div>
+                <div class="header-cell"><strong>INVOICE No.</strong> @_invoice.InvoiceNo</div>
+            </div>
+
+            <div class="shipment-parties">
+                <div class="party-box">
+                    <div class="party-header">SHIPMENT FROM: @(_shipment.ConsignorCountry ?? "N/A")</div>
+                    <div class="party-content">
+                        <div><strong>Name:</strong> @_shipment.Consignor</div>
+                        <div><strong>Address:</strong> @_shipment.ConsignorAddress1 @_shipment.ConsignorAddress2</div>
+                        <div><strong>City:</strong> @_shipment.ConsignorCity</div>
+                        <div><strong>Country:</strong> @_shipment.ConsignorCountry</div>
+                        <div><strong>Tel.:</strong> @(!string.IsNullOrEmpty(_shipment.ConsignorPhone) ? _shipment.ConsignorPhone : _shipment.ConsignorMobile)</div>
+                    </div>
+                </div>
+                <div class="party-box">
+                    <div class="party-header">SHIPMENT TO: @(_shipment.ConsigneeCountry ?? "N/A")</div>
+                    <div class="party-content">
+                        <div><strong>Name:</strong> @_shipment.Consignee</div>
+                        <div><strong>Address:</strong> @_shipment.ConsigneeAddress1 @_shipment.ConsigneeAddress2</div>
+                        <div><strong>City/Postal Code:</strong> @_shipment.ConsigneeCity @_shipment.ConsigneePostalCode</div>
+                        <div><strong>Country:</strong> @_shipment.ConsigneeCountry</div>
+                        <div><strong>Tel./Fax No.:</strong> @(!string.IsNullOrEmpty(_shipment.ConsigneePhone) ? _shipment.ConsigneePhone : _shipment.ConsigneeMobile)</div>
+                    </div>
+                </div>
+            </div>
+
+            <table class="goods-table">
+                <thead>
+                    <tr>
+                        <th style="width: 30%">Description of goods</th>
+                        <th style="width: 12%">HS CODE</th>
+                        <th style="width: 10%">Quantity</th>
+                        <th style="width: 18%">Country of origin</th>
+                        <th style="width: 15%">Unit Value<br/>@_currency</th>
+                        <th style="width: 15%">Total value<br/>@_currency</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>@(_shipment.CargoDescription ?? "General Goods")</td>
+                        <td class="center"></td>
+                        <td class="center">@(_shipment.Pieces ?? 1)</td>
+                        <td class="center">@(_shipment.ConsignorCountry ?? "")</td>
+                        <td class="number">@(((_shipment.CustomsValue ?? 0) / Math.Max(_shipment.Pieces ?? 1, 1)).ToString("N2"))</td>
+                        <td class="number">@((_shipment.CustomsValue ?? 0).ToString("N2"))</td>
+                    </tr>
+                    @for (int i = 0; i < 8; i++)
+                    {
+                        <tr>
+                            <td>&nbsp;</td>
+                            <td></td>
+                            <td></td>
+                            <td></td>
+                            <td></td>
+                            <td></td>
+                        </tr>
+                    }
+                </tbody>
+                <tfoot>
+                    <tr>
+                        <td colspan="5" style="text-align: right; padding-right: 15px;">Total value in @_currency</td>
+                        <td class="number">@((_shipment.CustomsValue ?? 0).ToString("N2"))</td>
+                    </tr>
+                </tfoot>
+            </table>
+
+            <div class="summary-section">
+                <div><strong>Number of pieces:</strong> @(_shipment.Pieces ?? 1)</div>
+                <div><strong>Total Gross Weight:</strong> @((_shipment.Weight ?? 0).ToString("N2"))kg</div>
+                <div><strong>Total Net Weight:</strong> @(((_shipment.Weight ?? 0) * 0.9m).ToString("N2"))kg</div>
+                <div><strong>Type:</strong> @GetDocumentType()</div>
+                <div><strong>Term of transportation:</strong> @GetTransportTerm()</div>
+                <div><strong>Reason for Export:</strong> Final Export</div>
+            </div>
+        </div>
+    }
+    else if (!_isLoading && InvoiceId > 0)
+    {
+        <MudAlert Severity="Severity.Warning" Class="mt-4">Invoice not found or no shipment details available.</MudAlert>
+    }
 </MudContainer>
 
 @code {
     [Parameter] public long InvoiceId { get; set; }
 
     private Invoice? _invoice;
-    private Invoice? _selectedInvoice;
+    private InscanMaster? _shipment;
     private Company? _company;
     private bool _isLoading;
+    private string _currency = "AED";
 
     protected override async Task OnInitializedAsync()
     {
-        _company = await DbContext.Companies
-            .Include(c => c.City)
-            .Include(c => c.Country)
-            .FirstOrDefaultAsync();
-
         if (InvoiceId > 0)
         {
             await LoadInvoiceById(InvoiceId);
         }
     }
 
-    private async Task<IEnumerable<Invoice>> SearchInvoices(string search, CancellationToken cancellationToken)
-    {
-        if (string.IsNullOrWhiteSpace(search))
-            return await DbContext.Invoices.OrderByDescending(i => i.InvoiceDate).Take(20).ToListAsync();
-
-        return await DbContext.Invoices
-            .Where(i => i.InvoiceNo!.Contains(search) || i.CustomerName!.Contains(search))
-            .OrderByDescending(i => i.InvoiceDate)
-            .Take(20)
-            .ToListAsync();
-    }
-
-    private async Task LoadInvoice()
-    {
-        if (_selectedInvoice != null)
-        {
-            await LoadInvoiceById(_selectedInvoice.Id);
-        }
-    }
-
     private async Task LoadInvoiceById(long id)
     {
         _isLoading = true;
+        StateHasChanged();
 
         try
         {
-            _invoice = await DbContext.Invoices
+            await using var dbContext = await DbContextFactory.CreateDbContextAsync();
+            
+            _company = await dbContext.Companies.FirstOrDefaultAsync(c => !c.IsDeleted);
+            
+            _invoice = await dbContext.Invoices
                 .Include(i => i.Details)
                 .FirstOrDefaultAsync(i => i.Id == id);
+
+            if (_invoice != null && _invoice.Details.Any())
+            {
+                var firstDetail = _invoice.Details.First();
+                if (firstDetail.InscanId > 0)
+                {
+                    _shipment = await dbContext.InscanMasters
+                        .FirstOrDefaultAsync(i => i.Id == firstDetail.InscanId);
+                }
+                else if (!string.IsNullOrEmpty(firstDetail.AWBNo))
+                {
+                    _shipment = await dbContext.InscanMasters
+                        .FirstOrDefaultAsync(i => i.AWBNo == firstDetail.AWBNo && !i.IsDeleted);
+                }
+            }
+
+            _currency = _shipment?.Currency ?? AuthState.CurrencyCode ?? "AED";
         }
         catch (Exception ex)
         {
             Snackbar.Add($"Error: {ex.Message}", Severity.Error);
         }
-
-        _isLoading = false;
-    }
-
-    private async Task ExportPdf()
-    {
-        if (_invoice == null) return;
-
-        try
+        finally
         {
-            var bytes = ReportingService.GenerateInvoicePdf(_invoice);
-            var base64 = Convert.ToBase64String(bytes);
-            await JS.InvokeVoidAsync("downloadFile", $"Invoice_{_invoice.InvoiceNo}.pdf", base64, "application/pdf");
-        }
-        catch (Exception ex)
-        {
-            Snackbar.Add($"Error generating PDF: {ex.Message}", Severity.Error);
+            _isLoading = false;
+            StateHasChanged();
         }
     }
 
-    private async Task PrintInvoice()
+    private string GetDocumentType()
     {
-        if (_invoice == null) return;
-
-        try
+        return _shipment?.DocumentTypeId switch
         {
-            var bytes = ReportingService.GenerateInvoicePdf(_invoice);
-            var base64 = Convert.ToBase64String(bytes);
-            await JS.InvokeVoidAsync("eval", $@"
-                var byteCharacters = atob('{base64}');
-                var byteNumbers = new Array(byteCharacters.length);
-                for (var i = 0; i < byteCharacters.length; i++) {{
-                    byteNumbers[i] = byteCharacters.charCodeAt(i);
-                }}
-                var byteArray = new Uint8Array(byteNumbers);
-                var blob = new Blob([byteArray], {{type: 'application/pdf'}});
-                var url = URL.createObjectURL(blob);
-                var printWindow = window.open(url, '_blank');
-                if (printWindow) {{
-                    printWindow.onload = function() {{
-                        printWindow.focus();
-                        printWindow.print();
-                    }};
-                }}
-            ");
-        }
-        catch (Exception ex)
-        {
-            Snackbar.Add($"Error printing: {ex.Message}", Severity.Error);
-        }
+            DocumentType.Document => "Docs",
+            DocumentType.Letter => "Letter",
+            _ => "Non-Docs"
+        };
     }
 
-    private Color GetStatusColor(string status) => status switch
+    private string GetTransportTerm()
     {
-        "Posted" => Color.Success,
-        "Paid" => Color.Info,
-        "Cancelled" => Color.Error,
-        _ => Color.Default
-    };
+        return _shipment?.ShipmentModeId switch
+        {
+            1 => "Air Express",
+            2 => "Sea Freight",
+            3 => "Land Transport",
+            _ => "Air Express"
+        };
+    }
+
+    private async Task PrintPage()
+    {
+        await JS.InvokeVoidAsync("print");
+    }
 }
