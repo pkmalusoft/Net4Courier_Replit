@@ -19,12 +19,14 @@ public class InvoicingService
 
     public async Task<List<InscanMaster>> GetUnbilledAWBs(long customerId, DateTime fromDate, DateTime toDate)
     {
+        var fromDateUtc = DateTime.SpecifyKind(fromDate.Date, DateTimeKind.Utc);
+        var toDateUtc = DateTime.SpecifyKind(toDate.Date, DateTimeKind.Utc);
         return await _context.InscanMasters
             .Include(i => i.OtherCharges)
                 .ThenInclude(o => o.OtherChargeType)
             .Where(i => i.CustomerId == customerId &&
-                        i.TransactionDate >= fromDate &&
-                        i.TransactionDate <= toDate &&
+                        i.TransactionDate >= fromDateUtc &&
+                        i.TransactionDate <= toDateUtc &&
                         i.InvoiceId == null &&
                         i.CourierStatusId == CourierStatus.Delivered &&
                         i.PaymentModeId == PaymentMode.Account &&
@@ -36,11 +38,12 @@ public class InvoicingService
 
     public async Task<List<SpecialCharge>> GetApplicableSpecialCharges(long customerId, DateTime invoiceDate)
     {
+        var invoiceDateUtc = DateTime.SpecifyKind(invoiceDate.Date, DateTimeKind.Utc);
         return await _context.SpecialCharges
             .Where(c => c.Status == SpecialChargeStatus.Approved &&
                         c.IsActive && !c.IsDeleted &&
-                        c.FromDate <= invoiceDate &&
-                        c.ToDate >= invoiceDate &&
+                        c.FromDate <= invoiceDateUtc &&
+                        c.ToDate >= invoiceDateUtc &&
                         (c.CustomerId == null || c.CustomerId == customerId))
             .OrderByDescending(c => c.CustomerId)
             .ThenBy(c => c.ChargeName)
