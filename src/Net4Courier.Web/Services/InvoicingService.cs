@@ -238,9 +238,105 @@ public class InvoicingService
         if (invoice == null)
             throw new Exception("Invoice not found");
 
+        // Get customer details for journal entry
+        var customer = await _context.Parties.FirstOrDefaultAsync(p => p.Id == invoice.CustomerId);
+        var customerName = customer?.Name ?? invoice.CustomerName ?? "Customer";
+
+        // Create journal entry for the invoice
+        var journal = new Journal
+        {
+            VoucherNo = $"INV-{invoice.InvoiceNo}",
+            VoucherDate = DateTime.SpecifyKind(invoice.InvoiceDate.Date, DateTimeKind.Utc),
+            CompanyId = invoice.CompanyId,
+            BranchId = invoice.BranchId,
+            FinancialYearId = invoice.FinancialYearId,
+            VoucherType = "INV",
+            Narration = $"Customer Invoice {invoice.InvoiceNo} - {customerName}",
+            Reference = invoice.InvoiceNo,
+            TotalDebit = invoice.NetTotal,
+            TotalCredit = invoice.NetTotal,
+            IsPosted = true,
+            PostedAt = DateTime.UtcNow,
+            CreatedAt = DateTime.UtcNow,
+            IsActive = true,
+            IsDeleted = false
+        };
+
+        // Add journal entries:
+        // 1. Debit Accounts Receivable (Customer)
+        journal.Entries.Add(new JournalEntry
+        {
+            AccountCode = "AR",
+            AccountName = "Accounts Receivable",
+            Debit = invoice.NetTotal,
+            Credit = 0,
+            Narration = $"Invoice {invoice.InvoiceNo} - {customerName}",
+            PartyId = invoice.CustomerId,
+            CreatedAt = DateTime.UtcNow,
+            IsActive = true,
+            IsDeleted = false
+        });
+
+        // 2. Credit Sales Revenue (SubTotal)
+        if (invoice.SubTotal > 0)
+        {
+            journal.Entries.Add(new JournalEntry
+            {
+                AccountCode = "SALES",
+                AccountName = "Sales Revenue",
+                Debit = 0,
+                Credit = invoice.SubTotal,
+                Narration = $"Sales - Invoice {invoice.InvoiceNo}",
+                CreatedAt = DateTime.UtcNow,
+                IsActive = true,
+                IsDeleted = false
+            });
+        }
+
+        // 3. Credit Tax Payable (if applicable)
+        if ((invoice.TaxAmount ?? 0) > 0)
+        {
+            journal.Entries.Add(new JournalEntry
+            {
+                AccountCode = "TAXPAY",
+                AccountName = "Tax Payable",
+                Debit = 0,
+                Credit = invoice.TaxAmount ?? 0,
+                Narration = $"Tax - Invoice {invoice.InvoiceNo}",
+                CreatedAt = DateTime.UtcNow,
+                IsActive = true,
+                IsDeleted = false
+            });
+        }
+
+        // 4. Credit Special Charges (if applicable)
+        var specialChargesTotal = (invoice.SpecialChargesTotal ?? 0) + (invoice.SpecialChargesTax ?? 0);
+        if (specialChargesTotal > 0)
+        {
+            journal.Entries.Add(new JournalEntry
+            {
+                AccountCode = "SPCHG",
+                AccountName = "Special Charges Income",
+                Debit = 0,
+                Credit = specialChargesTotal,
+                Narration = $"Special Charges - Invoice {invoice.InvoiceNo}",
+                CreatedAt = DateTime.UtcNow,
+                IsActive = true,
+                IsDeleted = false
+            });
+        }
+
+        _context.Journals.Add(journal);
+
+        // Update invoice status and link journal
         invoice.Status = InvoiceStatus.Generated;
+        invoice.JournalId = journal.Id;
         invoice.ModifiedAt = DateTime.UtcNow;
 
+        await _context.SaveChangesAsync();
+
+        // Update the journal ID on invoice (after journal has been saved and has an ID)
+        invoice.JournalId = journal.Id;
         await _context.SaveChangesAsync();
 
         return invoice;
