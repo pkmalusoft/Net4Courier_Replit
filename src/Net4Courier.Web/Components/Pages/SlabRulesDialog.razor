@@ -197,7 +197,14 @@
 
         foreach (var rule in _slabRules.Where(r => !r.IsDeleted).OrderBy(r => r.FromWeight))
         {
-            if (weight < rule.FromWeight) break;
+            if (weight <= rule.FromWeight) break;
+            
+            var effectiveFrom = Math.Max(rule.FromWeight, _baseWeight);
+            var effectiveTo = Math.Min(rule.ToWeight, weight);
+            
+            if (effectiveTo <= effectiveFrom) continue;
+            
+            var slabWeight = effectiveTo - effectiveFrom;
             
             switch (rule.CalculationMode)
             {
@@ -206,24 +213,22 @@
                     break;
                     
                 case SlabCalculationMode.PerKg:
-                    var perKgWeight = Math.Min(weight, rule.ToWeight) - rule.FromWeight;
-                    if (perKgWeight > 0)
+                    if (slabWeight > 0)
                     {
-                        total += perKgWeight * rule.IncrementRate;
+                        total += slabWeight * rule.IncrementRate;
                     }
                     break;
                     
                 case SlabCalculationMode.PerStep:
-                    var stepWeight = Math.Min(weight, rule.ToWeight) - rule.FromWeight;
-                    if (stepWeight > 0 && rule.IncrementWeight > 0)
+                    if (slabWeight > 0 && rule.IncrementWeight > 0)
                     {
-                        var steps = Math.Ceiling(stepWeight / rule.IncrementWeight);
+                        var steps = Math.Ceiling(slabWeight / rule.IncrementWeight);
                         total += steps * rule.IncrementRate;
                     }
                     break;
                     
                 case SlabCalculationMode.FlatAfter:
-                    total += rule.FlatRate ?? 0;
+                    total += rule.FlatRate ?? rule.IncrementRate;
                     break;
             }
         }
