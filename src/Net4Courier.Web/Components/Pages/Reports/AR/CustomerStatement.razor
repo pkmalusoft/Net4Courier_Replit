@@ -193,7 +193,7 @@
         try
         {
             var fromUtc = _fromDate.HasValue ? DateTime.SpecifyKind(_fromDate.Value.Date, DateTimeKind.Utc) : DateTime.MinValue;
-            var toUtc = _toDate.HasValue ? DateTime.SpecifyKind(_toDate.Value.Date.AddDays(1).AddTicks(-1), DateTimeKind.Utc) : DateTime.MaxValue;
+            var toUtc = _toDate.HasValue ? DateTime.SpecifyKind(_toDate.Value.Date.AddDays(1), DateTimeKind.Utc) : DateTime.MaxValue;
 
             var customer = await DbContext.Parties
                 .Include(p => p.Addresses)
@@ -221,13 +221,52 @@
 
             _openingBalance = 0;
 
-            var journalEntries = await DbContext.JournalEntries
-                .Include(e => e.Journal)
-                .Where(e => e.PartyId == _customerId && e.Journal.VoucherDate >= fromUtc && e.Journal.VoucherDate <= toUtc)
-                .OrderBy(e => e.Journal.VoucherDate)
+            var allEntries = new List<StatementEntry>();
+
+            // Get invoices for this customer
+            var invoices = await DbContext.Invoices
+                .Where(i => i.CustomerId == _customerId && !i.IsDeleted)
+                .Where(i => i.InvoiceDate >= fromUtc && i.InvoiceDate < toUtc)
+                .OrderBy(i => i.InvoiceDate)
                 .ToListAsync();
 
-            var allEntries = new List<StatementEntry>();
+            foreach (var inv in invoices)
+            {
+                allEntries.Add(new StatementEntry
+                {
+                    Date = inv.InvoiceDate,
+                    Reference = inv.InvoiceNo ?? "",
+                    Description = $"Invoice - {inv.TotalAWBs} AWB(s)",
+                    Invoice = inv.NetTotal ?? 0,
+                    Receipt = 0
+                });
+            }
+
+            // Get receipts for this customer
+            var receipts = await DbContext.Receipts
+                .Where(r => r.CustomerId == _customerId && !r.IsDeleted)
+                .Where(r => r.ReceiptDate >= fromUtc && r.ReceiptDate < toUtc)
+                .OrderBy(r => r.ReceiptDate)
+                .ToListAsync();
+
+            foreach (var rcp in receipts)
+            {
+                allEntries.Add(new StatementEntry
+                {
+                    Date = rcp.ReceiptDate,
+                    Reference = rcp.ReceiptNo ?? "",
+                    Description = rcp.Remarks ?? "Payment Received",
+                    Invoice = 0,
+                    Receipt = rcp.Amount ?? 0
+                });
+            }
+
+            // Also check journals with PartyId
+            var journalEntries = await DbContext.JournalEntries
+                .Include(e => e.Journal)
+                .Where(e => e.PartyId == _customerId && e.Journal.VoucherDate >= fromUtc && e.Journal.VoucherDate < toUtc)
+                .OrderBy(e => e.Journal.VoucherDate)
+                .ToListAsync();
 
             foreach (var entry in journalEntries)
             {
