@@ -727,6 +727,8 @@ public class ApplicationDbContext : DbContext
             entity.Property(e => e.Code).HasMaxLength(20).IsRequired();
             entity.Property(e => e.Name).HasMaxLength(100).IsRequired();
             entity.Property(e => e.Description).HasMaxLength(500);
+            entity.Property(e => e.CategoryType).HasColumnName("CategoryType");
+            entity.Property(e => e.DeliveryAgentId).HasColumnName("DeliveryAgentId");
             entity.HasIndex(e => e.Code).IsUnique();
             entity.Ignore(e => e.AgentId);
             entity.Ignore(e => e.Agent);
