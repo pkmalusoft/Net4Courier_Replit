@@ -1284,6 +1284,10 @@ public class DatabaseInitializationService : BackgroundService
                 ALTER TABLE ""RateCardZones"" ADD COLUMN IF NOT EXISTS ""AdditionalRate"" NUMERIC NOT NULL DEFAULT 0;
                 ALTER TABLE ""RateCards"" ADD COLUMN IF NOT EXISTS ""ServiceTypeId"" BIGINT;
                 ALTER TABLE ""RateCards"" ADD COLUMN IF NOT EXISTS ""ShipmentModeId"" BIGINT;
+                ALTER TABLE ""RateCardSlabRules"" ADD COLUMN IF NOT EXISTS ""FlatRate"" NUMERIC;
+                ALTER TABLE ""RateCardSlabRules"" ADD COLUMN IF NOT EXISTS ""CostFlatRate"" NUMERIC;
+                ALTER TABLE ""RateCardSlabRules"" ADD COLUMN IF NOT EXISTS ""CostPerKgRate"" NUMERIC;
+                ALTER TABLE ""RateCardSlabRules"" ADD COLUMN IF NOT EXISTS ""Additional1KgRate"" NUMERIC;
             ", stoppingToken);
 
             // Create Currencies table
