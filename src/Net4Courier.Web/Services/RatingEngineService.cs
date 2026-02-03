@@ -79,12 +79,13 @@ public class RatingEngineService
 
             if (baseCharge > 0)
             {
+                var displayBaseRate = zone.SalesBaseRate > 0 ? zone.SalesBaseRate : zone.BaseRate;
                 result.FormulaTrace.Add(new FormulaTraceStep
                 {
                     Order = stepOrder++,
                     Category = "Base Charge",
-                    Description = $"Base Weight: {zone.BaseWeight:N3}kg @ {zone.BaseRate:N2}",
-                    Formula = $"Base Rate = {zone.BaseRate:N2}",
+                    Description = $"Base Weight: {zone.BaseWeight:N3}kg @ {displayBaseRate:N2}",
+                    Formula = $"Base Rate = {displayBaseRate:N2}",
                     Value = baseCharge
                 });
             }
@@ -104,33 +105,6 @@ public class RatingEngineService
 
             var originalSubTotal = baseCharge + slabCharge;
             result.SubTotal = originalSubTotal;
-
-            if (zone.MinCharge.HasValue && result.SubTotal < zone.MinCharge.Value)
-            {
-                result.MinChargeApplied = zone.MinCharge.Value;
-                result.FormulaTrace.Add(new FormulaTraceStep
-                {
-                    Order = stepOrder++,
-                    Category = "Min Charge Adjustment",
-                    Description = $"Subtotal {originalSubTotal:N2} < Min {zone.MinCharge.Value:N2}",
-                    Formula = $"Applied Min Charge = {zone.MinCharge.Value:N2}",
-                    Value = zone.MinCharge.Value
-                });
-                result.SubTotal = zone.MinCharge.Value;
-            }
-            if (zone.MaxCharge.HasValue && result.SubTotal > zone.MaxCharge.Value)
-            {
-                result.MaxChargeApplied = zone.MaxCharge.Value;
-                result.FormulaTrace.Add(new FormulaTraceStep
-                {
-                    Order = stepOrder++,
-                    Category = "Max Charge Adjustment",
-                    Description = $"Subtotal {result.SubTotal:N2} > Max {zone.MaxCharge.Value:N2}",
-                    Formula = $"Applied Max Charge = {zone.MaxCharge.Value:N2}",
-                    Value = zone.MaxCharge.Value
-                });
-                result.SubTotal = zone.MaxCharge.Value;
-            }
 
             if (zone.TaxPercent > 0)
             {
@@ -336,7 +310,29 @@ public class RatingEngineService
         }
 
         var baseWeight = zone.BaseWeight;
-        var baseRate = zone.BaseRate;
+        var baseRate = zone.SalesBaseRate > 0 ? zone.SalesBaseRate : zone.BaseRate;
+        
+        // Zone-level additional rate calculation (primary method)
+        if (zone.AdditionalRate > 0)
+        {
+            if (weight <= baseWeight)
+            {
+                rules.Add($"Base: Up to {baseWeight:N3}kg = {baseRate:N2}");
+                return (0m, baseRate, rules);
+            }
+            
+            // Calculate additional weight charge using zone-level settings
+            var excessWeight = weight - baseWeight;
+            var additionalWeight = zone.AdditionalWeight > 0 ? zone.AdditionalWeight : 1m;
+            var steps = Math.Ceiling(excessWeight / additionalWeight);
+            var additionalCharge = steps * zone.AdditionalRate;
+            var totalCharge = baseRate + additionalCharge;
+            
+            rules.Add($"Rate: Up to {baseWeight:N3}kg = {baseRate:N2} (flat) + {steps:N0} × {additionalWeight:N3}kg @ {zone.AdditionalRate:N2} = {totalCharge:N2}");
+            return (0m, totalCharge, rules);
+        }
+        
+        // Fallback to traditional base + slab calculation
         rules.Add($"Base: {baseWeight:N3}kg @ {baseRate:N2}");
 
         if (weight <= baseWeight)

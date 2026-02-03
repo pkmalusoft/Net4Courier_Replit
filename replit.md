@@ -34,14 +34,14 @@ The application is built on .NET 8 Blazor Server, adopting a modular architectur
 - **Enhanced Dashboards**: Unified dispatcher view and global autocomplete search across AWBs, Customers, and Invoices.
 - **Unified Shipment Processing**: Single pages for Import Shipment Charges, Warehouse Inscan, and Shipment Lists for both domestic and import AWBs.
 - **Master Data Management**: Configurable Rate Card Management, Service Type, Shipment Mode, Port Master, Currency, Geographic Master Data, and enhanced Customer Master with configurable account types and SLA management.
-- **Enhanced Rate Card System**: Rate cards support ServiceType and ShipmentMode filtering, zone categories with agent-based movement restrictions (ForwardingAgent for Export/Import/Transhipment, DeliveryAgent for Domestic), and flexible slab pricing with five calculation modes:
-  - FlatForSlab: Fixed amount for entire slab range
-  - PerKg: Rate multiplied by weight in slab
-  - PerStep: Rate multiplied by ceiling of (weight ÷ increment)
-  - FlatAfter: Flat rate once weight exceeds threshold
-  - FlatPlusAdditional: Flat rate up to max weight + per-kg rate for additional weight (e.g., 1-5kg = AED 20 flat, then AED 2/kg above 5kg)
+- **Enhanced Rate Card System**: Rate cards support ServiceType and ShipmentMode filtering, zone categories with agent-based movement restrictions (ForwardingAgent for Export/Import/Transhipment, DeliveryAgent for Domestic), and flexible pricing:
+  - Zone-level pricing with Base Weight, Base Rate, Additional Weight (kg), and Additional Rate
+  - Calculation formula: BaseRate + ceil((weight - BaseWeight) / AdditionalWeight) × AdditionalRate
+  - Example: 7kg shipment with BaseWeight=5kg, BaseRate=20, AdditionalWeight=1kg, AdditionalRate=2 = 20 + 2×2 = AED 24
   - Zone-level TaxPercent and TaxMode (Inclusive/Exclusive) for automatic tax calculation
+  - Slab rules for advanced pricing: FlatForSlab, PerKg, PerStep, FlatAfter, FlatPlusAdditional
   - Cost tracking fields (CostFlatRate, CostPerKgRate) for profit margin analysis
+  - Automatic freight charge calculation in AWB entry based on customer, weight, service type, and destination
 - **Regulatory Compliance**: Empost Regulatory Compliance Module for UAE courier licensing.
 - **API Integration**: Configuration and webhook endpoints for third-party booking websites.
 - **Knowledge Base**: Integrated documentation using Markdig for "How To Guides".

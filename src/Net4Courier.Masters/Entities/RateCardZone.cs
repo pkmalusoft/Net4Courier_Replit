@@ -25,12 +25,24 @@ public class RateCardZone : AuditableEntity
     public long? CurrencyId { get; set; }
     [System.Obsolete("Currency is now inherited from Branch")]
     public string? CurrencyCode { get; set; }
+    [System.Obsolete("No longer used - use zone-level AdditionalWeight/AdditionalRate instead")]
     public decimal? MinCharge { get; set; }
+    [System.Obsolete("No longer used - use zone-level AdditionalWeight/AdditionalRate instead")]
     public decimal? MaxCharge { get; set; }
     
     public decimal MinWeight { get; set; } = 1m;
     public decimal MaxWeight { get; set; } = 5m;
     public decimal TaxPercent { get; set; } = 0m;
+    
+    /// <summary>
+    /// Weight increment for additional rate calculation (default 1kg)
+    /// </summary>
+    public decimal AdditionalWeight { get; set; } = 1m;
+    
+    /// <summary>
+    /// Rate per AdditionalWeight above BaseWeight
+    /// </summary>
+    public decimal AdditionalRate { get; set; } = 0m;
     
     public decimal MarginBaseRate => SalesBaseRate - CostBaseRate;
     public decimal MarginPerKg => SalesPerKg - CostPerKg;
