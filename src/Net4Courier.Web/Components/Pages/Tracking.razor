@@ -8,7 +8,7 @@
 @using Net4Courier.Kernel.Enums
 @using Net4Courier.Operations.Enums
 @using Net4Courier.Masters.Entities
-@inject ApplicationDbContext DbContext
+@inject IDbContextFactory<ApplicationDbContext> DbContextFactory
 @inject ShipmentStatusService StatusService
 @inject IDialogService DialogService
 @inject NavigationManager NavigationManager
@@ -579,6 +579,8 @@
 
         try
         {
+            await using var dbContext = await DbContextFactory.CreateDbContextAsync();
+            
             var searchTerms = _searchTerm.Split(',', StringSplitOptions.RemoveEmptyEntries)
                                          .Select(s => s.Trim())
                                          .Where(s => !string.IsNullOrEmpty(s))
@@ -591,19 +593,19 @@
 
                 if (_searchType == SearchType.AWBNumber)
                 {
-                    var shipment = await DbContext.InscanMasters
+                    var shipment = await dbContext.InscanMasters
                         .FirstOrDefaultAsync(i => i.AWBNo == term && !i.IsDeleted);
 
                     if (shipment != null)
                     {
-                        var timeline = await DbContext.ShipmentStatusHistories
+                        var timeline = await dbContext.ShipmentStatusHistories
                             .Include(t => t.Status)
                             .Where(t => t.InscanMasterId == shipment.Id)
                             .OrderByDescending(t => t.ChangedAt)
                             .ToListAsync();
 
                         var serviceTypeName = shipment.ShipmentModeId.HasValue 
-                            ? (await DbContext.ShipmentModes.FindAsync(shipment.ShipmentModeId.Value))?.Name 
+                            ? (await dbContext.ShipmentModes.FindAsync(shipment.ShipmentModeId.Value))?.Name 
                             : null;
 
                         _shipmentResults.Add(new ShipmentTrackingResult
@@ -615,7 +617,7 @@
                         found = true;
                     }
 
-                    var importShipments = await DbContext.ImportShipments
+                    var importShipments = await dbContext.ImportShipments
                         .Include(i => i.ImportMaster)
                         .Where(i => i.AWBNo == term)
                         .ToListAsync();
@@ -631,20 +633,20 @@
                     if (!long.TryParse(term, out var pickupRequestId))
                         continue;
                     
-                    var shipments = await DbContext.InscanMasters
+                    var shipments = await dbContext.InscanMasters
                         .Where(i => i.PickupRequestId == pickupRequestId && !i.IsDeleted)
                         .ToListAsync();
 
                     foreach (var shipment in shipments)
                     {
-                        var timeline = await DbContext.ShipmentStatusHistories
+                        var timeline = await dbContext.ShipmentStatusHistories
                             .Include(t => t.Status)
                             .Where(t => t.InscanMasterId == shipment.Id)
                             .OrderByDescending(t => t.ChangedAt)
                             .ToListAsync();
 
                         var serviceTypeName = shipment.ShipmentModeId.HasValue 
-                            ? (await DbContext.ShipmentModes.FindAsync(shipment.ShipmentModeId.Value))?.Name 
+                            ? (await dbContext.ShipmentModes.FindAsync(shipment.ShipmentModeId.Value))?.Name 
                             : null;
 
                         _shipmentResults.Add(new ShipmentTrackingResult
@@ -658,20 +660,20 @@
                 }
                 else if (_searchType == SearchType.ReferenceNumber)
                 {
-                    var shipments = await DbContext.InscanMasters
+                    var shipments = await dbContext.InscanMasters
                         .Where(i => i.ReferenceNo == term && !i.IsDeleted)
                         .ToListAsync();
 
                     foreach (var shipment in shipments)
                     {
-                        var timeline = await DbContext.ShipmentStatusHistories
+                        var timeline = await dbContext.ShipmentStatusHistories
                             .Include(t => t.Status)
                             .Where(t => t.InscanMasterId == shipment.Id)
                             .OrderByDescending(t => t.ChangedAt)
                             .ToListAsync();
 
                         var serviceTypeName = shipment.ShipmentModeId.HasValue 
-                            ? (await DbContext.ShipmentModes.FindAsync(shipment.ShipmentModeId.Value))?.Name 
+                            ? (await dbContext.ShipmentModes.FindAsync(shipment.ShipmentModeId.Value))?.Name 
                             : null;
 
                         _shipmentResults.Add(new ShipmentTrackingResult
@@ -683,7 +685,7 @@
                         found = true;
                     }
 
-                    var importShipments = await DbContext.ImportShipments
+                    var importShipments = await dbContext.ImportShipments
                         .Include(i => i.ImportMaster)
                         .Where(i => i.ReferenceNo == term)
                         .ToListAsync();
