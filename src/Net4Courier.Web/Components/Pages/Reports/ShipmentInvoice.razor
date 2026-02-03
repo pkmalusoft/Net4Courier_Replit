@@ -1,0 +1,366 @@
+@page "/shipment-invoice/{AwbId:long}"
+@page "/shipment-invoice"
+@using Microsoft.EntityFrameworkCore
+@using Net4Courier.Infrastructure.Data
+@using Net4Courier.Operations.Entities
+@using Net4Courier.Masters.Entities
+@using Net4Courier.Kernel.Enums
+@using Microsoft.JSInterop
+@using Net4Courier.Web.Services
+@inject IDbContextFactory<ApplicationDbContext> DbContextFactory
+@inject IJSRuntime JS
+@inject ISnackbar Snackbar
+@inject NavigationManager Navigation
+@inject AppAuthStateProvider AuthState
+@rendermode InteractiveServer
+
+<PageTitle>Shipment Invoice - Net4Courier</PageTitle>
+
+<style>
+    .shipment-invoice {
+        font-family: Arial, sans-serif;
+        max-width: 800px;
+        margin: 0 auto;
+        background: white;
+        padding: 30px;
+    }
+    .invoice-header {
+        text-align: center;
+        margin-bottom: 20px;
+    }
+    .invoice-header h1 {
+        font-size: 24px;
+        margin: 0;
+        color: #333;
+    }
+    .awb-number {
+        font-size: 18px;
+        font-weight: bold;
+        margin: 10px 0;
+    }
+    .invoice-meta {
+        display: flex;
+        justify-content: space-between;
+        margin-bottom: 20px;
+        font-size: 14px;
+    }
+    .shipment-parties {
+        display: flex;
+        gap: 20px;
+        margin-bottom: 20px;
+    }
+    .party-box {
+        flex: 1;
+        border: 1px solid #333;
+        padding: 15px;
+    }
+    .party-box h3 {
+        margin: 0 0 10px 0;
+        font-size: 14px;
+        font-weight: bold;
+        background: #f5f5f5;
+        padding: 5px;
+        margin: -15px -15px 15px -15px;
+    }
+    .party-detail {
+        font-size: 13px;
+        margin-bottom: 5px;
+    }
+    .party-detail strong {
+        display: inline-block;
+        width: 70px;
+    }
+    .goods-table {
+        width: 100%;
+        border-collapse: collapse;
+        margin-bottom: 20px;
+    }
+    .goods-table th, .goods-table td {
+        border: 1px solid #333;
+        padding: 8px;
+        text-align: left;
+        font-size: 12px;
+    }
+    .goods-table th {
+        background: #f5f5f5;
+        font-weight: bold;
+    }
+    .goods-table td.number {
+        text-align: right;
+    }
+    .goods-table tfoot td {
+        font-weight: bold;
+        background: #f9f9f9;
+    }
+    .summary-section {
+        display: flex;
+        gap: 40px;
+        font-size: 13px;
+        margin-top: 20px;
+        padding-top: 15px;
+        border-top: 1px solid #ccc;
+    }
+    .summary-item {
+        margin-bottom: 5px;
+    }
+    .summary-item strong {
+        display: inline-block;
+        min-width: 150px;
+    }
+    @@media print {
+        .no-print { display: none !important; }
+        .shipment-invoice { padding: 0; max-width: 100%; }
+    }
+</style>
+
+<MudContainer MaxWidth="MaxWidth.Large" Class="mt-4">
+    <MudPaper Class="pa-4 no-print" Elevation="2">
+        <MudGrid>
+            <MudItem xs="12" sm="6">
+                <MudText Typo="Typo.h5">Shipment Invoice</MudText>
+            </MudItem>
+            <MudItem xs="12" sm="6" Class="d-flex justify-end gap-2">
+                <MudButton Variant="Variant.Outlined" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Print" 
+                           OnClick="PrintInvoice" Disabled="@(_shipment == null)">Print</MudButton>
+            </MudItem>
+        </MudGrid>
+
+        @if (AwbId == 0)
+        {
+            <MudGrid Class="mt-4">
+                <MudItem xs="12" sm="4">
+                    <MudTextField @bind-Value="_searchAwb" Label="Enter AWB Number" Variant="Variant.Outlined" 
+                                  Immediate="true" OnKeyDown="@(async e => { if (e.Key == "Enter") await SearchAndLoad(); })" />
+                </MudItem>
+                <MudItem xs="12" sm="2">
+                    <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="SearchAndLoad" FullWidth="true">
+                        Load
+                    </MudButton>
+                </MudItem>
+            </MudGrid>
+        }
+    </MudPaper>
+
+    @if (_isLoading)
+    {
+        <MudProgressLinear Indeterminate="true" Class="mt-4" />
+    }
+    else if (_shipment != null)
+    {
+        <div class="shipment-invoice mt-4" id="printable-invoice">
+            <div class="invoice-header">
+                <div class="awb-number">AWB No. @_shipment.AWBNo</div>
+            </div>
+
+            <div class="invoice-meta">
+                <div>DATE: @_shipment.TransactionDate.ToString("dd/MM/yyyy")</div>
+                <div>INVOICE No. @(_invoiceNumber ?? _shipment.AWBNo)</div>
+            </div>
+
+            <div class="shipment-parties">
+                <div class="party-box">
+                    <h3>SHIPMENT FROM: @(_shipment.ConsignorCountry ?? "N/A")</h3>
+                    <div class="party-detail"><strong>Name:</strong> @_shipment.Consignor</div>
+                    <div class="party-detail"><strong>Address:</strong> @_shipment.ConsignorAddress1 @_shipment.ConsignorAddress2</div>
+                    <div class="party-detail"><strong>City:</strong> @_shipment.ConsignorCity</div>
+                    <div class="party-detail"><strong>Country:</strong> @_shipment.ConsignorCountry</div>
+                    <div class="party-detail"><strong>Tel.:</strong> @(!string.IsNullOrEmpty(_shipment.ConsignorPhone) ? _shipment.ConsignorPhone : _shipment.ConsignorMobile)</div>
+                </div>
+                <div class="party-box">
+                    <h3>SHIPMENT TO: @(_shipment.ConsigneeCountry ?? "N/A")</h3>
+                    <div class="party-detail"><strong>Name:</strong> @_shipment.Consignee</div>
+                    <div class="party-detail"><strong>Address:</strong> @_shipment.ConsigneeAddress1 @_shipment.ConsigneeAddress2</div>
+                    <div class="party-detail"><strong>City/Postal Code:</strong> @_shipment.ConsigneeCity @_shipment.ConsigneePostalCode</div>
+                    <div class="party-detail"><strong>Country:</strong> @_shipment.ConsigneeCountry</div>
+                    <div class="party-detail"><strong>Tel./Fax No.:</strong> @(!string.IsNullOrEmpty(_shipment.ConsigneePhone) ? _shipment.ConsigneePhone : _shipment.ConsigneeMobile)</div>
+                </div>
+            </div>
+
+            <table class="goods-table">
+                <thead>
+                    <tr>
+                        <th style="width: 35%">Description of goods</th>
+                        <th style="width: 15%">HS CODE</th>
+                        <th style="width: 10%">Quantity</th>
+                        <th style="width: 15%">Country of origin</th>
+                        <th style="width: 12%">Unit Value<br/>@(_currency)</th>
+                        <th style="width: 13%">Total value<br/>@(_currency)</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @if (_goodsItems.Any())
+                    {
+                        @foreach (var item in _goodsItems)
+                        {
+                            <tr>
+                                <td>@item.Description</td>
+                                <td>@item.HSCode</td>
+                                <td class="number">@item.Quantity</td>
+                                <td>@item.CountryOfOrigin</td>
+                                <td class="number">@item.UnitValue.ToString("N2")</td>
+                                <td class="number">@item.TotalValue.ToString("N2")</td>
+                            </tr>
+                        }
+                    }
+                    else
+                    {
+                        <tr>
+                            <td>@(_shipment.CargoDescription ?? "General Goods")</td>
+                            <td></td>
+                            <td class="number">@(_shipment.Pieces ?? 1)</td>
+                            <td></td>
+                            <td class="number">@(((_shipment.CustomsValue ?? 0) / (_shipment.Pieces ?? 1)).ToString("N2"))</td>
+                            <td class="number">@(_shipment.CustomsValue?.ToString("N2") ?? "0.00")</td>
+                        </tr>
+                    }
+                    @for (int i = _goodsItems.Count; i < 10; i++)
+                    {
+                        <tr>
+                            <td>&nbsp;</td>
+                            <td></td>
+                            <td></td>
+                            <td></td>
+                            <td></td>
+                            <td></td>
+                        </tr>
+                    }
+                </tbody>
+                <tfoot>
+                    <tr>
+                        <td colspan="5" style="text-align: right;">Total value in @(_currency)</td>
+                        <td class="number">@_totalValue.ToString("N2")</td>
+                    </tr>
+                </tfoot>
+            </table>
+
+            <div class="summary-section">
+                <div>
+                    <div class="summary-item"><strong>Number of pieces:</strong> @(_shipment.Pieces ?? 1)</div>
+                    <div class="summary-item"><strong>Total Gross Weight:</strong> @((_shipment.Weight ?? 0).ToString("N2"))kg</div>
+                    <div class="summary-item"><strong>Total Net Weight:</strong> @(((_shipment.Weight ?? 0) * 0.9m).ToString("N2"))kg</div>
+                </div>
+                <div>
+                    <div class="summary-item"><strong>Type:</strong> @GetDocumentType()</div>
+                    <div class="summary-item"><strong>Term of transportation:</strong> @GetTransportTerm()</div>
+                    <div class="summary-item"><strong>Reason for Export:</strong> Final Export</div>
+                </div>
+            </div>
+        </div>
+    }
+</MudContainer>
+
+@code {
+    [Parameter] public long AwbId { get; set; }
+
+    private InscanMaster? _shipment;
+    private Company? _company;
+    private bool _isLoading;
+    private string _searchAwb = "";
+    private string? _invoiceNumber;
+    private string _currency = "AED";
+    private decimal _totalValue;
+    private List<GoodsItem> _goodsItems = new();
+
+    private class GoodsItem
+    {
+        public string Description { get; set; } = "";
+        public string? HSCode { get; set; }
+        public int Quantity { get; set; }
+        public string? CountryOfOrigin { get; set; }
+        public decimal UnitValue { get; set; }
+        public decimal TotalValue { get; set; }
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (AwbId > 0)
+        {
+            await LoadShipment(AwbId);
+        }
+    }
+
+    private async Task SearchAndLoad()
+    {
+        if (string.IsNullOrWhiteSpace(_searchAwb)) return;
+
+        await using var dbContext = await DbContextFactory.CreateDbContextAsync();
+        var shipment = await dbContext.InscanMasters
+            .FirstOrDefaultAsync(i => i.AWBNo == _searchAwb.Trim() && !i.IsDeleted);
+
+        if (shipment != null)
+        {
+            await LoadShipment(shipment.Id);
+        }
+        else
+        {
+            Snackbar.Add($"AWB {_searchAwb} not found", Severity.Warning);
+        }
+    }
+
+    private async Task LoadShipment(long id)
+    {
+        _isLoading = true;
+        StateHasChanged();
+
+        try
+        {
+            await using var dbContext = await DbContextFactory.CreateDbContextAsync();
+            
+            _shipment = await dbContext.InscanMasters
+                .FirstOrDefaultAsync(i => i.Id == id && !i.IsDeleted);
+
+            if (_shipment != null)
+            {
+                _currency = _shipment.Currency ?? AuthState.CurrencyCode ?? "AED";
+                _totalValue = _shipment.CustomsValue ?? 0;
+                _invoiceNumber = _shipment.AWBNo;
+
+                if (!string.IsNullOrEmpty(_shipment.CargoDescription))
+                {
+                    _goodsItems.Add(new GoodsItem
+                    {
+                        Description = _shipment.CargoDescription,
+                        Quantity = _shipment.Pieces ?? 1,
+                        UnitValue = (_shipment.CustomsValue ?? 0) / (_shipment.Pieces ?? 1),
+                        TotalValue = _shipment.CustomsValue ?? 0
+                    });
+                }
+            }
+            else
+            {
+                Snackbar.Add("Shipment not found", Severity.Warning);
+            }
+        }
+        finally
+        {
+            _isLoading = false;
+            StateHasChanged();
+        }
+    }
+
+    private string GetDocumentType()
+    {
+        return _shipment?.DocumentTypeId switch
+        {
+            DocumentType.Document => "Docs",
+            DocumentType.Letter => "Letter",
+            _ => "Non-Docs"
+        };
+    }
+
+    private string GetTransportTerm()
+    {
+        return _shipment?.ShipmentModeId switch
+        {
+            1 => "Air Express",
+            2 => "Sea Freight",
+            3 => "Land Transport",
+            _ => "Air Express"
+        };
+    }
+
+    private async Task PrintInvoice()
+    {
+        await JS.InvokeVoidAsync("print");
+    }
+}
