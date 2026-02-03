@@ -429,10 +429,22 @@ app.MapGet("/api/report/tracking/{awbNo}", async (string awbNo, ApplicationDbCon
     return Results.File(pdf, "application/pdf", $"Tracking-{awb.AWBNo}.pdf");
 });
 
-app.MapGet("/api/report/invoice/{id:long}", async (long id, ApplicationDbContext db, ReportingService reportService) =>
+app.MapGet("/api/report/invoice/{id:long}", async (long id, ApplicationDbContext db, ReportingService reportService, IHttpClientFactory httpClientFactory) =>
 {
     var invoice = await db.Invoices.Include(i => i.Details).FirstOrDefaultAsync(i => i.Id == id);
     if (invoice == null) return Results.NotFound();
+    
+    var company = await db.Companies.FirstOrDefaultAsync(c => !c.IsDeleted);
+    byte[]? logoData = null;
+    if (!string.IsNullOrEmpty(company?.Logo))
+    {
+        try
+        {
+            using var httpClient = httpClientFactory.CreateClient();
+            logoData = await httpClient.GetByteArrayAsync(company.Logo);
+        }
+        catch { }
+    }
     
     Net4Courier.Operations.Entities.InscanMaster? shipment = null;
     if (invoice.Details.Any())
@@ -452,7 +464,7 @@ app.MapGet("/api/report/invoice/{id:long}", async (long id, ApplicationDbContext
     if (shipment != null)
     {
         var currency = shipment.Currency ?? "AED";
-        pdf = reportService.GenerateShipmentInvoicePdf(invoice, shipment, currency);
+        pdf = reportService.GenerateShipmentInvoicePdf(invoice, shipment, currency, logoData);
     }
     else
     {

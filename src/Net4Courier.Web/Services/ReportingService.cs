@@ -260,7 +260,7 @@ public class ReportingService
         return document.GeneratePdf();
     }
 
-    public byte[] GenerateShipmentInvoicePdf(Invoice invoice, InscanMaster shipment, string currency = "AED")
+    public byte[] GenerateShipmentInvoicePdf(Invoice invoice, InscanMaster shipment, string currency = "AED", byte[]? logoData = null)
     {
         var document = Document.Create(container =>
         {
@@ -272,6 +272,11 @@ public class ReportingService
 
                 page.Content().Column(col =>
                 {
+                    if (logoData != null && logoData.Length > 0)
+                    {
+                        col.Item().AlignCenter().Height(60).Image(logoData).FitHeight();
+                        col.Item().PaddingVertical(5);
+                    }
                     col.Item().AlignCenter().Text("INVOICE").Bold().FontSize(24).FontColor("#1976d2");
                     col.Item().PaddingVertical(15);
 
