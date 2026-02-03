@@ -160,7 +160,7 @@ public class InvoicingService
             NetTotal = preview.NetTotal,
             BalanceAmount = preview.NetTotal,
             Status = InvoiceStatus.Draft,
-            DueDate = preview.InvoiceDate.AddDays(30),
+            DueDate = DateTime.SpecifyKind(preview.InvoiceDate.AddDays(30), DateTimeKind.Utc),
             CreatedAt = DateTime.UtcNow
         };
 
@@ -170,7 +170,7 @@ public class InvoicingService
             {
                 InscanId = detail.InscanId,
                 AWBNo = detail.AWBNo,
-                AWBDate = detail.AWBDate,
+                AWBDate = DateTime.SpecifyKind(detail.AWBDate.Date, DateTimeKind.Utc),
                 Origin = detail.Origin,
                 Destination = detail.Destination,
                 Pieces = detail.Pieces,
