@@ -11,6 +11,7 @@
 @inject IGmailEmailService GmailEmailService
 @inject ISnackbar Snackbar
 @inject NavigationManager Navigation
+@inject IWebHostEnvironment Environment
 @rendermode InteractiveServer
 
 <PageTitle>Invoice - @(_invoice?.InvoiceNo ?? "Loading")</PageTitle>
@@ -322,11 +323,52 @@ else
 
         try
         {
-            var pdfBytes = ReportingService.GenerateInvoicePdf(_invoice);
-
             var company = await Context.Companies.FirstOrDefaultAsync(c => c.IsActive && !c.IsDeleted);
             var companyName = company?.Name ?? "Net4Courier";
             var companyEmail = company?.Email ?? "noreply@net4courier.com";
+
+            // Load company logo for PDF (same logic as download API)
+            byte[]? logoData = null;
+            if (!string.IsNullOrEmpty(company?.Logo))
+            {
+                try
+                {
+                    var logoPath = company.Logo.TrimStart('/');
+                    var fullPath = Path.Combine(Environment.WebRootPath ?? Environment.ContentRootPath, logoPath);
+                    if (File.Exists(fullPath))
+                    {
+                        logoData = await File.ReadAllBytesAsync(fullPath);
+                    }
+                }
+                catch { /* Logo loading failed, continue without logo */ }
+            }
+
+            // Get shipment for commercial invoice format (same logic as download API)
+            Net4Courier.Operations.Entities.InscanMaster? shipment = null;
+            if (_invoice.Details.Any())
+            {
+                var firstDetail = _invoice.Details.First();
+                if (firstDetail.InscanId > 0)
+                {
+                    shipment = await Context.InscanMasters.FirstOrDefaultAsync(i => i.Id == firstDetail.InscanId);
+                }
+                else if (!string.IsNullOrEmpty(firstDetail.AWBNo))
+                {
+                    shipment = await Context.InscanMasters.FirstOrDefaultAsync(i => i.AWBNo == firstDetail.AWBNo && !i.IsDeleted);
+                }
+            }
+
+            // Generate PDF using same format as download
+            byte[] pdfBytes;
+            if (shipment != null)
+            {
+                var currency = shipment.Currency ?? "AED";
+                pdfBytes = ReportingService.GenerateShipmentInvoicePdf(_invoice, shipment, currency, logoData);
+            }
+            else
+            {
+                pdfBytes = ReportingService.GenerateInvoicePdf(_invoice);
+            }
 
             var subject = $"Invoice {_invoice.InvoiceNo} from {companyName}";
             var htmlBody = BuildEmailBody(_invoice, _customer, companyName);
