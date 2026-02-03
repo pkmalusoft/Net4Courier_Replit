@@ -132,9 +132,11 @@ catch (Exception ex)
 }
 
 builder.Services.AddDbContext<ApplicationDbContext>(options =>
-    options.UseNpgsql(connectionString));
+    options.UseNpgsql(connectionString, npgsqlOptions =>
+        npgsqlOptions.EnableRetryOnFailure(maxRetryCount: 3, maxRetryDelay: TimeSpan.FromSeconds(5), errorCodesToAdd: null)));
 builder.Services.AddDbContextFactory<ApplicationDbContext>(options =>
-    options.UseNpgsql(connectionString), ServiceLifetime.Scoped);
+    options.UseNpgsql(connectionString, npgsqlOptions =>
+        npgsqlOptions.EnableRetryOnFailure(maxRetryCount: 3, maxRetryDelay: TimeSpan.FromSeconds(5), errorCodesToAdd: null)), ServiceLifetime.Scoped);
 
 
 builder.Services.AddScoped<AuthService>();
@@ -181,7 +183,8 @@ builder.Services.AddScoped<IAdminEmailNotifier, AdminEmailNotifier>();
 // TrueBooks GL Module Services
 builder.Services.AddScoped<Truebooks.Platform.Core.MultiTenancy.ITenantContext, Net4Courier.Web.Services.SingleTenantContext>();
 builder.Services.AddDbContextFactory<Truebooks.Platform.Core.Infrastructure.PlatformDbContext>(options =>
-    options.UseNpgsql(connectionString), ServiceLifetime.Scoped);
+    options.UseNpgsql(connectionString, npgsqlOptions =>
+        npgsqlOptions.EnableRetryOnFailure(maxRetryCount: 3, maxRetryDelay: TimeSpan.FromSeconds(5), errorCodesToAdd: null)), ServiceLifetime.Scoped);
 
 // Register TrueBooks Platform Finance services
 Truebooks.Platform.Finance.Extensions.FinanceServiceExtensions.AddPlatformFinance(builder.Services);
