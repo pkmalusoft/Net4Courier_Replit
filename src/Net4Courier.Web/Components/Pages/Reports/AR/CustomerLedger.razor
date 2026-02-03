@@ -151,38 +151,75 @@
         try
         {
             var fromUtc = _fromDate.HasValue ? DateTime.SpecifyKind(_fromDate.Value.Date, DateTimeKind.Utc) : DateTime.MinValue;
-            var toUtc = _toDate.HasValue ? DateTime.SpecifyKind(_toDate.Value.Date.AddDays(1).AddTicks(-1), DateTimeKind.Utc) : DateTime.MaxValue;
+            var toUtc = _toDate.HasValue ? DateTime.SpecifyKind(_toDate.Value.Date.AddDays(1), DateTimeKind.Utc) : DateTime.MaxValue;
 
             var customer = await DbContext.Parties.FindAsync(_customerId.Value);
             _openingBalance = 0;
 
-            var entries = await DbContext.Journals
+            // Get invoices for this customer
+            var invoices = await DbContext.Invoices
+                .Where(i => i.CustomerId == _customerId && !i.IsDeleted)
+                .Where(i => i.InvoiceDate >= fromUtc && i.InvoiceDate < toUtc)
+                .OrderBy(i => i.InvoiceDate)
+                .ThenBy(i => i.Id)
+                .ToListAsync();
+
+            // Get receipts for this customer
+            var receipts = await DbContext.Receipts
+                .Where(r => r.CustomerId == _customerId && !r.IsDeleted)
+                .Where(r => r.ReceiptDate >= fromUtc && r.ReceiptDate < toUtc)
+                .OrderBy(r => r.ReceiptDate)
+                .ThenBy(r => r.Id)
+                .ToListAsync();
+
+            // Combine and sort by date
+            var allTransactions = new List<(DateTime Date, string VoucherNo, string VoucherType, string Particulars, decimal Debit, decimal Credit)>();
+
+            foreach (var inv in invoices)
+            {
+                allTransactions.Add((inv.InvoiceDate, inv.InvoiceNo ?? "", "Invoice", $"Invoice - {inv.TotalAWBs} AWB(s)", inv.NetTotal ?? 0, 0));
+            }
+
+            foreach (var rcp in receipts)
+            {
+                allTransactions.Add((rcp.ReceiptDate, rcp.ReceiptNo ?? "", "Receipt", rcp.Remarks ?? "Payment Received", 0, rcp.Amount ?? 0));
+            }
+
+            // Also check journals with PartyId
+            var journalEntries = await DbContext.Journals
                 .Include(j => j.Entries)
-                .Where(j => j.VoucherDate >= fromUtc && j.VoucherDate <= toUtc)
+                .Where(j => j.VoucherDate >= fromUtc && j.VoucherDate < toUtc)
                 .Where(j => j.Entries.Any(e => e.PartyId == _customerId))
                 .OrderBy(j => j.VoucherDate)
                 .ThenBy(j => j.Id)
                 .ToListAsync();
 
-            decimal runningBalance = _openingBalance;
-
-            foreach (var journal in entries)
+            foreach (var journal in journalEntries)
             {
                 var entry = journal.Entries.FirstOrDefault(e => e.PartyId == _customerId);
-                if (entry == null) continue;
+                if (entry != null)
+                {
+                    allTransactions.Add((journal.VoucherDate, journal.VoucherNo ?? "", journal.VoucherType ?? "Journal", journal.Narration ?? "", entry.Debit ?? 0, entry.Credit ?? 0));
+                }
+            }
 
-                var debit = entry.Debit ?? 0;
-                var credit = entry.Credit ?? 0;
-                runningBalance = runningBalance + debit - credit;
+            // Sort all transactions by date
+            allTransactions = allTransactions.OrderBy(t => t.Date).ThenBy(t => t.VoucherNo).ToList();
+
+            decimal runningBalance = _openingBalance;
+
+            foreach (var txn in allTransactions)
+            {
+                runningBalance = runningBalance + txn.Debit - txn.Credit;
 
                 _data.Add(new LedgerEntry
                 {
-                    Date = journal.VoucherDate,
-                    VoucherNo = journal.VoucherNo ?? "",
-                    VoucherType = journal.VoucherType ?? "",
-                    Particulars = journal.Narration ?? "",
-                    Debit = debit,
-                    Credit = credit,
+                    Date = txn.Date,
+                    VoucherNo = txn.VoucherNo,
+                    VoucherType = txn.VoucherType,
+                    Particulars = txn.Particulars,
+                    Debit = txn.Debit,
+                    Credit = txn.Credit,
                     Balance = runningBalance
                 });
             }
