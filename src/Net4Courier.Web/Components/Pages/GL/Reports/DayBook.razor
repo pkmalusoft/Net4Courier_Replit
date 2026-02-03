@@ -1,30 +1,78 @@
 @page "/reports/day-book"
+@page "/reports/gl/daybook"
 @inject ApplicationDbContext DbContext
 @inject ISnackbar Snackbar
+@inject IJSRuntime JS
 @using Microsoft.EntityFrameworkCore
 @using Net4Courier.Infrastructure.Data
 @using Net4Courier.Finance.Entities
+@using ClosedXML.Excel
 
-<PageTitle>Day Book - Net4Courier</PageTitle>
+<PageTitle>Day Book Register - Net4Courier</PageTitle>
 
 <MudContainer MaxWidth="MaxWidth.ExtraLarge" Class="mt-4">
     <MudPaper Class="pa-4" Elevation="2">
-        <MudText Typo="Typo.h5" Class="mb-4">Day Book</MudText>
-        
+        <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center" Class="mb-4">
+            <MudText Typo="Typo.h5">Day Book Register</MudText>
+            @if (_vouchers.Any())
+            {
+                <MudButton Variant="Variant.Outlined" Color="Color.Success" StartIcon="@Icons.Material.Filled.Download"
+                           OnClick="ExportToExcel" Disabled="@_isExporting">
+                    @if (_isExporting)
+                    {
+                        <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" />
+                        <span>Exporting...</span>
+                    }
+                    else
+                    {
+                        <span>Export Excel</span>
+                    }
+                </MudButton>
+            }
+        </MudStack>
+
         <MudGrid>
-            <MudItem xs="12" sm="3">
-                <MudDatePicker @bind-Date="_selectedDate" Label="Select Date" DateFormat="dd-MMM-yyyy" Variant="Variant.Outlined" AnchorOrigin="Origin.BottomCenter" TransformOrigin="Origin.TopCenter" />
+            <MudItem xs="12" sm="2">
+                <MudSelect T="string" Value="_datePreset" Label="Period" Variant="Variant.Outlined"
+                           ValueChanged="OnDatePresetChanged">
+                    <MudSelectItem Value="@("today")">Today</MudSelectItem>
+                    <MudSelectItem Value="@("yesterday")">Yesterday</MudSelectItem>
+                    <MudSelectItem Value="@("thisweek")">This Week</MudSelectItem>
+                    <MudSelectItem Value="@("thismonth")">This Month</MudSelectItem>
+                    <MudSelectItem Value="@("lastmonth")">Last Month</MudSelectItem>
+                    <MudSelectItem Value="@("thisyear")">This Financial Year</MudSelectItem>
+                    <MudSelectItem Value="@("custom")">Custom Range</MudSelectItem>
+                </MudSelect>
+            </MudItem>
+            <MudItem xs="12" sm="2">
+                <MudDatePicker @bind-Date="_fromDate" Label="From Date" DateFormat="dd-MMM-yyyy" 
+                               Variant="Variant.Outlined" Disabled="@(_datePreset != "custom")" />
+            </MudItem>
+            <MudItem xs="12" sm="2">
+                <MudDatePicker @bind-Date="_toDate" Label="To Date" DateFormat="dd-MMM-yyyy" 
+                               Variant="Variant.Outlined" Disabled="@(_datePreset != "custom")" />
             </MudItem>
             <MudItem xs="12" sm="2">
                 <MudSelect T="string" @bind-Value="_voucherType" Label="Voucher Type" Variant="Variant.Outlined">
                     <MudSelectItem Value="@("All")">All Types</MudSelectItem>
+                    <MudSelectItem Value="@("INV")">Customer Invoice</MudSelectItem>
+                    <MudSelectItem Value="@("REC")">Receipt</MudSelectItem>
+                    <MudSelectItem Value="@("SINV")">Supplier Invoice</MudSelectItem>
+                    <MudSelectItem Value="@("PAY")">Payment</MudSelectItem>
                     <MudSelectItem Value="@("CV")">Cash Voucher</MudSelectItem>
                     <MudSelectItem Value="@("BV")">Bank Voucher</MudSelectItem>
                     <MudSelectItem Value="@("JV")">Journal Voucher</MudSelectItem>
                 </MudSelect>
             </MudItem>
             <MudItem xs="12" sm="2">
-                <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="LoadDayBook" 
+                <MudSelect T="string" @bind-Value="_statusFilter" Label="Status" Variant="Variant.Outlined">
+                    <MudSelectItem Value="@("All")">All</MudSelectItem>
+                    <MudSelectItem Value="@("Posted")">Posted Only</MudSelectItem>
+                    <MudSelectItem Value="@("Unposted")">Unposted Only</MudSelectItem>
+                </MudSelect>
+            </MudItem>
+            <MudItem xs="12" sm="2">
+                <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="LoadDayBook"
                            FullWidth="true" Class="mt-1">
                     Generate
                 </MudButton>
@@ -43,7 +91,9 @@
         <MudPaper Class="pa-4 mt-4" Elevation="2">
             <MudGrid Class="mb-3">
                 <MudItem xs="12" sm="6">
-                    <MudText Typo="Typo.h6">Day Book - @_selectedDate?.ToString("dd MMMM yyyy")</MudText>
+                    <MudText Typo="Typo.h6">
+                        @_fromDate?.ToString("dd-MMM-yyyy") to @_toDate?.ToString("dd-MMM-yyyy")
+                    </MudText>
                     <MudText Typo="Typo.caption">@_vouchers.Count voucher(s) found</MudText>
                 </MudItem>
                 <MudItem xs="12" sm="6">
@@ -60,82 +110,164 @@
                 </MudItem>
             </MudGrid>
 
-            @foreach (var voucher in _vouchers)
-            {
-                <MudCard Class="mb-3" Outlined="true">
-                    <MudCardHeader>
-                        <CardHeaderContent>
-                            <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
-                                <MudStack Spacing="0">
-                                    <MudText Typo="Typo.subtitle1">
-                                        <b>@voucher.VoucherNo</b>
-                                        <MudChip T="string" Size="Size.Small" Color="@GetVoucherTypeColor(voucher.VoucherType)" Class="ml-2">
-                                            @GetVoucherTypeName(voucher.VoucherType)
-                                        </MudChip>
-                                        @if (voucher.IsPosted)
+            <MudTable Items="@_vouchers" Dense="true" Hover="true" Striped="true" FixedHeader="true" Height="500px">
+                <HeaderContent>
+                    <MudTh>Date</MudTh>
+                    <MudTh>Voucher No</MudTh>
+                    <MudTh>Type</MudTh>
+                    <MudTh>Narration</MudTh>
+                    <MudTh Style="text-align:right">Debit</MudTh>
+                    <MudTh Style="text-align:right">Credit</MudTh>
+                    <MudTh>Status</MudTh>
+                </HeaderContent>
+                <RowTemplate>
+                    <MudTd>@context.VoucherDate.ToString("dd-MMM-yyyy")</MudTd>
+                    <MudTd>
+                        <MudLink Href="@($"/journal-vouchers?id={context.Id}")">@context.VoucherNo</MudLink>
+                    </MudTd>
+                    <MudTd>
+                        <MudChip T="string" Size="Size.Small" Color="@GetVoucherTypeColor(context.VoucherType)">
+                            @GetVoucherTypeName(context.VoucherType)
+                        </MudChip>
+                    </MudTd>
+                    <MudTd Style="max-width: 300px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+                        @context.Narration
+                    </MudTd>
+                    <MudTd Style="text-align:right">
+                        <span style="color: var(--mud-palette-error);">@context.TotalDebit?.ToString("N2")</span>
+                    </MudTd>
+                    <MudTd Style="text-align:right">
+                        <span style="color: var(--mud-palette-success);">@context.TotalCredit?.ToString("N2")</span>
+                    </MudTd>
+                    <MudTd>
+                        @if (context.IsPosted)
+                        {
+                            <MudChip T="string" Size="Size.Small" Color="Color.Success">Posted</MudChip>
+                        }
+                        else
+                        {
+                            <MudChip T="string" Size="Size.Small" Color="Color.Warning">Draft</MudChip>
+                        }
+                    </MudTd>
+                </RowTemplate>
+            </MudTable>
+
+            <MudExpansionPanels Class="mt-4">
+                <MudExpansionPanel Text="View Detailed Entries" MaxHeight="400">
+                    @foreach (var voucher in _vouchers)
+                    {
+                        <MudCard Class="mb-3" Outlined="true">
+                            <MudCardHeader>
+                                <CardHeaderContent>
+                                    <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
+                                        <MudStack Spacing="0">
+                                            <MudText Typo="Typo.subtitle1">
+                                                <b>@voucher.VoucherNo</b> - @voucher.VoucherDate.ToString("dd-MMM-yyyy")
+                                                <MudChip T="string" Size="Size.Small" Color="@GetVoucherTypeColor(voucher.VoucherType)" Class="ml-2">
+                                                    @GetVoucherTypeName(voucher.VoucherType)
+                                                </MudChip>
+                                            </MudText>
+                                            <MudText Typo="Typo.caption">@voucher.Narration</MudText>
+                                        </MudStack>
+                                        <MudText Typo="Typo.body2"><b>@voucher.TotalDebit?.ToString("N2")</b></MudText>
+                                    </MudStack>
+                                </CardHeaderContent>
+                            </MudCardHeader>
+                            <MudCardContent>
+                                <MudSimpleTable Dense="true" Hover="true">
+                                    <thead>
+                                        <tr>
+                                            <th>Account</th>
+                                            <th style="text-align:right; width:120px;">Debit</th>
+                                            <th style="text-align:right; width:120px;">Credit</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        @foreach (var entry in voucher.Entries)
                                         {
-                                            <MudChip T="string" Size="Size.Small" Color="Color.Success" Class="ml-1">Posted</MudChip>
+                                            <tr>
+                                                <td>@entry.AccountName</td>
+                                                <td style="text-align:right">
+                                                    @if ((entry.Debit ?? 0) > 0)
+                                                    {
+                                                        <span style="color: var(--mud-palette-error);">@entry.Debit?.ToString("N2")</span>
+                                                    }
+                                                </td>
+                                                <td style="text-align:right">
+                                                    @if ((entry.Credit ?? 0) > 0)
+                                                    {
+                                                        <span style="color: var(--mud-palette-success);">@entry.Credit?.ToString("N2")</span>
+                                                    }
+                                                </td>
+                                            </tr>
                                         }
-                                    </MudText>
-                                    <MudText Typo="Typo.caption">@voucher.Narration</MudText>
-                                </MudStack>
-                                <MudStack Spacing="0" AlignItems="AlignItems.End">
-                                    <MudText Typo="Typo.body2"><b>@voucher.TotalDebit?.ToString("N2")</b></MudText>
-                                </MudStack>
-                            </MudStack>
-                        </CardHeaderContent>
-                    </MudCardHeader>
-                    <MudCardContent>
-                        <MudSimpleTable Dense="true" Hover="true">
-                            <thead>
-                                <tr>
-                                    <th>Account</th>
-                                    <th style="text-align:right; width:120px;">Debit</th>
-                                    <th style="text-align:right; width:120px;">Credit</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                @foreach (var entry in voucher.Entries)
-                                {
-                                    <tr>
-                                        <td>@entry.AccountName</td>
-                                        <td style="text-align:right">
-                                            @if ((entry.Debit ?? 0) > 0)
-                                            {
-                                                <span style="color: var(--mud-palette-error);">@entry.Debit?.ToString("N2")</span>
-                                            }
-                                        </td>
-                                        <td style="text-align:right">
-                                            @if ((entry.Credit ?? 0) > 0)
-                                            {
-                                                <span style="color: var(--mud-palette-success);">@entry.Credit?.ToString("N2")</span>
-                                            }
-                                        </td>
-                                    </tr>
-                                }
-                            </tbody>
-                        </MudSimpleTable>
-                    </MudCardContent>
-                </MudCard>
-            }
+                                    </tbody>
+                                </MudSimpleTable>
+                            </MudCardContent>
+                        </MudCard>
+                    }
+                </MudExpansionPanel>
+            </MudExpansionPanels>
         </MudPaper>
     }
     else if (_hasSearched)
     {
         <MudPaper Class="pa-4 mt-4">
-            <MudAlert Severity="Severity.Info">No vouchers found for the selected date.</MudAlert>
+            <MudAlert Severity="Severity.Info">No vouchers found for the selected criteria.</MudAlert>
         </MudPaper>
     }
 </MudContainer>
 
 @code {
-    private DateTime? _selectedDate = DateTime.SpecifyKind(DateTime.Today, DateTimeKind.Utc);
+    private DateTime? _fromDate = DateTime.SpecifyKind(DateTime.Today, DateTimeKind.Utc);
+    private DateTime? _toDate = DateTime.SpecifyKind(DateTime.Today, DateTimeKind.Utc);
+    private string _datePreset = "today";
     private string _voucherType = "All";
+    private string _statusFilter = "All";
     private List<Journal> _vouchers = new();
     private decimal _totalDebit;
     private decimal _totalCredit;
     private bool _isLoading;
+    private bool _isExporting;
     private bool _hasSearched;
+
+    private void OnDatePresetChanged(string preset)
+    {
+        _datePreset = preset;
+        var today = DateTime.Today;
+
+        switch (preset)
+        {
+            case "today":
+                _fromDate = DateTime.SpecifyKind(today, DateTimeKind.Utc);
+                _toDate = DateTime.SpecifyKind(today, DateTimeKind.Utc);
+                break;
+            case "yesterday":
+                _fromDate = DateTime.SpecifyKind(today.AddDays(-1), DateTimeKind.Utc);
+                _toDate = DateTime.SpecifyKind(today.AddDays(-1), DateTimeKind.Utc);
+                break;
+            case "thisweek":
+                var startOfWeek = today.AddDays(-(int)today.DayOfWeek);
+                _fromDate = DateTime.SpecifyKind(startOfWeek, DateTimeKind.Utc);
+                _toDate = DateTime.SpecifyKind(today, DateTimeKind.Utc);
+                break;
+            case "thismonth":
+                _fromDate = DateTime.SpecifyKind(new DateTime(today.Year, today.Month, 1), DateTimeKind.Utc);
+                _toDate = DateTime.SpecifyKind(today, DateTimeKind.Utc);
+                break;
+            case "lastmonth":
+                var lastMonth = today.AddMonths(-1);
+                _fromDate = DateTime.SpecifyKind(new DateTime(lastMonth.Year, lastMonth.Month, 1), DateTimeKind.Utc);
+                _toDate = DateTime.SpecifyKind(new DateTime(lastMonth.Year, lastMonth.Month, DateTime.DaysInMonth(lastMonth.Year, lastMonth.Month)), DateTimeKind.Utc);
+                break;
+            case "thisyear":
+                var fyStart = today.Month >= 4 ? new DateTime(today.Year, 4, 1) : new DateTime(today.Year - 1, 4, 1);
+                _fromDate = DateTime.SpecifyKind(fyStart, DateTimeKind.Utc);
+                _toDate = DateTime.SpecifyKind(today, DateTimeKind.Utc);
+                break;
+        }
+        StateHasChanged();
+    }
 
     private async Task LoadDayBook()
     {
@@ -145,19 +277,25 @@
 
         try
         {
-            var dateUtc = DateTime.SpecifyKind(_selectedDate!.Value.Date, DateTimeKind.Utc);
-            var endDateUtc = dateUtc.AddDays(1).AddTicks(-1);
+            var fromUtc = DateTime.SpecifyKind(_fromDate!.Value.Date, DateTimeKind.Utc);
+            var toUtc = DateTime.SpecifyKind(_toDate!.Value.Date.AddDays(1), DateTimeKind.Utc);
 
             var query = DbContext.Journals
                 .Include(j => j.Entries)
-                .Where(j => !j.IsDeleted && 
-                       j.VoucherDate >= dateUtc && j.VoucherDate <= endDateUtc);
+                .Where(j => !j.IsDeleted &&
+                       j.VoucherDate >= fromUtc && j.VoucherDate < toUtc);
 
             if (_voucherType != "All")
                 query = query.Where(j => j.VoucherType == _voucherType);
 
+            if (_statusFilter == "Posted")
+                query = query.Where(j => j.IsPosted);
+            else if (_statusFilter == "Unposted")
+                query = query.Where(j => !j.IsPosted);
+
             _vouchers = await query
-                .OrderBy(j => j.VoucherNo)
+                .OrderBy(j => j.VoucherDate)
+                .ThenBy(j => j.VoucherNo)
                 .ToListAsync();
 
             _totalDebit = _vouchers.Sum(v => v.TotalDebit ?? 0);
@@ -171,19 +309,104 @@
         _isLoading = false;
     }
 
+    private async Task ExportToExcel()
+    {
+        _isExporting = true;
+        StateHasChanged();
+
+        try
+        {
+            using var workbook = new XLWorkbook();
+            var worksheet = workbook.Worksheets.Add("Day Book");
+
+            worksheet.Cell(1, 1).Value = "Day Book Register";
+            worksheet.Cell(1, 1).Style.Font.Bold = true;
+            worksheet.Cell(1, 1).Style.Font.FontSize = 14;
+            worksheet.Range(1, 1, 1, 7).Merge();
+
+            worksheet.Cell(2, 1).Value = $"Period: {_fromDate?.ToString("dd-MMM-yyyy")} to {_toDate?.ToString("dd-MMM-yyyy")}";
+            worksheet.Range(2, 1, 2, 7).Merge();
+
+            var headerRow = 4;
+            worksheet.Cell(headerRow, 1).Value = "Date";
+            worksheet.Cell(headerRow, 2).Value = "Voucher No";
+            worksheet.Cell(headerRow, 3).Value = "Type";
+            worksheet.Cell(headerRow, 4).Value = "Narration";
+            worksheet.Cell(headerRow, 5).Value = "Debit";
+            worksheet.Cell(headerRow, 6).Value = "Credit";
+            worksheet.Cell(headerRow, 7).Value = "Status";
+
+            var headerRange = worksheet.Range(headerRow, 1, headerRow, 7);
+            headerRange.Style.Font.Bold = true;
+            headerRange.Style.Fill.BackgroundColor = XLColor.LightGray;
+            headerRange.Style.Border.BottomBorder = XLBorderStyleValues.Thin;
+
+            var row = headerRow + 1;
+            foreach (var voucher in _vouchers)
+            {
+                worksheet.Cell(row, 1).Value = voucher.VoucherDate.ToString("dd-MMM-yyyy");
+                worksheet.Cell(row, 2).Value = voucher.VoucherNo;
+                worksheet.Cell(row, 3).Value = GetVoucherTypeName(voucher.VoucherType);
+                worksheet.Cell(row, 4).Value = voucher.Narration;
+                worksheet.Cell(row, 5).Value = voucher.TotalDebit ?? 0;
+                worksheet.Cell(row, 6).Value = voucher.TotalCredit ?? 0;
+                worksheet.Cell(row, 7).Value = voucher.IsPosted ? "Posted" : "Draft";
+
+                worksheet.Cell(row, 5).Style.NumberFormat.Format = "#,##0.00";
+                worksheet.Cell(row, 6).Style.NumberFormat.Format = "#,##0.00";
+                row++;
+            }
+
+            worksheet.Cell(row + 1, 4).Value = "Total:";
+            worksheet.Cell(row + 1, 4).Style.Font.Bold = true;
+            worksheet.Cell(row + 1, 5).Value = _totalDebit;
+            worksheet.Cell(row + 1, 5).Style.Font.Bold = true;
+            worksheet.Cell(row + 1, 5).Style.NumberFormat.Format = "#,##0.00";
+            worksheet.Cell(row + 1, 6).Value = _totalCredit;
+            worksheet.Cell(row + 1, 6).Style.Font.Bold = true;
+            worksheet.Cell(row + 1, 6).Style.NumberFormat.Format = "#,##0.00";
+
+            worksheet.Columns().AdjustToContents();
+
+            using var stream = new MemoryStream();
+            workbook.SaveAs(stream);
+            var bytes = stream.ToArray();
+            var base64 = Convert.ToBase64String(bytes);
+            var fileName = $"DayBook_{_fromDate?.ToString("yyyyMMdd")}_{_toDate?.ToString("yyyyMMdd")}.xlsx";
+
+            await JS.InvokeVoidAsync("downloadFile", fileName, base64, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+            Snackbar.Add("Excel file downloaded successfully", Severity.Success);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error exporting to Excel: {ex.Message}", Severity.Error);
+        }
+
+        _isExporting = false;
+        StateHasChanged();
+    }
+
     private Color GetVoucherTypeColor(string? type) => type switch
     {
+        "INV" => Color.Primary,
+        "REC" => Color.Success,
+        "SINV" => Color.Warning,
+        "PAY" => Color.Error,
         "CV" => Color.Info,
-        "BV" => Color.Primary,
+        "BV" => Color.Tertiary,
         "JV" => Color.Secondary,
         _ => Color.Default
     };
 
     private string GetVoucherTypeName(string? type) => type switch
     {
-        "CV" => "Cash",
-        "BV" => "Bank",
-        "JV" => "Journal",
-        _ => type ?? "Unknown"
+        "INV" => "Customer Invoice",
+        "REC" => "Receipt",
+        "SINV" => "Supplier Invoice",
+        "PAY" => "Payment",
+        "CV" => "Cash Voucher",
+        "BV" => "Bank Voucher",
+        "JV" => "Journal Voucher",
+        _ => type ?? "Other"
     };
 }
