@@ -20,13 +20,13 @@ public class InvoicingService
     public async Task<List<InscanMaster>> GetUnbilledAWBs(long customerId, DateTime fromDate, DateTime toDate)
     {
         var fromDateUtc = DateTime.SpecifyKind(fromDate.Date, DateTimeKind.Utc);
-        var toDateUtc = DateTime.SpecifyKind(toDate.Date, DateTimeKind.Utc);
+        var toDateUtc = DateTime.SpecifyKind(toDate.Date.AddDays(1), DateTimeKind.Utc);
         return await _context.InscanMasters
             .Include(i => i.OtherCharges)
                 .ThenInclude(o => o.OtherChargeType)
             .Where(i => i.CustomerId == customerId &&
                         i.TransactionDate >= fromDateUtc &&
-                        i.TransactionDate <= toDateUtc &&
+                        i.TransactionDate < toDateUtc &&
                         i.InvoiceId == null &&
                         i.CourierStatusId == CourierStatus.Delivered &&
                         i.PaymentModeId == PaymentMode.Account &&
