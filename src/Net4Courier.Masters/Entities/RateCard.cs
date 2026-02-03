@@ -17,8 +17,12 @@ public class RateCard : AuditableEntity
     public RateCardStatus Status { get; set; } = RateCardStatus.Active;
     public long? CompanyId { get; set; }
     public long? ForwardingAgentId { get; set; }
+    public long? ServiceTypeId { get; set; }
+    public long? ShipmentModeId { get; set; }
     public string? Description { get; set; }
     
+    public virtual ServiceType? ServiceType { get; set; }
+    public virtual ShipmentMode? ShipmentMode { get; set; }
     public virtual ICollection<RateCardZone> RateCardZones { get; set; } = new List<RateCardZone>();
     public virtual ICollection<CustomerRateAssignment> CustomerAssignments { get; set; } = new List<CustomerRateAssignment>();
 }

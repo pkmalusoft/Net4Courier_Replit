@@ -714,6 +714,10 @@ public class ApplicationDbContext : DbContext
             entity.HasIndex(e => e.RateCardName);
             entity.HasIndex(e => new { e.CompanyId, e.Status });
             entity.HasIndex(e => new { e.MovementTypeId, e.PaymentModeId });
+            entity.HasOne(e => e.ServiceType).WithMany().HasForeignKey(e => e.ServiceTypeId)
+                  .OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(e => e.ShipmentMode).WithMany().HasForeignKey(e => e.ShipmentModeId)
+                  .OnDelete(DeleteBehavior.Restrict);
         });
 
         modelBuilder.Entity<ZoneCategory>(entity =>
@@ -724,7 +728,11 @@ public class ApplicationDbContext : DbContext
             entity.Property(e => e.Name).HasMaxLength(100).IsRequired();
             entity.Property(e => e.Description).HasMaxLength(500);
             entity.HasIndex(e => e.Code).IsUnique();
+            entity.Ignore(e => e.AgentId);
+            entity.Ignore(e => e.Agent);
             entity.HasOne(e => e.ForwardingAgent).WithMany().HasForeignKey(e => e.ForwardingAgentId)
+                  .OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(e => e.DeliveryAgent).WithMany().HasForeignKey(e => e.DeliveryAgentId)
                   .OnDelete(DeleteBehavior.Restrict);
         });
 

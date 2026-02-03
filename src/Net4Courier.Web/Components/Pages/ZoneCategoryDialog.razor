@@ -17,16 +17,38 @@
                 <MudTextField @bind-Value="Model.Name" Label="Name" Required="true" Variant="Variant.Outlined" />
             </MudItem>
             <MudItem xs="12" md="6">
-                <MudSelect T="MovementType" @bind-Value="Model.MovementType" Label="Movement Type" Required="true" Variant="Variant.Outlined">
-                    <MudSelectItem Value="MovementType.Domestic">Domestic</MudSelectItem>
-                    <MudSelectItem Value="MovementType.InternationalExport">International Export</MudSelectItem>
-                    <MudSelectItem Value="MovementType.InternationalImport">International Import</MudSelectItem>
+                <MudSelect T="ZoneCategoryType" @bind-Value="Model.CategoryType" Label="Category Type" Required="true" Variant="Variant.Outlined">
+                    <MudSelectItem Value="ZoneCategoryType.ForwardingAgent">Forwarding Agent</MudSelectItem>
+                    <MudSelectItem Value="ZoneCategoryType.DeliveryAgent">Delivery Agent</MudSelectItem>
                 </MudSelect>
             </MudItem>
             <MudItem xs="12" md="6">
-                <MudAutocomplete T="Party" Label="Carrier (Forwarding Agent)" @bind-Value="SelectedCarrier"
-                                 SearchFunc="SearchCarriers" ToStringFunc="@(p => p?.Name ?? "")"
-                                 Variant="Variant.Outlined" Clearable="true" />
+                <MudSelect T="MovementType" @bind-Value="Model.MovementType" Label="Movement Type" Required="true" Variant="Variant.Outlined">
+                    @if (Model.CategoryType == ZoneCategoryType.DeliveryAgent)
+                    {
+                        <MudSelectItem Value="MovementType.Domestic">Domestic</MudSelectItem>
+                    }
+                    else
+                    {
+                        <MudSelectItem Value="MovementType.InternationalExport">International Export</MudSelectItem>
+                        <MudSelectItem Value="MovementType.InternationalImport">International Import</MudSelectItem>
+                        <MudSelectItem Value="MovementType.Transhipment">Transhipment</MudSelectItem>
+                    }
+                </MudSelect>
+            </MudItem>
+            <MudItem xs="12" md="6">
+                @if (Model.CategoryType == ZoneCategoryType.ForwardingAgent)
+                {
+                    <MudAutocomplete T="Party" Label="Forwarding Agent" @bind-Value="SelectedForwardingAgent"
+                                     SearchFunc="SearchForwardingAgents" ToStringFunc="@(p => p?.Name ?? "")"
+                                     Variant="Variant.Outlined" Clearable="true" />
+                }
+                else
+                {
+                    <MudAutocomplete T="Party" Label="Delivery Agent" @bind-Value="SelectedDeliveryAgent"
+                                     SearchFunc="SearchDeliveryAgents" ToStringFunc="@(p => p?.Name ?? "")"
+                                     Variant="Variant.Outlined" Clearable="true" />
+                }
             </MudItem>
             <MudItem xs="12" md="6">
                 <MudNumericField T="int" @bind-Value="Model.SortOrder" Label="Sort Order" Variant="Variant.Outlined" />
@@ -35,6 +57,17 @@
                 <MudTextField @bind-Value="Model.Description" Label="Description" Lines="2" Variant="Variant.Outlined" />
             </MudItem>
         </MudGrid>
+        
+        <MudAlert Severity="Severity.Info" Class="mt-3" Dense="true">
+            @if (Model.CategoryType == ZoneCategoryType.DeliveryAgent)
+            {
+                <span><strong>Delivery Agent:</strong> Used for Domestic / Last-Mile shipments within your branch country.</span>
+            }
+            else
+            {
+                <span><strong>Forwarding Agent:</strong> Used for Export / Import / Transhipment shipments via international carriers.</span>
+            }
+        </MudAlert>
     </DialogContent>
     <DialogActions>
         <MudButton OnClick="Cancel">Cancel</MudButton>
@@ -53,7 +86,10 @@
     public bool IsEdit { get; set; }
 
     [Parameter]
-    public Party? SelectedCarrier { get; set; }
+    public Party? SelectedForwardingAgent { get; set; }
+
+    [Parameter]
+    public Party? SelectedDeliveryAgent { get; set; }
 
     private void Cancel() => MudDialog?.Cancel();
 
@@ -63,14 +99,39 @@
         {
             return;
         }
-        Model.ForwardingAgentId = SelectedCarrier?.Id;
+        
+        if (Model.CategoryType == ZoneCategoryType.ForwardingAgent)
+        {
+            Model.ForwardingAgentId = SelectedForwardingAgent?.Id;
+            Model.DeliveryAgentId = null;
+        }
+        else
+        {
+            Model.DeliveryAgentId = SelectedDeliveryAgent?.Id;
+            Model.ForwardingAgentId = null;
+        }
+        
         MudDialog?.Close(DialogResult.Ok(Model));
     }
 
-    private async Task<IEnumerable<Party>> SearchCarriers(string value, CancellationToken cancellationToken)
+    private async Task<IEnumerable<Party>> SearchForwardingAgents(string value, CancellationToken cancellationToken)
     {
         var query = DbContext.Parties
             .Where(p => !p.IsDeleted && p.PartyType == PartyType.ForwardingAgent);
+
+        if (!string.IsNullOrWhiteSpace(value))
+        {
+            query = query.Where(p => p.Name.ToLower().Contains(value.ToLower()) ||
+                                     p.Code.ToLower().Contains(value.ToLower()));
+        }
+
+        return await query.Take(20).ToListAsync();
+    }
+
+    private async Task<IEnumerable<Party>> SearchDeliveryAgents(string value, CancellationToken cancellationToken)
+    {
+        var query = DbContext.Parties
+            .Where(p => !p.IsDeleted && p.PartyType == PartyType.DeliveryAgent);
 
         if (!string.IsNullOrWhiteSpace(value))
         {
