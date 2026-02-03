@@ -8,7 +8,9 @@
 @inject Net4Courier.Web.Services.ShipmentStatusService ShipmentStatusService
 @inject Microsoft.AspNetCore.Components.Authorization.AuthenticationStateProvider AuthStateProvider
 @inject Net4Courier.Operations.Services.BarcodeService BarcodeService
+@inject Net4Courier.Web.Services.RatingEngineService RatingEngineService
 @using Microsoft.EntityFrameworkCore
+@using Net4Courier.Web.Services
 @using Net4Courier.Infrastructure.Data
 @using Net4Courier.Masters.Entities
 @using Net4Courier.Operations.Entities
@@ -263,8 +265,9 @@
                 </MudSelect>
             </MudItem>
             <MudItem xs="6" md="2">
-                <MudSelect T="int?" @bind-Value="_inscan.ProductTypeId" Label="Service Type" 
-                           Variant="Variant.Outlined" Margin="Margin.Dense" AnchorOrigin="Origin.BottomCenter" Clearable="true">
+                <MudSelect T="int?" Value="_inscan.ProductTypeId" Label="Service Type" 
+                           Variant="Variant.Outlined" Margin="Margin.Dense" AnchorOrigin="Origin.BottomCenter" Clearable="true"
+                           ValueChanged="@OnServiceTypeChanged">
                     @foreach (var serviceType in _serviceTypes)
                     {
                         <MudSelectItem T="int?" Value="@((int)serviceType.Id)">@serviceType.Name</MudSelectItem>
@@ -281,9 +284,10 @@
                 </MudSelect>
             </MudItem>
             <MudItem xs="6" md="2">
-                <MudSelect T="long?" @bind-Value="_inscan.ShipmentModeId" Label="Inco Terms" 
+                <MudSelect T="long?" Value="_inscan.ShipmentModeId" Label="Inco Terms" 
                            Variant="Variant.Outlined" Margin="Margin.Dense" AnchorOrigin="Origin.BottomCenter" Clearable="true"
-                           Disabled="@(_inscan.MovementTypeId == MovementType.Domestic)">
+                           Disabled="@(_inscan.MovementTypeId == MovementType.Domestic)"
+                           ValueChanged="@OnShipmentModeChanged">
                     @foreach (var mode in _shipmentModes)
                     {
                         <MudSelectItem T="long?" Value="@mode.Id">@mode.Name</MudSelectItem>
@@ -300,20 +304,24 @@
 
         <MudGrid Spacing="2">
             <MudItem xs="4" md="1">
-                <MudNumericField @bind-Value="_inscan.Length" Label="L (cm)" 
-                                 Variant="Variant.Outlined" Margin="Margin.Dense" Format="N1" />
+                <MudNumericField T="decimal?" Value="_inscan.Length" Label="L (cm)" 
+                                 Variant="Variant.Outlined" Margin="Margin.Dense" Format="N1"
+                                 ValueChanged="@OnLengthChanged" />
             </MudItem>
             <MudItem xs="4" md="1">
-                <MudNumericField @bind-Value="_inscan.Width" Label="W (cm)" 
-                                 Variant="Variant.Outlined" Margin="Margin.Dense" Format="N1" />
+                <MudNumericField T="decimal?" Value="_inscan.Width" Label="W (cm)" 
+                                 Variant="Variant.Outlined" Margin="Margin.Dense" Format="N1"
+                                 ValueChanged="@OnWidthChanged" />
             </MudItem>
             <MudItem xs="4" md="1">
-                <MudNumericField @bind-Value="_inscan.Height" Label="H (cm)" 
-                                 Variant="Variant.Outlined" Margin="Margin.Dense" Format="N1" />
+                <MudNumericField T="decimal?" Value="_inscan.Height" Label="H (cm)" 
+                                 Variant="Variant.Outlined" Margin="Margin.Dense" Format="N1"
+                                 ValueChanged="@OnHeightChanged" />
             </MudItem>
             <MudItem xs="6" md="1">
-                <MudNumericField @bind-Value="_inscan.Weight" Label="Actual Wt" 
-                                 Variant="Variant.Outlined" Margin="Margin.Dense" Format="N2" />
+                <MudNumericField T="decimal?" Value="_inscan.Weight" Label="Actual Wt" 
+                                 Variant="Variant.Outlined" Margin="Margin.Dense" Format="N2"
+                                 ValueChanged="@OnWeightChanged" />
             </MudItem>
             <MudItem xs="6" md="2">
                 <MudNumericField Value="@VolumetricWeight" Label="Vol. Weight" 
@@ -772,7 +780,7 @@
         }
     }
     
-    private void OnCustomerChanged()
+    private async Task OnCustomerChanged()
     {
         // Auto-populate shipper details when customer is selected for Account payment
         if (_inscan.PaymentModeId == PaymentMode.Account && _inscan.CustomerId.HasValue)
@@ -784,6 +792,7 @@
         {
             _copyCustomerToShipper = false;
         }
+        await CalculateFreightCharges();
     }
     
     private void OnCODAmountChanged()
@@ -1048,7 +1057,7 @@
         StateHasChanged();
     }
     
-    private void OnConsigneeCityChanged(City? city)
+    private async Task OnConsigneeCityChanged(City? city)
     {
         _selectedConsigneeCity = city;
         if (city != null)
@@ -1066,6 +1075,7 @@
             _inscan.ConsigneeCountry = "";
         }
         CalculateMovementType();
+        await CalculateFreightCharges();
         StateHasChanged();
     }
     
@@ -1116,6 +1126,82 @@
         if (!string.IsNullOrWhiteSpace(_inscan.ConsigneeCity))
         {
             _selectedConsigneeCity = _cities.FirstOrDefault(c => c.Name.Equals(_inscan.ConsigneeCity, StringComparison.OrdinalIgnoreCase));
+        }
+    }
+
+    private async Task OnServiceTypeChanged(int? value)
+    {
+        _inscan.ProductTypeId = value;
+        await CalculateFreightCharges();
+    }
+
+    private async Task OnShipmentModeChanged(long? value)
+    {
+        _inscan.ShipmentModeId = value;
+        await CalculateFreightCharges();
+    }
+
+    private async Task OnWeightChanged(decimal? value)
+    {
+        _inscan.Weight = value;
+        await CalculateFreightCharges();
+    }
+
+    private async Task OnLengthChanged(decimal? value)
+    {
+        _inscan.Length = value;
+        await CalculateFreightCharges();
+    }
+
+    private async Task OnWidthChanged(decimal? value)
+    {
+        _inscan.Width = value;
+        await CalculateFreightCharges();
+    }
+
+    private async Task OnHeightChanged(decimal? value)
+    {
+        _inscan.Height = value;
+        await CalculateFreightCharges();
+    }
+
+    private async Task CalculateFreightCharges()
+    {
+        if (_inscan.CustomerId == null || (_inscan.Weight ?? 0) <= 0 || _selectedConsigneeCity == null)
+            return;
+
+        try
+        {
+            var request = new RatingRequest
+            {
+                CustomerId = _inscan.CustomerId,
+                MovementType = _inscan.MovementTypeId,
+                PaymentMode = _inscan.PaymentModeId,
+                ServiceTypeId = _inscan.ProductTypeId.HasValue ? (long)_inscan.ProductTypeId.Value : null,
+                ShipmentModeId = _inscan.ShipmentModeId,
+                OriginCountryId = _selectedConsignorCity?.CountryId,
+                OriginCityId = _selectedConsignorCity?.Id,
+                DestinationCountryId = _selectedConsigneeCity?.CountryId,
+                DestinationCityId = _selectedConsigneeCity?.Id,
+                ActualWeight = _inscan.Weight ?? 0,
+                Length = _inscan.Length ?? 0,
+                Width = _inscan.Width ?? 0,
+                Height = _inscan.Height ?? 0,
+                Pieces = _inscan.Pieces ?? 1
+            };
+
+            var result = await RatingEngineService.CalculateRate(request);
+            
+            if (result.Success)
+            {
+                _inscan.CourierCharge = result.TotalCharge;
+                _inscan.TaxPercent = result.TaxPercent;
+                StateHasChanged();
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error calculating freight charges: {ex.Message}");
         }
     }
     
