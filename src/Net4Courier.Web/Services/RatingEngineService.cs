@@ -40,7 +40,7 @@ public class RatingEngineService
                 Formula = rateCardSource
             });
 
-            var (zone, zonePath) = await ResolveZoneWithTrace(rateCard.Id, request.DestinationCountryId, request.DestinationCityId);
+            var (zone, zonePath) = await ResolveZoneWithTrace(rateCard.Id, request.DestinationCountryId, request.DestinationCityId, request.ServiceTypeId, request.ShipmentModeId);
             if (zone == null)
             {
                 result.ErrorMessage = "No zone found for destination";
@@ -211,7 +211,7 @@ public class RatingEngineService
         return (fallbackCard, fallbackCard != null ? "Fallback: Most Recent Active Rate Card" : "No matching rate card found");
     }
 
-    private async Task<(RateCardZone? zone, string resolutionPath)> ResolveZoneWithTrace(long rateCardId, long? countryId, long? cityId)
+    private async Task<(RateCardZone? zone, string resolutionPath)> ResolveZoneWithTrace(long rateCardId, long? countryId, long? cityId, long? serviceTypeId = null, long? shipmentModeId = null)
     {
         var zones = await _dbContext.RateCardZones
             .Include(z => z.ZoneMatrix)
@@ -221,6 +221,29 @@ public class RatingEngineService
             .ToListAsync();
 
         if (!zones.Any()) return (null, "No zones configured for rate card");
+
+        // Filter by ServiceType and ShipmentMode if specified in request
+        var filteredZones = zones.Where(z =>
+            (z.ServiceTypeId == null || z.ServiceTypeId == serviceTypeId) &&
+            (z.ShipmentModeId == null || z.ShipmentModeId == shipmentModeId)).ToList();
+
+        // If no match with filters, try zones with no filters (null ServiceType/ShipmentMode)
+        if (!filteredZones.Any())
+        {
+            filteredZones = zones.Where(z => z.ServiceTypeId == null && z.ShipmentModeId == null).ToList();
+        }
+
+        // Prefer exact matches over null matches (more specific rates first)
+        var exactMatchZones = filteredZones.Where(z =>
+            (serviceTypeId.HasValue && z.ServiceTypeId == serviceTypeId) ||
+            (shipmentModeId.HasValue && z.ShipmentModeId == shipmentModeId)).ToList();
+        
+        if (exactMatchZones.Any())
+        {
+            filteredZones = exactMatchZones;
+        }
+
+        zones = filteredZones.Any() ? filteredZones : zones;
 
         if (cityId.HasValue)
         {
