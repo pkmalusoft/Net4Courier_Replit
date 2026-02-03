@@ -438,12 +438,22 @@ app.MapGet("/api/report/invoice/{id:long}", async (long id, ApplicationDbContext
     byte[]? logoData = null;
     if (!string.IsNullOrEmpty(company?.Logo))
     {
+        Console.WriteLine($"[Invoice PDF] Fetching logo from: {company.Logo}");
         try
         {
             using var httpClient = httpClientFactory.CreateClient();
+            httpClient.Timeout = TimeSpan.FromSeconds(10);
             logoData = await httpClient.GetByteArrayAsync(company.Logo);
+            Console.WriteLine($"[Invoice PDF] Logo fetched successfully, size: {logoData?.Length ?? 0} bytes");
         }
-        catch { }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[Invoice PDF] Failed to fetch logo: {ex.Message}");
+        }
+    }
+    else
+    {
+        Console.WriteLine($"[Invoice PDF] No logo URL found for company");
     }
     
     Net4Courier.Operations.Entities.InscanMaster? shipment = null;
