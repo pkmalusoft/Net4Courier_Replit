@@ -77,23 +77,27 @@ public class RatingEngineService
             result.SlabCharge = slabCharge;
             result.AppliedRules = rules;
 
-            result.FormulaTrace.Add(new FormulaTraceStep
-            {
-                Order = stepOrder++,
-                Category = "Base Charge",
-                Description = $"Base Weight: {zone.BaseWeight:N3}kg @ {zone.BaseRate:N2}",
-                Formula = $"Base Rate = {zone.BaseRate:N2}",
-                Value = baseCharge
-            });
-
-            if (slabCharge > 0)
+            if (baseCharge > 0)
             {
                 result.FormulaTrace.Add(new FormulaTraceStep
                 {
                     Order = stepOrder++,
-                    Category = "Slab Charges",
-                    Description = string.Join("; ", rules.Skip(1)),
-                    Formula = $"Total Slab = {slabCharge:N2}",
+                    Category = "Base Charge",
+                    Description = $"Base Weight: {zone.BaseWeight:N3}kg @ {zone.BaseRate:N2}",
+                    Formula = $"Base Rate = {zone.BaseRate:N2}",
+                    Value = baseCharge
+                });
+            }
+
+            if (slabCharge > 0)
+            {
+                var traceDescription = rules.Count > 1 ? string.Join("; ", rules.Skip(1)) : rules.FirstOrDefault() ?? "";
+                result.FormulaTrace.Add(new FormulaTraceStep
+                {
+                    Order = stepOrder++,
+                    Category = baseCharge > 0 ? "Slab Charges" : "Rate Calculation",
+                    Description = traceDescription,
+                    Formula = $"Charge = {slabCharge:N2}",
                     Value = slabCharge
                 });
             }
