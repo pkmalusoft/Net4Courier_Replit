@@ -222,28 +222,59 @@ public class RatingEngineService
 
         if (!zones.Any()) return (null, "No zones configured for rate card");
 
-        // Filter by ServiceType and ShipmentMode if specified in request
-        var filteredZones = zones.Where(z =>
-            (z.ServiceTypeId == null || z.ServiceTypeId == serviceTypeId) &&
-            (z.ShipmentModeId == null || z.ShipmentModeId == shipmentModeId)).ToList();
-
-        // If no match with filters, try zones with no filters (null ServiceType/ShipmentMode)
-        if (!filteredZones.Any())
-        {
-            filteredZones = zones.Where(z => z.ServiceTypeId == null && z.ShipmentModeId == null).ToList();
-        }
-
-        // Prefer exact matches over null matches (more specific rates first)
-        var exactMatchZones = filteredZones.Where(z =>
-            (serviceTypeId.HasValue && z.ServiceTypeId == serviceTypeId) ||
-            (shipmentModeId.HasValue && z.ShipmentModeId == shipmentModeId)).ToList();
+        // Priority-based matching for ServiceType and ShipmentMode
+        // 1. Exact match on both (if both request params provided)
+        // 2. Exact match on ServiceType + null ShipmentMode (if service provided)
+        // 3. Exact match on ShipmentMode + null ServiceType (if mode provided)
+        // 4. Both null (generic zone)
         
-        if (exactMatchZones.Any())
+        IEnumerable<RateCardZone> filteredZones;
+
+        if (serviceTypeId.HasValue && shipmentModeId.HasValue)
         {
-            filteredZones = exactMatchZones;
+            // Try exact match on both
+            filteredZones = zones.Where(z => z.ServiceTypeId == serviceTypeId && z.ShipmentModeId == shipmentModeId);
+            if (!filteredZones.Any())
+            {
+                // Try exact ServiceType + generic ShipmentMode
+                filteredZones = zones.Where(z => z.ServiceTypeId == serviceTypeId && z.ShipmentModeId == null);
+            }
+            if (!filteredZones.Any())
+            {
+                // Try generic ServiceType + exact ShipmentMode
+                filteredZones = zones.Where(z => z.ServiceTypeId == null && z.ShipmentModeId == shipmentModeId);
+            }
+            if (!filteredZones.Any())
+            {
+                // Fall back to fully generic
+                filteredZones = zones.Where(z => z.ServiceTypeId == null && z.ShipmentModeId == null);
+            }
+        }
+        else if (serviceTypeId.HasValue)
+        {
+            // Match by ServiceType only
+            filteredZones = zones.Where(z => z.ServiceTypeId == serviceTypeId && z.ShipmentModeId == null);
+            if (!filteredZones.Any())
+            {
+                filteredZones = zones.Where(z => z.ServiceTypeId == null && z.ShipmentModeId == null);
+            }
+        }
+        else if (shipmentModeId.HasValue)
+        {
+            // Match by ShipmentMode only
+            filteredZones = zones.Where(z => z.ShipmentModeId == shipmentModeId && z.ServiceTypeId == null);
+            if (!filteredZones.Any())
+            {
+                filteredZones = zones.Where(z => z.ServiceTypeId == null && z.ShipmentModeId == null);
+            }
+        }
+        else
+        {
+            // No filters - use only generic zones
+            filteredZones = zones.Where(z => z.ServiceTypeId == null && z.ShipmentModeId == null);
         }
 
-        zones = filteredZones.Any() ? filteredZones : zones;
+        zones = filteredZones.Any() ? filteredZones.ToList() : zones;
 
         if (cityId.HasValue)
         {
