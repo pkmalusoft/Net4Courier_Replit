@@ -19,6 +19,16 @@ public class RateCardZone : AuditableEntity
     public TaxMode TaxMode { get; set; } = TaxMode.Exclusive;
     public long? ForwardingAgentId { get; set; }
     
+    /// <summary>
+    /// Optional: Filter rate by service type (e.g., Standard, Express)
+    /// </summary>
+    public long? ServiceTypeId { get; set; }
+    
+    /// <summary>
+    /// Optional: Filter rate by shipment mode (e.g., Document, Parcel)
+    /// </summary>
+    public long? ShipmentModeId { get; set; }
+    
     [System.Obsolete("Use TaxPercent instead")]
     public decimal? MarginPercentage { get; set; }
     [System.Obsolete("Currency is now inherited from Branch")]
