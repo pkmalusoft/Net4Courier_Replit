@@ -12,7 +12,24 @@
 <PageTitle>My Dashboard - Net4Courier</PageTitle>
 
 <MudContainer MaxWidth="MaxWidth.Large" Class="py-4">
-    <MudText Typo="Typo.h5" GutterBottom="true">Welcome, @_customerName</MudText>
+    <MudStack Row="true" AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween" Class="mb-4">
+        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="3">
+            @if (!string.IsNullOrEmpty(_company?.Logo))
+            {
+                <MudImage Src="@GetLogoDataUrl()" 
+                          Alt="@(_company.Name ?? "Company Logo")" 
+                          Height="60" 
+                          ObjectFit="ObjectFit.Contain" />
+            }
+            <MudStack Spacing="0">
+                <MudText Typo="Typo.h5">Welcome, @_customerName</MudText>
+                @if (!string.IsNullOrEmpty(_company?.Name))
+                {
+                    <MudText Typo="Typo.body2" Color="Color.Secondary">@_company.Name</MudText>
+                }
+            </MudStack>
+        </MudStack>
+    </MudStack>
     
     <MudGrid>
         <MudItem xs="12" sm="6" md="3">
@@ -219,12 +236,20 @@
     private DashboardStats _stats = new();
     private List<PickupRequest> _recentPickups = new();
     private List<InscanMaster> _recentShipments = new();
+    private Company? _company;
 
     protected override async Task OnInitializedAsync()
     {
+        await LoadCompanyInfo();
         await LoadCustomerInfo();
         await LoadStats();
         await LoadRecentData();
+    }
+
+    private async Task LoadCompanyInfo()
+    {
+        _company = await DbContext.Companies
+            .FirstOrDefaultAsync(c => c.IsActive && !c.IsDeleted);
     }
 
     private async Task LoadCustomerInfo()
@@ -328,6 +353,19 @@
         CourierStatus.Returned => Color.Error,
         _ => Color.Default
     };
+
+    private string GetLogoDataUrl()
+    {
+        if (string.IsNullOrEmpty(_company?.Logo))
+            return string.Empty;
+        if (_company.Logo.StartsWith("data:"))
+            return _company.Logo;
+        if (_company.Logo.StartsWith("http://") || _company.Logo.StartsWith("https://") || _company.Logo.StartsWith("/"))
+            return _company.Logo;
+        if (_company.Logo.Contains(".") && !_company.Logo.Contains("/"))
+            return $"/uploads/logos/{_company.Logo}";
+        return $"data:image/png;base64,{_company.Logo}";
+    }
 
     private class DashboardStats
     {
