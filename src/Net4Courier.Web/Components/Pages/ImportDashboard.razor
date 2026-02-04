@@ -8,6 +8,7 @@
 @inject NavigationManager Navigation
 @inject IDialogService DialogService
 @inject IJSRuntime JSRuntime
+@inject ISnackbar Snackbar
 
 <PageTitle>Manifest Dashboard - Net4Courier</PageTitle>
 
@@ -152,6 +153,11 @@ else
                                    Href="@($"/import-bags/{context.Id}")" Title="Manage Bags" />
                     <MudIconButton Icon="@Icons.Material.Filled.QrCodeScanner" Size="Size.Small" Color="Color.Success" 
                                    Href="@($"/import-inscan/{context.Id}")" Title="Inscan Shipments" />
+                    @if (context.Status == ImportMasterStatus.Draft)
+                    {
+                        <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" Color="Color.Error" 
+                                       OnClick="@(() => ConfirmDeleteImportMaster(context))" Title="Delete Draft" />
+                    }
                 </MudTd>
                 <MudTd DataLabel="Import Ref">@context.ImportRefNo</MudTd>
                 <MudTd DataLabel="Mode">
@@ -329,6 +335,80 @@ else
         else
         {
             await LoadDashboardData();
+        }
+    }
+
+    private async Task ConfirmDeleteImportMaster(ImportMaster import)
+    {
+        var parameters = new DialogParameters<ConfirmDialog>
+        {
+            { x => x.ContentText, $"Are you sure you want to delete Import Master '{import.ImportRefNo}' and all its shipments? This action cannot be undone." },
+            { x => x.ButtonText, "Delete" },
+            { x => x.Color, Color.Error }
+        };
+        var options = new DialogOptions { CloseButton = true, MaxWidth = MaxWidth.Small };
+        var dialog = await DialogService.ShowAsync<ConfirmDialog>("Confirm Delete", parameters, options);
+        var result = await dialog.Result;
+
+        if (result != null && !result.Canceled)
+        {
+            await DeleteImportMaster(import.Id);
+        }
+    }
+
+    private async Task DeleteImportMaster(long importMasterId)
+    {
+        try
+        {
+            await using var dbContext = await DbFactory.CreateDbContextAsync();
+            
+            var importMaster = await dbContext.ImportMasters
+                .FirstOrDefaultAsync(m => m.Id == importMasterId && !m.IsDeleted);
+            
+            if (importMaster == null)
+            {
+                Snackbar.Add("Import Master not found", Severity.Warning);
+                return;
+            }
+            
+            if (importMaster.Status != ImportMasterStatus.Draft)
+            {
+                Snackbar.Add("Only Draft Import Masters can be deleted", Severity.Warning);
+                return;
+            }
+            
+            var bagIds = await dbContext.ImportBags
+                .Where(b => b.ImportMasterId == importMasterId && !b.IsDeleted)
+                .Select(b => b.Id)
+                .ToListAsync();
+
+            if (bagIds.Any())
+            {
+                await dbContext.ImportShipments
+                    .Where(s => s.ImportBagId != null && bagIds.Contains(s.ImportBagId.Value))
+                    .ExecuteUpdateAsync(s => s
+                        .SetProperty(x => x.IsDeleted, true)
+                        .SetProperty(x => x.ModifiedAt, DateTime.UtcNow));
+
+                await dbContext.ImportBags
+                    .Where(b => bagIds.Contains(b.Id))
+                    .ExecuteUpdateAsync(b => b
+                        .SetProperty(x => x.IsDeleted, true)
+                        .SetProperty(x => x.ModifiedAt, DateTime.UtcNow));
+            }
+
+            await dbContext.ImportMasters
+                .Where(m => m.Id == importMasterId)
+                .ExecuteUpdateAsync(m => m
+                    .SetProperty(x => x.IsDeleted, true)
+                    .SetProperty(x => x.ModifiedAt, DateTime.UtcNow));
+
+            Snackbar.Add("Import Master and related records deleted successfully", Severity.Success);
+            await LoadDashboardData();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error deleting import master: {ex.Message}", Severity.Error);
         }
     }
 
