@@ -52,6 +52,7 @@ The application is built on .NET 8 Blazor Server, adopting a modular architectur
 - **Invoice PDF Improvements**: Dynamic company logo loading, redesigned commercial/customs format, and in-window preview functionality.
 - **Journal Entries on Invoices**: Automatic GL journal entry creation upon invoice posting for proper accounting.
 - **Status Management Redesign**: Consolidated 9 status groups into 7 workflow-oriented groups (PRE-SHIPMENT, ORIGIN, TRANSIT, DESTINATION, DELIVERY, EXCEPTIONS, FINANCIAL). Added new statuses: Shipment Created, Weight Verified. Renamed statuses for clarity (Sorted, POD Completed, COD Collected, RTO In Progress). Merged COLLECTION + ORIGIN_WH into ORIGIN, CLOSED into FINANCIAL.
+- **Status Event Mapping System**: Configurable mapping between operation events (AWB_ENTRY, PICKUP_CONFIRMATION, ORIGIN_INSCAN, MANIFEST_CREATE, OUTSCAN_DRS, POD_ENTRY, RTS_INITIATE, INVOICE_POST, COD_REMITTANCE, DELIVERY_ATTEMPT) and status codes. Uses StatusEventMappingService.ApplyEventStatus() to automatically apply statuses when operations are processed. Managed via Masters > Operations > Status Event Mappings page.
 
 ## External Dependencies
 - **Database**: PostgreSQL
