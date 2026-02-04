@@ -50,6 +50,7 @@ The application is built on .NET 8 Blazor Server, adopting a modular architectur
 - **Financial Reporting**: Day Book Register with detailed filtering and Excel export. Customer Statement and Customer Ledger reports querying source tables for accuracy.
 - **Invoice PDF Improvements**: Dynamic company logo loading, redesigned commercial/customs format, and in-window preview functionality.
 - **Journal Entries on Invoices**: Automatic GL journal entry creation upon invoice posting for proper accounting.
+- **Status Management Redesign**: Consolidated 9 status groups into 7 workflow-oriented groups (PRE-SHIPMENT, ORIGIN, TRANSIT, DESTINATION, DELIVERY, EXCEPTIONS, FINANCIAL). Added new statuses: Shipment Created, Weight Verified. Renamed statuses for clarity (Sorted, POD Completed, COD Collected, RTO In Progress). Merged COLLECTION + ORIGIN_WH into ORIGIN, CLOSED into FINANCIAL.
 
 ## External Dependencies
 - **Database**: PostgreSQL
