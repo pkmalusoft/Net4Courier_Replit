@@ -60,3 +60,31 @@ The application is built on .NET 8 Blazor Server, adopting a modular architectur
 - **Reporting**: QuestPDF
 - **Excel Handling**: ClosedXML
 - **Email**: Google Gmail API via Replit connector
+
+## Roadmap / Future Enhancements
+
+### Onboarding System
+**Current Status**: Planned
+
+**Phase 1 - Core Guides (Next)**:
+- Setup Guide page (`/setup-guide`) - Interactive wizard with progress tracking for first-time setup (8 sections: Company & Location, Operations Masters, Pricing, Customers, Finance, Users, System Check, Go-Live)
+- Operations Workflow page (`/operations-workflow`) - Daily operations guide covering AWB Entry, Pickup, Inscan, Manifest, DRS, POD, RTS, Invoicing, COD Remittance
+- Knowledge Base articles for reference documentation
+
+**Phase 2 - Enhanced Experience**:
+- In-app onboarding checklist with persistent progress tracking
+- Screenshots per step for visual guidance
+- Role-specific mini guides:
+  - Courier Guide (Delivery, POD, COD)
+  - Operations Guide (AWB, Pickup, Manifest, Tracking)
+  - Finance Guide (Invoicing, Payments, Reports)
+  - Admin Guide (Masters, Settings, User Management)
+- Common Mistakes section with troubleshooting tips
+
+### Menu Toggle Feature
+**Status**: Requested
+- Toggle between reorganized 12-section menu and legacy layout
+- User preference persistence
+
+### Other Planned Features
+- (Add future feature requests here)
