@@ -148,6 +148,7 @@ builder.Services.AddScoped<RatingEngineService>();
 builder.Services.AddScoped<DRSReconciliationService>();
 builder.Services.AddScoped<InvoicingService>();
 builder.Services.AddScoped<ShipmentStatusService>();
+builder.Services.AddScoped<StatusEventMappingService>();
 builder.Services.AddScoped<MAWBService>();
 builder.Services.AddScoped<AWBNumberService>();
 builder.Services.AddScoped<IPermissionService, PermissionService>();
