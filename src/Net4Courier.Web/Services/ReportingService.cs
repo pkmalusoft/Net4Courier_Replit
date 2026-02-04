@@ -1570,4 +1570,253 @@ public class ReportingService
 
         return document.GeneratePdf();
     }
+
+    public byte[] GenerateDutyReceiptPdf(InscanMaster shipment, string currency = "AED", byte[]? logoData = null, string? companyName = null, string? companyAddress = null, string? companyPhone = null, string? companyEmail = null, string? companyVat = null, string? customerAccount = null)
+    {
+        var invoiceNo = $"D{shipment.Id:D8}";
+        var hwbNo = shipment.AWBNo ?? "";
+        var invoiceDate = shipment.TransactionDate;
+        
+        var document = Document.Create(container =>
+        {
+            container.Page(page =>
+            {
+                page.Size(PageSizes.A4);
+                page.Margin(0.75f, Unit.Centimetre);
+                page.DefaultTextStyle(x => x.FontSize(9));
+
+                page.Content().Column(col =>
+                {
+                    col.Item().Row(row =>
+                    {
+                        row.RelativeItem(2).Column(c =>
+                        {
+                            c.Item().Text(companyName ?? "Net4Courier").Bold().FontSize(12);
+                            if (!string.IsNullOrEmpty(companyAddress))
+                                c.Item().Text(companyAddress).FontSize(8);
+                            if (!string.IsNullOrEmpty(companyPhone))
+                                c.Item().Text($"Phone No.: {companyPhone}").FontSize(8);
+                            if (!string.IsNullOrEmpty(companyEmail))
+                                c.Item().Text($"Email: {companyEmail}").FontSize(8);
+                            if (!string.IsNullOrEmpty(companyVat))
+                                c.Item().Text($"VAT Registration No: {companyVat}").FontSize(8);
+                        });
+                        
+                        row.RelativeItem(2).AlignCenter().Column(c =>
+                        {
+                            if (shipment.BarcodeImage != null)
+                            {
+                                c.Item().Height(30).Image(shipment.BarcodeImage);
+                            }
+                            c.Item().AlignCenter().Text($"*{hwbNo}*").FontSize(10);
+                        });
+                        
+                        row.RelativeItem(1).AlignRight().Column(c =>
+                        {
+                            if (logoData != null && logoData.Length > 0)
+                            {
+                                c.Item().Width(100).Height(50).Image(logoData).FitHeight();
+                            }
+                        });
+                    });
+
+                    col.Item().PaddingVertical(10).AlignCenter().Text("DUTY & TAX INVOICE").Bold().FontSize(14);
+
+                    col.Item().Border(1).Padding(8).Row(row =>
+                    {
+                        row.RelativeItem(2).Column(c =>
+                        {
+                            c.Item().Text(shipment.Consignee ?? "").Bold().FontSize(10);
+                            c.Item().Text(shipment.ConsigneeAddress1 ?? "").FontSize(9);
+                            if (!string.IsNullOrEmpty(shipment.ConsigneeCity))
+                                c.Item().Text(shipment.ConsigneeCity).FontSize(9);
+                            c.Item().Height(5);
+                            c.Item().Text(shipment.ConsigneeMobile ?? shipment.ConsigneePhone ?? "").FontSize(9);
+                        });
+                        
+                        row.RelativeItem(1).AlignRight().Column(c =>
+                        {
+                            c.Item().Text(text => { text.Span("Account Number").FontSize(8); text.Span($" : {customerAccount ?? "DUTY" + (shipment.CustomerId?.ToString() ?? "")}").FontSize(9); });
+                            c.Item().Text(text => { text.Span("Invoice Number").FontSize(8); text.Span($" : {invoiceNo}").FontSize(9); });
+                            c.Item().Text(text => { text.Span("HWB Number").FontSize(8); text.Span($" : {hwbNo}").FontSize(9); });
+                            c.Item().Text(text => { text.Span("Date").FontSize(8); text.Span($" : {invoiceDate:dd/MM/yyyy}").FontSize(9); });
+                            c.Item().Text(text => { text.Span("Payment Due Date").FontSize(8); text.Span($" : {invoiceDate:dd/MM/yyyy}").FontSize(9); });
+                        });
+                    });
+
+                    col.Item().PaddingVertical(8).AlignCenter().Text($"Please Reimburse the Total Charges Shown Below To: {companyName ?? "Net4Courier"}").FontSize(9);
+
+                    col.Item().Border(1).Column(shipmentSection =>
+                    {
+                        shipmentSection.Item().Background("#EEEEEE").Padding(4).AlignCenter().Text("Shipment Details").Bold().FontSize(10);
+                        
+                        shipmentSection.Item().Padding(6).Row(row =>
+                        {
+                            row.RelativeItem().Column(c =>
+                            {
+                                c.Item().Text(text => { text.Span("Origin: ").FontSize(8); text.Span(shipment.ConsignorCity ?? "").Bold().FontSize(9); });
+                                c.Item().Text(text => { text.Span("Destination: ").FontSize(8); text.Span(shipment.ConsigneeCity ?? "").Bold().FontSize(9); });
+                            });
+                            row.RelativeItem().Column(c =>
+                            {
+                                c.Item().Text(text => { text.Span("Pieces: ").FontSize(8); text.Span((shipment.Pieces ?? 1).ToString()).Bold().FontSize(9); });
+                                c.Item().Text(text => { text.Span("Weight: ").FontSize(8); text.Span($"{shipment.Weight:N2}").Bold().FontSize(9); });
+                            });
+                            row.RelativeItem().Column(c =>
+                            {
+                                c.Item().Text(text => { text.Span("Contents: ").FontSize(8); text.Span(shipment.CargoDescription ?? "").Bold().FontSize(9); });
+                                c.Item().Text(text => { text.Span("Assessed Value: ").FontSize(8); text.Span($"{shipment.CustomsValue:N2}").Bold().FontSize(9); });
+                            });
+                            row.RelativeItem().AlignRight().Column(c =>
+                            {
+                                c.Item().Text(text => { text.Span("Arrival Date: ").FontSize(8); text.Span(shipment.TransactionDate.ToString("dd/MM/yyyy")).Bold().FontSize(9); });
+                            });
+                        });
+                    });
+
+                    col.Item().PaddingTop(10).Border(1).Column(billingSection =>
+                    {
+                        billingSection.Item().Background("#EEEEEE").Padding(4).AlignCenter().Text("Billing Details").Bold().FontSize(10);
+                        
+                        billingSection.Item().Table(table =>
+                        {
+                            table.ColumnsDefinition(columns =>
+                            {
+                                columns.RelativeColumn(4);
+                                columns.RelativeColumn(1);
+                                columns.RelativeColumn(1);
+                                columns.RelativeColumn(1);
+                            });
+
+                            table.Header(header =>
+                            {
+                                header.Cell().BorderBottom(1).Padding(4).Text("").FontSize(9);
+                                header.Cell().BorderBottom(1).BorderLeft(1).Padding(4).AlignCenter().Text("NET").Bold().FontSize(9);
+                                header.Cell().BorderBottom(1).BorderLeft(1).Padding(4).AlignCenter().Text("VAT").Bold().FontSize(9);
+                                header.Cell().BorderBottom(1).BorderLeft(1).Padding(4).AlignCenter().Text("GROSS").Bold().FontSize(9);
+                            });
+
+                            var dutyAmount = shipment.DutyVatAmount ?? 0;
+                            var vatOnDuty = 0m;
+                            
+                            if (dutyAmount > 0)
+                            {
+                                table.Cell().Padding(4).Text("CUSTOM DUTY-PT").FontSize(9);
+                                table.Cell().BorderLeft(1).Padding(4).AlignRight().Text($"{dutyAmount:N2}").FontSize(9);
+                                table.Cell().BorderLeft(1).Padding(4).AlignRight().Text($"{vatOnDuty:N2}").FontSize(9);
+                                table.Cell().BorderLeft(1).Padding(4).AlignRight().Text($"{dutyAmount:N2}").FontSize(9);
+                            }
+
+                            var adminFee = shipment.OtherCharge ?? 0;
+                            if (adminFee > 0)
+                            {
+                                table.Cell().Padding(4).Text("DHL ADMIN FEE-CUSTOMS DUTY-OS").FontSize(9);
+                                table.Cell().BorderLeft(1).Padding(4).AlignRight().Text($"{adminFee:N2}").FontSize(9);
+                                table.Cell().BorderLeft(1).Padding(4).AlignRight().Text("0.00").FontSize(9);
+                                table.Cell().BorderLeft(1).Padding(4).AlignRight().Text($"{adminFee:N2}").FontSize(9);
+                            }
+                        });
+                    });
+
+                    var subtotal = (shipment.DutyVatAmount ?? 0) + (shipment.OtherCharge ?? 0);
+                    var totalVat = 0m;
+                    var totalPayable = subtotal + totalVat;
+
+                    col.Item().PaddingTop(10).Row(row =>
+                    {
+                        row.RelativeItem().Border(1).Padding(6).Column(c =>
+                        {
+                            c.Item().Text("Payment Terms").Bold().FontSize(9).FontColor(Colors.Red.Medium);
+                            c.Item().Text("Cash on delivery unless").FontSize(8).FontColor(Colors.Red.Medium);
+                            c.Item().Text("stated otherwise on the Invoice").FontSize(8).FontColor(Colors.Red.Medium);
+                        });
+                        
+                        row.ConstantItem(20);
+                        
+                        row.RelativeItem(2).Column(c =>
+                        {
+                            c.Item().Row(r =>
+                            {
+                                r.RelativeItem().AlignRight().Text("Sub-Total").FontSize(9);
+                                r.ConstantItem(80).AlignRight().Text($"{subtotal:N2}").FontSize(9);
+                                r.ConstantItem(80).AlignRight().Text($"{totalVat:N2}").FontSize(9);
+                            });
+                            c.Item().PaddingTop(5).Row(r =>
+                            {
+                                r.RelativeItem().AlignRight().Text($"Total Payable: {currency}").Bold().FontSize(10);
+                                r.ConstantItem(80);
+                                r.ConstantItem(80).AlignRight().Text($"{totalPayable:N2}").Bold().FontSize(10);
+                            });
+                        });
+                    });
+
+                    col.Item().PaddingTop(10).Border(1).Padding(6).Column(c =>
+                    {
+                        c.Item().Text("Foot Notes:").Bold().FontSize(9).FontColor(Colors.Red.Medium);
+                        c.Item().Text("ZR - Zero Rated").FontSize(8).FontColor(Colors.Red.Medium);
+                        c.Item().Text("OS - Out of Scope").FontSize(8).FontColor(Colors.Red.Medium);
+                        c.Item().Text("PT - Pass Through").FontSize(8).FontColor(Colors.Red.Medium);
+                    });
+
+                    col.Item().PaddingTop(5).Text("THIS IS A COMPUTER GENERATED INVOICE. NO SIGNATURE IS REQUIRED.").FontSize(8);
+
+                    col.Item().PaddingTop(20).LineHorizontal(1).LineColor(Colors.Grey.Medium);
+
+                    col.Item().PaddingTop(5).Text("Not all payment options are available to all countries").FontSize(7);
+
+                    col.Item().PaddingTop(10).Row(row =>
+                    {
+                        row.RelativeItem().Column(c =>
+                        {
+                            if (shipment.BarcodeImage != null)
+                            {
+                                c.Item().Height(25).Image(shipment.BarcodeImage);
+                            }
+                            c.Item().AlignCenter().Text($"*{hwbNo}*").FontSize(8);
+                        });
+                        row.RelativeItem(2).AlignCenter().Column(c =>
+                        {
+                            c.Item().Text("*DUTYAEDTU*").FontSize(10);
+                        });
+                        row.RelativeItem().Column(c =>
+                        {
+                            if (shipment.BarcodeImage != null)
+                            {
+                                c.Item().Height(25).Image(shipment.BarcodeImage);
+                            }
+                            c.Item().AlignCenter().Text($"*{invoiceNo}*").FontSize(8);
+                        });
+                    });
+
+                    col.Item().PaddingTop(5).Column(c =>
+                    {
+                        c.Item().Text("1. Detach this payment advice and return it together with your payment").FontSize(7);
+                        c.Item().Text($"2. Cheque should be crossed and made payable to {companyName ?? "Net4Courier"}").FontSize(7);
+                    });
+
+                    col.Item().PaddingTop(10).AlignCenter().Text("Customer Endorsement").Bold().FontSize(12).FontColor(Colors.Red.Darken2);
+
+                    col.Item().PaddingTop(5).Border(1).Padding(8).Column(c =>
+                    {
+                        c.Item().Row(r =>
+                        {
+                            r.RelativeItem().Text("We acknowledge receipt of the above documentation.").FontSize(9);
+                            r.RelativeItem().AlignRight().Column(rc =>
+                            {
+                                rc.Item().Text(text => { text.Span("Account Number").FontSize(8); text.Span($" : DUTYAEDTU").FontSize(9); });
+                                rc.Item().Text(text => { text.Span("Invoice Number").FontSize(8); text.Span($" : {invoiceNo}").FontSize(9); });
+                                rc.Item().Text(text => { text.Span("HWB Number").FontSize(8); text.Span($" : {hwbNo}").FontSize(9); });
+                            });
+                        });
+                        c.Item().Height(5);
+                        c.Item().Text(shipment.Consignee ?? "").Bold().FontSize(10);
+                        c.Item().Height(20);
+                        c.Item().Text("Company Signature / Stamp:").FontSize(9);
+                    });
+                });
+            });
+        });
+
+        return document.GeneratePdf();
+    }
 }

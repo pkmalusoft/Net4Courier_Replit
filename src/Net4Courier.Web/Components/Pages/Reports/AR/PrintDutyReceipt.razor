@@ -1,0 +1,538 @@
+@page "/reports/ar/print-duty-receipt/{ShipmentId:long}"
+@using Microsoft.EntityFrameworkCore
+@using Net4Courier.Infrastructure.Data
+@using Net4Courier.Operations.Entities
+@using Net4Courier.Masters.Entities
+@using Net4Courier.Web.Services
+@using Microsoft.JSInterop
+@inject IDbContextFactory<ApplicationDbContext> DbContextFactory
+@inject IJSRuntime JS
+@inject ISnackbar Snackbar
+@inject NavigationManager Navigation
+@inject AppAuthStateProvider AuthState
+@rendermode InteractiveServer
+
+<PageTitle>Duty Receipt - Net4Courier</PageTitle>
+
+<style>
+    .duty-receipt-container {
+        font-family: Arial, sans-serif;
+        max-width: 800px;
+        margin: 0 auto;
+        background: white;
+        padding: 20px;
+    }
+    .duty-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+        margin-bottom: 10px;
+    }
+    .duty-header-left {
+        flex: 2;
+    }
+    .duty-header-center {
+        flex: 2;
+        text-align: center;
+    }
+    .duty-header-right {
+        flex: 1;
+        text-align: right;
+    }
+    .company-name {
+        font-size: 14px;
+        font-weight: bold;
+    }
+    .company-info {
+        font-size: 10px;
+        color: #333;
+    }
+    .barcode-container {
+        text-align: center;
+    }
+    .barcode-container img {
+        height: 35px;
+    }
+    .barcode-text {
+        font-size: 11px;
+        font-family: monospace;
+    }
+    .company-logo {
+        max-height: 50px;
+        max-width: 120px;
+    }
+    .duty-title {
+        font-size: 16px;
+        font-weight: bold;
+        text-align: center;
+        margin: 15px 0;
+        border-bottom: 2px solid #333;
+        padding-bottom: 5px;
+    }
+    .customer-section {
+        border: 1px solid #333;
+        padding: 10px;
+        margin-bottom: 10px;
+        display: flex;
+        justify-content: space-between;
+    }
+    .customer-details {
+        flex: 2;
+    }
+    .customer-name {
+        font-weight: bold;
+        font-size: 12px;
+    }
+    .customer-address {
+        font-size: 10px;
+    }
+    .invoice-details {
+        flex: 1;
+        text-align: right;
+        font-size: 10px;
+    }
+    .invoice-details .label {
+        font-size: 9px;
+        color: #666;
+    }
+    .reimburse-text {
+        text-align: center;
+        font-size: 10px;
+        margin: 10px 0;
+    }
+    .section-box {
+        border: 1px solid #333;
+        margin-bottom: 10px;
+    }
+    .section-header {
+        background: #eee;
+        padding: 5px 10px;
+        font-weight: bold;
+        font-size: 11px;
+        text-align: center;
+    }
+    .section-content {
+        padding: 8px;
+    }
+    .shipment-row {
+        display: flex;
+        justify-content: space-between;
+        font-size: 10px;
+    }
+    .shipment-row .label {
+        font-size: 9px;
+        color: #666;
+    }
+    .shipment-row .value {
+        font-weight: bold;
+    }
+    .billing-table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 10px;
+    }
+    .billing-table th {
+        border: 1px solid #333;
+        padding: 5px;
+        text-align: center;
+        font-weight: bold;
+        background: #f5f5f5;
+    }
+    .billing-table td {
+        border: 1px solid #333;
+        padding: 5px;
+    }
+    .billing-table td.number {
+        text-align: right;
+    }
+    .totals-section {
+        display: flex;
+        justify-content: space-between;
+        margin-top: 10px;
+    }
+    .payment-terms {
+        border: 1px solid #333;
+        padding: 8px;
+        flex: 1;
+    }
+    .payment-terms-title {
+        color: #c00;
+        font-weight: bold;
+        font-size: 10px;
+    }
+    .payment-terms-text {
+        color: #c00;
+        font-size: 9px;
+    }
+    .totals-box {
+        flex: 2;
+        text-align: right;
+        font-size: 11px;
+    }
+    .total-payable {
+        font-weight: bold;
+        font-size: 12px;
+        margin-top: 5px;
+    }
+    .footnotes {
+        border: 1px solid #333;
+        padding: 8px;
+        margin-top: 10px;
+    }
+    .footnotes-title {
+        color: #c00;
+        font-weight: bold;
+        font-size: 10px;
+    }
+    .footnotes-text {
+        color: #c00;
+        font-size: 9px;
+    }
+    .computer-generated {
+        font-size: 9px;
+        margin-top: 5px;
+    }
+    .payment-slip {
+        border-top: 1px dashed #333;
+        margin-top: 15px;
+        padding-top: 10px;
+    }
+    .payment-slip-note {
+        font-size: 8px;
+        color: #666;
+    }
+    .payment-barcodes {
+        display: flex;
+        justify-content: space-between;
+        margin: 10px 0;
+    }
+    .payment-instructions {
+        font-size: 8px;
+    }
+    .endorsement-title {
+        text-align: center;
+        color: #c00;
+        font-weight: bold;
+        font-size: 14px;
+        margin: 15px 0 10px;
+    }
+    .endorsement-box {
+        border: 1px solid #333;
+        padding: 10px;
+    }
+    .endorsement-content {
+        display: flex;
+        justify-content: space-between;
+    }
+    .endorsement-left {
+        flex: 2;
+    }
+    .endorsement-right {
+        flex: 1;
+        text-align: right;
+        font-size: 10px;
+    }
+    .signature-line {
+        margin-top: 30px;
+        font-size: 10px;
+    }
+    @@media print {
+        .no-print { display: none !important; }
+        .duty-receipt-container { padding: 10px; max-width: 100%; }
+        body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+        @@page { size: A4; margin: 0.5cm; }
+    }
+</style>
+
+<MudContainer MaxWidth="MaxWidth.Large" Class="mt-4">
+    <MudPaper Class="pa-4 no-print" Elevation="2">
+        <MudGrid>
+            <MudItem xs="12" sm="6">
+                <MudText Typo="Typo.h5">Duty Receipt</MudText>
+            </MudItem>
+            <MudItem xs="12" sm="6" Class="d-flex justify-end gap-2">
+                <MudButton Variant="Variant.Outlined" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Print" OnClick="PrintPage">
+                    Print
+                </MudButton>
+                <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.PictureAsPdf" OnClick="DownloadPdf">
+                    Download PDF
+                </MudButton>
+                <MudButton Variant="Variant.Text" OnClick="GoBack">Back</MudButton>
+            </MudItem>
+        </MudGrid>
+    </MudPaper>
+
+    @if (_isLoading)
+    {
+        <MudProgressLinear Indeterminate="true" Class="my-4" />
+    }
+    else if (_shipment == null)
+    {
+        <MudAlert Severity="Severity.Error" Class="mt-4">Shipment not found.</MudAlert>
+    }
+    else
+    {
+        <MudPaper Class="pa-4 mt-4" Elevation="1">
+            <div class="duty-receipt-container">
+                <div class="duty-header">
+                    <div class="duty-header-left">
+                        <div class="company-name">@(_company?.Name ?? "Net4Courier")</div>
+                        @if (!string.IsNullOrEmpty(_company?.Address))
+                        {
+                            <div class="company-info">@_company.Address</div>
+                        }
+                        @if (_company?.City != null || _company?.Country != null)
+                        {
+                            <div class="company-info">@(_company?.City?.Name), @(_company?.Country?.Name)</div>
+                        }
+                        @if (!string.IsNullOrEmpty(_company?.Phone))
+                        {
+                            <div class="company-info">Phone No.: @_company.Phone</div>
+                        }
+                        @if (!string.IsNullOrEmpty(_company?.Email))
+                        {
+                            <div class="company-info">Email: @_company.Email</div>
+                        }
+                        @if (!string.IsNullOrEmpty(_company?.TaxNumber))
+                        {
+                            <div class="company-info">VAT Registration No: @_company.TaxNumber</div>
+                        }
+                    </div>
+                    <div class="duty-header-center">
+                        @if (_shipment.BarcodeImage != null)
+                        {
+                            <div class="barcode-container">
+                                <img src="data:image/png;base64,@Convert.ToBase64String(_shipment.BarcodeImage)" alt="Barcode" />
+                                <div class="barcode-text">*@_shipment.AWBNo*</div>
+                            </div>
+                        }
+                    </div>
+                    <div class="duty-header-right">
+                        @if (_logoData != null)
+                        {
+                            <img src="data:image/png;base64,@Convert.ToBase64String(_logoData)" alt="Logo" class="company-logo" />
+                        }
+                    </div>
+                </div>
+
+                <div class="duty-title">DUTY & TAX INVOICE</div>
+
+                <div class="customer-section">
+                    <div class="customer-details">
+                        <div class="customer-name">@_shipment.Consignee</div>
+                        <div class="customer-address">@_shipment.ConsigneeAddress1</div>
+                        @if (!string.IsNullOrEmpty(_shipment.ConsigneeCity))
+                        {
+                            <div class="customer-address">@_shipment.ConsigneeCity</div>
+                        }
+                        <div class="customer-address" style="margin-top: 5px;">@(_shipment.ConsigneeMobile ?? _shipment.ConsigneePhone)</div>
+                    </div>
+                    <div class="invoice-details">
+                        <div><span class="label">Account Number</span> : DUTY@(_shipment.CustomerId?.ToString() ?? "")</div>
+                        <div><span class="label">Invoice Number</span> : D@_shipment.Id.ToString("D8")</div>
+                        <div><span class="label">HWB Number</span> : @_shipment.AWBNo</div>
+                        <div><span class="label">Date</span> : @DateTime.Now.ToString("dd/MM/yyyy")</div>
+                        <div><span class="label">Payment Due Date</span> : @DateTime.Now.ToString("dd/MM/yyyy")</div>
+                    </div>
+                </div>
+
+                <div class="reimburse-text">
+                    Please Reimburse the Total Charges Shown Below To: @(_company?.Name ?? "Net4Courier")
+                </div>
+
+                <div class="section-box">
+                    <div class="section-header">Shipment Details</div>
+                    <div class="section-content">
+                        <div class="shipment-row">
+                            <div>
+                                <span class="label">Origin:</span> <span class="value">@_shipment.ConsignorCity</span>
+                                &nbsp;&nbsp;
+                                <span class="label">Destination:</span> <span class="value">@_shipment.ConsigneeCity</span>
+                            </div>
+                            <div>
+                                <span class="label">Pieces:</span> <span class="value">@(_shipment.Pieces ?? 1)</span>
+                                &nbsp;&nbsp;
+                                <span class="label">Weight:</span> <span class="value">@_shipment.Weight?.ToString("N2")</span>
+                            </div>
+                            <div>
+                                <span class="label">Contents:</span> <span class="value">@_shipment.CargoDescription</span>
+                            </div>
+                            <div>
+                                <span class="label">Assessed Value:</span> <span class="value">@_shipment.CustomsValue?.ToString("N2")</span>
+                            </div>
+                            <div>
+                                <span class="label">Arrival Date:</span> <span class="value">@_shipment.TransactionDate.ToString("dd/MM/yyyy")</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="section-box">
+                    <div class="section-header">Billing Details</div>
+                    <div class="section-content">
+                        <table class="billing-table">
+                            <thead>
+                                <tr>
+                                    <th style="text-align: left;"></th>
+                                    <th>NET</th>
+                                    <th>VAT</th>
+                                    <th>GROSS</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @if ((_shipment.DutyVatAmount ?? 0) > 0)
+                                {
+                                    <tr>
+                                        <td>CUSTOM DUTY-PT</td>
+                                        <td class="number">@_shipment.DutyVatAmount?.ToString("N2")</td>
+                                        <td class="number">0.00</td>
+                                        <td class="number">@_shipment.DutyVatAmount?.ToString("N2")</td>
+                                    </tr>
+                                }
+                                @if ((_shipment.OtherCharge ?? 0) > 0)
+                                {
+                                    <tr>
+                                        <td>ADMIN FEE-CUSTOMS DUTY-OS</td>
+                                        <td class="number">@_shipment.OtherCharge?.ToString("N2")</td>
+                                        <td class="number">0.00</td>
+                                        <td class="number">@_shipment.OtherCharge?.ToString("N2")</td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <div class="totals-section">
+                    <div class="payment-terms">
+                        <div class="payment-terms-title">Payment Terms</div>
+                        <div class="payment-terms-text">Cash on delivery unless</div>
+                        <div class="payment-terms-text">stated otherwise on the Invoice</div>
+                    </div>
+                    <div class="totals-box">
+                        <div>Sub-Total: @_currency @GetSubtotal().ToString("N2") &nbsp;&nbsp; 0.00</div>
+                        <div class="total-payable">Total Payable: @_currency &nbsp;&nbsp; @GetSubtotal().ToString("N2")</div>
+                    </div>
+                </div>
+
+                <div class="footnotes">
+                    <div class="footnotes-title">Foot Notes:</div>
+                    <div class="footnotes-text">ZR - Zero Rated</div>
+                    <div class="footnotes-text">OS - Out of Scope</div>
+                    <div class="footnotes-text">PT - Pass Through</div>
+                </div>
+
+                <div class="computer-generated">
+                    THIS IS A COMPUTER GENERATED INVOICE. NO SIGNATURE IS REQUIRED.
+                </div>
+
+                <div class="payment-slip">
+                    <div class="payment-slip-note">Not all payment options are available to all countries</div>
+                    <div class="payment-barcodes">
+                        @if (_shipment.BarcodeImage != null)
+                        {
+                            <div class="barcode-container">
+                                <img src="data:image/png;base64,@Convert.ToBase64String(_shipment.BarcodeImage)" alt="Barcode" style="height: 25px;" />
+                            </div>
+                        }
+                        <div class="barcode-text">*DUTYAEDTU*</div>
+                        <div class="barcode-text">*D@_shipment.Id.ToString("D8")*</div>
+                    </div>
+                    <div class="payment-instructions">
+                        <div>1. Detach this payment advice and return it together with your payment</div>
+                        <div>2. Cheque should be crossed and made payable to @(_company?.Name ?? "Net4Courier")</div>
+                    </div>
+                </div>
+
+                <div class="endorsement-title">Customer Endorsement</div>
+
+                <div class="endorsement-box">
+                    <div class="endorsement-content">
+                        <div class="endorsement-left">
+                            <div style="font-size: 10px;">We acknowledge receipt of the above documentation.</div>
+                            <div style="font-weight: bold; margin-top: 5px;">@_shipment.Consignee</div>
+                            <div class="signature-line">Company Signature / Stamp:</div>
+                        </div>
+                        <div class="endorsement-right">
+                            <div>Account Number : DUTYAEDTU</div>
+                            <div>Invoice Number : D@_shipment.Id.ToString("D8")</div>
+                            <div>HWB Number : @_shipment.AWBNo</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </MudPaper>
+    }
+</MudContainer>
+
+@code {
+    [Parameter] public long ShipmentId { get; set; }
+
+    private InscanMaster? _shipment;
+    private Company? _company;
+    private byte[]? _logoData;
+    private string _currency = "AED";
+    private bool _isLoading = true;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadData();
+    }
+
+    private async Task LoadData()
+    {
+        _isLoading = true;
+        try
+        {
+            await using var db = await DbContextFactory.CreateDbContextAsync();
+            _shipment = await db.InscanMasters.FindAsync(ShipmentId);
+            
+            if (_shipment != null)
+            {
+                var branch = await db.Branches.Include(b => b.Currency).FirstOrDefaultAsync(b => b.Id == _shipment.BranchId);
+                if (branch != null)
+                {
+                    _currency = branch.Currency?.Code ?? "AED";
+                    _company = await db.Companies.Include(c => c.City).Include(c => c.Country).FirstOrDefaultAsync(c => c.Id == branch.CompanyId);
+                    
+                    if (_company != null && !string.IsNullOrEmpty(_company.Logo))
+                    {
+                        try
+                        {
+                            var logoPath = Path.Combine("wwwroot", _company.Logo.TrimStart('/'));
+                            if (System.IO.File.Exists(logoPath))
+                            {
+                                _logoData = await System.IO.File.ReadAllBytesAsync(logoPath);
+                            }
+                        }
+                        catch { }
+                    }
+                }
+            }
+        }
+        finally
+        {
+            _isLoading = false;
+        }
+    }
+
+    private decimal GetSubtotal()
+    {
+        return (_shipment?.DutyVatAmount ?? 0) + (_shipment?.OtherCharge ?? 0);
+    }
+
+    private async Task PrintPage()
+    {
+        await JS.InvokeVoidAsync("print");
+    }
+
+    private async Task DownloadPdf()
+    {
+        await JS.InvokeVoidAsync("open", $"/api/report/duty-receipt/{ShipmentId}", "_blank");
+    }
+
+    private void GoBack()
+    {
+        Navigation.NavigateTo($"/tracking/{_shipment?.AWBNo}");
+    }
+}

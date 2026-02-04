@@ -525,6 +525,37 @@ app.MapGet("/api/report/domestic-invoice/{id:long}", async (long id, Application
     return Results.File(pdf, "application/pdf", $"DomesticInvoice-{invoice.InvoiceNo}.pdf");
 });
 
+app.MapGet("/api/report/duty-receipt/{id:long}", async (long id, ApplicationDbContext db, ReportingService reportService, IWebHostEnvironment env) =>
+{
+    var shipment = await db.InscanMasters.FindAsync(id);
+    if (shipment == null) return Results.NotFound();
+    
+    var branch = await db.Branches.Include(b => b.Currency).FirstOrDefaultAsync(b => b.Id == shipment.BranchId);
+    var company = branch != null ? await db.Companies.Include(c => c.City).Include(c => c.Country).FirstOrDefaultAsync(c => c.Id == branch.CompanyId) : null;
+    var currency = branch?.Currency?.Code ?? "AED";
+    
+    byte[]? logoData = null;
+    if (company != null && !string.IsNullOrEmpty(company.Logo))
+    {
+        try
+        {
+            var logoPath = Path.Combine(env.WebRootPath, company.Logo.TrimStart('/'));
+            if (System.IO.File.Exists(logoPath))
+            {
+                logoData = await System.IO.File.ReadAllBytesAsync(logoPath);
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[Duty Receipt PDF] Failed to load logo: {ex.Message}");
+        }
+    }
+    
+    var companyAddress = company != null ? $"{company.Address}, {company.City?.Name}, {company.Country?.Name}" : null;
+    var pdf = reportService.GenerateDutyReceiptPdf(shipment, currency, logoData, company?.Name, companyAddress, company?.Phone, company?.Email, company?.TaxNumber, null);
+    return Results.File(pdf, "application/pdf", $"DutyReceipt-{shipment.AWBNo}.pdf");
+});
+
 app.MapGet("/api/report/receipt/{id:long}", async (long id, ApplicationDbContext db, ReportingService reportService) =>
 {
     var receipt = await db.Receipts.Include(r => r.Allocations).FirstOrDefaultAsync(r => r.Id == id);
