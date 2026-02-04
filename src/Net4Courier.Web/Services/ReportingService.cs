@@ -408,6 +408,162 @@ public class ReportingService
         return document.GeneratePdf();
     }
 
+    public byte[] GenerateDomesticInvoicePdf(Invoice invoice, string currency = "AED", byte[]? logoData = null, string? companyName = null, string? companyTRN = null)
+    {
+        var document = Document.Create(container =>
+        {
+            container.Page(page =>
+            {
+                page.Size(PageSizes.A4.Landscape());
+                page.Margin(0.75f, Unit.Centimetre);
+                page.DefaultTextStyle(x => x.FontSize(9));
+
+                page.Header().Column(hdr =>
+                {
+                    hdr.Item().Row(row =>
+                    {
+                        row.RelativeItem(2).Column(c =>
+                        {
+                            c.Item().AlignCenter().Text("TAX INVOICE").Bold().FontSize(16);
+                            c.Item().AlignCenter().Text($"TRN No. : {companyTRN ?? ""}").FontSize(10);
+                        });
+                        
+                        if (logoData != null && logoData.Length > 0)
+                        {
+                            row.ConstantItem(120).AlignRight().Height(50).Image(logoData).FitHeight();
+                        }
+                    });
+                    hdr.Item().PaddingVertical(5);
+                });
+
+                page.Content().Column(col =>
+                {
+                    col.Item().Row(row =>
+                    {
+                        row.RelativeItem().Column(c =>
+                        {
+                            c.Item().Text(text => { text.Span("Invoice # : ").Bold(); text.Span(invoice.InvoiceNo ?? ""); });
+                            c.Item().Text(text => { text.Span("Invoice Date : ").Bold(); text.Span(invoice.InvoiceDate.ToString("dd/MM/yyyy")); });
+                            c.Item().Text(text => { text.Span("Currency : ").Bold(); text.Span(currency); });
+                            c.Item().Text(text => { text.Span("Invoice Amount : ").Bold(); text.Span($"{invoice.NetTotal:N2}"); });
+                            c.Item().Text(text => { text.Span("Customer: ").Bold(); text.Span(invoice.CustomerName ?? ""); });
+                            c.Item().Text(text => { text.Span("Account No: ").Bold(); text.Span(invoice.CustomerId?.ToString() ?? ""); });
+                            c.Item().Text(invoice.CustomerAddress ?? "");
+                            c.Item().Text(text => { text.Span("TRN No. : ").Bold(); text.Span(invoice.CustomerTaxNo ?? ""); });
+                        });
+                    });
+
+                    col.Item().PaddingVertical(10);
+
+                    col.Item().Table(table =>
+                    {
+                        table.ColumnsDefinition(columns =>
+                        {
+                            columns.ConstantColumn(25);
+                            columns.RelativeColumn(1.2f);
+                            columns.RelativeColumn(0.8f);
+                            columns.RelativeColumn(0.9f);
+                            columns.RelativeColumn(1.2f);
+                            columns.RelativeColumn(1.2f);
+                            columns.RelativeColumn(0.8f);
+                            columns.ConstantColumn(35);
+                            columns.ConstantColumn(45);
+                            columns.ConstantColumn(55);
+                            columns.ConstantColumn(55);
+                            columns.ConstantColumn(45);
+                            columns.ConstantColumn(50);
+                            columns.ConstantColumn(55);
+                        });
+
+                        table.Header(header =>
+                        {
+                            header.Cell().Background("#FFF9C4").Border(0.5f).Padding(3).AlignCenter().Text("SNo").Bold().FontSize(8);
+                            header.Cell().Background("#FFF9C4").Border(0.5f).Padding(3).AlignCenter().Text("AWB No").Bold().FontSize(8);
+                            header.Cell().Background("#FFF9C4").Border(0.5f).Padding(3).AlignCenter().Text("Ref. No").Bold().FontSize(8);
+                            header.Cell().Background("#FFF9C4").Border(0.5f).Padding(3).AlignCenter().Text("Received Date").Bold().FontSize(8);
+                            header.Cell().Background("#FFF9C4").Border(0.5f).Padding(3).AlignCenter().Text("Shipper").Bold().FontSize(8);
+                            header.Cell().Background("#FFF9C4").Border(0.5f).Padding(3).AlignCenter().Text("Consignee").Bold().FontSize(8);
+                            header.Cell().Background("#FFF9C4").Border(0.5f).Padding(3).AlignCenter().Text("Service Type").Bold().FontSize(8);
+                            header.Cell().Background("#FFF9C4").Border(0.5f).Padding(3).AlignCenter().Text("PCs").Bold().FontSize(8);
+                            header.Cell().Background("#FFF9C4").Border(0.5f).Padding(3).AlignCenter().Column(hc =>
+                            {
+                                hc.Item().Text("Weight").Bold().FontSize(8);
+                                hc.Item().Text("(KG)").FontSize(7);
+                            });
+                            header.Cell().Background("#FFF9C4").Border(0.5f).Padding(3).AlignCenter().Column(hc =>
+                            {
+                                hc.Item().Text("Courier").Bold().FontSize(8);
+                                hc.Item().Text("Charge").FontSize(7);
+                            });
+                            header.Cell().Background("#FFF9C4").Border(0.5f).Padding(3).AlignCenter().Column(hc =>
+                            {
+                                hc.Item().Text("Additional").Bold().FontSize(8);
+                                hc.Item().Text("Charge").FontSize(7);
+                            });
+                            header.Cell().Background("#FFF9C4").Border(0.5f).Padding(3).AlignCenter().Column(hc =>
+                            {
+                                hc.Item().Text("VAS").Bold().FontSize(8);
+                                hc.Item().Text("Charge").FontSize(7);
+                            });
+                            header.Cell().Background("#FFF9C4").Border(0.5f).Padding(3).AlignCenter().Text($"VAT {invoice.TaxPercent ?? 5:N2} %").Bold().FontSize(8);
+                            header.Cell().Background("#FFF9C4").Border(0.5f).Padding(3).AlignCenter().Text("Total").Bold().FontSize(8);
+                        });
+
+                        var idx = 1;
+                        foreach (var detail in invoice.Details)
+                        {
+                            table.Cell().Border(0.5f).Padding(2).AlignCenter().Text($"{idx++}").FontSize(8);
+                            table.Cell().Border(0.5f).Padding(2).Text(detail.AWBNo ?? "").FontSize(8);
+                            table.Cell().Border(0.5f).Padding(2).Text(detail.RefNo ?? "").FontSize(8);
+                            table.Cell().Border(0.5f).Padding(2).AlignCenter().Text(detail.AWBDate?.ToString("dd/MM/yyyy") ?? "").FontSize(8);
+                            table.Cell().Border(0.5f).Padding(2).Column(sc =>
+                            {
+                                sc.Item().Text(detail.ShipperName ?? "").FontSize(8);
+                                sc.Item().Text(detail.Origin ?? "").FontSize(7).FontColor("#666666");
+                            });
+                            table.Cell().Border(0.5f).Padding(2).Column(sc =>
+                            {
+                                sc.Item().Text(detail.ConsigneeName ?? "").FontSize(8);
+                                sc.Item().Text(detail.Destination ?? "").FontSize(7).FontColor("#666666");
+                            });
+                            table.Cell().Border(0.5f).Padding(2).AlignCenter().Text(detail.ServiceType ?? "").FontSize(8);
+                            table.Cell().Border(0.5f).Padding(2).AlignCenter().Text($"{detail.Pieces:N2}").FontSize(8);
+                            table.Cell().Border(0.5f).Padding(2).AlignRight().Text($"{detail.Weight:N2}").FontSize(8);
+                            table.Cell().Border(0.5f).Padding(2).AlignRight().Text($"{detail.CourierCharge:N2}").FontSize(8);
+                            table.Cell().Border(0.5f).Padding(2).AlignRight().Text($"{detail.OtherCharge:N2}").FontSize(8);
+                            table.Cell().Border(0.5f).Padding(2).AlignRight().Text($"{detail.VASCharge:N2}").FontSize(8);
+                            table.Cell().Border(0.5f).Padding(2).AlignRight().Text($"{detail.TaxAmount:N2}").FontSize(8);
+                            table.Cell().Border(0.5f).Padding(2).AlignRight().Text($"{detail.Total:N2}").FontSize(8);
+                        }
+
+                        var sumCourier = invoice.Details.Sum(d => d.CourierCharge ?? 0);
+                        var sumOther = invoice.Details.Sum(d => d.OtherCharge ?? 0);
+                        var sumVAS = invoice.Details.Sum(d => d.VASCharge ?? 0);
+                        var sumTax = invoice.Details.Sum(d => d.TaxAmount ?? 0);
+                        var sumTotal = invoice.Details.Sum(d => d.Total ?? 0);
+
+                        table.Cell().ColumnSpan(9).Border(0.5f).Padding(3).AlignRight().Text("Total:").Bold().FontSize(9);
+                        table.Cell().Border(0.5f).Padding(3).AlignRight().Text($"{sumCourier:N2}").Bold().FontSize(9);
+                        table.Cell().Border(0.5f).Padding(3).AlignRight().Text($"{sumOther:N2}").Bold().FontSize(9);
+                        table.Cell().Border(0.5f).Padding(3).AlignRight().Text($"{sumVAS:N2}").Bold().FontSize(9);
+                        table.Cell().Border(0.5f).Padding(3).AlignRight().Text($"{sumTax:N2}").Bold().FontSize(9);
+                        table.Cell().Border(0.5f).Padding(3).AlignRight().Text($"{sumTotal:N2}").Bold().FontSize(9);
+                    });
+                });
+
+                page.Footer().AlignCenter().Text(text =>
+                {
+                    text.Span("Page ");
+                    text.CurrentPageNumber();
+                    text.Span("/");
+                    text.TotalPages();
+                });
+            });
+        });
+
+        return document.GeneratePdf();
+    }
+
     public byte[] GenerateReceiptPdf(Receipt receipt)
     {
         var document = Document.Create(container =>

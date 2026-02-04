@@ -44,12 +44,18 @@ public class InvoiceDetail : BaseEntity
     public long InscanId { get; set; }
     public string? AWBNo { get; set; }
     public DateTime? AWBDate { get; set; }
+    public string? RefNo { get; set; }
     public string? Origin { get; set; }
     public string? Destination { get; set; }
+    public string? ServiceType { get; set; }
+    public string? ShipperName { get; set; }
+    public string? ConsigneeName { get; set; }
     public int? Pieces { get; set; }
     public decimal? Weight { get; set; }
     public decimal? CourierCharge { get; set; }
     public decimal? OtherCharge { get; set; }
+    public decimal? VASCharge { get; set; }
+    public decimal? TaxPercent { get; set; }
     public decimal? TaxAmount { get; set; }
     public decimal? Total { get; set; }
     

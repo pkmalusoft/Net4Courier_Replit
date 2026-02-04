@@ -492,6 +492,39 @@ app.MapGet("/api/report/invoice/{id:long}", async (long id, ApplicationDbContext
     return Results.File(pdf, "application/pdf", $"Invoice-{invoice.InvoiceNo}.pdf");
 });
 
+app.MapGet("/api/report/domestic-invoice/{id:long}", async (long id, ApplicationDbContext db, ReportingService reportService, IWebHostEnvironment env) =>
+{
+    var invoice = await db.Invoices.Include(i => i.Details).FirstOrDefaultAsync(i => i.Id == id);
+    if (invoice == null) return Results.NotFound();
+    
+    var company = await db.Companies.Include(c => c.Currency).FirstOrDefaultAsync(c => !c.IsDeleted);
+    var branch = invoice.BranchId.HasValue 
+        ? await db.Branches.Include(b => b.Currency).FirstOrDefaultAsync(b => b.Id == invoice.BranchId) 
+        : null;
+    var currency = branch?.Currency?.Code ?? company?.Currency?.Code ?? "AED";
+    
+    byte[]? logoData = null;
+    if (!string.IsNullOrEmpty(company?.Logo))
+    {
+        try
+        {
+            var logoPath = company.Logo.TrimStart('/');
+            var fullPath = Path.Combine(env.WebRootPath ?? env.ContentRootPath, logoPath);
+            if (File.Exists(fullPath))
+            {
+                logoData = await File.ReadAllBytesAsync(fullPath);
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[Domestic Invoice PDF] Failed to load logo: {ex.Message}");
+        }
+    }
+    
+    var pdf = reportService.GenerateDomesticInvoicePdf(invoice, currency, logoData, company?.Name, company?.TaxNumber);
+    return Results.File(pdf, "application/pdf", $"DomesticInvoice-{invoice.InvoiceNo}.pdf");
+});
+
 app.MapGet("/api/report/receipt/{id:long}", async (long id, ApplicationDbContext db, ReportingService reportService) =>
 {
     var receipt = await db.Receipts.Include(r => r.Allocations).FirstOrDefaultAsync(r => r.Id == id);

@@ -1,0 +1,266 @@
+@page "/reports/ar/print-domestic-invoice/{InvoiceId:long}"
+@using Microsoft.EntityFrameworkCore
+@using Net4Courier.Infrastructure.Data
+@using Net4Courier.Finance.Entities
+@using Net4Courier.Masters.Entities
+@using Net4Courier.Web.Services
+@using Microsoft.JSInterop
+@inject IDbContextFactory<ApplicationDbContext> DbContextFactory
+@inject IJSRuntime JS
+@inject ISnackbar Snackbar
+@inject NavigationManager Navigation
+@inject AppAuthStateProvider AuthState
+@rendermode InteractiveServer
+
+<PageTitle>Print Domestic Invoice - Net4Courier</PageTitle>
+
+<style>
+    .invoice-container {
+        font-family: Arial, sans-serif;
+        max-width: 100%;
+        margin: 0 auto;
+        background: white;
+        padding: 20px;
+    }
+    .invoice-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+        margin-bottom: 15px;
+    }
+    .invoice-header-left {
+        flex: 2;
+        text-align: center;
+    }
+    .invoice-header-right {
+        flex: 1;
+        text-align: right;
+    }
+    .invoice-title {
+        font-size: 18px;
+        font-weight: bold;
+        margin-bottom: 5px;
+    }
+    .trn-line {
+        font-size: 12px;
+    }
+    .company-logo {
+        max-height: 50px;
+        max-width: 150px;
+    }
+    .invoice-details {
+        font-size: 11px;
+        margin-bottom: 15px;
+        line-height: 1.6;
+    }
+    .details-table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 9px;
+    }
+    .details-table th {
+        background: #FFF9C4;
+        border: 1px solid #333;
+        padding: 4px 3px;
+        text-align: center;
+        font-weight: bold;
+        font-size: 8px;
+    }
+    .details-table td {
+        border: 1px solid #333;
+        padding: 4px 3px;
+        font-size: 8px;
+    }
+    .details-table td.number {
+        text-align: right;
+    }
+    .details-table td.center {
+        text-align: center;
+    }
+    .details-table tfoot td {
+        font-weight: bold;
+        background: #f5f5f5;
+    }
+    .sub-text {
+        font-size: 7px;
+        color: #666;
+    }
+    @@media print {
+        .no-print { display: none !important; }
+        .invoice-container { padding: 10px; max-width: 100%; }
+        body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+        @@page { size: landscape; margin: 0.5cm; }
+    }
+</style>
+
+<MudContainer MaxWidth="MaxWidth.ExtraLarge" Class="mt-4">
+    <MudPaper Class="pa-4 no-print" Elevation="2">
+        <MudGrid>
+            <MudItem xs="12" sm="6">
+                <MudText Typo="Typo.h5">Print Domestic Invoice</MudText>
+            </MudItem>
+            <MudItem xs="12" sm="6" Class="d-flex justify-end gap-2">
+                <MudButton Variant="Variant.Outlined" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Print" 
+                           OnClick="PrintPage" Disabled="@(_invoice == null)">Print</MudButton>
+                <MudButton Variant="Variant.Outlined" Color="Color.Info" StartIcon="@Icons.Material.Filled.Download"
+                           Href="@($"/api/report/domestic-invoice/{InvoiceId}")" Target="_blank">Download PDF</MudButton>
+                <MudButton Variant="Variant.Outlined" Color="Color.Default" StartIcon="@Icons.Material.Filled.ArrowBack"
+                           Href="@($"/invoice-view/{InvoiceId}")">Back</MudButton>
+            </MudItem>
+        </MudGrid>
+    </MudPaper>
+
+    @if (_isLoading)
+    {
+        <MudProgressLinear Indeterminate="true" Class="mt-4" />
+    }
+    else if (_invoice != null)
+    {
+        <div class="invoice-container mt-4" id="printable-invoice">
+            <div class="invoice-header">
+                <div class="invoice-header-left">
+                    <div class="invoice-title">TAX INVOICE</div>
+                    <div class="trn-line">TRN No. : @(_company?.TaxNumber ?? "")</div>
+                </div>
+                <div class="invoice-header-right">
+                    @if (!string.IsNullOrEmpty(_company?.Logo))
+                    {
+                        <img src="@_company.Logo" alt="@_company.Name" class="company-logo" />
+                    }
+                </div>
+            </div>
+
+            <div class="invoice-details">
+                <div><strong>Invoice # :</strong> @_invoice.InvoiceNo</div>
+                <div><strong>Invoice Date :</strong> @_invoice.InvoiceDate.ToString("dd/MM/yyyy")</div>
+                <div><strong>Currency :</strong> @_currency</div>
+                <div><strong>Invoice Amount :</strong> @((_invoice.NetTotal ?? 0).ToString("N2"))</div>
+                <div><strong>Customer:</strong> @_invoice.CustomerName</div>
+                <div><strong>Account No:</strong> @_invoice.CustomerId</div>
+                <div>@_invoice.CustomerAddress</div>
+                <div><strong>TRN No. :</strong> @_invoice.CustomerTaxNo</div>
+            </div>
+
+            <table class="details-table">
+                <thead>
+                    <tr>
+                        <th style="width: 3%">SNo</th>
+                        <th style="width: 10%">AWB No</th>
+                        <th style="width: 7%">Ref. No</th>
+                        <th style="width: 8%">Received Date</th>
+                        <th style="width: 12%">Shipper</th>
+                        <th style="width: 12%">Consignee</th>
+                        <th style="width: 7%">Service Type</th>
+                        <th style="width: 4%">PCs</th>
+                        <th style="width: 5%">Weight<br/>(KG)</th>
+                        <th style="width: 7%">Courier<br/>Charge</th>
+                        <th style="width: 7%">Additional<br/>Charge</th>
+                        <th style="width: 6%">VAS<br/>Charge</th>
+                        <th style="width: 6%">VAT @((_invoice.TaxPercent ?? 5).ToString("N2")) %</th>
+                        <th style="width: 7%">Total</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @{ var idx = 1; }
+                    @foreach (var detail in _invoice.Details)
+                    {
+                        <tr>
+                            <td class="center">@(idx++)</td>
+                            <td>@detail.AWBNo</td>
+                            <td>@detail.RefNo</td>
+                            <td class="center">@(detail.AWBDate?.ToString("dd/MM/yyyy"))</td>
+                            <td>
+                                @detail.ShipperName
+                                <div class="sub-text">@detail.Origin</div>
+                            </td>
+                            <td>
+                                @detail.ConsigneeName
+                                <div class="sub-text">@detail.Destination</div>
+                            </td>
+                            <td class="center">@detail.ServiceType</td>
+                            <td class="number">@((detail.Pieces ?? 0).ToString("N2"))</td>
+                            <td class="number">@((detail.Weight ?? 0).ToString("N2"))</td>
+                            <td class="number">@((detail.CourierCharge ?? 0).ToString("N2"))</td>
+                            <td class="number">@((detail.OtherCharge ?? 0).ToString("N2"))</td>
+                            <td class="number">@((detail.VASCharge ?? 0).ToString("N2"))</td>
+                            <td class="number">@((detail.TaxAmount ?? 0).ToString("N2"))</td>
+                            <td class="number">@((detail.Total ?? 0).ToString("N2"))</td>
+                        </tr>
+                    }
+                </tbody>
+                <tfoot>
+                    <tr>
+                        <td colspan="9" style="text-align: right;"><strong>Total:</strong></td>
+                        <td class="number"><strong>@_invoice.Details.Sum(d => d.CourierCharge ?? 0).ToString("N2")</strong></td>
+                        <td class="number"><strong>@_invoice.Details.Sum(d => d.OtherCharge ?? 0).ToString("N2")</strong></td>
+                        <td class="number"><strong>@_invoice.Details.Sum(d => d.VASCharge ?? 0).ToString("N2")</strong></td>
+                        <td class="number"><strong>@_invoice.Details.Sum(d => d.TaxAmount ?? 0).ToString("N2")</strong></td>
+                        <td class="number"><strong>@_invoice.Details.Sum(d => d.Total ?? 0).ToString("N2")</strong></td>
+                    </tr>
+                </tfoot>
+            </table>
+        </div>
+    }
+    else
+    {
+        <MudAlert Severity="Severity.Warning" Class="mt-4">Invoice not found</MudAlert>
+    }
+</MudContainer>
+
+@code {
+    [Parameter] public long InvoiceId { get; set; }
+
+    private bool _isLoading = true;
+    private Invoice? _invoice;
+    private Company? _company;
+    private string _currency = "AED";
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (InvoiceId > 0)
+        {
+            await LoadInvoice();
+        }
+    }
+
+    private async Task LoadInvoice()
+    {
+        _isLoading = true;
+        StateHasChanged();
+
+        try
+        {
+            await using var dbContext = await DbContextFactory.CreateDbContextAsync();
+            
+            _company = await dbContext.Companies.FirstOrDefaultAsync(c => !c.IsDeleted);
+            
+            _invoice = await dbContext.Invoices
+                .Include(i => i.Details)
+                .FirstOrDefaultAsync(i => i.Id == InvoiceId);
+
+            if (_invoice?.BranchId != null)
+            {
+                var branch = await dbContext.Branches.Include(b => b.Currency).FirstOrDefaultAsync(b => b.Id == _invoice.BranchId);
+                _currency = branch?.Currency?.Code ?? AuthState.CurrencyCode ?? "AED";
+            }
+            else
+            {
+                _currency = AuthState.CurrencyCode ?? "AED";
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _isLoading = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task PrintPage()
+    {
+        await JS.InvokeVoidAsync("print");
+    }
+}

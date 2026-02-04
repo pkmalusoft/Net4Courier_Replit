@@ -50,7 +50,7 @@ public class InvoicingService
             .ToListAsync();
     }
 
-    public InvoicePreviewModel GenerateInvoicePreview(
+    public async Task<InvoicePreviewModel> GenerateInvoicePreviewAsync(
         long customerId,
         string customerName,
         string? customerAddress,
@@ -74,23 +74,39 @@ public class InvoicingService
             TaxPercent = taxPercent
         };
 
+        var serviceTypeIds = awbs.Where(a => a.ProductTypeId.HasValue).Select(a => a.ProductTypeId!.Value).Distinct().ToList();
+        var serviceTypes = await _context.ServiceTypes.Where(s => serviceTypeIds.Contains((int)s.Id)).ToDictionaryAsync(s => (int)s.Id, s => s.Name);
+
         foreach (var awb in awbs)
         {
             var courierCharge = awb.CourierCharge ?? 0;
             var otherCharge = awb.OtherCharge ?? 0;
+            var vasCharge = awb.FuelSurcharge ?? 0;
+            var taxPct = awb.TaxPercent ?? taxPercent;
+            var taxAmt = (courierCharge + otherCharge + vasCharge) * taxPct / 100;
+            var total = courierCharge + otherCharge + vasCharge + taxAmt;
+            var serviceTypeName = awb.ProductTypeId.HasValue && serviceTypes.ContainsKey(awb.ProductTypeId.Value) 
+                ? serviceTypes[awb.ProductTypeId.Value] : null;
 
             preview.Details.Add(new InvoiceDetailPreview
             {
                 InscanId = awb.Id,
                 AWBNo = awb.AWBNo ?? "",
                 AWBDate = awb.TransactionDate,
+                RefNo = awb.ReferenceNo,
                 Origin = awb.ConsignorCity ?? "",
                 Destination = awb.ConsigneeCity ?? "",
+                ServiceType = serviceTypeName,
+                ShipperName = awb.Consignor,
+                ConsigneeName = awb.Consignee,
                 Pieces = awb.Pieces ?? 0,
                 Weight = awb.ChargeableWeight ?? awb.Weight ?? 0,
                 CourierCharge = courierCharge,
                 OtherCharge = otherCharge,
-                Total = courierCharge + otherCharge
+                VASCharge = vasCharge,
+                TaxPercent = taxPct,
+                TaxAmount = taxAmt,
+                Total = total
             });
         }
 
@@ -171,12 +187,19 @@ public class InvoicingService
                 InscanId = detail.InscanId,
                 AWBNo = detail.AWBNo,
                 AWBDate = DateTime.SpecifyKind(detail.AWBDate.Date, DateTimeKind.Utc),
+                RefNo = detail.RefNo,
                 Origin = detail.Origin,
                 Destination = detail.Destination,
+                ServiceType = detail.ServiceType,
+                ShipperName = detail.ShipperName,
+                ConsigneeName = detail.ConsigneeName,
                 Pieces = detail.Pieces,
                 Weight = detail.Weight,
                 CourierCharge = detail.CourierCharge,
                 OtherCharge = detail.OtherCharge,
+                VASCharge = detail.VASCharge,
+                TaxPercent = detail.TaxPercent,
+                TaxAmount = detail.TaxAmount,
                 Total = detail.Total,
                 CreatedAt = DateTime.UtcNow
             });
@@ -379,12 +402,19 @@ public class InvoiceDetailPreview
     public long InscanId { get; set; }
     public string AWBNo { get; set; } = "";
     public DateTime AWBDate { get; set; }
+    public string? RefNo { get; set; }
     public string Origin { get; set; } = "";
     public string Destination { get; set; } = "";
+    public string? ServiceType { get; set; }
+    public string? ShipperName { get; set; }
+    public string? ConsigneeName { get; set; }
     public int Pieces { get; set; }
     public decimal Weight { get; set; }
     public decimal CourierCharge { get; set; }
     public decimal OtherCharge { get; set; }
+    public decimal VASCharge { get; set; }
+    public decimal TaxPercent { get; set; }
+    public decimal TaxAmount { get; set; }
     public decimal Total { get; set; }
 }
 
