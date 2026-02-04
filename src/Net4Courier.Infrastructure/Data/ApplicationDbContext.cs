@@ -59,6 +59,7 @@ public class ApplicationDbContext : DbContext
     public DbSet<CourierLedger> CourierLedgers => Set<CourierLedger>();
     public DbSet<OtherChargeType> OtherChargeTypes => Set<OtherChargeType>();
     public DbSet<FuelSurcharge> FuelSurcharges => Set<FuelSurcharge>();
+    public DbSet<DiscountContract> DiscountContracts => Set<DiscountContract>();
     public DbSet<AWBOtherCharge> AWBOtherCharges => Set<AWBOtherCharge>();
     public DbSet<PickupRequest> PickupRequests => Set<PickupRequest>();
     public DbSet<PickupRequestShipment> PickupRequestShipments => Set<PickupRequestShipment>();

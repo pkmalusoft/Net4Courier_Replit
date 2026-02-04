@@ -1,0 +1,170 @@
+@page "/discounts-contracts"
+@inject ApplicationDbContext DbContext
+@inject IDialogService DialogService
+@inject ISnackbar Snackbar
+@inject IDateTimeService DateTimeService
+@using Microsoft.EntityFrameworkCore
+@using Net4Courier.Infrastructure.Data
+@using Net4Courier.Operations.Entities
+@using Net4Courier.Web.Services
+
+<PageTitle>Discounts & Contracts</PageTitle>
+
+<MudContainer MaxWidth="MaxWidth.ExtraLarge" Class="mt-4">
+    <MudPaper Class="pa-4" Elevation="2">
+        <MudToolBar Dense="true">
+            <MudText Typo="Typo.h6">Customer Discounts & Contracts</MudText>
+            <MudSpacer />
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add" 
+                       OnClick="AddNew">Add New</MudButton>
+        </MudToolBar>
+
+        <MudTable Items="_contracts" Hover="true" Dense="true" Class="mt-4" Loading="_loading">
+            <HeaderContent>
+                <MudTh>Name</MudTh>
+                <MudTh>Customer</MudTh>
+                <MudTh Style="text-align: right;">Discount %</MudTh>
+                <MudTh>Service Type</MudTh>
+                <MudTh>Effective Period</MudTh>
+                <MudTh Style="text-align: center;">Scope</MudTh>
+                <MudTh Style="text-align: center;">Status</MudTh>
+                <MudTh Style="text-align: center;">Actions</MudTh>
+            </HeaderContent>
+            <RowTemplate>
+                <MudTd>@context.Name</MudTd>
+                <MudTd>@(context.PartyName ?? "All Customers")</MudTd>
+                <MudTd Style="text-align: right;">@context.DiscountPercentage.ToString("N2")%</MudTd>
+                <MudTd>@(context.ServiceTypeName ?? "All")</MudTd>
+                <MudTd>
+                    @DateTimeService.FormatDate(context.EffectiveFrom) - 
+                    @(context.EffectiveTo.HasValue ? DateTimeService.FormatDate(context.EffectiveTo.Value) : "Ongoing")
+                </MudTd>
+                <MudTd Style="text-align: center;">
+                    <MudStack Row="true" Spacing="1" Justify="Justify.Center">
+                        @if (context.ApplyToDomestic)
+                        {
+                            <MudChip T="string" Size="Size.Small" Color="Color.Info">DOM</MudChip>
+                        }
+                        @if (context.ApplyToInternational)
+                        {
+                            <MudChip T="string" Size="Size.Small" Color="Color.Secondary">INT</MudChip>
+                        }
+                    </MudStack>
+                </MudTd>
+                <MudTd Style="text-align: center;">
+                    @if (context.IsActive && IsCurrentlyEffective(context))
+                    {
+                        <MudChip T="string" Size="Size.Small" Color="Color.Success">Active</MudChip>
+                    }
+                    else if (context.IsActive && context.EffectiveFrom > DateTime.UtcNow)
+                    {
+                        <MudChip T="string" Size="Size.Small" Color="Color.Warning">Scheduled</MudChip>
+                    }
+                    else if (context.IsActive && context.EffectiveTo.HasValue && context.EffectiveTo.Value < DateTime.UtcNow)
+                    {
+                        <MudChip T="string" Size="Size.Small" Color="Color.Default">Expired</MudChip>
+                    }
+                    else
+                    {
+                        <MudChip T="string" Size="Size.Small" Color="Color.Default">Inactive</MudChip>
+                    }
+                </MudTd>
+                <MudTd Style="text-align: center;">
+                    <MudIconButton Icon="@Icons.Material.Filled.Edit" Size="Size.Small" Color="Color.Primary" 
+                                   OnClick="@(() => Edit(context))" />
+                    <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" Color="Color.Error" 
+                                   OnClick="@(() => Delete(context))" />
+                </MudTd>
+            </RowTemplate>
+            <NoRecordsContent>
+                <MudText Align="Align.Center">No discount contracts found. Click "Add New" to create one.</MudText>
+            </NoRecordsContent>
+        </MudTable>
+    </MudPaper>
+</MudContainer>
+
+@code {
+    private List<DiscountContract> _contracts = new();
+    private bool _loading = true;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadData();
+    }
+
+    private bool IsCurrentlyEffective(DiscountContract contract)
+    {
+        var today = DateTime.UtcNow.Date;
+        return contract.EffectiveFrom.Date <= today && 
+               (!contract.EffectiveTo.HasValue || contract.EffectiveTo.Value.Date >= today);
+    }
+
+    private async Task LoadData()
+    {
+        _loading = true;
+        _contracts = await DbContext.DiscountContracts
+            .Where(c => !c.IsDeleted)
+            .OrderByDescending(c => c.EffectiveFrom)
+            .ToListAsync();
+        _loading = false;
+    }
+
+    private async Task AddNew()
+    {
+        var contract = new DiscountContract 
+        { 
+            EffectiveFrom = DateTime.SpecifyKind(DateTime.UtcNow.Date, DateTimeKind.Utc)
+        };
+        var parameters = new DialogParameters<DiscountContractDialog>
+        {
+            { x => x.Contract, contract },
+            { x => x.IsNew, true }
+        };
+
+        var dialog = await DialogService.ShowAsync<DiscountContractDialog>("Add Discount Contract", parameters,
+            new DialogOptions { MaxWidth = MaxWidth.Small, FullWidth = true });
+        var result = await dialog.Result;
+
+        if (!result!.Canceled)
+        {
+            await LoadData();
+            Snackbar.Add("Discount contract added successfully", Severity.Success);
+        }
+    }
+
+    private async Task Edit(DiscountContract contract)
+    {
+        var parameters = new DialogParameters<DiscountContractDialog>
+        {
+            { x => x.Contract, contract },
+            { x => x.IsNew, false }
+        };
+
+        var dialog = await DialogService.ShowAsync<DiscountContractDialog>("Edit Discount Contract", parameters,
+            new DialogOptions { MaxWidth = MaxWidth.Small, FullWidth = true });
+        var result = await dialog.Result;
+
+        if (!result!.Canceled)
+        {
+            await LoadData();
+            Snackbar.Add("Discount contract updated successfully", Severity.Success);
+        }
+    }
+
+    private async Task Delete(DiscountContract contract)
+    {
+        var confirm = await DialogService.ShowMessageBox(
+            "Confirm Delete",
+            $"Are you sure you want to delete '{contract.Name}'?",
+            yesText: "Delete", cancelText: "Cancel");
+
+        if (confirm == true)
+        {
+            contract.IsDeleted = true;
+            contract.ModifiedAt = DateTime.UtcNow;
+            await DbContext.SaveChangesAsync();
+            await LoadData();
+            Snackbar.Add("Discount contract deleted successfully", Severity.Success);
+        }
+    }
+}

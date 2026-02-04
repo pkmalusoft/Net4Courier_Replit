@@ -263,6 +263,33 @@ CREATE TABLE IF NOT EXISTS "FuelSurcharges" (
     "IsDemo" BOOLEAN DEFAULT FALSE
 );
 
+-- DiscountContracts
+CREATE TABLE IF NOT EXISTS "DiscountContracts" (
+    "Id" BIGSERIAL PRIMARY KEY,
+    "CompanyId" BIGINT,
+    "Name" VARCHAR(100) NOT NULL,
+    "Description" TEXT,
+    "PartyId" BIGINT,
+    "PartyName" TEXT,
+    "DiscountPercentage" DECIMAL(10,4) DEFAULT 0,
+    "MinimumAmount" DECIMAL(18,2),
+    "MaximumDiscount" DECIMAL(18,2),
+    "EffectiveFrom" TIMESTAMP NOT NULL,
+    "EffectiveTo" TIMESTAMP,
+    "ApplyToDomestic" BOOLEAN DEFAULT TRUE,
+    "ApplyToInternational" BOOLEAN DEFAULT TRUE,
+    "ServiceTypeId" BIGINT,
+    "ServiceTypeName" TEXT,
+    "Notes" TEXT,
+    "IsActive" BOOLEAN DEFAULT TRUE,
+    "CreatedAt" TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    "ModifiedAt" TIMESTAMP,
+    "CreatedBy" INT,
+    "ModifiedBy" INT,
+    "IsDeleted" BOOLEAN DEFAULT FALSE,
+    "IsDemo" BOOLEAN DEFAULT FALSE
+);
+
 -- =============================================
 -- PART 2: ALTER TABLES (add missing columns)
 -- =============================================

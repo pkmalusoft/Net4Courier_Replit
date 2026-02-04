@@ -1,0 +1,173 @@
+@inject ApplicationDbContext DbContext
+@using Microsoft.EntityFrameworkCore
+@using Net4Courier.Infrastructure.Data
+@using Net4Courier.Operations.Entities
+@using Net4Courier.Masters.Entities
+
+<MudDialog>
+    <TitleContent>
+        <MudText Typo="Typo.h6">
+            <MudIcon Icon="@Icons.Material.Filled.Discount" Class="mr-2" />
+            @(IsNew ? "Add Discount Contract" : "Edit Discount Contract")
+        </MudText>
+    </TitleContent>
+    <DialogContent>
+        <MudForm @ref="_form" @bind-IsValid="_formIsValid">
+            <MudGrid>
+                <MudItem xs="12">
+                    <MudTextField @bind-Value="Contract.Name" Label="Contract Name" Required="true" 
+                                  RequiredError="Name is required" Variant="Variant.Outlined" />
+                </MudItem>
+                <MudItem xs="12">
+                    <MudAutocomplete T="Party" Label="Customer (leave empty for all)"
+                                     @bind-Value="_selectedParty"
+                                     SearchFunc="SearchParties"
+                                     ToStringFunc="@(p => p?.Name ?? "")"
+                                     Variant="Variant.Outlined"
+                                     Clearable="true"
+                                     Dense="true" />
+                </MudItem>
+                <MudItem xs="6">
+                    <MudNumericField @bind-Value="Contract.DiscountPercentage" Label="Discount Percentage" 
+                                     Variant="Variant.Outlined" Format="N2" Required="true"
+                                     RequiredError="Discount percentage is required"
+                                     Min="0" Max="100" Adornment="Adornment.End" AdornmentText="%" />
+                </MudItem>
+                <MudItem xs="6">
+                    <MudAutocomplete T="ServiceType" Label="Service Type (leave empty for all)"
+                                     @bind-Value="_selectedServiceType"
+                                     SearchFunc="SearchServiceTypes"
+                                     ToStringFunc="@(s => s?.Name ?? "")"
+                                     Variant="Variant.Outlined"
+                                     Clearable="true"
+                                     Dense="true" />
+                </MudItem>
+                <MudItem xs="6">
+                    <MudNumericField @bind-Value="Contract.MinimumAmount" Label="Minimum Invoice Amount" 
+                                     Variant="Variant.Outlined" Format="N2" />
+                </MudItem>
+                <MudItem xs="6">
+                    <MudNumericField @bind-Value="Contract.MaximumDiscount" Label="Maximum Discount Amount" 
+                                     Variant="Variant.Outlined" Format="N2" />
+                </MudItem>
+                <MudItem xs="6">
+                    <MudDatePicker @bind-Date="_effectiveFrom" Label="Effective From" Required="true"
+                                   RequiredError="Effective From is required" Variant="Variant.Outlined" />
+                </MudItem>
+                <MudItem xs="6">
+                    <MudDatePicker @bind-Date="_effectiveTo" Label="Effective To" Clearable="true"
+                                   Variant="Variant.Outlined" />
+                </MudItem>
+                <MudItem xs="6">
+                    <MudSwitch @bind-Value="Contract.ApplyToDomestic" Label="Apply to Domestic" Color="Color.Primary" />
+                </MudItem>
+                <MudItem xs="6">
+                    <MudSwitch @bind-Value="Contract.ApplyToInternational" Label="Apply to International" Color="Color.Primary" />
+                </MudItem>
+                <MudItem xs="12">
+                    <MudTextField @bind-Value="Contract.Notes" Label="Notes" 
+                                  Variant="Variant.Outlined" Lines="2" />
+                </MudItem>
+                <MudItem xs="12">
+                    <MudSwitch @bind-Value="Contract.IsActive" Label="Active" Color="Color.Success" />
+                </MudItem>
+            </MudGrid>
+        </MudForm>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Cancel">Cancel</MudButton>
+        <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="Save" Disabled="!_formIsValid">Save</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] MudDialogInstance MudDialog { get; set; } = null!;
+    [Parameter] public DiscountContract Contract { get; set; } = new();
+    [Parameter] public bool IsNew { get; set; }
+
+    private MudForm _form = null!;
+    private bool _formIsValid;
+    private DateTime? _effectiveFrom;
+    private DateTime? _effectiveTo;
+    private Party? _selectedParty;
+    private ServiceType? _selectedServiceType;
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (IsNew)
+        {
+            Contract.IsActive = true;
+            Contract.ApplyToDomestic = true;
+            Contract.ApplyToInternational = true;
+            _effectiveFrom = DateTime.Today;
+        }
+        else
+        {
+            _effectiveFrom = Contract.EffectiveFrom;
+            _effectiveTo = Contract.EffectiveTo;
+            
+            if (Contract.PartyId.HasValue)
+            {
+                _selectedParty = await DbContext.Parties.FindAsync(Contract.PartyId.Value);
+            }
+            if (Contract.ServiceTypeId.HasValue)
+            {
+                _selectedServiceType = await DbContext.ServiceTypes.FindAsync(Contract.ServiceTypeId.Value);
+            }
+        }
+    }
+
+    private async Task<IEnumerable<Party>> SearchParties(string value, CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return await DbContext.Parties.Where(p => p.IsActive && !p.IsDeleted).Take(20).ToListAsync(cancellationToken);
+        
+        return await DbContext.Parties
+            .Where(p => p.IsActive && !p.IsDeleted && p.Name.ToLower().Contains(value.ToLower()))
+            .Take(20)
+            .ToListAsync(cancellationToken);
+    }
+
+    private async Task<IEnumerable<ServiceType>> SearchServiceTypes(string value, CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return await DbContext.ServiceTypes.Where(s => s.IsActive && !s.IsDeleted).Take(20).ToListAsync(cancellationToken);
+        
+        return await DbContext.ServiceTypes
+            .Where(s => s.IsActive && !s.IsDeleted && s.Name.ToLower().Contains(value.ToLower()))
+            .Take(20)
+            .ToListAsync(cancellationToken);
+    }
+
+    private async Task Save()
+    {
+        await _form.Validate();
+        if (!_formIsValid) return;
+
+        Contract.EffectiveFrom = DateTime.SpecifyKind(_effectiveFrom!.Value.Date, DateTimeKind.Utc);
+        Contract.EffectiveTo = _effectiveTo.HasValue 
+            ? DateTime.SpecifyKind(_effectiveTo.Value.Date, DateTimeKind.Utc) 
+            : null;
+
+        Contract.PartyId = _selectedParty?.Id;
+        Contract.PartyName = _selectedParty?.Name;
+        Contract.ServiceTypeId = _selectedServiceType?.Id;
+        Contract.ServiceTypeName = _selectedServiceType?.Name;
+
+        if (IsNew)
+        {
+            Contract.CreatedAt = DateTime.UtcNow;
+            DbContext.DiscountContracts.Add(Contract);
+        }
+        else
+        {
+            Contract.ModifiedAt = DateTime.UtcNow;
+            DbContext.DiscountContracts.Update(Contract);
+        }
+
+        await DbContext.SaveChangesAsync();
+        MudDialog.Close(DialogResult.Ok(Contract));
+    }
+
+    private void Cancel() => MudDialog.Cancel();
+}
