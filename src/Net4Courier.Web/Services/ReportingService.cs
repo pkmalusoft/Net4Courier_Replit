@@ -132,7 +132,7 @@ public class ReportingService
                         row.RelativeItem().Column(c =>
                         {
                             c.Item().Text("Bill To:").Bold();
-                            c.Item().Text(invoice.CustomerName ?? "-");
+                            c.Item().Text(invoice.CustomerName ?? "-").Bold();
                             c.Item().Text(invoice.CustomerAddress ?? "");
                             if (!string.IsNullOrEmpty(invoice.CustomerTaxNo))
                                 c.Item().Text($"Tax No: {invoice.CustomerTaxNo}");
