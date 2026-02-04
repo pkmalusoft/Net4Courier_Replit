@@ -290,6 +290,41 @@ CREATE TABLE IF NOT EXISTS "DiscountContracts" (
     "IsDemo" BOOLEAN DEFAULT FALSE
 );
 
+-- VendorBills
+CREATE TABLE IF NOT EXISTS "VendorBills" (
+    "Id" BIGSERIAL PRIMARY KEY,
+    "BillNo" VARCHAR(50) NOT NULL,
+    "VendorBillNo" VARCHAR(100),
+    "BillDate" TIMESTAMP NOT NULL,
+    "DueDate" TIMESTAMP,
+    "CompanyId" BIGINT,
+    "BranchId" BIGINT,
+    "BranchName" TEXT,
+    "FinancialYearId" BIGINT,
+    "SupplierId" BIGINT,
+    "SupplierName" TEXT,
+    "Description" TEXT,
+    "SubTotal" DECIMAL(18,2) DEFAULT 0,
+    "TaxPercent" DECIMAL(10,4),
+    "TaxAmount" DECIMAL(18,2),
+    "TotalAmount" DECIMAL(18,2) DEFAULT 0,
+    "PaidAmount" DECIMAL(18,2) DEFAULT 0,
+    "BalanceAmount" DECIMAL(18,2) DEFAULT 0,
+    "CurrencyCode" VARCHAR(10),
+    "Status" INT DEFAULT 1,
+    "Remarks" TEXT,
+    "JournalId" BIGINT,
+    "ApprovedDate" TIMESTAMP,
+    "ApprovedBy" TEXT,
+    "IsActive" BOOLEAN DEFAULT TRUE,
+    "CreatedAt" TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    "ModifiedAt" TIMESTAMP,
+    "CreatedBy" INT,
+    "ModifiedBy" INT,
+    "IsDeleted" BOOLEAN DEFAULT FALSE,
+    "IsDemo" BOOLEAN DEFAULT FALSE
+);
+
 -- =============================================
 -- PART 2: ALTER TABLES (add missing columns)
 -- =============================================

@@ -1,0 +1,153 @@
+@inject ApplicationDbContext DbContext
+@using Microsoft.EntityFrameworkCore
+@using Net4Courier.Infrastructure.Data
+@using Net4Courier.Finance.Entities
+@using Net4Courier.Masters.Entities
+
+<MudDialog>
+    <TitleContent>
+        <MudText Typo="Typo.h6">
+            <MudIcon Icon="@Icons.Material.Filled.Receipt" Class="mr-2" />
+            @(IsNew ? "New Vendor Bill" : "Edit Vendor Bill")
+        </MudText>
+    </TitleContent>
+    <DialogContent>
+        <MudForm @ref="_form" @bind-IsValid="_formIsValid">
+            <MudGrid>
+                <MudItem xs="12" md="6">
+                    <MudTextField @bind-Value="Bill.BillNo" Label="Bill No" ReadOnly="@(!IsNew)"
+                                  Variant="Variant.Outlined" HelperText="@(IsNew ? "Auto-generated if blank" : "")" />
+                </MudItem>
+                <MudItem xs="12" md="6">
+                    <MudTextField @bind-Value="Bill.VendorBillNo" Label="Vendor Invoice/Bill No"
+                                  Variant="Variant.Outlined" />
+                </MudItem>
+                <MudItem xs="12" md="6">
+                    <MudDatePicker @bind-Date="_billDate" Label="Bill Date" DateFormat="dd-MMM-yyyy" Required="true"
+                                   Variant="Variant.Outlined" />
+                </MudItem>
+                <MudItem xs="12" md="6">
+                    <MudDatePicker @bind-Date="_dueDate" Label="Due Date" DateFormat="dd-MMM-yyyy" Clearable="true"
+                                   Variant="Variant.Outlined" />
+                </MudItem>
+                <MudItem xs="12">
+                    <MudAutocomplete T="Party" Label="Supplier" Required="true" RequiredError="Supplier is required"
+                                     @bind-Value="_selectedSupplier"
+                                     SearchFunc="SearchSuppliers"
+                                     ToStringFunc="@(p => p?.Name ?? "")"
+                                     Variant="Variant.Outlined"
+                                     Dense="true" />
+                </MudItem>
+                <MudItem xs="12">
+                    <MudTextField @bind-Value="Bill.Description" Label="Description" Lines="2" Variant="Variant.Outlined" />
+                </MudItem>
+                <MudItem xs="12" md="4">
+                    <MudNumericField @bind-Value="Bill.SubTotal" Label="Sub Total" Required="true" Min="0.01M"
+                                     Variant="Variant.Outlined" Format="N2" />
+                </MudItem>
+                <MudItem xs="12" md="4">
+                    <MudNumericField @bind-Value="Bill.TaxPercent" Label="Tax %" Min="0" Max="100"
+                                     Variant="Variant.Outlined" Format="N2" />
+                </MudItem>
+                <MudItem xs="12" md="4">
+                    <MudNumericField Value="@CalculatedTotal" Label="Total Amount" ReadOnly="true"
+                                     Variant="Variant.Outlined" Format="N2" />
+                </MudItem>
+                <MudItem xs="12">
+                    <MudTextField @bind-Value="Bill.Remarks" Label="Remarks" Lines="2" Variant="Variant.Outlined" />
+                </MudItem>
+            </MudGrid>
+        </MudForm>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Cancel">Cancel</MudButton>
+        <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="Save" Disabled="!_formIsValid">Save</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] MudDialogInstance MudDialog { get; set; } = null!;
+    [Parameter] public VendorBill Bill { get; set; } = new();
+    [Parameter] public bool IsNew { get; set; }
+
+    private MudForm _form = null!;
+    private bool _formIsValid;
+    private DateTime? _billDate;
+    private DateTime? _dueDate;
+    private Party? _selectedSupplier;
+
+    private decimal CalculatedTotal
+    {
+        get
+        {
+            var taxAmount = Bill.SubTotal * (Bill.TaxPercent ?? 0) / 100;
+            return Bill.SubTotal + taxAmount;
+        }
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (IsNew)
+        {
+            _billDate = DateTime.Today;
+            _dueDate = DateTime.Today.AddDays(30);
+        }
+        else
+        {
+            _billDate = Bill.BillDate;
+            _dueDate = Bill.DueDate;
+            if (Bill.SupplierId.HasValue)
+            {
+                _selectedSupplier = await DbContext.Parties.FindAsync(Bill.SupplierId.Value);
+            }
+        }
+    }
+
+    private async Task<IEnumerable<Party>> SearchSuppliers(string value, CancellationToken cancellationToken)
+    {
+        var query = DbContext.Parties.Where(p => p.PartyType == PartyType.Supplier && !p.IsDeleted && p.IsActive);
+        
+        if (!string.IsNullOrWhiteSpace(value))
+            query = query.Where(p => p.Name.ToLower().Contains(value.ToLower()));
+        
+        return await query.Take(20).ToListAsync(cancellationToken);
+    }
+
+    private async Task Save()
+    {
+        await _form.Validate();
+        if (!_formIsValid) return;
+
+        Bill.BillDate = DateTime.SpecifyKind((_billDate ?? DateTime.Today).Date, DateTimeKind.Utc);
+        Bill.DueDate = _dueDate.HasValue ? DateTime.SpecifyKind(_dueDate.Value.Date, DateTimeKind.Utc) : null;
+
+        Bill.SupplierId = _selectedSupplier?.Id;
+        Bill.SupplierName = _selectedSupplier?.Name;
+
+        Bill.TaxAmount = Bill.SubTotal * (Bill.TaxPercent ?? 0) / 100;
+        Bill.TotalAmount = Bill.SubTotal + (Bill.TaxAmount ?? 0);
+        Bill.BalanceAmount = Bill.TotalAmount - Bill.PaidAmount;
+
+        if (IsNew)
+        {
+            if (string.IsNullOrEmpty(Bill.BillNo))
+            {
+                var maxNo = await DbContext.VendorBills.MaxAsync(b => (int?)b.Id) ?? 0;
+                Bill.BillNo = $"VB-{(maxNo + 1):D6}";
+            }
+            Bill.Status = VendorBillStatus.Draft;
+            Bill.CreatedAt = DateTime.UtcNow;
+            DbContext.VendorBills.Add(Bill);
+        }
+        else
+        {
+            Bill.ModifiedAt = DateTime.UtcNow;
+            DbContext.VendorBills.Update(Bill);
+        }
+
+        await DbContext.SaveChangesAsync();
+        MudDialog.Close(DialogResult.Ok(Bill));
+    }
+
+    private void Cancel() => MudDialog.Cancel();
+}

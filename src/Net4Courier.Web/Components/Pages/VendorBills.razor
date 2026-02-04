@@ -1,0 +1,218 @@
+@page "/vendor-bills"
+@inject ApplicationDbContext DbContext
+@inject IDialogService DialogService
+@inject ISnackbar Snackbar
+@inject IDateTimeService DateTimeService
+@using Microsoft.EntityFrameworkCore
+@using Net4Courier.Infrastructure.Data
+@using Net4Courier.Finance.Entities
+@using Net4Courier.Web.Services
+@using ClosedXML.Excel
+
+<PageTitle>Vendor Bills</PageTitle>
+
+<MudContainer MaxWidth="MaxWidth.ExtraLarge" Class="mt-4">
+    <MudPaper Class="pa-4" Elevation="2">
+        <MudToolBar Dense="true">
+            <MudText Typo="Typo.h6">Vendor Bills</MudText>
+            <MudSpacer />
+            <MudDatePicker @bind-Date="_fromDate" Label="From" DateFormat="dd-MMM-yyyy" Class="mr-2" Style="width: 150px;" />
+            <MudDatePicker @bind-Date="_toDate" Label="To" DateFormat="dd-MMM-yyyy" Class="mr-2" Style="width: 150px;" />
+            <MudSelect T="VendorBillStatus?" @bind-Value="_statusFilter" Label="Status" Class="mr-2" Style="width: 150px;" Clearable="true">
+                @foreach (var status in Enum.GetValues<VendorBillStatus>())
+                {
+                    <MudSelectItem T="VendorBillStatus?" Value="@status">@status</MudSelectItem>
+                }
+            </MudSelect>
+            <MudButton Variant="Variant.Outlined" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Search"
+                       OnClick="LoadData" Class="mr-2">Search</MudButton>
+            <MudButton Variant="Variant.Outlined" Color="Color.Success" StartIcon="@Icons.Material.Filled.Download"
+                       OnClick="ExportToExcel" Class="mr-2">Export</MudButton>
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add"
+                       OnClick="AddNew">New Bill</MudButton>
+        </MudToolBar>
+
+        <MudTable Items="_bills" Hover="true" Dense="true" Class="mt-4" Loading="_loading">
+            <HeaderContent>
+                <MudTh>Bill No</MudTh>
+                <MudTh>Vendor Bill No</MudTh>
+                <MudTh>Date</MudTh>
+                <MudTh>Supplier</MudTh>
+                <MudTh Style="text-align: right;">Amount</MudTh>
+                <MudTh Style="text-align: right;">Paid</MudTh>
+                <MudTh Style="text-align: right;">Balance</MudTh>
+                <MudTh>Due Date</MudTh>
+                <MudTh Style="text-align: center;">Status</MudTh>
+                <MudTh Style="text-align: center;">Actions</MudTh>
+            </HeaderContent>
+            <RowTemplate>
+                <MudTd>@context.BillNo</MudTd>
+                <MudTd>@context.VendorBillNo</MudTd>
+                <MudTd>@DateTimeService.FormatDate(context.BillDate)</MudTd>
+                <MudTd>@context.SupplierName</MudTd>
+                <MudTd Style="text-align: right;">@context.TotalAmount.ToString("N2")</MudTd>
+                <MudTd Style="text-align: right;">@context.PaidAmount.ToString("N2")</MudTd>
+                <MudTd Style="text-align: right;">@context.BalanceAmount.ToString("N2")</MudTd>
+                <MudTd>@(context.DueDate.HasValue ? DateTimeService.FormatDate(context.DueDate.Value) : "-")</MudTd>
+                <MudTd Style="text-align: center;">
+                    <MudChip T="string" Size="Size.Small" Color="@GetStatusColor(context.Status)">@context.Status</MudChip>
+                </MudTd>
+                <MudTd Style="text-align: center;">
+                    <MudIconButton Icon="@Icons.Material.Filled.Edit" Size="Size.Small" Color="Color.Primary"
+                                   OnClick="@(() => Edit(context))" Disabled="@(context.Status == VendorBillStatus.Paid || context.Status == VendorBillStatus.Cancelled)" />
+                    <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" Color="Color.Error"
+                                   OnClick="@(() => Delete(context))" Disabled="@(context.Status != VendorBillStatus.Draft)" />
+                </MudTd>
+            </RowTemplate>
+            <NoRecordsContent>
+                <MudText Align="Align.Center">No vendor bills found.</MudText>
+            </NoRecordsContent>
+        </MudTable>
+    </MudPaper>
+</MudContainer>
+
+@code {
+    private List<VendorBill> _bills = new();
+    private bool _loading = true;
+    private DateTime? _fromDate = DateTime.Today.AddMonths(-1);
+    private DateTime? _toDate = DateTime.Today;
+    private VendorBillStatus? _statusFilter;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadData();
+    }
+
+    private Color GetStatusColor(VendorBillStatus status)
+    {
+        return status switch
+        {
+            VendorBillStatus.Draft => Color.Default,
+            VendorBillStatus.Approved => Color.Info,
+            VendorBillStatus.PartiallyPaid => Color.Warning,
+            VendorBillStatus.Paid => Color.Success,
+            VendorBillStatus.Cancelled => Color.Error,
+            _ => Color.Default
+        };
+    }
+
+    private async Task LoadData()
+    {
+        _loading = true;
+        var query = DbContext.VendorBills.Where(b => !b.IsDeleted);
+
+        if (_fromDate.HasValue)
+            query = query.Where(b => b.BillDate >= DateTime.SpecifyKind(_fromDate.Value.Date, DateTimeKind.Utc));
+        if (_toDate.HasValue)
+            query = query.Where(b => b.BillDate <= DateTime.SpecifyKind(_toDate.Value.Date.AddDays(1), DateTimeKind.Utc));
+        if (_statusFilter.HasValue)
+            query = query.Where(b => b.Status == _statusFilter.Value);
+
+        _bills = await query.OrderByDescending(b => b.BillDate).ThenByDescending(b => b.Id).ToListAsync();
+        _loading = false;
+    }
+
+    private async Task AddNew()
+    {
+        var bill = new VendorBill
+        {
+            BillDate = DateTime.SpecifyKind(DateTime.UtcNow.Date, DateTimeKind.Utc)
+        };
+        var parameters = new DialogParameters<VendorBillDialog>
+        {
+            { x => x.Bill, bill },
+            { x => x.IsNew, true }
+        };
+
+        var dialog = await DialogService.ShowAsync<VendorBillDialog>("New Vendor Bill", parameters,
+            new DialogOptions { MaxWidth = MaxWidth.Medium, FullWidth = true });
+        var result = await dialog.Result;
+
+        if (!result!.Canceled)
+        {
+            await LoadData();
+            Snackbar.Add("Vendor bill created successfully", Severity.Success);
+        }
+    }
+
+    private async Task Edit(VendorBill bill)
+    {
+        var parameters = new DialogParameters<VendorBillDialog>
+        {
+            { x => x.Bill, bill },
+            { x => x.IsNew, false }
+        };
+
+        var dialog = await DialogService.ShowAsync<VendorBillDialog>("Edit Vendor Bill", parameters,
+            new DialogOptions { MaxWidth = MaxWidth.Medium, FullWidth = true });
+        var result = await dialog.Result;
+
+        if (!result!.Canceled)
+        {
+            await LoadData();
+            Snackbar.Add("Vendor bill updated successfully", Severity.Success);
+        }
+    }
+
+    private async Task Delete(VendorBill bill)
+    {
+        var confirm = await DialogService.ShowMessageBox(
+            "Confirm Delete",
+            $"Are you sure you want to delete bill '{bill.BillNo}'?",
+            yesText: "Delete", cancelText: "Cancel");
+
+        if (confirm == true)
+        {
+            bill.IsDeleted = true;
+            bill.ModifiedAt = DateTime.UtcNow;
+            await DbContext.SaveChangesAsync();
+            await LoadData();
+            Snackbar.Add("Vendor bill deleted successfully", Severity.Success);
+        }
+    }
+
+    private async Task ExportToExcel()
+    {
+        using var workbook = new XLWorkbook();
+        var worksheet = workbook.Worksheets.Add("Vendor Bills");
+
+        worksheet.Cell(1, 1).Value = "Bill No";
+        worksheet.Cell(1, 2).Value = "Vendor Bill No";
+        worksheet.Cell(1, 3).Value = "Date";
+        worksheet.Cell(1, 4).Value = "Supplier";
+        worksheet.Cell(1, 5).Value = "Amount";
+        worksheet.Cell(1, 6).Value = "Paid";
+        worksheet.Cell(1, 7).Value = "Balance";
+        worksheet.Cell(1, 8).Value = "Due Date";
+        worksheet.Cell(1, 9).Value = "Status";
+
+        var headerRange = worksheet.Range(1, 1, 1, 9);
+        headerRange.Style.Font.Bold = true;
+        headerRange.Style.Fill.BackgroundColor = XLColor.LightGray;
+
+        int row = 2;
+        foreach (var bill in _bills)
+        {
+            worksheet.Cell(row, 1).Value = bill.BillNo;
+            worksheet.Cell(row, 2).Value = bill.VendorBillNo;
+            worksheet.Cell(row, 3).Value = DateTimeService.FormatDate(bill.BillDate);
+            worksheet.Cell(row, 4).Value = bill.SupplierName;
+            worksheet.Cell(row, 5).Value = bill.TotalAmount;
+            worksheet.Cell(row, 6).Value = bill.PaidAmount;
+            worksheet.Cell(row, 7).Value = bill.BalanceAmount;
+            worksheet.Cell(row, 8).Value = bill.DueDate.HasValue ? DateTimeService.FormatDate(bill.DueDate.Value) : "";
+            worksheet.Cell(row, 9).Value = bill.Status.ToString();
+            row++;
+        }
+
+        worksheet.Columns().AdjustToContents();
+
+        var fileName = $"VendorBills_{DateTime.Now:yyyyMMdd_HHmmss}.xlsx";
+        using var stream = new MemoryStream();
+        workbook.SaveAs(stream);
+        var content = stream.ToArray();
+
+        var base64 = Convert.ToBase64String(content);
+        Snackbar.Add($"Export ready: {fileName}", Severity.Success);
+    }
+}
