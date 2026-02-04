@@ -161,6 +161,88 @@ CREATE TABLE IF NOT EXISTS "GLAccountClassifications" (
     "IsDemo" BOOLEAN DEFAULT FALSE
 );
 
+-- TaxCodes
+CREATE TABLE IF NOT EXISTS "TaxCodes" (
+    "Id" UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    "TenantId" UUID,
+    "Code" VARCHAR(50),
+    "Description" VARCHAR(255),
+    "Rate" DECIMAL(10,4) DEFAULT 0,
+    "TaxType" INT DEFAULT 0,
+    "IsActive" BOOLEAN DEFAULT TRUE,
+    "CreatedAt" TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    "ModifiedAt" TIMESTAMP,
+    "UpdatedAt" TIMESTAMP,
+    "CreatedBy" TEXT,
+    "UpdatedBy" TEXT
+);
+
+-- TicketCategories
+CREATE TABLE IF NOT EXISTS "TicketCategories" (
+    "Id" BIGSERIAL PRIMARY KEY,
+    "Name" VARCHAR(100) NOT NULL,
+    "Code" VARCHAR(20),
+    "Description" TEXT,
+    "SortOrder" INT DEFAULT 0,
+    "IsActive" BOOLEAN DEFAULT TRUE,
+    "CreatedAt" TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    "ModifiedAt" TIMESTAMP,
+    "CreatedBy" INT,
+    "ModifiedBy" INT,
+    "IsDeleted" BOOLEAN DEFAULT FALSE,
+    "IsDemo" BOOLEAN DEFAULT FALSE
+);
+
+-- Tickets
+CREATE TABLE IF NOT EXISTS "Tickets" (
+    "Id" BIGSERIAL PRIMARY KEY,
+    "TicketNo" TEXT,
+    "Subject" TEXT,
+    "Description" TEXT,
+    "CategoryId" BIGINT,
+    "CategoryName" TEXT,
+    "PartyId" BIGINT,
+    "PartyName" TEXT,
+    "AWBId" BIGINT,
+    "AWBNo" TEXT,
+    "Status" INT DEFAULT 0,
+    "Priority" INT DEFAULT 0,
+    "AssignedToUserId" BIGINT,
+    "AssignedToUserName" TEXT,
+    "FirstResponseAt" TIMESTAMP,
+    "ResolvedAt" TIMESTAMP,
+    "ClosedAt" TIMESTAMP,
+    "ResolutionNotes" TEXT,
+    "CustomerRating" INT,
+    "CustomerFeedback" TEXT,
+    "BranchId" BIGINT,
+    "BranchName" TEXT,
+    "IsActive" BOOLEAN DEFAULT TRUE,
+    "CreatedAt" TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    "ModifiedAt" TIMESTAMP,
+    "CreatedBy" INT,
+    "ModifiedBy" INT,
+    "IsDeleted" BOOLEAN DEFAULT FALSE,
+    "IsDemo" BOOLEAN DEFAULT FALSE
+);
+
+-- TicketComments
+CREATE TABLE IF NOT EXISTS "TicketComments" (
+    "Id" BIGSERIAL PRIMARY KEY,
+    "TicketId" BIGINT NOT NULL,
+    "Comment" TEXT,
+    "IsInternal" BOOLEAN DEFAULT FALSE,
+    "CreatedByUserId" BIGINT,
+    "CreatedByUserName" TEXT,
+    "IsActive" BOOLEAN DEFAULT TRUE,
+    "CreatedAt" TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    "ModifiedAt" TIMESTAMP,
+    "CreatedBy" INT,
+    "ModifiedBy" INT,
+    "IsDeleted" BOOLEAN DEFAULT FALSE,
+    "IsDemo" BOOLEAN DEFAULT FALSE
+);
+
 -- =============================================
 -- PART 2: ALTER TABLES (add missing columns)
 -- =============================================
