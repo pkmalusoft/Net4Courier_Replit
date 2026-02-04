@@ -1,5 +1,5 @@
 @page "/pickup-inscan"
-@inject ApplicationDbContext DbContext
+@inject IDbContextFactory<ApplicationDbContext> DbFactory
 @inject NavigationManager NavigationManager
 @inject ISnackbar Snackbar
 @inject IJSRuntime JS
@@ -291,40 +291,41 @@
 
     private async Task LoadData()
     {
+        await using var context = await DbFactory.CreateDbContextAsync();
         var today = DateTime.UtcNow.Date;
         
-        _pendingPickups = await DbContext.PickupRequests
+        _pendingPickups = await context.PickupRequests
             .Include(p => p.Shipments)
             .Where(p => p.Status == PickupStatus.ShipmentCollected && !p.IsDeleted)
             .OrderByDescending(p => p.CollectedAt)
             .Take(50)
             .ToListAsync();
             
-        _inscannedToday = await DbContext.PickupRequests
+        _inscannedToday = await context.PickupRequests
             .Include(p => p.Shipments)
             .Where(p => p.Status == PickupStatus.Inscanned && !p.IsDeleted && p.InscannedAt >= today)
             .OrderByDescending(p => p.InscannedAt)
             .Take(50)
             .ToListAsync();
             
-        _pendingConversionCount = await DbContext.PickupRequests
+        _pendingConversionCount = await context.PickupRequests
             .Where(p => p.Status == PickupStatus.Inscanned && !p.IsDeleted && !p.IsConverted)
             .SelectMany(p => p.Shipments)
             .CountAsync(s => s.Status == ShipmentLineStatus.Pending);
             
-        _pendingAWBs = await DbContext.InscanMasters
+        _pendingAWBs = await context.InscanMasters
             .Where(a => a.CourierStatusId == CourierStatus.PickedUp && !a.IsDeleted)
             .OrderByDescending(a => a.TransactionDate)
             .Take(50)
             .ToListAsync();
             
-        _inscannedAWBsToday = await DbContext.InscanMasters
+        _inscannedAWBsToday = await context.InscanMasters
             .Where(a => a.CourierStatusId == CourierStatus.InscanAtOrigin && !a.IsDeleted && a.ModifiedAt >= today)
             .OrderByDescending(a => a.ModifiedAt)
             .Take(50)
             .ToListAsync();
         
-        var importShipmentsToday = await DbContext.ImportShipments
+        var importShipmentsToday = await context.ImportShipments
             .Where(s => s.Status == ImportShipmentStatus.ReceivedAtWarehouse && !s.IsDeleted && s.ModifiedAt >= today)
             .OrderByDescending(s => s.ModifiedAt)
             .Take(50)
@@ -386,7 +387,9 @@
 
     private async Task ProcessPickupScan()
     {
-        var pickup = await DbContext.PickupRequests
+        await using var context = await DbFactory.CreateDbContextAsync();
+        
+        var pickup = await context.PickupRequests
             .Include(p => p.Shipments)
             .FirstOrDefaultAsync(p => p.PickupNo == _scanInput.Trim() && !p.IsDeleted);
 
@@ -422,7 +425,7 @@
                 {
                     if (shipment.AWBId.HasValue)
                     {
-                        var awb = await DbContext.InscanMasters.FindAsync(shipment.AWBId.Value);
+                        var awb = await context.InscanMasters.FindAsync(shipment.AWBId.Value);
                         if (awb != null)
                         {
                             awb.CourierStatusId = CourierStatus.InscanAtOrigin;
@@ -435,7 +438,7 @@
                 }
             }
             
-            await DbContext.SaveChangesAsync();
+            await context.SaveChangesAsync();
             
             foreach (var awbId in inscannedAwbIds)
             {
@@ -456,9 +459,10 @@
 
     private async Task ProcessAWBScan()
     {
+        await using var context = await DbFactory.CreateDbContextAsync();
         var awbNo = _scanInput.Trim();
         
-        var awb = await DbContext.InscanMasters
+        var awb = await context.InscanMasters
             .FirstOrDefaultAsync(a => a.AWBNo == awbNo && !a.IsDeleted);
 
         if (awb != null)
@@ -475,7 +479,7 @@
                 awb.ModifiedAt = DateTime.UtcNow;
                 awb.ModifiedByName = _currentUsername;
                 
-                await DbContext.SaveChangesAsync();
+                await context.SaveChangesAsync();
                 
                 await ShipmentStatusService.SetStatus(
                     awb.Id, "INSCAN_ORIGIN", "PickupInscan", null, null,
@@ -491,7 +495,7 @@
             return;
         }
         
-        var importShipment = await DbContext.ImportShipments
+        var importShipment = await context.ImportShipments
             .FirstOrDefaultAsync(s => s.AWBNo == awbNo && !s.IsDeleted);
         
         if (importShipment != null)
@@ -507,7 +511,7 @@
                 importShipment.Status = ImportShipmentStatus.ReceivedAtWarehouse;
                 importShipment.ModifiedAt = DateTime.UtcNow;
                 
-                await DbContext.SaveChangesAsync();
+                await context.SaveChangesAsync();
                 
                 _lastMessage = $"Import AWB {awbNo} received at warehouse! Status updated to Received at Origin Facility.";
                 _lastSeverity = Severity.Success;
