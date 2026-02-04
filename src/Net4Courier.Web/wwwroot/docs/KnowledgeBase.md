@@ -4284,18 +4284,39 @@ supplier, vendor, AP vendor, supplier master, vendor list
 
 ### Vendor Bills
 
-**Navigation:** Accounts & Finance → Account Payables → Transactions → Vendor Bills
+**Navigation:** Finance → Accounts Payable → Vendor Bills
 
-**Purpose:** Record bills from vendors.
+**Purpose:** Record and manage bills from suppliers/vendors for accounts payable tracking.
 
 #### Bill Entry
-- Select vendor
-- Enter bill details (date, number, amount)
-- Line items with account allocation
-- Tax calculations
+1. Click **New Vendor Bill** to create a new bill
+2. Select the supplier from the dropdown
+3. Enter bill details:
+   - **Bill No**: Vendor's invoice number
+   - **Bill Date**: Invoice date from vendor
+   - **Due Date**: Payment due date
+   - **Description**: Purpose of the bill
+4. Enter amounts:
+   - **Sub Total**: Bill amount before tax
+   - **Tax %**: Applicable tax percentage
+   - **Total Amount**: Automatically calculated
+5. Save as **Draft** or **Post** immediately
+
+#### Bill Statuses
+| Status | Description |
+|--------|-------------|
+| Draft | Bill entered but not yet approved |
+| Approved | Bill verified and ready for payment |
+| Paid | Payment completed |
+
+#### Actions
+- **Edit**: Modify draft bills
+- **Approve**: Mark bill as verified
+- **Pay**: Record payment against the bill
+- **Delete**: Remove draft bills only
 
 ### Keywords
-vendor bill, purchase invoice, AP invoice, supplier bill, expense bill
+vendor bill, purchase invoice, AP invoice, supplier bill, expense bill, accounts payable
 
 ---
 
@@ -4318,12 +4339,60 @@ vendor payment, supplier payment, bill payment, AP payment, pay vendor
 
 ### Expense Management
 
-**Navigation:** Accounts & Finance → Account Payables → Transactions → Expense Management
+**Navigation:** Finance → Accounts Payable → Expenses
 
-**Purpose:** Track and manage operational expenses.
+**Purpose:** Track, submit, and approve operational expenses with category-based organization and approval workflow.
+
+#### Creating an Expense
+1. Click **New Expense** to create a new expense entry
+2. Fill in the details:
+   - **Expense No**: Auto-generated or manual entry
+   - **Date**: When the expense was incurred
+   - **Category**: Select from Travel, Fuel, Maintenance, Office, Communication, Utilities, Insurance, Customs, Freight, Handling, or Other
+   - **Description**: Details about the expense
+3. Optionally link to:
+   - **Supplier**: If expense is from a vendor
+   - **Employee**: If claimed by an employee
+4. Enter amounts:
+   - **Amount**: Base expense amount
+   - **Tax %**: Applicable tax percentage
+   - **Total**: Automatically calculated
+5. Add **Reference No** and **Remarks** as needed
+6. Save the expense
+
+#### Expense Categories
+| Category | Use For |
+|----------|---------|
+| Travel | Transport, flights, accommodation |
+| Fuel | Vehicle fuel costs |
+| Maintenance | Repairs, vehicle servicing |
+| Office | Office supplies, equipment |
+| Communication | Phone, internet, postage |
+| Utilities | Electricity, water, gas |
+| Insurance | Vehicle, cargo insurance |
+| Customs | Customs duties, clearance fees |
+| Freight | Shipping, carrier charges |
+| Handling | Warehouse, handling fees |
+| Other | Miscellaneous expenses |
+
+#### Approval Workflow
+| Status | Description |
+|--------|-------------|
+| Draft | Initial entry, can be edited or deleted |
+| Submitted | Sent for approval, awaiting review |
+| Approved | Verified and approved for payment |
+| Rejected | Not approved, returned with reason |
+| Paid | Payment completed |
+
+#### Actions
+- **Submit**: Send draft expense for approval
+- **Approve/Reject**: Manager actions on submitted expenses
+- **Edit**: Modify draft or rejected expenses
+- **Delete**: Remove draft expenses only
+- **Export**: Download expense list to Excel
 
 ### Keywords
-expense management, expense tracking, operational expense, cost management
+expense management, expense tracking, operational expense, cost management, expense approval, expense category
 
 ---
 
@@ -4603,17 +4672,35 @@ special charges, handling charges, special handling, surcharge
 
 ### Fuel Surcharge
 
-**Navigation:** Pricing & Billing → Fuel Surcharge
+**Navigation:** Pricing → Fuel Surcharge
 
-**Purpose:** Configure fuel surcharge percentages.
+**Purpose:** Configure fuel surcharge rates that are automatically applied to shipment charges based on fuel price fluctuations.
 
-### Configuration
-- Percentage based on fuel index
-- Valid date ranges
-- Movement type specific
+#### Creating a Fuel Surcharge
+1. Click **New Fuel Surcharge** to add a new rate
+2. Configure the surcharge:
+   - **Name**: Descriptive name (e.g., "Q1 2026 Fuel Surcharge")
+   - **Percentage**: Surcharge rate (e.g., 15%)
+   - **Effective From**: Start date for this rate
+   - **Effective To**: End date (optional, leave blank for ongoing)
+   - **Movement Type**: Domestic, International, or All
+   - **Is Active**: Enable/disable the surcharge
+3. Save the configuration
+
+#### How It Works
+- Fuel surcharge is applied as a percentage of the base freight charge
+- Only active surcharges within the effective date range are applied
+- Multiple surcharges can be configured for different movement types
+- System automatically selects the applicable surcharge based on shipment date and type
+
+#### Example Calculation
+| Base Freight | Fuel Surcharge % | Fuel Amount |
+|--------------|------------------|-------------|
+| AED 100 | 15% | AED 15 |
+| AED 250 | 12% | AED 30 |
 
 ### Keywords
-fuel surcharge, FSC, fuel charge, fuel adjustment
+fuel surcharge, FSC, fuel charge, fuel adjustment, fuel rate, surcharge percentage
 
 ---
 
@@ -4637,18 +4724,46 @@ other charges, additional charges, miscellaneous charges, charge types
 
 ## Discounts & Contracts
 
-**Navigation:** Pricing & Billing → Discounts & Contracts
+**Navigation:** Pricing → Discounts & Contracts
 
-**Purpose:** Manage volume discounts and special contracts.
+**Purpose:** Create customer-specific discount agreements with service type filtering, percentage discounts, and validity periods.
 
-### Discount Types
-- Volume-based discount
-- Customer-specific discount
-- Promotional discount
-- Loyalty discount
+### Creating a Discount Contract
+1. Click **New Contract** to create a discount agreement
+2. Configure the contract:
+   - **Contract Name**: Descriptive name (e.g., "ABC Corp Volume Discount")
+   - **Customer**: Select the customer for this contract
+   - **Discount %**: Percentage discount to apply (e.g., 10%)
+   - **Service Types**: Select which service types this discount applies to (or leave blank for all)
+   - **Valid From**: Contract start date
+   - **Valid To**: Contract end date
+   - **Is Active**: Enable/disable the contract
+3. Add **Description** and **Remarks** as needed
+4. Save the contract
+
+### How It Works
+- Discount contracts are customer-specific pricing agreements
+- System automatically applies the discount when creating invoices for the customer
+- Discounts can be limited to specific service types
+- Only active contracts within the validity period are applied
+- Multiple contracts can exist for a customer with different service types
+
+### Contract Management
+| Action | Description |
+|--------|-------------|
+| Edit | Modify contract terms and dates |
+| Activate/Deactivate | Enable or disable the contract |
+| Delete | Remove unused contracts |
+| View History | Track contract changes |
+
+### Example
+| Customer | Discount | Service Types | Valid Period |
+|----------|----------|---------------|--------------|
+| ABC Corp | 15% | Express, Same Day | Jan-Dec 2026 |
+| XYZ Ltd | 10% | All Services | Feb-Jun 2026 |
 
 ### Keywords
-discount, volume discount, contract discount, special pricing, promotional rate
+discount, volume discount, contract discount, special pricing, promotional rate, customer discount, discount agreement
 
 ---
 
