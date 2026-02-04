@@ -37,6 +37,19 @@ public class Company : BaseEntity
     
     public bool UseAwbStockManagement { get; set; } = true;
     
+    public string? InvoiceTermsAndConditions { get; set; }
+    
+    public string? BankAccountTitle { get; set; }
+    public string? BankAccountTitleArabic { get; set; }
+    public string? BankAccountNumber { get; set; }
+    public string? BankIBANNumber { get; set; }
+    public string? BankAccountType { get; set; }
+    public string? BankAccountTypeArabic { get; set; }
+    public string? BankCurrency { get; set; }
+    public string? BankSWIFTCode { get; set; }
+    public string? BankName { get; set; }
+    public string? BankNameArabic { get; set; }
+    
     public virtual ICollection<Branch> Branches { get; set; } = new List<Branch>();
     public virtual ICollection<FinancialYear> FinancialYears { get; set; } = new List<FinancialYear>();
 }
