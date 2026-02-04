@@ -129,6 +129,7 @@ public class ApplicationDbContext : DbContext
     public DbSet<ShipmentStatusGroup> ShipmentStatusGroups => Set<ShipmentStatusGroup>();
     public DbSet<ShipmentStatus> ShipmentStatuses => Set<ShipmentStatus>();
     public DbSet<ShipmentStatusHistory> ShipmentStatusHistories => Set<ShipmentStatusHistory>();
+    public DbSet<StatusEventMapping> StatusEventMappings => Set<StatusEventMapping>();
     public DbSet<PickupStatusHistory> PickupStatusHistories => Set<PickupStatusHistory>();
     
     public DbSet<ServiceType> ServiceTypes => Set<ServiceType>();
@@ -1183,6 +1184,18 @@ public class ApplicationDbContext : DbContext
             entity.HasOne(e => e.Status).WithMany(s => s.History).HasForeignKey(e => e.StatusId)
                   .OnDelete(DeleteBehavior.Restrict);
             entity.HasOne(e => e.StatusGroup).WithMany().HasForeignKey(e => e.StatusGroupId)
+                  .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        modelBuilder.Entity<StatusEventMapping>(entity =>
+        {
+            entity.ToTable("StatusEventMappings");
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.EventCode).HasMaxLength(50).IsRequired();
+            entity.Property(e => e.EventName).HasMaxLength(100).IsRequired();
+            entity.Property(e => e.Description).HasMaxLength(500);
+            entity.HasIndex(e => e.EventCode).IsUnique();
+            entity.HasOne(e => e.Status).WithMany().HasForeignKey(e => e.StatusId)
                   .OnDelete(DeleteBehavior.Restrict);
         });
 
