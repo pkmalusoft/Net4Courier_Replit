@@ -285,7 +285,7 @@
                 </MudSelect>
             </MudItem>
             <MudItem xs="6" md="2">
-                <MudSelect T="MovementType" @bind-Value="_inscan.MovementTypeId" Label="Movement" 
+                <MudSelect T="MovementType" @bind-Value="_inscan.MovementTypeId" @bind-Value:after="StateHasChanged" Label="Movement" 
                            Variant="Variant.Outlined" Margin="Margin.Dense" AnchorOrigin="Origin.BottomCenter">
                     <MudSelectItem T="MovementType" Value="@MovementType.Domestic">Domestic</MudSelectItem>
                     <MudSelectItem T="MovementType" Value="@MovementType.InternationalExport">International-Export</MudSelectItem>
@@ -342,7 +342,7 @@
                                  Variant="Variant.Filled" Margin="Margin.Dense" Format="N2" ReadOnly="true" />
             </MudItem>
             <MudItem xs="6" md="2">
-                <MudNumericField @bind-Value="_inscan.CustomsValue" Label="Declared Value" 
+                <MudNumericField @bind-Value="_inscan.CustomsValue" @bind-Value:after="StateHasChanged" Label="Declared Value" 
                                  Variant="Variant.Outlined" Margin="Margin.Dense" Format="N2" />
             </MudItem>
             <MudItem xs="6" md="2">
@@ -397,13 +397,21 @@
                 }
             </MudItem>
             <MudItem xs="6" md="2">
-                <MudNumericField @bind-Value="_inscan.DutyVatAmount" Label="Duty/VAT" 
+                <MudNumericField @bind-Value="_inscan.DutyVatAmount" @bind-Value:after="StateHasChanged" Label="Duty/VAT" 
                                  Variant="Variant.Outlined" Margin="Margin.Dense" Format="N2" />
             </MudItem>
             <MudItem xs="6" md="2">
                 <MudNumericField @bind-Value="_inscan.CODAmount" @bind-Value:after="OnCODAmountChanged" Label="COD/Collection" 
                                  Variant="Variant.Outlined" Margin="Margin.Dense" Format="N2" />
             </MudItem>
+            @if (_inscan.MovementTypeId == MovementType.InternationalImport && (_inscan.CustomsValue ?? 0) > 0)
+            {
+                <MudItem xs="6" md="2">
+                    <MudNumericField Value="@CalculatedImportVAT" Label="@($"Import VAT ({_currentBranch?.VatPercentage ?? 0}%)")" 
+                                     Variant="Variant.Outlined" Margin="Margin.Dense" Format="N2" ReadOnly="true"
+                                     Style="background-color: #fff3e0;" />
+                </MudItem>
+            }
             <MudItem xs="6" md="2">
                 <MudNumericField @bind-Value="_inscan.TaxPercent" Label="Tax %" 
                                  Variant="Variant.Outlined" Margin="Margin.Dense" Format="N2" />
@@ -614,8 +622,25 @@
 
     private decimal VolumetricWeight => (_inscan.Length ?? 0) * (_inscan.Width ?? 0) * (_inscan.Height ?? 0) / 5000;
     private decimal ChargeableWeight => Math.Max(_inscan.Weight ?? 0, VolumetricWeight);
-    private decimal NetTotal => ((_inscan.CourierCharge ?? 0) + (_inscan.OtherCharge ?? 0) + (_inscan.FuelSurcharge ?? 0)) 
-                                * (1 + (_inscan.TaxPercent ?? 0) / 100) - (_inscan.Discount ?? 0);
+    
+    // Calculate VAT on Declaration Value for International Import
+    private decimal CalculatedImportVAT => 
+        (_inscan.MovementTypeId == MovementType.InternationalImport && (_inscan.CustomsValue ?? 0) > 0)
+            ? ((_inscan.CustomsValue ?? 0) * (_currentBranch?.VatPercentage ?? 0) / 100)
+            : 0;
+    
+    // Check if this is an International Import with Declaration Value
+    private bool IsImportWithDeclaration => 
+        _inscan.MovementTypeId == MovementType.InternationalImport && (_inscan.CustomsValue ?? 0) > 0;
+    
+    // NetTotal calculation:
+    // For International Import with Declaration Value > 0: Total = Duty/VAT + COD + calculated Import VAT
+    // Otherwise: Freight charges with tax, minus discount, plus Duty/VAT, COD
+    private decimal NetTotal => IsImportWithDeclaration
+        ? ((_inscan.DutyVatAmount ?? 0) + (_inscan.CODAmount ?? 0) + CalculatedImportVAT)
+        : (((_inscan.CourierCharge ?? 0) + (_inscan.OtherCharge ?? 0) + (_inscan.FuelSurcharge ?? 0)) 
+            * (1 + (_inscan.TaxPercent ?? 0) / 100) - (_inscan.Discount ?? 0)
+            + (_inscan.DutyVatAmount ?? 0) + (_inscan.CODAmount ?? 0));
     
     private bool CanProceedWithDetails => ((_autoGenerateAWB && Id == 0) || !string.IsNullOrWhiteSpace(_inscan.AWBNo)) && 
                                            _inscan.PaymentModeId != default && 
