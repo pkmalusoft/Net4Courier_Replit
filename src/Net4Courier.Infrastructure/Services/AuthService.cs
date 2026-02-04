@@ -222,6 +222,27 @@ public class AuthService
         
         return user?.Role?.Name == "PlatformAdmin";
     }
+    
+    public async Task<string?> GetUserRoleByUsernameAsync(string username)
+    {
+        var user = await _context.Users
+            .Include(u => u.Role)
+            .FirstOrDefaultAsync(u => u.Username == username);
+        
+        return user?.Role?.Name;
+    }
+    
+    public async Task<bool> IsAdministratorByUsernameAsync(string username)
+    {
+        var roleName = await GetUserRoleByUsernameAsync(username);
+        return roleName == "Administrator" || roleName == "PlatformAdmin";
+    }
+    
+    public async Task<bool> IsCourierByUsernameAsync(string username)
+    {
+        var roleName = await GetUserRoleByUsernameAsync(username);
+        return roleName == "Courier";
+    }
 
     public string HashPassword(string password)
     {
