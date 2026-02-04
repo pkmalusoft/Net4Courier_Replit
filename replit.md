@@ -25,6 +25,7 @@ The application is built on .NET 8 Blazor Server, adopting a modular architectur
 - **Layout**: Standard dashboard with `MainLayout`, `NavMenu`, and organized navigation.
 - **Responsive Design**: Key modules are optimized for mobile access.
 - **Login Page**: Modern split-screen design.
+- **Role-Based Menu Visibility**: NavMenu uses default-deny security with HasValidRole flag. Courier role sees only Dashboards (limited), Delivery, Help, My Account. Administrator sees all except Platform Admin. PlatformAdmin sees everything including tenant management.
 
 ### Technical Implementations
 - **Entity Management**: Comprehensive CRUD operations for core entities.
