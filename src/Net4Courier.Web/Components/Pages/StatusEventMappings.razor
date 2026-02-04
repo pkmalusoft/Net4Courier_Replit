@@ -1,0 +1,285 @@
+@page "/status-event-mappings"
+@using Net4Courier.Infrastructure.Data
+@using Net4Courier.Operations.Entities
+@using Net4Courier.Web.Services
+@using Microsoft.EntityFrameworkCore
+@inject ApplicationDbContext Context
+@inject StatusEventMappingService MappingService
+@inject ISnackbar Snackbar
+@inject IDialogService DialogService
+@rendermode InteractiveServer
+
+<PageTitle>Status Event Mappings</PageTitle>
+
+<MudPaper Class="pa-4">
+    <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center" Class="mb-4">
+        <MudStack>
+            <MudText Typo="Typo.h5">Status Event Mappings</MudText>
+            <MudText Typo="Typo.body2" Color="Color.Secondary">Configure which status is applied when each operation is performed</MudText>
+        </MudStack>
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add"
+                   OnClick="OpenAddDialog">Add Mapping</MudButton>
+    </MudStack>
+
+    @if (_loading)
+    {
+        <MudProgressLinear Indeterminate="true" />
+    }
+    else if (!_mappings.Any())
+    {
+        <MudAlert Severity="Severity.Info" Class="mb-4">
+            No status event mappings configured. Click "Add Mapping" to create a new mapping.
+        </MudAlert>
+    }
+    else
+    {
+        <MudTable Items="@_mappings" Hover="true" Striped="true" Dense="true">
+            <HeaderContent>
+                <MudTh>Event Code</MudTh>
+                <MudTh>Event Name</MudTh>
+                <MudTh>Mapped Status</MudTh>
+                <MudTh>Status Group</MudTh>
+                <MudTh>Auto Apply</MudTh>
+                <MudTh>Active</MudTh>
+                <MudTh>Actions</MudTh>
+            </HeaderContent>
+            <RowTemplate>
+                <MudTd DataLabel="Event Code">
+                    <MudChip T="string" Size="Size.Small" Color="Color.Default">@context.EventCode</MudChip>
+                </MudTd>
+                <MudTd DataLabel="Event Name">@context.EventName</MudTd>
+                <MudTd DataLabel="Mapped Status">
+                    <MudChip T="string" Size="Size.Small" Style="@($"background-color:{context.Status?.ColorCode ?? "#9e9e9e"};color:white")">
+                        @context.Status?.Name
+                    </MudChip>
+                </MudTd>
+                <MudTd DataLabel="Status Group">@context.Status?.StatusGroup?.Name</MudTd>
+                <MudTd DataLabel="Auto Apply">
+                    @if (context.IsAutoApply)
+                    {
+                        <MudIcon Icon="@Icons.Material.Filled.CheckCircle" Color="Color.Success" Size="Size.Small" />
+                    }
+                    else
+                    {
+                        <MudIcon Icon="@Icons.Material.Filled.Cancel" Color="Color.Default" Size="Size.Small" />
+                    }
+                </MudTd>
+                <MudTd DataLabel="Active">
+                    @if (context.IsActive)
+                    {
+                        <MudIcon Icon="@Icons.Material.Filled.CheckCircle" Color="Color.Success" Size="Size.Small" />
+                    }
+                    else
+                    {
+                        <MudIcon Icon="@Icons.Material.Filled.Cancel" Color="Color.Default" Size="Size.Small" />
+                    }
+                </MudTd>
+                <MudTd DataLabel="Actions">
+                    <MudStack Row="true" Spacing="1">
+                        <MudIconButton Icon="@Icons.Material.Filled.Edit" Size="Size.Small" Color="Color.Primary"
+                                       OnClick="@(() => OpenEditDialog(context))" />
+                        <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" Color="Color.Error"
+                                       OnClick="@(() => DeleteMapping(context))" />
+                    </MudStack>
+                </MudTd>
+            </RowTemplate>
+        </MudTable>
+    }
+</MudPaper>
+
+<MudDialog @bind-Visible="_dialogVisible" Options="new DialogOptions { MaxWidth = MaxWidth.Small, FullWidth = true }">
+    <TitleContent>
+        <MudText Typo="Typo.h6">@(_editMode ? "Edit Mapping" : "Add Mapping")</MudText>
+    </TitleContent>
+    <DialogContent>
+        <MudStack Spacing="3">
+            <MudTextField @bind-Value="_editModel.EventCode" Label="Event Code" Required="true"
+                          Disabled="@_editMode" HelperText="Unique identifier used in code (e.g., AWB_ENTRY, POD_ENTRY)" />
+            <MudTextField @bind-Value="_editModel.EventName" Label="Event Name" Required="true"
+                          HelperText="Display name for the event" />
+            <MudTextField @bind-Value="_editModel.Description" Label="Description" Lines="2"
+                          HelperText="When this event occurs" />
+            <MudSelect @bind-Value="_editModel.StatusId" Label="Mapped Status" Required="true" T="long">
+                @foreach (var group in _statusGroups)
+                {
+                    @foreach (var status in group.Statuses.Where(s => s.IsActive).OrderBy(s => s.SequenceNo))
+                    {
+                        <MudSelectItem T="long" Value="@status.Id">[@group.Name] @status.Name</MudSelectItem>
+                    }
+                }
+            </MudSelect>
+            <MudNumericField @bind-Value="_editModel.SequenceNo" Label="Sequence No" Min="0" />
+            <MudSwitch @bind-Value="_editModel.IsAutoApply" Label="Auto Apply Status" Color="Color.Primary"
+                       Size="Size.Small" />
+            <MudSwitch @bind-Value="_editModel.IsActive" Label="Active" Color="Color.Primary"
+                       Size="Size.Small" />
+        </MudStack>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="CloseDialog">Cancel</MudButton>
+        <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="SaveMapping" Disabled="@_saving">
+            @if (_saving)
+            {
+                <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" />
+            }
+            Save
+        </MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    private List<StatusEventMapping> _mappings = new();
+    private List<ShipmentStatusGroup> _statusGroups = new();
+    private bool _loading = true;
+    private bool _dialogVisible = false;
+    private bool _editMode = false;
+    private bool _saving = false;
+    private MappingEditModel _editModel = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadData();
+    }
+
+    private async Task LoadData()
+    {
+        _loading = true;
+        try
+        {
+            _mappings = await MappingService.GetAllMappings();
+            _statusGroups = await Context.ShipmentStatusGroups
+                .Include(g => g.Statuses.Where(s => s.IsActive))
+                .Where(g => g.IsActive)
+                .OrderBy(g => g.SequenceNo)
+                .ToListAsync();
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private void OpenAddDialog()
+    {
+        _editMode = false;
+        _editModel = new MappingEditModel
+        {
+            IsAutoApply = true,
+            IsActive = true,
+            SequenceNo = _mappings.Count + 1
+        };
+        _dialogVisible = true;
+    }
+
+    private void OpenEditDialog(StatusEventMapping mapping)
+    {
+        _editMode = true;
+        _editModel = new MappingEditModel
+        {
+            Id = mapping.Id,
+            EventCode = mapping.EventCode,
+            EventName = mapping.EventName,
+            Description = mapping.Description,
+            StatusId = mapping.StatusId,
+            SequenceNo = mapping.SequenceNo,
+            IsAutoApply = mapping.IsAutoApply,
+            IsActive = mapping.IsActive
+        };
+        _dialogVisible = true;
+    }
+
+    private void CloseDialog()
+    {
+        _dialogVisible = false;
+        _editModel = new();
+    }
+
+    private async Task SaveMapping()
+    {
+        if (string.IsNullOrWhiteSpace(_editModel.EventCode) || 
+            string.IsNullOrWhiteSpace(_editModel.EventName) ||
+            _editModel.StatusId == 0)
+        {
+            Snackbar.Add("Please fill in all required fields", Severity.Warning);
+            return;
+        }
+
+        _saving = true;
+        try
+        {
+            if (!_editMode && await MappingService.EventCodeExists(_editModel.EventCode))
+            {
+                Snackbar.Add("Event code already exists", Severity.Error);
+                return;
+            }
+
+            var mapping = new StatusEventMapping
+            {
+                Id = _editModel.Id,
+                EventCode = _editModel.EventCode!,
+                EventName = _editModel.EventName!,
+                Description = _editModel.Description,
+                StatusId = _editModel.StatusId,
+                SequenceNo = _editModel.SequenceNo,
+                IsAutoApply = _editModel.IsAutoApply,
+                IsActive = _editModel.IsActive
+            };
+
+            if (_editMode)
+            {
+                await MappingService.UpdateMapping(mapping);
+                Snackbar.Add("Mapping updated successfully", Severity.Success);
+            }
+            else
+            {
+                await MappingService.CreateMapping(mapping);
+                Snackbar.Add("Mapping created successfully", Severity.Success);
+            }
+
+            CloseDialog();
+            await LoadData();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error saving mapping: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _saving = false;
+        }
+    }
+
+    private async Task DeleteMapping(StatusEventMapping mapping)
+    {
+        var confirmed = await DialogService.ShowMessageBox(
+            "Delete Mapping",
+            $"Are you sure you want to delete the mapping for '{mapping.EventName}'?",
+            yesText: "Delete", cancelText: "Cancel");
+
+        if (confirmed == true)
+        {
+            try
+            {
+                await MappingService.DeleteMapping(mapping.Id);
+                Snackbar.Add("Mapping deleted successfully", Severity.Success);
+                await LoadData();
+            }
+            catch (Exception ex)
+            {
+                Snackbar.Add($"Error deleting mapping: {ex.Message}", Severity.Error);
+            }
+        }
+    }
+
+    private class MappingEditModel
+    {
+        public long Id { get; set; }
+        public string? EventCode { get; set; }
+        public string? EventName { get; set; }
+        public string? Description { get; set; }
+        public long StatusId { get; set; }
+        public int SequenceNo { get; set; }
+        public bool IsAutoApply { get; set; }
+        public bool IsActive { get; set; }
+    }
+}
