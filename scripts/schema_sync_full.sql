@@ -243,6 +243,26 @@ CREATE TABLE IF NOT EXISTS "TicketComments" (
     "IsDemo" BOOLEAN DEFAULT FALSE
 );
 
+-- FuelSurcharges
+CREATE TABLE IF NOT EXISTS "FuelSurcharges" (
+    "Id" BIGSERIAL PRIMARY KEY,
+    "CompanyId" BIGINT,
+    "Name" VARCHAR(100) NOT NULL,
+    "Percentage" DECIMAL(10,4) DEFAULT 0,
+    "EffectiveFrom" TIMESTAMP NOT NULL,
+    "EffectiveTo" TIMESTAMP,
+    "ApplyToDomestic" BOOLEAN DEFAULT TRUE,
+    "ApplyToInternational" BOOLEAN DEFAULT TRUE,
+    "Notes" TEXT,
+    "IsActive" BOOLEAN DEFAULT TRUE,
+    "CreatedAt" TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    "ModifiedAt" TIMESTAMP,
+    "CreatedBy" INT,
+    "ModifiedBy" INT,
+    "IsDeleted" BOOLEAN DEFAULT FALSE,
+    "IsDemo" BOOLEAN DEFAULT FALSE
+);
+
 -- =============================================
 -- PART 2: ALTER TABLES (add missing columns)
 -- =============================================

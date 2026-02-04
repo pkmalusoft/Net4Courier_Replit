@@ -1,0 +1,106 @@
+@inject ApplicationDbContext DbContext
+@using Net4Courier.Infrastructure.Data
+@using Net4Courier.Operations.Entities
+
+<MudDialog>
+    <TitleContent>
+        <MudText Typo="Typo.h6">
+            <MudIcon Icon="@Icons.Material.Filled.LocalGasStation" Class="mr-2" />
+            @(IsNew ? "Add Fuel Surcharge" : "Edit Fuel Surcharge")
+        </MudText>
+    </TitleContent>
+    <DialogContent>
+        <MudForm @ref="_form" @bind-IsValid="_formIsValid">
+            <MudGrid>
+                <MudItem xs="12">
+                    <MudTextField @bind-Value="Surcharge.Name" Label="Name" Required="true" 
+                                  RequiredError="Name is required" Variant="Variant.Outlined" />
+                </MudItem>
+                <MudItem xs="12">
+                    <MudNumericField @bind-Value="Surcharge.Percentage" Label="Percentage (%)" 
+                                     Variant="Variant.Outlined" Format="N2" Required="true"
+                                     RequiredError="Percentage is required" />
+                </MudItem>
+                <MudItem xs="6">
+                    <MudDatePicker @bind-Date="_effectiveFrom" Label="Effective From" Required="true"
+                                   RequiredError="Effective From is required" Variant="Variant.Outlined" />
+                </MudItem>
+                <MudItem xs="6">
+                    <MudDatePicker @bind-Date="_effectiveTo" Label="Effective To" Clearable="true"
+                                   Variant="Variant.Outlined" />
+                </MudItem>
+                <MudItem xs="6">
+                    <MudSwitch @bind-Value="Surcharge.ApplyToDomestic" Label="Apply to Domestic" Color="Color.Primary" />
+                </MudItem>
+                <MudItem xs="6">
+                    <MudSwitch @bind-Value="Surcharge.ApplyToInternational" Label="Apply to International" Color="Color.Primary" />
+                </MudItem>
+                <MudItem xs="12">
+                    <MudTextField @bind-Value="Surcharge.Notes" Label="Notes" 
+                                  Variant="Variant.Outlined" Lines="2" />
+                </MudItem>
+                <MudItem xs="12">
+                    <MudSwitch @bind-Value="Surcharge.IsActive" Label="Active" Color="Color.Success" />
+                </MudItem>
+            </MudGrid>
+        </MudForm>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Cancel">Cancel</MudButton>
+        <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="Save" Disabled="!_formIsValid">Save</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] MudDialogInstance MudDialog { get; set; } = null!;
+    [Parameter] public Net4Courier.Operations.Entities.FuelSurcharge Surcharge { get; set; } = new();
+    [Parameter] public bool IsNew { get; set; }
+
+    private MudForm _form = null!;
+    private bool _formIsValid;
+    private DateTime? _effectiveFrom;
+    private DateTime? _effectiveTo;
+
+    protected override void OnInitialized()
+    {
+        if (IsNew)
+        {
+            Surcharge.IsActive = true;
+            Surcharge.ApplyToDomestic = true;
+            Surcharge.ApplyToInternational = true;
+            _effectiveFrom = DateTime.Today;
+        }
+        else
+        {
+            _effectiveFrom = Surcharge.EffectiveFrom;
+            _effectiveTo = Surcharge.EffectiveTo;
+        }
+    }
+
+    private async Task Save()
+    {
+        await _form.Validate();
+        if (!_formIsValid) return;
+
+        Surcharge.EffectiveFrom = DateTime.SpecifyKind(_effectiveFrom!.Value.Date, DateTimeKind.Utc);
+        Surcharge.EffectiveTo = _effectiveTo.HasValue 
+            ? DateTime.SpecifyKind(_effectiveTo.Value.Date, DateTimeKind.Utc) 
+            : null;
+
+        if (IsNew)
+        {
+            Surcharge.CreatedAt = DateTime.UtcNow;
+            DbContext.FuelSurcharges.Add(Surcharge);
+        }
+        else
+        {
+            Surcharge.ModifiedAt = DateTime.UtcNow;
+            DbContext.FuelSurcharges.Update(Surcharge);
+        }
+
+        await DbContext.SaveChangesAsync();
+        MudDialog.Close(DialogResult.Ok(Surcharge));
+    }
+
+    private void Cancel() => MudDialog.Cancel();
+}

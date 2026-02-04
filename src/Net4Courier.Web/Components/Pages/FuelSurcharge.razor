@@ -1,0 +1,162 @@
+@page "/fuel-surcharge"
+@inject ApplicationDbContext DbContext
+@inject IDialogService DialogService
+@inject ISnackbar Snackbar
+@inject IDateTimeService DateTimeService
+@using Microsoft.EntityFrameworkCore
+@using Net4Courier.Infrastructure.Data
+@using Net4Courier.Operations.Entities
+@using Net4Courier.Web.Services
+
+<PageTitle>Fuel Surcharge</PageTitle>
+
+<MudContainer MaxWidth="MaxWidth.Large" Class="mt-4">
+    <MudPaper Class="pa-4" Elevation="2">
+        <MudToolBar Dense="true">
+            <MudText Typo="Typo.h6">Fuel Surcharge Rates</MudText>
+            <MudSpacer />
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add" 
+                       OnClick="AddNew">Add New</MudButton>
+        </MudToolBar>
+
+        <MudTable Items="_surcharges" Hover="true" Dense="true" Class="mt-4" Loading="_loading">
+            <HeaderContent>
+                <MudTh>Name</MudTh>
+                <MudTh Style="text-align: right;">Percentage</MudTh>
+                <MudTh>Effective From</MudTh>
+                <MudTh>Effective To</MudTh>
+                <MudTh Style="text-align: center;">Domestic</MudTh>
+                <MudTh Style="text-align: center;">International</MudTh>
+                <MudTh Style="text-align: center;">Status</MudTh>
+                <MudTh Style="text-align: center;">Actions</MudTh>
+            </HeaderContent>
+            <RowTemplate>
+                <MudTd>@context.Name</MudTd>
+                <MudTd Style="text-align: right;">@context.Percentage.ToString("N2")%</MudTd>
+                <MudTd>@DateTimeService.FormatDate(context.EffectiveFrom)</MudTd>
+                <MudTd>@(context.EffectiveTo.HasValue ? DateTimeService.FormatDate(context.EffectiveTo.Value) : "-")</MudTd>
+                <MudTd Style="text-align: center;">
+                    @if (context.ApplyToDomestic)
+                    {
+                        <MudIcon Icon="@Icons.Material.Filled.Check" Color="Color.Success" Size="Size.Small" />
+                    }
+                </MudTd>
+                <MudTd Style="text-align: center;">
+                    @if (context.ApplyToInternational)
+                    {
+                        <MudIcon Icon="@Icons.Material.Filled.Check" Color="Color.Success" Size="Size.Small" />
+                    }
+                </MudTd>
+                <MudTd Style="text-align: center;">
+                    @if (context.IsActive && IsCurrentlyEffective(context))
+                    {
+                        <MudChip T="string" Size="Size.Small" Color="Color.Success">Active</MudChip>
+                    }
+                    else if (context.IsActive)
+                    {
+                        <MudChip T="string" Size="Size.Small" Color="Color.Warning">Scheduled</MudChip>
+                    }
+                    else
+                    {
+                        <MudChip T="string" Size="Size.Small" Color="Color.Default">Inactive</MudChip>
+                    }
+                </MudTd>
+                <MudTd Style="text-align: center;">
+                    <MudIconButton Icon="@Icons.Material.Filled.Edit" Size="Size.Small" Color="Color.Primary" 
+                                   OnClick="@(() => Edit(context))" />
+                    <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" Color="Color.Error" 
+                                   OnClick="@(() => Delete(context))" />
+                </MudTd>
+            </RowTemplate>
+            <NoRecordsContent>
+                <MudText Align="Align.Center">No fuel surcharge rates found. Click "Add New" to create one.</MudText>
+            </NoRecordsContent>
+        </MudTable>
+    </MudPaper>
+</MudContainer>
+
+@code {
+    private List<Net4Courier.Operations.Entities.FuelSurcharge> _surcharges = new();
+    private bool _loading = true;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadData();
+    }
+
+    private bool IsCurrentlyEffective(Net4Courier.Operations.Entities.FuelSurcharge surcharge)
+    {
+        var today = DateTime.UtcNow.Date;
+        return surcharge.EffectiveFrom.Date <= today && 
+               (!surcharge.EffectiveTo.HasValue || surcharge.EffectiveTo.Value.Date >= today);
+    }
+
+    private async Task LoadData()
+    {
+        _loading = true;
+        _surcharges = await DbContext.FuelSurcharges
+            .Where(s => !s.IsDeleted)
+            .OrderByDescending(s => s.EffectiveFrom)
+            .ToListAsync();
+        _loading = false;
+    }
+
+    private async Task AddNew()
+    {
+        var surcharge = new Net4Courier.Operations.Entities.FuelSurcharge 
+        { 
+            EffectiveFrom = DateTime.SpecifyKind(DateTime.UtcNow.Date, DateTimeKind.Utc)
+        };
+        var parameters = new DialogParameters<FuelSurchargeDialog>
+        {
+            { x => x.Surcharge, surcharge },
+            { x => x.IsNew, true }
+        };
+
+        var dialog = await DialogService.ShowAsync<FuelSurchargeDialog>("Add Fuel Surcharge", parameters,
+            new DialogOptions { MaxWidth = MaxWidth.Small, FullWidth = true });
+        var result = await dialog.Result;
+
+        if (!result!.Canceled)
+        {
+            await LoadData();
+            Snackbar.Add("Fuel surcharge added successfully", Severity.Success);
+        }
+    }
+
+    private async Task Edit(Net4Courier.Operations.Entities.FuelSurcharge surcharge)
+    {
+        var parameters = new DialogParameters<FuelSurchargeDialog>
+        {
+            { x => x.Surcharge, surcharge },
+            { x => x.IsNew, false }
+        };
+
+        var dialog = await DialogService.ShowAsync<FuelSurchargeDialog>("Edit Fuel Surcharge", parameters,
+            new DialogOptions { MaxWidth = MaxWidth.Small, FullWidth = true });
+        var result = await dialog.Result;
+
+        if (!result!.Canceled)
+        {
+            await LoadData();
+            Snackbar.Add("Fuel surcharge updated successfully", Severity.Success);
+        }
+    }
+
+    private async Task Delete(Net4Courier.Operations.Entities.FuelSurcharge surcharge)
+    {
+        var confirm = await DialogService.ShowMessageBox(
+            "Confirm Delete",
+            $"Are you sure you want to delete '{surcharge.Name}'?",
+            yesText: "Delete", cancelText: "Cancel");
+
+        if (confirm == true)
+        {
+            surcharge.IsDeleted = true;
+            surcharge.ModifiedAt = DateTime.UtcNow;
+            await DbContext.SaveChangesAsync();
+            await LoadData();
+            Snackbar.Add("Fuel surcharge deleted successfully", Severity.Success);
+        }
+    }
+}
