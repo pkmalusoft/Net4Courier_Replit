@@ -140,6 +140,7 @@ builder.Services.AddDbContextFactory<ApplicationDbContext>(options =>
 
 
 builder.Services.AddScoped<AuthService>();
+builder.Services.AddScoped<IDateTimeService, DateTimeService>();
 builder.Services.AddScoped<AppAuthStateProvider>();
 builder.Services.AddScoped<AuthenticationStateProvider>(sp => sp.GetRequiredService<AppAuthStateProvider>());
 builder.Services.AddScoped<ReportingService>();

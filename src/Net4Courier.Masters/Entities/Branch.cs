@@ -32,6 +32,9 @@ public class Branch : BaseEntity
     // Display Settings
     public bool HideAccountCodes { get; set; } = false;
     
+    // Timezone Settings (IANA timezone identifier, e.g., "Asia/Dubai" for UAE)
+    public string? TimeZoneId { get; set; } = "Asia/Dubai";
+    
     // Feature Toggles
     public bool UseAwbStockManagement { get; set; } = true;
     
