@@ -1,0 +1,243 @@
+@page "/expense-management"
+@inject ApplicationDbContext DbContext
+@inject IDialogService DialogService
+@inject ISnackbar Snackbar
+@inject IDateTimeService DateTimeService
+@using Microsoft.EntityFrameworkCore
+@using Net4Courier.Infrastructure.Data
+@using Net4Courier.Finance.Entities
+@using Net4Courier.Web.Services
+@using ClosedXML.Excel
+
+<PageTitle>Expense Management</PageTitle>
+
+<MudContainer MaxWidth="MaxWidth.ExtraLarge" Class="mt-4">
+    <MudPaper Class="pa-4" Elevation="2">
+        <MudToolBar Dense="true">
+            <MudText Typo="Typo.h6">Expense Management</MudText>
+            <MudSpacer />
+            <MudDatePicker @bind-Date="_fromDate" Label="From" DateFormat="dd-MMM-yyyy" Class="mr-2" Style="width: 150px;" />
+            <MudDatePicker @bind-Date="_toDate" Label="To" DateFormat="dd-MMM-yyyy" Class="mr-2" Style="width: 150px;" />
+            <MudSelect T="FinanceExpenseStatus?" @bind-Value="_statusFilter" Label="Status" Class="mr-2" Style="width: 150px;" Clearable="true">
+                @foreach (var status in Enum.GetValues<FinanceExpenseStatus>())
+                {
+                    <MudSelectItem T="FinanceExpenseStatus?" Value="@status">@status</MudSelectItem>
+                }
+            </MudSelect>
+            <MudButton Variant="Variant.Outlined" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Search"
+                       OnClick="LoadData" Class="mr-2">Search</MudButton>
+            <MudButton Variant="Variant.Outlined" Color="Color.Success" StartIcon="@Icons.Material.Filled.Download"
+                       OnClick="ExportToExcel" Class="mr-2">Export</MudButton>
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add"
+                       OnClick="AddNew">New Expense</MudButton>
+        </MudToolBar>
+
+        <MudTable Items="_expenses" Hover="true" Dense="true" Class="mt-4" Loading="_loading">
+            <HeaderContent>
+                <MudTh>Expense No</MudTh>
+                <MudTh>Date</MudTh>
+                <MudTh>Category</MudTh>
+                <MudTh>Description</MudTh>
+                <MudTh>Employee/Supplier</MudTh>
+                <MudTh Style="text-align: right;">Amount</MudTh>
+                <MudTh Style="text-align: center;">Status</MudTh>
+                <MudTh Style="text-align: center;">Actions</MudTh>
+            </HeaderContent>
+            <RowTemplate>
+                <MudTd>@context.ExpenseNo</MudTd>
+                <MudTd>@DateTimeService.FormatDate(context.ExpenseDate)</MudTd>
+                <MudTd>@context.Category</MudTd>
+                <MudTd>@context.Description</MudTd>
+                <MudTd>@(context.EmployeeName ?? context.SupplierName ?? "-")</MudTd>
+                <MudTd Style="text-align: right;">@context.TotalAmount.ToString("N2")</MudTd>
+                <MudTd Style="text-align: center;">
+                    <MudChip T="string" Size="Size.Small" Color="@GetStatusColor(context.Status)">@context.Status</MudChip>
+                </MudTd>
+                <MudTd Style="text-align: center;">
+                    <MudIconButton Icon="@Icons.Material.Filled.Edit" Size="Size.Small" Color="Color.Primary"
+                                   OnClick="@(() => Edit(context))" Disabled="@(context.Status == FinanceExpenseStatus.Paid)" />
+                    @if (context.Status == FinanceExpenseStatus.Submitted)
+                    {
+                        <MudIconButton Icon="@Icons.Material.Filled.CheckCircle" Size="Size.Small" Color="Color.Success"
+                                       OnClick="@(() => Approve(context))" Title="Approve" />
+                        <MudIconButton Icon="@Icons.Material.Filled.Cancel" Size="Size.Small" Color="Color.Warning"
+                                       OnClick="@(() => Reject(context))" Title="Reject" />
+                    }
+                    @if (context.Status == FinanceExpenseStatus.Draft)
+                    {
+                        <MudIconButton Icon="@Icons.Material.Filled.Send" Size="Size.Small" Color="Color.Info"
+                                       OnClick="@(() => Submit(context))" Title="Submit for Approval" />
+                    }
+                    <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" Color="Color.Error"
+                                   OnClick="@(() => Delete(context))" Disabled="@(context.Status != FinanceExpenseStatus.Draft)" />
+                </MudTd>
+            </RowTemplate>
+            <NoRecordsContent>
+                <MudText Align="Align.Center">No expenses found.</MudText>
+            </NoRecordsContent>
+        </MudTable>
+    </MudPaper>
+</MudContainer>
+
+@code {
+    private List<Expense> _expenses = new();
+    private bool _loading = true;
+    private DateTime? _fromDate = DateTime.Today.AddMonths(-1);
+    private DateTime? _toDate = DateTime.Today;
+    private FinanceExpenseStatus? _statusFilter;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadData();
+    }
+
+    private Color GetStatusColor(FinanceExpenseStatus status)
+    {
+        return status switch
+        {
+            FinanceExpenseStatus.Draft => Color.Default,
+            FinanceExpenseStatus.Submitted => Color.Info,
+            FinanceExpenseStatus.Approved => Color.Success,
+            FinanceExpenseStatus.Rejected => Color.Warning,
+            FinanceExpenseStatus.Paid => Color.Primary,
+            _ => Color.Default
+        };
+    }
+
+    private async Task LoadData()
+    {
+        _loading = true;
+        var query = DbContext.Expenses.Where(e => !e.IsDeleted);
+
+        if (_fromDate.HasValue)
+            query = query.Where(e => e.ExpenseDate >= DateTime.SpecifyKind(_fromDate.Value.Date, DateTimeKind.Utc));
+        if (_toDate.HasValue)
+            query = query.Where(e => e.ExpenseDate <= DateTime.SpecifyKind(_toDate.Value.Date.AddDays(1), DateTimeKind.Utc));
+        if (_statusFilter.HasValue)
+            query = query.Where(e => e.Status == _statusFilter.Value);
+
+        _expenses = await query.OrderByDescending(e => e.ExpenseDate).ThenByDescending(e => e.Id).ToListAsync();
+        _loading = false;
+    }
+
+    private async Task AddNew()
+    {
+        var expense = new Expense
+        {
+            ExpenseDate = DateTime.SpecifyKind(DateTime.UtcNow.Date, DateTimeKind.Utc)
+        };
+        var parameters = new DialogParameters<ExpenseDialog>
+        {
+            { x => x.Expense, expense },
+            { x => x.IsNew, true }
+        };
+
+        var dialog = await DialogService.ShowAsync<ExpenseDialog>("New Expense", parameters,
+            new DialogOptions { MaxWidth = MaxWidth.Medium, FullWidth = true });
+        var result = await dialog.Result;
+
+        if (!result!.Canceled)
+        {
+            await LoadData();
+            Snackbar.Add("Expense created successfully", Severity.Success);
+        }
+    }
+
+    private async Task Edit(Expense expense)
+    {
+        var parameters = new DialogParameters<ExpenseDialog>
+        {
+            { x => x.Expense, expense },
+            { x => x.IsNew, false }
+        };
+
+        var dialog = await DialogService.ShowAsync<ExpenseDialog>("Edit Expense", parameters,
+            new DialogOptions { MaxWidth = MaxWidth.Medium, FullWidth = true });
+        var result = await dialog.Result;
+
+        if (!result!.Canceled)
+        {
+            await LoadData();
+            Snackbar.Add("Expense updated successfully", Severity.Success);
+        }
+    }
+
+    private async Task Submit(Expense expense)
+    {
+        expense.Status = FinanceExpenseStatus.Submitted;
+        expense.ModifiedAt = DateTime.UtcNow;
+        await DbContext.SaveChangesAsync();
+        await LoadData();
+        Snackbar.Add("Expense submitted for approval", Severity.Info);
+    }
+
+    private async Task Approve(Expense expense)
+    {
+        expense.Status = FinanceExpenseStatus.Approved;
+        expense.ApprovedDate = DateTime.UtcNow;
+        expense.ModifiedAt = DateTime.UtcNow;
+        await DbContext.SaveChangesAsync();
+        await LoadData();
+        Snackbar.Add("Expense approved", Severity.Success);
+    }
+
+    private async Task Reject(Expense expense)
+    {
+        expense.Status = FinanceExpenseStatus.Rejected;
+        expense.ModifiedAt = DateTime.UtcNow;
+        await DbContext.SaveChangesAsync();
+        await LoadData();
+        Snackbar.Add("Expense rejected", Severity.Warning);
+    }
+
+    private async Task Delete(Expense expense)
+    {
+        var confirm = await DialogService.ShowMessageBox(
+            "Confirm Delete",
+            $"Are you sure you want to delete expense '{expense.ExpenseNo}'?",
+            yesText: "Delete", cancelText: "Cancel");
+
+        if (confirm == true)
+        {
+            expense.IsDeleted = true;
+            expense.ModifiedAt = DateTime.UtcNow;
+            await DbContext.SaveChangesAsync();
+            await LoadData();
+            Snackbar.Add("Expense deleted successfully", Severity.Success);
+        }
+    }
+
+    private void ExportToExcel()
+    {
+        using var workbook = new XLWorkbook();
+        var worksheet = workbook.Worksheets.Add("Expenses");
+
+        worksheet.Cell(1, 1).Value = "Expense No";
+        worksheet.Cell(1, 2).Value = "Date";
+        worksheet.Cell(1, 3).Value = "Category";
+        worksheet.Cell(1, 4).Value = "Description";
+        worksheet.Cell(1, 5).Value = "Employee/Supplier";
+        worksheet.Cell(1, 6).Value = "Amount";
+        worksheet.Cell(1, 7).Value = "Status";
+
+        var headerRange = worksheet.Range(1, 1, 1, 7);
+        headerRange.Style.Font.Bold = true;
+        headerRange.Style.Fill.BackgroundColor = XLColor.LightGray;
+
+        int row = 2;
+        foreach (var expense in _expenses)
+        {
+            worksheet.Cell(row, 1).Value = expense.ExpenseNo;
+            worksheet.Cell(row, 2).Value = DateTimeService.FormatDate(expense.ExpenseDate);
+            worksheet.Cell(row, 3).Value = expense.Category.ToString();
+            worksheet.Cell(row, 4).Value = expense.Description;
+            worksheet.Cell(row, 5).Value = expense.EmployeeName ?? expense.SupplierName ?? "";
+            worksheet.Cell(row, 6).Value = expense.TotalAmount;
+            worksheet.Cell(row, 7).Value = expense.Status.ToString();
+            row++;
+        }
+
+        worksheet.Columns().AdjustToContents();
+        Snackbar.Add("Export ready", Severity.Success);
+    }
+}

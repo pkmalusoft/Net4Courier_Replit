@@ -1,0 +1,181 @@
+@inject ApplicationDbContext DbContext
+@using Microsoft.EntityFrameworkCore
+@using Net4Courier.Infrastructure.Data
+@using Net4Courier.Finance.Entities
+@using Net4Courier.Masters.Entities
+
+<MudDialog>
+    <TitleContent>
+        <MudText Typo="Typo.h6">
+            <MudIcon Icon="@Icons.Material.Filled.MoneyOff" Class="mr-2" />
+            @(IsNew ? "New Expense" : "Edit Expense")
+        </MudText>
+    </TitleContent>
+    <DialogContent>
+        <MudForm @ref="_form" @bind-IsValid="_formIsValid">
+            <MudGrid>
+                <MudItem xs="12" md="6">
+                    <MudTextField @bind-Value="Expense.ExpenseNo" Label="Expense No" ReadOnly="@(!IsNew)"
+                                  Variant="Variant.Outlined" HelperText="@(IsNew ? "Auto-generated if blank" : "")" />
+                </MudItem>
+                <MudItem xs="12" md="6">
+                    <MudDatePicker @bind-Date="_expenseDate" Label="Date" DateFormat="dd-MMM-yyyy" Required="true"
+                                   Variant="Variant.Outlined" />
+                </MudItem>
+                <MudItem xs="12" md="6">
+                    <MudSelect T="ExpenseCategory" @bind-Value="Expense.Category" Label="Category" Required="true"
+                               Variant="Variant.Outlined" AnchorOrigin="Origin.BottomCenter">
+                        @foreach (var cat in Enum.GetValues<ExpenseCategory>())
+                        {
+                            <MudSelectItem T="ExpenseCategory" Value="@cat">@cat</MudSelectItem>
+                        }
+                    </MudSelect>
+                </MudItem>
+                <MudItem xs="12" md="6">
+                    <MudTextField @bind-Value="Expense.ReferenceNo" Label="Reference No"
+                                  Variant="Variant.Outlined" />
+                </MudItem>
+                <MudItem xs="12">
+                    <MudTextField @bind-Value="Expense.Description" Label="Description" Required="true"
+                                  RequiredError="Description is required" Variant="Variant.Outlined" Lines="2" />
+                </MudItem>
+                <MudItem xs="12" md="6">
+                    <MudAutocomplete T="Party" Label="Supplier (optional)"
+                                     @bind-Value="_selectedSupplier"
+                                     SearchFunc="SearchSuppliers"
+                                     ToStringFunc="@(p => p?.Name ?? "")"
+                                     Variant="Variant.Outlined"
+                                     Clearable="true"
+                                     Dense="true" />
+                </MudItem>
+                <MudItem xs="12" md="6">
+                    <MudAutocomplete T="Employee" Label="Employee (optional)"
+                                     @bind-Value="_selectedEmployee"
+                                     SearchFunc="SearchEmployees"
+                                     ToStringFunc="@(e => e?.Name ?? "")"
+                                     Variant="Variant.Outlined"
+                                     Clearable="true"
+                                     Dense="true" />
+                </MudItem>
+                <MudItem xs="12" md="4">
+                    <MudNumericField @bind-Value="Expense.Amount" Label="Amount" Required="true" Min="0.01M"
+                                     Variant="Variant.Outlined" Format="N2" />
+                </MudItem>
+                <MudItem xs="12" md="4">
+                    <MudNumericField @bind-Value="Expense.TaxPercent" Label="Tax %" Min="0" Max="100"
+                                     Variant="Variant.Outlined" Format="N2" />
+                </MudItem>
+                <MudItem xs="12" md="4">
+                    <MudNumericField Value="@CalculatedTotal" Label="Total Amount" ReadOnly="true"
+                                     Variant="Variant.Outlined" Format="N2" />
+                </MudItem>
+                <MudItem xs="12">
+                    <MudTextField @bind-Value="Expense.Remarks" Label="Remarks" Lines="2" Variant="Variant.Outlined" />
+                </MudItem>
+            </MudGrid>
+        </MudForm>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Cancel">Cancel</MudButton>
+        <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="Save" Disabled="!_formIsValid">Save</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] MudDialogInstance MudDialog { get; set; } = null!;
+    [Parameter] public Expense Expense { get; set; } = new();
+    [Parameter] public bool IsNew { get; set; }
+
+    private MudForm _form = null!;
+    private bool _formIsValid;
+    private DateTime? _expenseDate;
+    private Party? _selectedSupplier;
+    private Employee? _selectedEmployee;
+
+    private decimal CalculatedTotal
+    {
+        get
+        {
+            var taxAmount = Expense.Amount * (Expense.TaxPercent ?? 0) / 100;
+            return Expense.Amount + taxAmount;
+        }
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (IsNew)
+        {
+            _expenseDate = DateTime.Today;
+        }
+        else
+        {
+            _expenseDate = Expense.ExpenseDate;
+            if (Expense.SupplierId.HasValue)
+            {
+                _selectedSupplier = await DbContext.Parties.FindAsync(Expense.SupplierId.Value);
+            }
+            if (Expense.EmployeeId.HasValue)
+            {
+                _selectedEmployee = await DbContext.Employees.FindAsync(Expense.EmployeeId.Value);
+            }
+        }
+    }
+
+    private async Task<IEnumerable<Party>> SearchSuppliers(string value, CancellationToken cancellationToken)
+    {
+        var query = DbContext.Parties.Where(p => p.PartyType == PartyType.Supplier && !p.IsDeleted && p.IsActive);
+        
+        if (!string.IsNullOrWhiteSpace(value))
+            query = query.Where(p => p.Name.ToLower().Contains(value.ToLower()));
+        
+        return await query.Take(20).ToListAsync(cancellationToken);
+    }
+
+    private async Task<IEnumerable<Employee>> SearchEmployees(string value, CancellationToken cancellationToken)
+    {
+        var query = DbContext.Employees.Where(e => !e.IsDeleted && e.IsActive);
+        
+        if (!string.IsNullOrWhiteSpace(value))
+            query = query.Where(e => e.Name.ToLower().Contains(value.ToLower()));
+        
+        return await query.Take(20).ToListAsync(cancellationToken);
+    }
+
+    private async Task Save()
+    {
+        await _form.Validate();
+        if (!_formIsValid) return;
+
+        Expense.ExpenseDate = DateTime.SpecifyKind((_expenseDate ?? DateTime.Today).Date, DateTimeKind.Utc);
+
+        Expense.SupplierId = _selectedSupplier?.Id;
+        Expense.SupplierName = _selectedSupplier?.Name;
+        Expense.EmployeeId = _selectedEmployee?.Id;
+        Expense.EmployeeName = _selectedEmployee?.Name;
+
+        Expense.TaxAmount = Expense.Amount * (Expense.TaxPercent ?? 0) / 100;
+        Expense.TotalAmount = Expense.Amount + (Expense.TaxAmount ?? 0);
+
+        if (IsNew)
+        {
+            if (string.IsNullOrEmpty(Expense.ExpenseNo))
+            {
+                var maxNo = await DbContext.Expenses.MaxAsync(e => (int?)e.Id) ?? 0;
+                Expense.ExpenseNo = $"EXP-{(maxNo + 1):D6}";
+            }
+            Expense.Status = FinanceExpenseStatus.Draft;
+            Expense.CreatedAt = DateTime.UtcNow;
+            DbContext.Expenses.Add(Expense);
+        }
+        else
+        {
+            Expense.ModifiedAt = DateTime.UtcNow;
+            DbContext.Expenses.Update(Expense);
+        }
+
+        await DbContext.SaveChangesAsync();
+        MudDialog.Close(DialogResult.Ok(Expense));
+    }
+
+    private void Cancel() => MudDialog.Cancel();
+}

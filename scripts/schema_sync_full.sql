@@ -325,6 +325,44 @@ CREATE TABLE IF NOT EXISTS "VendorBills" (
     "IsDemo" BOOLEAN DEFAULT FALSE
 );
 
+-- Expenses
+CREATE TABLE IF NOT EXISTS "Expenses" (
+    "Id" BIGSERIAL PRIMARY KEY,
+    "ExpenseNo" VARCHAR(50) NOT NULL,
+    "ExpenseDate" TIMESTAMP NOT NULL,
+    "CompanyId" BIGINT,
+    "BranchId" BIGINT,
+    "BranchName" TEXT,
+    "FinancialYearId" BIGINT,
+    "Category" INT DEFAULT 99,
+    "Description" TEXT,
+    "SupplierId" BIGINT,
+    "SupplierName" TEXT,
+    "EmployeeId" BIGINT,
+    "EmployeeName" TEXT,
+    "Amount" DECIMAL(18,2) DEFAULT 0,
+    "TaxPercent" DECIMAL(10,4),
+    "TaxAmount" DECIMAL(18,2),
+    "TotalAmount" DECIMAL(18,2) DEFAULT 0,
+    "CurrencyCode" VARCHAR(10),
+    "ReferenceNo" VARCHAR(100),
+    "AttachmentPath" TEXT,
+    "Status" INT DEFAULT 1,
+    "Remarks" TEXT,
+    "JournalId" BIGINT,
+    "ApprovedDate" TIMESTAMP,
+    "ApprovedBy" TEXT,
+    "PaidDate" TIMESTAMP,
+    "PaidBy" TEXT,
+    "IsActive" BOOLEAN DEFAULT TRUE,
+    "CreatedAt" TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    "ModifiedAt" TIMESTAMP,
+    "CreatedBy" INT,
+    "ModifiedBy" INT,
+    "IsDeleted" BOOLEAN DEFAULT FALSE,
+    "IsDemo" BOOLEAN DEFAULT FALSE
+);
+
 -- =============================================
 -- PART 2: ALTER TABLES (add missing columns)
 -- =============================================
