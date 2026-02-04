@@ -65,12 +65,19 @@ CREATE TABLE IF NOT EXISTS "ZoneCategories" (
     "Name" VARCHAR(100) NOT NULL,
     "Code" VARCHAR(20),
     "Description" TEXT,
+    "CategoryType" INT DEFAULT 0,
+    "MovementType" INT DEFAULT 0,
+    "ForwardingAgentId" BIGINT,
+    "DeliveryAgentId" BIGINT,
+    "SortOrder" INT DEFAULT 0,
     "AllowCrossBranchMovement" BOOLEAN DEFAULT TRUE,
     "IsActive" BOOLEAN DEFAULT TRUE,
     "CreatedAt" TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     "ModifiedAt" TIMESTAMP,
     "CreatedBy" VARCHAR(255),
     "ModifiedBy" VARCHAR(255),
+    "CreatedByName" TEXT,
+    "ModifiedByName" TEXT,
     "IsDeleted" BOOLEAN DEFAULT FALSE,
     "IsDemo" BOOLEAN DEFAULT FALSE
 );
@@ -289,6 +296,16 @@ ALTER TABLE "ShipmentStatusGroups" ADD COLUMN IF NOT EXISTS "IsDemo" BOOLEAN DEF
 -- GL CHART OF ACCOUNTS
 ALTER TABLE "GLChartOfAccounts" ADD COLUMN IF NOT EXISTS "ClassificationId" BIGINT;
 ALTER TABLE "GLChartOfAccounts" ADD COLUMN IF NOT EXISTS "IsDemo" BOOLEAN DEFAULT FALSE;
+
+-- ZONE CATEGORIES
+ALTER TABLE "ZoneCategories" ADD COLUMN IF NOT EXISTS "CategoryType" INT DEFAULT 0;
+ALTER TABLE "ZoneCategories" ADD COLUMN IF NOT EXISTS "MovementType" INT DEFAULT 0;
+ALTER TABLE "ZoneCategories" ADD COLUMN IF NOT EXISTS "ForwardingAgentId" BIGINT;
+ALTER TABLE "ZoneCategories" ADD COLUMN IF NOT EXISTS "DeliveryAgentId" BIGINT;
+ALTER TABLE "ZoneCategories" ADD COLUMN IF NOT EXISTS "SortOrder" INT DEFAULT 0;
+ALTER TABLE "ZoneCategories" ADD COLUMN IF NOT EXISTS "CreatedByName" TEXT;
+ALTER TABLE "ZoneCategories" ADD COLUMN IF NOT EXISTS "ModifiedByName" TEXT;
+ALTER TABLE "ZoneCategories" ADD COLUMN IF NOT EXISTS "IsDemo" BOOLEAN DEFAULT FALSE;
 
 -- FINANCIAL PERIODS
 ALTER TABLE "FinancialPeriods" ADD COLUMN IF NOT EXISTS "IsDemo" BOOLEAN DEFAULT FALSE;
