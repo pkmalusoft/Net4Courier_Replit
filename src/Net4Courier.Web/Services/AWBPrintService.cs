@@ -524,9 +524,22 @@ public class AWBPrintService
                 });
                 c.Item().Row(r =>
                 {
-                    r.ConstantItem(25).Text("Ref:").FontSize(5).FontColor(Colors.Grey.Darken1);
-                    r.RelativeItem().Text(shipment.ReferenceNo ?? "").FontSize(5);
+                    r.ConstantItem(35).Text("Foreign Ref:").FontSize(5).FontColor(Colors.Grey.Darken1);
+                    r.RelativeItem().Text(shipment.ReferenceNo ?? "-").FontSize(5);
                 });
+                c.Item().Row(r =>
+                {
+                    r.ConstantItem(25).Text("Ref1:").FontSize(5).FontColor(Colors.Grey.Darken1);
+                    r.RelativeItem().Text(shipment.AWBNo ?? "").FontSize(5);
+                });
+            });
+            
+            row.RelativeItem(1).BorderLeft(1).Padding(2).AlignCenter().Column(c =>
+            {
+                if (_logoData != null)
+                {
+                    c.Item().Height(20).Image(_logoData).FitHeight();
+                }
             });
         });
     }
@@ -556,21 +569,21 @@ public class AWBPrintService
             
             row.RelativeItem().BorderLeft(1).Padding(2).Column(c =>
             {
-                c.Item().Text("Services:").FontSize(5).FontColor(Colors.Grey.Darken1);
-                if (shipment.CustomsValue > 0)
+                c.Item().Row(r =>
                 {
-                    c.Item().Text($"Customs: {shipment.CustomsValue?.ToString("F0")} {shipment.Currency ?? "AED"}").FontSize(6).FontColor(Colors.Red.Medium);
-                }
+                    r.ConstantItem(30).Text("Services:").FontSize(5).FontColor(Colors.Grey.Darken1);
+                    if (shipment.CustomsValue > 0)
+                    {
+                        r.RelativeItem().Text($"INVOICE VALUE Customs: {shipment.CustomsValue?.ToString("F0")} {shipment.Currency ?? "AED"}").FontSize(5).FontColor(Colors.Red.Medium);
+                    }
+                });
             });
             
-            if (shipment.IsCOD)
+            row.ConstantItem(30).BorderLeft(1).Background(Colors.Grey.Lighten3).Padding(2).AlignCenter().Column(c =>
             {
-                row.ConstantItem(30).BorderLeft(1).Background(Colors.Grey.Lighten3).Padding(2).AlignCenter().Column(c =>
-                {
-                    c.Item().Text("COD").Bold().FontSize(8);
-                    c.Item().Text(shipment.CODAmount?.ToString("F0") ?? "0").Bold().FontSize(10);
-                });
-            }
+                c.Item().Text("COD").Bold().FontSize(8);
+                c.Item().Text(shipment.IsCOD ? (shipment.CODAmount?.ToString("F0") ?? "0") : "0").Bold().FontSize(10);
+            });
         });
     }
 
@@ -654,53 +667,55 @@ public class AWBPrintService
 
     private void BuildGateexRightPanel(ColumnDescriptor column, InscanMaster shipment)
     {
+        var currency = shipment.Currency ?? "AED";
+        var hasDuty = (shipment.DutyVatAmount ?? 0) > 0;
+        var hasCOD = shipment.IsCOD && (shipment.CODAmount ?? 0) > 0;
+        var isDDP = hasDuty;
+        
         column.Item().Padding(2).Column(c =>
         {
-            c.Item().Text("PAYMENT").FontSize(5).FontColor(Colors.Grey.Darken1);
-            c.Item().Text("MODE").FontSize(5).FontColor(Colors.Grey.Darken1);
-            var hasDuty = (shipment.DutyVatAmount ?? 0) > 0;
-            var paymentMode = hasDuty ? "DDP" : "DDU";
-            c.Item().Text(paymentMode).Bold().FontSize(7).FontColor(Colors.Blue.Darken2);
+            c.Item().Text("PAYMENT MODE").FontSize(5).FontColor(Colors.Grey.Darken1);
+            var paymentMode = isDDP ? "DDP" : "DDU";
+            c.Item().Text(paymentMode).Bold().FontSize(8).FontColor(isDDP ? Colors.Red.Darken2 : Colors.Blue.Darken2);
         });
         
-        column.Item().Height(3);
+        column.Item().Height(2);
         
-        if (shipment.DutyVatAmount > 0)
+        if (hasDuty)
         {
             column.Item().Padding(2).Column(c =>
             {
                 c.Item().Text("DUTY/VAT").FontSize(4).FontColor(Colors.Grey.Darken1);
-                c.Item().Text($":{shipment.DutyVatAmount?.ToString("F0") ?? "0"}").FontSize(6);
+                c.Item().Text("AMOUNT").FontSize(4).FontColor(Colors.Grey.Darken1);
+                c.Item().Text($"{shipment.DutyVatAmount?.ToString("F0")} {currency}").FontSize(6);
             });
         }
         
-        if (shipment.IsCOD && shipment.CODAmount > 0)
+        if (hasCOD)
         {
             column.Item().Padding(2).Column(c =>
             {
-                c.Item().Text("COD AMT").FontSize(4).FontColor(Colors.Grey.Darken1);
-                c.Item().Text($":{shipment.CODAmount?.ToString("F0") ?? "0"}").FontSize(6);
+                c.Item().Text("COD COLLECT").FontSize(4).FontColor(Colors.Grey.Darken1);
+                c.Item().Text("AMOUNT").FontSize(4).FontColor(Colors.Grey.Darken1);
+                c.Item().Text($"{shipment.CODAmount?.ToString("F0")} {currency}").FontSize(6);
             });
         }
         
         var totalCollect = (shipment.DutyVatAmount ?? 0) + (shipment.CODAmount ?? 0);
         if (totalCollect > 0)
         {
-            column.Item().Height(3);
+            column.Item().Height(2);
             column.Item().Padding(2).Column(c =>
             {
-                c.Item().Text("TOTAL").FontSize(4).FontColor(Colors.Grey.Darken1);
-                c.Item().Text("COLLECT").FontSize(4).FontColor(Colors.Grey.Darken1);
-                c.Item().Text($":{totalCollect:F0}").Bold().FontSize(7);
+                c.Item().Text("TOTAL COLLECT").FontSize(4).FontColor(Colors.Grey.Darken1);
+                c.Item().Text("AMOUNT").FontSize(4).FontColor(Colors.Grey.Darken1);
+                c.Item().Text($"{totalCollect:F0} {currency}").Bold().FontSize(7);
             });
         }
         
-        column.Item().Height(3);
-        column.Item().Padding(2).Text(shipment.Currency ?? "AED").FontSize(5).FontColor(Colors.Grey.Medium);
-        
         if (shipment.BarcodeImageVertical != null)
         {
-            column.Item().Height(10);
+            column.Item().Height(5);
             column.Item().AlignCenter().Padding(1).Image(shipment.BarcodeImageVertical).FitWidth();
         }
     }
