@@ -4,7 +4,7 @@
 @using Microsoft.AspNetCore.Components.Forms
 @using Net4Courier.Infrastructure.Data
 @using Net4Courier.Masters.Entities
-@inject ApplicationDbContext DbContext
+@inject IDbContextFactory<ApplicationDbContext> DbContextFactory
 @inject NavigationManager Navigation
 @inject ISnackbar Snackbar
 @inject IWebHostEnvironment Environment
@@ -261,68 +261,72 @@
 
     protected override async Task OnInitializedAsync()
     {
-        await LoadCountries();
-        await LoadCurrencies();
+        await using var dbContext = await DbContextFactory.CreateDbContextAsync();
+        
+        _countries = await dbContext.Countries
+            .Where(c => c.IsActive && !c.IsDeleted)
+            .OrderBy(c => c.Name)
+            .AsNoTracking()
+            .ToListAsync();
+        
+        _currencies = await dbContext.Currencies
+            .Where(c => c.IsActive && !c.IsDeleted)
+            .OrderBy(c => c.Code)
+            .AsNoTracking()
+            .ToListAsync();
         
         if (!IsNew)
         {
-            await LoadCompany();
+            _company = await dbContext.Companies
+                .AsNoTracking()
+                .FirstOrDefaultAsync(c => c.Id == Id && !c.IsDeleted) ?? new();
+                
+            if (_company.Id == 0)
+            {
+                _errorMessage = "Company not found";
+                _loading = false;
+                return;
+            }
+            
+            if (_company.CountryId.HasValue)
+            {
+                _states = await dbContext.States
+                    .Where(s => s.CountryId == _company.CountryId.Value && s.IsActive && !s.IsDeleted)
+                    .OrderBy(s => s.Name)
+                    .AsNoTracking()
+                    .ToListAsync();
+            }
+            
+            if (_company.StateId.HasValue)
+            {
+                _cities = await dbContext.Cities
+                    .Where(c => c.StateId == _company.StateId.Value && c.IsActive && !c.IsDeleted)
+                    .OrderBy(c => c.Name)
+                    .AsNoTracking()
+                    .ToListAsync();
+            }
         }
         
         _loading = false;
     }
 
-    private async Task LoadCompany()
-    {
-        _company = await DbContext.Companies
-            .FirstOrDefaultAsync(c => c.Id == Id && !c.IsDeleted) ?? new();
-            
-        if (_company.Id == 0)
-        {
-            _errorMessage = "Company not found";
-            return;
-        }
-        
-        if (_company.CountryId.HasValue)
-        {
-            await LoadStates(_company.CountryId.Value);
-        }
-        
-        if (_company.StateId.HasValue)
-        {
-            await LoadCities(_company.StateId.Value);
-        }
-    }
-
-    private async Task LoadCountries()
-    {
-        _countries = await DbContext.Countries
-            .Where(c => c.IsActive && !c.IsDeleted)
-            .OrderBy(c => c.Name)
-            .ToListAsync();
-    }
-
-    private async Task LoadCurrencies()
-    {
-        _currencies = await DbContext.Currencies
-            .Where(c => c.IsActive && !c.IsDeleted)
-            .OrderBy(c => c.Code)
-            .ToListAsync();
-    }
-
     private async Task LoadStates(long countryId)
     {
-        _states = await DbContext.States
+        await using var dbContext = await DbContextFactory.CreateDbContextAsync();
+        _states = await dbContext.States
             .Where(s => s.CountryId == countryId && s.IsActive && !s.IsDeleted)
             .OrderBy(s => s.Name)
+            .AsNoTracking()
             .ToListAsync();
     }
 
     private async Task LoadCities(long stateId)
     {
-        _cities = await DbContext.Cities
+        await using var dbContext = await DbContextFactory.CreateDbContextAsync();
+        _cities = await dbContext.Cities
             .Where(c => c.StateId == stateId && c.IsActive && !c.IsDeleted)
             .OrderBy(c => c.Name)
+            .AsNoTracking()
             .ToListAsync();
     }
 
@@ -384,18 +388,20 @@
         _saving = true;
         try
         {
+            await using var dbContext = await DbContextFactory.CreateDbContextAsync();
+            
             if (IsNew)
             {
                 _company.CreatedAt = DateTime.UtcNow;
-                DbContext.Companies.Add(_company);
+                dbContext.Companies.Add(_company);
             }
             else
             {
                 _company.ModifiedAt = DateTime.UtcNow;
-                DbContext.Companies.Update(_company);
+                dbContext.Companies.Update(_company);
             }
             
-            await DbContext.SaveChangesAsync();
+            await dbContext.SaveChangesAsync();
             Snackbar.Add(IsNew ? "Company created successfully" : "Company updated successfully", Severity.Success);
             Navigation.NavigateTo("/companies");
         }
