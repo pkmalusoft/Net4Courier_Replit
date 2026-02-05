@@ -1,0 +1,242 @@
+@page "/drs-reconciliation-statement/{Id:long}"
+@using Net4Courier.Infrastructure.Data
+@using Net4Courier.Operations.Entities
+@using Net4Courier.Kernel.Enums
+@using Microsoft.EntityFrameworkCore
+@inject IDbContextFactory<ApplicationDbContext> DbFactory
+@inject ISnackbar Snackbar
+@inject NavigationManager Navigation
+@inject IJSRuntime JS
+@rendermode InteractiveServer
+
+<PageTitle>DRS Reconciliation Statement</PageTitle>
+
+<MudContainer MaxWidth="MaxWidth.Large" Class="py-4">
+    <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center" Class="mb-4">
+        <MudText Typo="Typo.h5">Reconciliation Statement</MudText>
+        <MudStack Row="true" Spacing="2">
+            <MudButton Variant="Variant.Outlined" OnClick="GoBack">Back</MudButton>
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Print"
+                       OnClick="PrintStatement">
+                Print
+            </MudButton>
+        </MudStack>
+    </MudStack>
+
+    @if (_loading)
+    {
+        <MudProgressLinear Indeterminate="true" />
+    }
+    else if (_statement == null)
+    {
+        <MudAlert Severity="Severity.Error">Statement not found</MudAlert>
+    }
+    else
+    {
+        <MudPaper Class="pa-6" id="printable-statement">
+            <MudStack Spacing="4">
+                <MudStack Row="true" Justify="Justify.SpaceBetween">
+                    <div>
+                        <MudText Typo="Typo.h5">DRS RECONCILIATION STATEMENT</MudText>
+                        <MudText Typo="Typo.caption">Reference: @_statement.DRSNo</MudText>
+                    </div>
+                    <div class="text-right">
+                        <MudText Typo="Typo.body2">Date: @_statement.StatementDate.ToString("dd-MMM-yyyy")</MudText>
+                        <MudText Typo="Typo.body2">Receipt No: @_statement.ReceiptNo</MudText>
+                    </div>
+                </MudStack>
+
+                <MudDivider />
+
+                <MudGrid>
+                    <MudItem xs="6">
+                        <MudText Typo="Typo.caption">Courier Name</MudText>
+                        <MudText Typo="Typo.h6">@_statement.CourierName</MudText>
+                    </MudItem>
+                    <MudItem xs="6">
+                        <MudText Typo="Typo.caption">DRS Date</MudText>
+                        <MudText Typo="Typo.body1">@(_drs?.DRSDate.ToString("dd-MMM-yyyy") ?? "-")</MudText>
+                    </MudItem>
+                </MudGrid>
+
+                <MudDivider />
+
+                <MudText Typo="Typo.subtitle1" Class="mt-2">AWB Details</MudText>
+                <MudSimpleTable Dense="true" Bordered="true">
+                    <thead>
+                        <tr>
+                            <th>AWB No</th>
+                            <th style="text-align:right">Material Cost</th>
+                            <th style="text-align:right">COD Amount</th>
+                            <th style="text-align:right">Other Charges</th>
+                            <th style="text-align:right">Total Collectible</th>
+                            <th style="text-align:right">Amount Collected</th>
+                            <th style="text-align:right">Discount</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var line in _lines)
+                        {
+                            <tr>
+                                <td>@line.AWBNo</td>
+                                <td style="text-align:right">@line.MaterialCost.ToString("N2")</td>
+                                <td style="text-align:right">@line.CODAmount.ToString("N2")</td>
+                                <td style="text-align:right">@line.OtherCharges.ToString("N2")</td>
+                                <td style="text-align:right">@line.TotalCollectible.ToString("N2")</td>
+                                <td style="text-align:right">@line.AmountCollected.ToString("N2")</td>
+                                <td style="text-align:right">@line.DiscountAmount.ToString("N2")</td>
+                            </tr>
+                        }
+                        <tr style="font-weight:bold; background-color:#f5f5f5">
+                            <td>Total</td>
+                            <td style="text-align:right">@_lines.Sum(l => l.MaterialCost).ToString("N2")</td>
+                            <td style="text-align:right">@_lines.Sum(l => l.CODAmount).ToString("N2")</td>
+                            <td style="text-align:right">@_lines.Sum(l => l.OtherCharges).ToString("N2")</td>
+                            <td style="text-align:right">@_statement.TotalCollectible.ToString("N2")</td>
+                            <td style="text-align:right">@_statement.TotalCollected.ToString("N2")</td>
+                            <td style="text-align:right">@_statement.TotalDiscount.ToString("N2")</td>
+                        </tr>
+                    </tbody>
+                </MudSimpleTable>
+
+                @if (_expenses.Any())
+                {
+                    <MudText Typo="Typo.subtitle1" Class="mt-4">Expense Bills</MudText>
+                    <MudSimpleTable Dense="true" Bordered="true">
+                        <thead>
+                            <tr>
+                                <th>Description</th>
+                                <th style="text-align:right">Amount</th>
+                                <th>Status</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var expense in _expenses)
+                            {
+                                <tr>
+                                    <td>@expense.Description</td>
+                                    <td style="text-align:right">@expense.Amount.ToString("N2")</td>
+                                    <td>@expense.Status.ToString()</td>
+                                </tr>
+                            }
+                            <tr style="font-weight:bold; background-color:#f5f5f5">
+                                <td>Total Expenses</td>
+                                <td style="text-align:right">@_statement.ExpenseBills.ToString("N2")</td>
+                                <td></td>
+                            </tr>
+                        </tbody>
+                    </MudSimpleTable>
+                }
+
+                <MudDivider Class="my-4" />
+
+                <MudGrid>
+                    <MudItem xs="6">
+                        <MudText Typo="Typo.caption">Summary</MudText>
+                    </MudItem>
+                    <MudItem xs="6">
+                        <MudSimpleTable Dense="true" Style="width:100%">
+                            <tbody>
+                                <tr>
+                                    <td>Total Collectible</td>
+                                    <td style="text-align:right">@_statement.TotalCollectible.ToString("N2")</td>
+                                </tr>
+                                <tr>
+                                    <td>Total Collected</td>
+                                    <td style="text-align:right">@_statement.TotalCollected.ToString("N2")</td>
+                                </tr>
+                                <tr>
+                                    <td>Total Discount</td>
+                                    <td style="text-align:right">(@_statement.TotalDiscount.ToString("N2"))</td>
+                                </tr>
+                                <tr>
+                                    <td>Expense Bills</td>
+                                    <td style="text-align:right">(@_statement.ExpenseBills.ToString("N2"))</td>
+                                </tr>
+                                <tr style="font-weight:bold">
+                                    <td>Cash Submitted</td>
+                                    <td style="text-align:right">@_statement.CashSubmitted.ToString("N2")</td>
+                                </tr>
+                                <tr style="font-weight:bold; background-color:@(_statement.Balance == 0 ? "#e8f5e9" : "#fff3e0")">
+                                    <td>Balance</td>
+                                    <td style="text-align:right">@_statement.Balance.ToString("N2")</td>
+                                </tr>
+                            </tbody>
+                        </MudSimpleTable>
+                    </MudItem>
+                </MudGrid>
+
+                <MudDivider Class="my-4" />
+
+                <MudGrid>
+                    <MudItem xs="6">
+                        <MudText Typo="Typo.caption">Settled By</MudText>
+                        <MudText>@_statement.SettledByName</MudText>
+                        <MudText Typo="Typo.caption">@(_statement.SettledAt?.ToString("dd-MMM-yyyy HH:mm") ?? "-")</MudText>
+                    </MudItem>
+                    <MudItem xs="6" Class="text-right">
+                        <MudText Typo="Typo.caption">Courier Signature</MudText>
+                        <div style="border-bottom:1px solid #000; width:200px; height:40px; margin-left:auto"></div>
+                    </MudItem>
+                </MudGrid>
+            </MudStack>
+        </MudPaper>
+    }
+</MudContainer>
+
+@code {
+    [Parameter] public long Id { get; set; }
+
+    private bool _loading = true;
+    private DRSReconciliationStatement? _statement;
+    private DRS? _drs;
+    private List<DRSReconciliationLine> _lines = new();
+    private List<CourierExpense> _expenses = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadStatement();
+    }
+
+    private async Task LoadStatement()
+    {
+        _loading = true;
+        StateHasChanged();
+
+        try
+        {
+            await using var context = await DbFactory.CreateDbContextAsync();
+
+            _statement = await context.DRSReconciliationStatements
+                .FirstOrDefaultAsync(s => s.Id == Id);
+
+            if (_statement != null)
+            {
+                _drs = await context.DRSs
+                    .Include(d => d.Expenses)
+                    .FirstOrDefaultAsync(d => d.Id == _statement.DRSId);
+
+                _lines = await context.DRSReconciliationLines
+                    .Where(l => l.DRSId == _statement.DRSId && l.CashSubmissionId == _statement.CashSubmissionId)
+                    .ToListAsync();
+
+                _expenses = _drs?.Expenses.Where(e => e.Status == ExpenseStatus.Approved).ToList() ?? new();
+            }
+        }
+        finally
+        {
+            _loading = false;
+            StateHasChanged();
+        }
+    }
+
+    private void GoBack()
+    {
+        Navigation.NavigateTo("/drs-cash-receipt");
+    }
+
+    private async Task PrintStatement()
+    {
+        await JS.InvokeVoidAsync("window.print");
+    }
+}
