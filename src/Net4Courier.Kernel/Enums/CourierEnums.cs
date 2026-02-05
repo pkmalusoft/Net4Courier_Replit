@@ -23,8 +23,6 @@ public enum PaymentMode
     COD = 2,
     Account = 3,
     Prepaid = 4,
-    CAD = 5,
-    ToPay = 6,
     Credit = 7
 }
 

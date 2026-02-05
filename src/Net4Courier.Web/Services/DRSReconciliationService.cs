@@ -62,9 +62,6 @@ public class DRSReconciliationService
                     case PaymentMode.PickupCash:
                         summary.PickupCash += (inscan.CourierCharge ?? 0) + (inscan.OtherCharge ?? 0);
                         break;
-                    case PaymentMode.ToPay:
-                        summary.TotalCourierCharges += inscan.CourierCharge ?? 0;
-                        break;
                 }
             }
             else if (detail.Status == "Returned" || detail.Status == "Refused")
