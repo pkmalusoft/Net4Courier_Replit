@@ -567,6 +567,52 @@ app.MapGet("/api/report/receipt/{id:long}", async (long id, ApplicationDbContext
     return Results.File(pdf, "application/pdf", $"Receipt-{receipt.ReceiptNo}.pdf");
 });
 
+app.MapGet("/api/report/cash-receipt/{id:long}", async (long id, ApplicationDbContext db, ReportingService reportService) =>
+{
+    var submission = await db.CourierCashSubmissions.Include(s => s.DRS).FirstOrDefaultAsync(s => s.Id == id);
+    if (submission == null) return Results.NotFound();
+    var company = await db.Companies.FirstOrDefaultAsync(c => !c.IsDeleted);
+    var pdf = reportService.GenerateCashReceiptPdf(submission, submission.DRS, company?.Name ?? "Net4Courier");
+    return Results.File(pdf, "application/pdf", $"CashReceipt-{submission.ReceiptNo ?? id.ToString()}.pdf");
+});
+
+app.MapPost("/api/report/cash-receipt/{id:long}/email", async (long id, string email, ApplicationDbContext db, ReportingService reportService, IGmailEmailService emailService) =>
+{
+    var submission = await db.CourierCashSubmissions.Include(s => s.DRS).FirstOrDefaultAsync(s => s.Id == id);
+    if (submission == null) return Results.NotFound();
+    
+    if (string.IsNullOrEmpty(email))
+    {
+        return Results.BadRequest("Email address is required");
+    }
+    
+    var company = await db.Companies.FirstOrDefaultAsync(c => !c.IsDeleted);
+    var companyName = company?.Name ?? "Net4Courier";
+    var fromEmail = company?.Email ?? "noreply@net4courier.com";
+    
+    var pdf = reportService.GenerateCashReceiptPdf(submission, submission.DRS, companyName);
+    
+    var subject = $"Cash Receipt - {submission.ReceiptNo ?? "Receipt"} - {submission.SubmissionDate:dd-MMM-yyyy}";
+    var htmlBody = $@"
+        <p>Dear {submission.CourierName},</p>
+        <p>Please find attached your cash receipt for DRS {submission.DRS?.DRSNo ?? "-"}.</p>
+        <p><strong>Receipt No:</strong> {submission.ReceiptNo ?? "-"}<br/>
+        <strong>Date:</strong> {submission.SubmissionDate:dd-MMM-yyyy}<br/>
+        <strong>Amount Received:</strong> {(submission.ReceivedAmount ?? 0):N2}</p>
+        <p>Thank you.</p>
+        <p>Regards,<br/>{companyName}</p>
+    ";
+    
+    var success = await emailService.SendEmailWithAttachmentAsync(
+        email, submission.CourierName ?? "Courier",
+        subject, htmlBody,
+        pdf, $"CashReceipt-{submission.ReceiptNo ?? id.ToString()}.pdf", "application/pdf",
+        fromEmail, companyName
+    );
+    
+    return success ? Results.Ok(new { message = "Email sent successfully" }) : Results.Problem("Failed to send email");
+});
+
 app.MapGet("/api/report/mawb/{id:long}", async (long id, ReportingService reportService) =>
 {
     var pdf = await reportService.GenerateMAWBManifest(id);

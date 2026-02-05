@@ -1819,4 +1819,159 @@ public class ReportingService
 
         return document.GeneratePdf();
     }
+
+    public byte[] GenerateCashReceiptPdf(CourierCashSubmission submission, DRS? drs, string companyName)
+    {
+        var document = Document.Create(container =>
+        {
+            container.Page(page =>
+            {
+                page.Size(PageSizes.A5);
+                page.Margin(1, Unit.Centimetre);
+                page.DefaultTextStyle(x => x.FontSize(10));
+
+                page.Header().Column(col =>
+                {
+                    col.Item().Row(row =>
+                    {
+                        row.RelativeItem().Column(c =>
+                        {
+                            c.Item().Text(companyName).Bold().FontSize(16);
+                            c.Item().Text("Courier & Logistics Services").FontSize(9);
+                        });
+                        row.RelativeItem().AlignRight().Column(c =>
+                        {
+                            c.Item().Text("CASH RECEIPT").Bold().FontSize(14);
+                            c.Item().Text($"# {submission.ReceiptNo ?? "-"}").FontSize(11);
+                        });
+                    });
+                    col.Item().PaddingVertical(8).LineHorizontal(1);
+                });
+
+                page.Content().Column(col =>
+                {
+                    col.Item().Row(row =>
+                    {
+                        row.RelativeItem().Column(c =>
+                        {
+                            c.Item().Text("Date:").FontSize(9);
+                            c.Item().Text(submission.SubmissionDate.ToString("dd-MMM-yyyy")).Bold();
+                        });
+                        row.RelativeItem().Column(c =>
+                        {
+                            c.Item().Text("Time:").FontSize(9);
+                            c.Item().Text(submission.ReceivedAt?.ToString("HH:mm") ?? "-").Bold();
+                        });
+                    });
+
+                    col.Item().PaddingVertical(10);
+
+                    col.Item().Border(1).Padding(10).Column(inner =>
+                    {
+                        inner.Item().Text("DRS Details").Bold().FontSize(11);
+                        inner.Item().PaddingVertical(5).LineHorizontal(0.5f);
+
+                        inner.Item().Row(row =>
+                        {
+                            row.RelativeItem().Column(c =>
+                            {
+                                c.Item().Text("DRS No:").FontSize(9);
+                                c.Item().Text(drs?.DRSNo ?? "-").Bold();
+                            });
+                            row.RelativeItem().Column(c =>
+                            {
+                                c.Item().Text("DRS Date:").FontSize(9);
+                                c.Item().Text(drs?.DRSDate.ToString("dd-MMM-yyyy") ?? "-").Bold();
+                            });
+                        });
+
+                        inner.Item().PaddingTop(8).Row(row =>
+                        {
+                            row.RelativeItem().Column(c =>
+                            {
+                                c.Item().Text("Courier:").FontSize(9);
+                                c.Item().Text(submission.CourierName ?? "-").Bold();
+                            });
+                        });
+                    });
+
+                    col.Item().PaddingVertical(10);
+
+                    col.Item().Border(1).Padding(10).Column(inner =>
+                    {
+                        inner.Item().Text("Payment Details").Bold().FontSize(11);
+                        inner.Item().PaddingVertical(5).LineHorizontal(0.5f);
+
+                        inner.Item().Table(table =>
+                        {
+                            table.ColumnsDefinition(columns =>
+                            {
+                                columns.RelativeColumn(2);
+                                columns.RelativeColumn(1);
+                            });
+
+                            table.Cell().Text("Expected Amount:").FontSize(10);
+                            table.Cell().AlignRight().Text(submission.CashSubmittedAmount.ToString("N2")).Bold();
+
+                            table.Cell().Text("Amount Received:").FontSize(10);
+                            table.Cell().AlignRight().Text((submission.ReceivedAmount ?? 0).ToString("N2")).Bold().FontSize(12);
+
+                            var difference = (submission.ReceivedAmount ?? 0) - submission.CashSubmittedAmount;
+                            if (difference != 0)
+                            {
+                                table.Cell().Text("Difference:").FontSize(10);
+                                table.Cell().AlignRight().Text(difference.ToString("N2")).FontColor(difference < 0 ? Colors.Red.Medium : Colors.Green.Medium);
+                            }
+                        });
+                    });
+
+                    col.Item().PaddingVertical(10);
+
+                    if (!string.IsNullOrEmpty(submission.Remarks))
+                    {
+                        col.Item().Column(c =>
+                        {
+                            c.Item().Text("Remarks:").FontSize(9);
+                            c.Item().Text(submission.Remarks).Italic();
+                        });
+                        col.Item().PaddingVertical(5);
+                    }
+
+                    col.Item().PaddingTop(20).Row(row =>
+                    {
+                        row.RelativeItem().Column(c =>
+                        {
+                            c.Item().Text("Received By:").FontSize(9);
+                            c.Item().Text(submission.ReceivedByName ?? "-").Bold();
+                        });
+                    });
+
+                    col.Item().PaddingTop(30).Row(row =>
+                    {
+                        row.RelativeItem().Column(c =>
+                        {
+                            c.Item().Height(30);
+                            c.Item().LineHorizontal(0.5f);
+                            c.Item().Text("Courier Signature").FontSize(8).AlignCenter();
+                        });
+                        row.ConstantItem(30);
+                        row.RelativeItem().Column(c =>
+                        {
+                            c.Item().Height(30);
+                            c.Item().LineHorizontal(0.5f);
+                            c.Item().Text("Accountant Signature").FontSize(8).AlignCenter();
+                        });
+                    });
+                });
+
+                page.Footer().AlignCenter().Text(text =>
+                {
+                    text.Span("Generated on ").FontSize(8);
+                    text.Span(DateTime.UtcNow.ToString("dd-MMM-yyyy HH:mm")).FontSize(8);
+                });
+            });
+        });
+
+        return document.GeneratePdf();
+    }
 }
