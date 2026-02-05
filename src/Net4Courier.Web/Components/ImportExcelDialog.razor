@@ -400,11 +400,15 @@
         try
         {
             using var context = await DbFactory.CreateDbContextAsync();
-            using var transaction = await context.Database.BeginTransactionAsync();
+            var strategy = context.Database.CreateExecutionStrategy();
             
-            try
+            await strategy.ExecuteAsync(async () =>
             {
-                long? branchId = null;
+                using var transaction = await context.Database.BeginTransactionAsync();
+                
+                try
+                {
+                    long? branchId = null;
                 long? companyId = null;
                 long? financialYearId = null;
                 
@@ -506,16 +510,17 @@
                 context.ImportShipments.AddRange(shipments);
                 await context.SaveChangesAsync();
                 
-                await transaction.CommitAsync();
-                
-                Snackbar.Add($"Successfully imported {shipments.Count} shipments!", Severity.Success);
-                MudDialog?.Close(DialogResult.Ok(importMaster.Id));
-            }
-            catch
-            {
-                await transaction.RollbackAsync();
-                throw;
-            }
+                    await transaction.CommitAsync();
+                    
+                    Snackbar.Add($"Successfully imported {shipments.Count} shipments!", Severity.Success);
+                    MudDialog?.Close(DialogResult.Ok(importMaster.Id));
+                }
+                catch
+                {
+                    await transaction.RollbackAsync();
+                    throw;
+                }
+            });
         }
         catch (Exception ex)
         {

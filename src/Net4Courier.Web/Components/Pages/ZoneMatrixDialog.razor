@@ -230,10 +230,14 @@
         }
 
         _saving = true;
-        using var transaction = await DbContext.Database.BeginTransactionAsync();
-        try
+        var strategy = DbContext.Database.CreateExecutionStrategy();
+        
+        await strategy.ExecuteAsync(async () =>
         {
-            if (_isNew)
+            using var transaction = await DbContext.Database.BeginTransactionAsync();
+            try
+            {
+                if (_isNew)
             {
                 _zone.CreatedAt = DateTime.UtcNow;
                 DbContext.ZoneMatrices.Add(_zone);
@@ -282,18 +286,16 @@
                 _zone.CountryId = null;
             }
 
-            await DbContext.SaveChangesAsync();
-            await transaction.CommitAsync();
-            MudDialog.Close(DialogResult.Ok(true));
-        }
-        catch (Exception ex)
-        {
-            Snackbar.Add($"Error saving zone: {ex.Message}", Severity.Error);
-        }
-        finally
-        {
-            _saving = false;
-        }
+                await DbContext.SaveChangesAsync();
+                await transaction.CommitAsync();
+                MudDialog.Close(DialogResult.Ok(true));
+            }
+            catch (Exception ex)
+            {
+                Snackbar.Add($"Error saving zone: {ex.Message}", Severity.Error);
+            }
+        });
+        _saving = false;
     }
 
     private void Cancel() => MudDialog.Cancel();

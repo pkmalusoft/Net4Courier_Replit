@@ -69,9 +69,13 @@ public class PrepaidService
         int userId, 
         string userName)
     {
-        using var transaction = await _context.Database.BeginTransactionAsync();
-        try
+        var strategy = _context.Database.CreateExecutionStrategy();
+        
+        return await strategy.ExecuteAsync(async () =>
         {
+            using var transaction = await _context.Database.BeginTransactionAsync();
+            try
+            {
             document.CreatedAt = DateTime.UtcNow;
             document.DocumentDate = DateTime.SpecifyKind(document.DocumentDate, DateTimeKind.Utc);
             document.CreatedBy = userId;
@@ -118,16 +122,17 @@ public class PrepaidService
 
             await CreateSaleJournalEntryAsync(document, userId, userName);
 
-            await _context.SaveChangesAsync();
-            await transaction.CommitAsync();
+                await _context.SaveChangesAsync();
+                await transaction.CommitAsync();
 
-            return document;
-        }
-        catch
-        {
-            await transaction.RollbackAsync();
-            throw;
-        }
+                return document;
+            }
+            catch
+            {
+                await transaction.RollbackAsync();
+                throw;
+            }
+        });
     }
 
     private async Task CreateSaleJournalEntryAsync(PrepaidDocument document, int userId, string userName)
@@ -208,10 +213,14 @@ public class PrepaidService
 
     public async Task<bool> UsePrepaidAWBAsync(long prepaidAWBId, long inscanMasterId, int userId, string userName, string? consignor = null, string? consignee = null)
     {
-        using var transaction = await _context.Database.BeginTransactionAsync();
-        try
+        var strategy = _context.Database.CreateExecutionStrategy();
+        
+        return await strategy.ExecuteAsync(async () =>
         {
-            var prepaidAWB = await _context.PrepaidAWBs
+            using var transaction = await _context.Database.BeginTransactionAsync();
+            try
+            {
+                var prepaidAWB = await _context.PrepaidAWBs
                 .Include(p => p.PrepaidDocument)
                 .FirstOrDefaultAsync(p => p.Id == prepaidAWBId && !p.IsUsed);
 
@@ -239,15 +248,16 @@ public class PrepaidService
 
             await CreateUsageJournalEntryAsync(prepaidAWB, document, userId, userName);
 
-            await _context.SaveChangesAsync();
-            await transaction.CommitAsync();
-            return true;
-        }
-        catch
-        {
-            await transaction.RollbackAsync();
-            throw;
-        }
+                await _context.SaveChangesAsync();
+                await transaction.CommitAsync();
+                return true;
+            }
+            catch
+            {
+                await transaction.RollbackAsync();
+                throw;
+            }
+        });
     }
 
     private async Task CreateUsageJournalEntryAsync(PrepaidAWB prepaidAWB, PrepaidDocument document, int userId, string userName)
