@@ -22,8 +22,7 @@ public enum PaymentMode
     PickupCash = 1,
     COD = 2,
     Account = 3,
-    Prepaid = 4,
-    Credit = 7
+    Prepaid = 4
 }
 
 public enum MovementType

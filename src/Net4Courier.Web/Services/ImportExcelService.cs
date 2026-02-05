@@ -967,7 +967,8 @@ public class ImportExcelService
         return paymentMode.ToLower() switch
         {
             "cod" or "collect" => PaymentMode.COD,
-            "credit" => PaymentMode.Credit,
+            "account" => PaymentMode.Account,
+            "pickup cash" or "pickupcash" or "cash" => PaymentMode.PickupCash,
             _ => PaymentMode.Prepaid
         };
     }
