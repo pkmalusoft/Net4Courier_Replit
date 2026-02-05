@@ -50,6 +50,9 @@ public class DRSReconciliationStatement : BaseEntity
     public int CourierId { get; set; }
     public string? CourierName { get; set; }
     
+    public decimal TotalMaterialCost { get; set; }
+    public decimal TotalCODAmount { get; set; }
+    public decimal TotalOtherCharges { get; set; }
     public decimal TotalCollectible { get; set; }
     public decimal TotalCollected { get; set; }
     public decimal TotalDiscount { get; set; }
