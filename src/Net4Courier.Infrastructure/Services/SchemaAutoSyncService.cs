@@ -197,13 +197,15 @@ public class SchemaAutoSyncService
 
         var sql = $"ALTER TABLE \"{tableName}\" ADD COLUMN IF NOT EXISTS \"{columnName}\" {columnType}";
 
+        var defaultValue = GetDefaultValue(property);
+        if (!string.IsNullOrEmpty(defaultValue))
+        {
+            sql += $" DEFAULT {defaultValue}";
+        }
+
         if (!isNullable)
         {
-            var defaultValue = GetDefaultValue(property);
-            if (!string.IsNullOrEmpty(defaultValue))
-            {
-                sql += $" DEFAULT {defaultValue}";
-            }
+            sql += " NOT NULL";
         }
 
         sql += ";";
@@ -240,7 +242,7 @@ public class SchemaAutoSyncService
         if (underlyingType == typeof(decimal)) return "DECIMAL(18,2)";
         if (underlyingType == typeof(double)) return "DOUBLE PRECISION";
         if (underlyingType == typeof(float)) return "REAL";
-        if (underlyingType == typeof(DateTime)) return "TIMESTAMP";
+        if (underlyingType == typeof(DateTime)) return "TIMESTAMP WITH TIME ZONE";
         if (underlyingType == typeof(DateTimeOffset)) return "TIMESTAMP WITH TIME ZONE";
         if (underlyingType == typeof(DateOnly)) return "DATE";
         if (underlyingType == typeof(TimeOnly)) return "TIME";
