@@ -4,11 +4,14 @@
 @using Net4Courier.Operations.Entities
 @using Net4Courier.Kernel.Enums
 @using ClosedXML.Excel
+@using Microsoft.AspNetCore.Components.Authorization
 @inject IDbContextFactory<ApplicationDbContext> DbFactory
 @inject NavigationManager Navigation
 @inject IDialogService DialogService
 @inject IJSRuntime JSRuntime
 @inject ISnackbar Snackbar
+@inject Net4Courier.Infrastructure.Services.AuthService AuthService
+@inject AuthenticationStateProvider AuthStateProvider
 
 <PageTitle>Manifest Dashboard - Net4Courier</PageTitle>
 
@@ -153,8 +156,11 @@ else
                                    Href="@($"/import-bags/{context.Id}")" Title="Manage Bags" />
                     <MudIconButton Icon="@Icons.Material.Filled.QrCodeScanner" Size="Size.Small" Color="Color.Success" 
                                    Href="@($"/import-inscan/{context.Id}")" Title="Inscan Shipments" />
-                    <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" Color="Color.Error" 
-                                   OnClick="@(() => ConfirmDeleteImportMaster(context))" Title="Delete Import" />
+                    @if (context.Status == ImportMasterStatus.Draft || _isPlatformAdmin)
+                    {
+                        <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" Color="Color.Error" 
+                                       OnClick="@(() => ConfirmDeleteImportMaster(context))" Title="Delete Import" />
+                    }
                 </MudTd>
                 <MudTd DataLabel="Import Ref">@context.ImportRefNo</MudTd>
                 <MudTd DataLabel="Mode">
@@ -187,6 +193,7 @@ else
 @code {
     private bool _isLoading = true;
     private bool _tableLoading = false;
+    private bool _isPlatformAdmin = false;
     private DashboardStats _stats = new();
     private List<ImportMaster> _imports = new();
     
@@ -202,6 +209,13 @@ else
 
     protected override async Task OnInitializedAsync()
     {
+        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+        var username = authState.User.Identity?.Name;
+        if (!string.IsNullOrEmpty(username))
+        {
+            _isPlatformAdmin = await AuthService.IsPlatformAdminByUsernameAsync(username);
+        }
+        
         await LoadDashboardData();
         _isLoading = false;
     }
