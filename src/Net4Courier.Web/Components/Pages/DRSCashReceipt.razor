@@ -291,21 +291,33 @@
 
     private async Task<IEnumerable<DRS>> SearchDRS(string value, CancellationToken token)
     {
-        await using var context = await DbFactory.CreateDbContextAsync();
-        var query = context.DRSs
-            .Where(d => !d.IsDeleted)
-            .AsQueryable();
-
-        if (!string.IsNullOrEmpty(value))
+        try
         {
-            query = query.Where(d => d.DRSNo.Contains(value) || 
-                                     (d.DeliveryEmployeeName != null && d.DeliveryEmployeeName.Contains(value)));
-        }
+            await using var context = await DbFactory.CreateDbContextAsync();
+            var query = context.DRSs
+                .AsNoTracking()
+                .Where(d => !d.IsDeleted)
+                .AsQueryable();
 
-        return await query
-            .OrderByDescending(d => d.DRSDate)
-            .Take(20)
-            .ToListAsync(token);
+            if (!string.IsNullOrEmpty(value))
+            {
+                query = query.Where(d => d.DRSNo.Contains(value) || 
+                                         (d.DeliveryEmployeeName != null && d.DeliveryEmployeeName.Contains(value)));
+            }
+
+            return await query
+                .OrderByDescending(d => d.DRSDate)
+                .Take(20)
+                .ToListAsync(token);
+        }
+        catch (OperationCanceledException)
+        {
+            return Enumerable.Empty<DRS>();
+        }
+        catch (InvalidOperationException)
+        {
+            return Enumerable.Empty<DRS>();
+        }
     }
 
     private void OpenNewReceiptDialog()
