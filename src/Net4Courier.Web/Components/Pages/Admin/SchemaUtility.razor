@@ -1,0 +1,187 @@
+@page "/admin/schema-utility"
+@using Microsoft.EntityFrameworkCore
+@using Net4Courier.Infrastructure.Data
+@using Net4Courier.Infrastructure.Services
+@inject IDbContextFactory<ApplicationDbContext> DbFactory
+@inject SchemaAutoSyncService SchemaSync
+@inject ISnackbar Snackbar
+@inject IJSRuntime JS
+
+<PageTitle>Schema Utility - Net4Courier</PageTitle>
+
+<MudContainer MaxWidth="MaxWidth.Large" Class="mt-4">
+    <MudPaper Class="pa-4">
+        <MudStack Spacing="4">
+            <MudText Typo="Typo.h4">Database Schema Utility</MudText>
+            <MudText Typo="Typo.body1" Color="Color.Secondary">
+                Generate schema synchronization scripts from the Entity Framework model.
+            </MudText>
+
+            <MudDivider />
+
+            <MudStack Row="true" Spacing="2">
+                <MudButton Variant="Variant.Filled" Color="Color.Primary"
+                           StartIcon="@Icons.Material.Filled.Code"
+                           OnClick="GenerateScript"
+                           Disabled="_loading">
+                    @if (_loading)
+                    {
+                        <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" />
+                    }
+                    Generate Schema Script
+                </MudButton>
+
+                <MudButton Variant="Variant.Outlined" Color="Color.Secondary"
+                           StartIcon="@Icons.Material.Filled.Download"
+                           OnClick="DownloadScript"
+                           Disabled="string.IsNullOrEmpty(_generatedScript)">
+                    Download Script
+                </MudButton>
+
+                <MudButton Variant="Variant.Outlined" Color="Color.Info"
+                           StartIcon="@Icons.Material.Filled.ContentCopy"
+                           OnClick="CopyToClipboard"
+                           Disabled="string.IsNullOrEmpty(_generatedScript)">
+                    Copy to Clipboard
+                </MudButton>
+            </MudStack>
+
+            @if (!string.IsNullOrEmpty(_generatedScript))
+            {
+                <MudAlert Severity="Severity.Success" Class="mt-2">
+                    Script generated successfully. @(_lineCount) lines, @(_tableCount) tables detected.
+                </MudAlert>
+
+                <MudExpansionPanels>
+                    <MudExpansionPanel Text="View Generated Script" MaxHeight="600">
+                        <MudTextField @bind-Value="_generatedScript"
+                                      Lines="30"
+                                      Variant="Variant.Outlined"
+                                      ReadOnly="true"
+                                      Style="font-family: 'Consolas', 'Monaco', monospace; font-size: 12px;" />
+                    </MudExpansionPanel>
+                </MudExpansionPanels>
+            }
+
+            <MudDivider Class="my-4" />
+
+            <MudText Typo="Typo.h6">Auto-Sync Status</MudText>
+            <MudStack Row="true" Spacing="2" AlignItems="AlignItems.Center">
+                <MudButton Variant="Variant.Filled" Color="Color.Warning"
+                           StartIcon="@Icons.Material.Filled.Sync"
+                           OnClick="RunAutoSync"
+                           Disabled="_syncRunning">
+                    @if (_syncRunning)
+                    {
+                        <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" />
+                    }
+                    Run Schema Auto-Sync Now
+                </MudButton>
+            </MudStack>
+
+            @if (!string.IsNullOrEmpty(_syncStatus))
+            {
+                <MudAlert Severity="@_syncSeverity" Class="mt-2">
+                    @_syncStatus
+                </MudAlert>
+            }
+
+            <MudDivider Class="my-4" />
+
+            <MudText Typo="Typo.subtitle2" Color="Color.Secondary">
+                <b>Note:</b> The auto-sync service automatically runs at application startup.
+                It compares the EF model to the database and creates any missing tables or columns.
+                Use this page to manually trigger a sync or generate a backup script.
+            </MudText>
+        </MudStack>
+    </MudPaper>
+</MudContainer>
+
+@code {
+    private string _generatedScript = string.Empty;
+    private bool _loading;
+    private bool _syncRunning;
+    private string _syncStatus = string.Empty;
+    private Severity _syncSeverity = Severity.Info;
+    private int _lineCount;
+    private int _tableCount;
+
+    private async Task GenerateScript()
+    {
+        _loading = true;
+        StateHasChanged();
+
+        try
+        {
+            await using var dbContext = await DbFactory.CreateDbContextAsync();
+            _generatedScript = SchemaSync.GenerateFullSchemaScript(dbContext);
+
+            _lineCount = _generatedScript.Split('\n').Length;
+            _tableCount = _generatedScript.Split("CREATE TABLE IF NOT EXISTS").Length - 1;
+
+            Snackbar.Add("Schema script generated successfully", Severity.Success);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error generating script: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private async Task RunAutoSync()
+    {
+        _syncRunning = true;
+        _syncStatus = "Running schema synchronization...";
+        _syncSeverity = Severity.Info;
+        StateHasChanged();
+
+        try
+        {
+            await using var dbContext = await DbFactory.CreateDbContextAsync();
+            var success = await SchemaSync.SyncSchemaAsync(dbContext);
+
+            if (success)
+            {
+                _syncStatus = "Schema synchronization completed successfully. Database is up to date.";
+                _syncSeverity = Severity.Success;
+            }
+            else
+            {
+                _syncStatus = "Schema synchronization completed with some issues. Check application logs for details.";
+                _syncSeverity = Severity.Warning;
+            }
+        }
+        catch (Exception ex)
+        {
+            _syncStatus = $"Error during sync: {ex.Message}";
+            _syncSeverity = Severity.Error;
+        }
+        finally
+        {
+            _syncRunning = false;
+        }
+    }
+
+    private async Task DownloadScript()
+    {
+        if (string.IsNullOrEmpty(_generatedScript)) return;
+
+        var fileName = $"schema_sync_{DateTime.UtcNow:yyyyMMdd_HHmmss}.sql";
+        var bytes = System.Text.Encoding.UTF8.GetBytes(_generatedScript);
+        var base64 = Convert.ToBase64String(bytes);
+
+        await JS.InvokeVoidAsync("downloadFile", fileName, "text/sql", base64);
+        Snackbar.Add($"Downloaded {fileName}", Severity.Success);
+    }
+
+    private async Task CopyToClipboard()
+    {
+        if (string.IsNullOrEmpty(_generatedScript)) return;
+
+        await JS.InvokeVoidAsync("navigator.clipboard.writeText", _generatedScript);
+        Snackbar.Add("Script copied to clipboard", Severity.Success);
+    }
+}
