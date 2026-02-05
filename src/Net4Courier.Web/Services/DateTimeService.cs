@@ -25,7 +25,30 @@ public class DateTimeService : IDateTimeService
     {
         _dbFactory = dbFactory;
         _httpContextAccessor = httpContextAccessor;
-        _timeZone = TimeZoneInfo.FindSystemTimeZoneById("Asia/Dubai");
+        _timeZone = GetSafeTimeZone("Asia/Dubai");
+    }
+
+    private static TimeZoneInfo GetSafeTimeZone(string timeZoneId)
+    {
+        try
+        {
+            return TimeZoneInfo.FindSystemTimeZoneById(timeZoneId);
+        }
+        catch
+        {
+            try
+            {
+                return TimeZoneInfo.CreateCustomTimeZone(
+                    "UTC+4",
+                    TimeSpan.FromHours(4),
+                    "Gulf Standard Time",
+                    "Gulf Standard Time");
+            }
+            catch
+            {
+                return TimeZoneInfo.Utc;
+            }
+        }
     }
 
     private async Task EnsureInitializedAsync()
@@ -42,14 +65,7 @@ public class DateTimeService : IDateTimeService
             
             if (branch != null && !string.IsNullOrEmpty(branch.TimeZoneId))
             {
-                try
-                {
-                    _timeZone = TimeZoneInfo.FindSystemTimeZoneById(branch.TimeZoneId);
-                }
-                catch
-                {
-                    _timeZone = TimeZoneInfo.FindSystemTimeZoneById("Asia/Dubai");
-                }
+                _timeZone = GetSafeTimeZone(branch.TimeZoneId);
             }
             _initialized = true;
         }
