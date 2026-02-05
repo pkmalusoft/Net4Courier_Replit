@@ -95,6 +95,7 @@ public class ApplicationDbContext : DbContext
     public DbSet<TaxRate> TaxRates => Set<TaxRate>();
     public DbSet<TransactionPageType> TransactionPageTypes => Set<TransactionPageType>();
     public DbSet<PostingSetup> PostingSetups => Set<PostingSetup>();
+    public DbSet<PostingSetupLine> PostingSetupLines => Set<PostingSetupLine>();
     
     // GL Module Native Entities (long IDs)
     public DbSet<GLChartOfAccount> GLChartOfAccounts => Set<GLChartOfAccount>();
