@@ -404,6 +404,32 @@ CREATE TABLE IF NOT EXISTS "PostingSetups" (
         REFERENCES "TransactionPageTypes"("Id") ON DELETE RESTRICT
 );
 
+-- PostingSetupLines (amount field to account mapping)
+CREATE TABLE IF NOT EXISTS "PostingSetupLines" (
+    "Id" BIGSERIAL PRIMARY KEY,
+    "TransactionPageTypeId" BIGINT NOT NULL,
+    "LineItemCode" VARCHAR(50) NOT NULL,
+    "LineItemName" VARCHAR(100) NOT NULL,
+    "DebitAccountId" BIGINT,
+    "DebitAccountCode" VARCHAR(50),
+    "DebitAccountName" VARCHAR(255),
+    "CreditAccountId" BIGINT,
+    "CreditAccountCode" VARCHAR(50),
+    "CreditAccountName" VARCHAR(255),
+    "SortOrder" INT DEFAULT 999,
+    "Description" TEXT,
+    "CompanyId" BIGINT,
+    "IsActive" BOOLEAN DEFAULT TRUE,
+    "CreatedAt" TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    "ModifiedAt" TIMESTAMP,
+    "CreatedBy" VARCHAR(255),
+    "ModifiedBy" VARCHAR(255),
+    "IsDeleted" BOOLEAN DEFAULT FALSE,
+    "IsDemo" BOOLEAN DEFAULT FALSE,
+    CONSTRAINT "FK_PostingSetupLines_TransactionPageTypes" FOREIGN KEY ("TransactionPageTypeId") 
+        REFERENCES "TransactionPageTypes"("Id") ON DELETE RESTRICT
+);
+
 -- =============================================
 -- PART 2: ALTER TABLES (add missing columns)
 -- =============================================

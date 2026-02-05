@@ -1,6 +1,7 @@
 @page "/gl/posting-setup"
 @using Net4Courier.Infrastructure.Data
 @using Net4Courier.Finance.Entities
+@using Net4Courier.Finance.Services
 @using Microsoft.EntityFrameworkCore
 @using Microsoft.AspNetCore.Authorization
 @using Truebooks.Platform.Core.MultiTenancy
@@ -19,121 +20,160 @@
         <div>
             <MudText Typo="Typo.h5">Posting Setup</MudText>
             <MudText Typo="Typo.body2" Color="Color.Secondary">
-                Configure default Debit and Credit accounts for automatic journal postings (global settings)
+                Configure which chart of accounts each amount field should post to
             </MudText>
         </div>
-        <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add"
-                   OnClick="OpenAddDialog" Disabled="@_loading">Add Posting Setup</MudButton>
     </MudStack>
 
     @if (_loading)
     {
         <MudProgressLinear Indeterminate="true" />
     }
-    else if (!_transactionTypes.Any(t => t.RequiresAutoPosting))
+    else if (!_transactionTypes.Any())
     {
         <MudAlert Severity="Severity.Warning" Class="mb-4">
-            No transaction page types are configured for auto-posting. 
-            Go to <MudLink Href="/gl/transaction-page-types">Transaction Page Types</MudLink> to configure which pages require journal postings.
+            No transaction page types defined. 
+            Go to <MudLink Href="/gl/transaction-page-types">Transaction Page Types</MudLink> to create them first.
         </MudAlert>
     }
     else
     {
-        <MudTable Items="@_postingSetups" Hover="true" Striped="true" Dense="true">
-            <HeaderContent>
-                <MudTh>Transaction Type</MudTh>
-                <MudTh>Debit Account</MudTh>
-                <MudTh>Credit Account</MudTh>
-                <MudTh>Description</MudTh>
-                <MudTh Style="width: 120px;">Actions</MudTh>
-            </HeaderContent>
-            <RowTemplate>
-                <MudTd DataLabel="Transaction Type">
-                    <MudText Typo="Typo.body2">@context.TransactionPageType?.Name</MudText>
-                    <MudText Typo="Typo.caption" Color="Color.Secondary">@context.TransactionPageType?.Code</MudText>
-                </MudTd>
-                <MudTd DataLabel="Debit Account">
-                    <MudText Typo="Typo.body2">@context.DebitAccountName</MudText>
-                    <MudText Typo="Typo.caption" Color="Color.Secondary">@context.DebitAccountCode</MudText>
-                </MudTd>
-                <MudTd DataLabel="Credit Account">
-                    <MudText Typo="Typo.body2">@context.CreditAccountName</MudText>
-                    <MudText Typo="Typo.caption" Color="Color.Secondary">@context.CreditAccountCode</MudText>
-                </MudTd>
-                <MudTd DataLabel="Description">@context.Description</MudTd>
-                <MudTd DataLabel="Actions">
-                    <MudStack Row="true" Spacing="1">
-                        <MudIconButton Icon="@Icons.Material.Filled.Edit" Color="Color.Primary" Size="Size.Small"
-                                       OnClick="@(() => OpenEditDialog(context))" Title="Edit" />
-                        <MudIconButton Icon="@Icons.Material.Filled.Delete" Color="Color.Error" Size="Size.Small"
-                                       OnClick="@(() => DeleteSetup(context))" Title="Delete" />
-                    </MudStack>
-                </MudTd>
-            </RowTemplate>
-        </MudTable>
+        <MudGrid>
+            <MudItem xs="12" md="4">
+                <MudSelect T="TransactionPageType" @bind-Value="_selectedType" Label="Transaction Type"
+                           Variant="Variant.Outlined" Margin="Margin.Dense" ToStringFunc="@(t => t?.Name ?? "")">
+                    @foreach (var type in _transactionTypes.Where(t => t.RequiresAutoPosting))
+                    {
+                        <MudSelectItem T="TransactionPageType" Value="@type">
+                            @type.Name (@type.Code)
+                        </MudSelectItem>
+                    }
+                </MudSelect>
+            </MudItem>
+            <MudItem xs="12" md="8">
+                @if (_selectedType != null && !_selectedType.RequiresAutoPosting)
+                {
+                    <MudAlert Severity="Severity.Info">
+                        This transaction type is not marked for auto-posting.
+                    </MudAlert>
+                }
+            </MudItem>
+        </MudGrid>
 
-        @if (_unconfiguredTypes.Any())
+        @if (_selectedType != null && _selectedType.RequiresAutoPosting)
         {
-            <MudAlert Severity="Severity.Info" Class="mt-4">
-                <MudText Typo="Typo.body2">
-                    <strong>@_unconfiguredTypes.Count transaction type(s)</strong> require posting setup but are not yet configured:
-                    @string.Join(", ", _unconfiguredTypes.Select(t => t.Name))
-                </MudText>
-            </MudAlert>
+            var fields = TransactionFieldDefinitions.GetFieldsForTransactionType(_selectedType.Code);
+            
+            @if (!fields.Any())
+            {
+                <MudAlert Severity="Severity.Warning" Class="mt-4">
+                    No amount fields defined for this transaction type.
+                </MudAlert>
+            }
+            else
+            {
+                <MudTable Items="@fields" Hover="true" Striped="true" Dense="true" Class="mt-4">
+                    <HeaderContent>
+                        <MudTh>Amount Field</MudTh>
+                        <MudTh>Description</MudTh>
+                        <MudTh Style="width: 250px;">Debit Account</MudTh>
+                        <MudTh Style="width: 250px;">Credit Account</MudTh>
+                        <MudTh Style="width: 80px;">Actions</MudTh>
+                    </HeaderContent>
+                    <RowTemplate>
+                        @{
+                            var line = GetLineForField(context.Code);
+                        }
+                        <MudTd DataLabel="Amount Field">
+                            <MudText Typo="Typo.body2"><strong>@context.Name</strong></MudText>
+                            <MudText Typo="Typo.caption" Color="Color.Secondary">@context.Code</MudText>
+                        </MudTd>
+                        <MudTd DataLabel="Description">
+                            <MudText Typo="Typo.body2">@context.Description</MudText>
+                        </MudTd>
+                        <MudTd DataLabel="Debit Account">
+                            @if (line != null && !string.IsNullOrEmpty(line.DebitAccountCode))
+                            {
+                                <MudChip T="string" Size="Size.Small" Color="Color.Primary" Variant="Variant.Outlined">
+                                    @line.DebitAccountCode - @line.DebitAccountName
+                                </MudChip>
+                            }
+                            else
+                            {
+                                <MudText Typo="Typo.caption" Color="Color.Warning">Not configured</MudText>
+                            }
+                        </MudTd>
+                        <MudTd DataLabel="Credit Account">
+                            @if (line != null && !string.IsNullOrEmpty(line.CreditAccountCode))
+                            {
+                                <MudChip T="string" Size="Size.Small" Color="Color.Success" Variant="Variant.Outlined">
+                                    @line.CreditAccountCode - @line.CreditAccountName
+                                </MudChip>
+                            }
+                            else
+                            {
+                                <MudText Typo="Typo.caption" Color="Color.Warning">Not configured</MudText>
+                            }
+                        </MudTd>
+                        <MudTd DataLabel="Actions">
+                            <MudIconButton Icon="@Icons.Material.Filled.Edit" Color="Color.Primary" Size="Size.Small"
+                                           OnClick="@(() => OpenEditDialog(context, line))" Title="Configure" />
+                        </MudTd>
+                    </RowTemplate>
+                </MudTable>
+
+                <MudStack Row="true" Justify="Justify.FlexEnd" Class="mt-4">
+                    <MudButton Variant="Variant.Outlined" Color="Color.Secondary" StartIcon="@Icons.Material.Filled.Refresh"
+                               OnClick="SeedDefaultsForType">Initialize All Fields</MudButton>
+                </MudStack>
+            }
         }
     }
 </MudPaper>
 
 <MudDialog @bind-Visible="_dialogVisible" Options="new DialogOptions { MaxWidth = MaxWidth.Medium, FullWidth = true }">
     <TitleContent>
-        <MudText Typo="Typo.h6">@(_isEditing ? "Edit" : "Add") Posting Setup</MudText>
+        <MudText Typo="Typo.h6">Configure Posting for: @_editFieldName</MudText>
     </TitleContent>
     <DialogContent>
+        <MudAlert Severity="Severity.Info" Class="mb-4">
+            <MudText Typo="Typo.body2">@_editFieldDescription</MudText>
+        </MudAlert>
         <MudGrid>
-            <MudItem xs="12">
-                <MudSelect T="long" @bind-Value="_editTransactionPageTypeId" Label="Transaction Type *"
-                           Variant="Variant.Outlined" Margin="Margin.Dense" Disabled="@_isEditing">
-                    @foreach (var type in _availableTypes)
-                    {
-                        <MudSelectItem T="long" Value="@type.Id">@type.Name (@type.Code)</MudSelectItem>
-                    }
-                </MudSelect>
+            <MudItem xs="12" md="6">
+                <MudAutocomplete T="GLChartOfAccount" @bind-Value="_selectedDebitAccount" Label="Debit Account"
+                                 SearchFunc="SearchAccounts" ToStringFunc="@(a => a != null ? $"{a.AccountCode} - {a.AccountName}" : "")"
+                                 Variant="Variant.Outlined" Margin="Margin.Dense" Clearable="true" />
             </MudItem>
             <MudItem xs="12" md="6">
-                <MudAutocomplete T="GLChartOfAccount" @bind-Value="_selectedDebitAccount" Label="Debit Account *"
+                <MudAutocomplete T="GLChartOfAccount" @bind-Value="_selectedCreditAccount" Label="Credit Account"
                                  SearchFunc="SearchAccounts" ToStringFunc="@(a => a != null ? $"{a.AccountCode} - {a.AccountName}" : "")"
-                                 Variant="Variant.Outlined" Margin="Margin.Dense" />
-            </MudItem>
-            <MudItem xs="12" md="6">
-                <MudAutocomplete T="GLChartOfAccount" @bind-Value="_selectedCreditAccount" Label="Credit Account *"
-                                 SearchFunc="SearchAccounts" ToStringFunc="@(a => a != null ? $"{a.AccountCode} - {a.AccountName}" : "")"
-                                 Variant="Variant.Outlined" Margin="Margin.Dense" />
+                                 Variant="Variant.Outlined" Margin="Margin.Dense" Clearable="true" />
             </MudItem>
             <MudItem xs="12">
-                <MudTextField @bind-Value="_editDescription" Label="Description" Variant="Variant.Outlined" Margin="Margin.Dense" />
+                <MudTextField @bind-Value="_editDescription" Label="Notes (optional)" Variant="Variant.Outlined" Margin="Margin.Dense" />
             </MudItem>
         </MudGrid>
     </DialogContent>
     <DialogActions>
         <MudButton OnClick="CloseDialog">Cancel</MudButton>
-        <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="SaveSetup">Save</MudButton>
+        <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="SaveLine">Save</MudButton>
     </DialogActions>
 </MudDialog>
 
 @code {
-    private List<PostingSetup> _postingSetups = new();
     private List<TransactionPageType> _transactionTypes = new();
-    private List<TransactionPageType> _availableTypes = new();
-    private List<TransactionPageType> _unconfiguredTypes = new();
+    private List<PostingSetupLine> _setupLines = new();
     private List<GLChartOfAccount> _accounts = new();
+    private TransactionPageType? _selectedType;
     private bool _loading = true;
 
     private bool _dialogVisible;
-    private bool _isEditing;
-    private long _editId;
-    private long _editTransactionPageTypeId;
+    private string _editFieldCode = string.Empty;
+    private string _editFieldName = string.Empty;
+    private string _editFieldDescription = string.Empty;
+    private long _editLineId;
     private string? _editDescription;
-    private long? _editCompanyId;
     private GLChartOfAccount? _selectedDebitAccount;
     private GLChartOfAccount? _selectedCreditAccount;
 
@@ -154,10 +194,8 @@
                 .OrderBy(t => t.SortOrder)
                 .ToListAsync();
 
-            _postingSetups = await context.PostingSetups
-                .Include(p => p.TransactionPageType)
-                .Where(p => !p.IsDeleted)
-                .OrderBy(p => p.TransactionPageType != null ? p.TransactionPageType.SortOrder : 999)
+            _setupLines = await context.PostingSetupLines
+                .Where(l => !l.IsDeleted)
                 .ToListAsync();
 
             _accounts = await context.GLChartOfAccounts
@@ -165,10 +203,10 @@
                 .OrderBy(a => a.AccountCode)
                 .ToListAsync();
 
-            var configuredTypeIds = _postingSetups.Select(p => p.TransactionPageTypeId).ToHashSet();
-            _unconfiguredTypes = _transactionTypes
-                .Where(t => t.RequiresAutoPosting && !configuredTypeIds.Contains(t.Id))
-                .ToList();
+            if (_selectedType == null && _transactionTypes.Any(t => t.RequiresAutoPosting))
+            {
+                _selectedType = _transactionTypes.FirstOrDefault(t => t.RequiresAutoPosting);
+            }
         }
         finally
         {
@@ -176,40 +214,27 @@
         }
     }
 
-    private void OpenAddDialog()
+    private PostingSetupLine? GetLineForField(string fieldCode)
     {
-        _isEditing = false;
-        _editId = 0;
-        _editTransactionPageTypeId = 0;
-        _editDescription = null;
-        _editCompanyId = null;
-        _selectedDebitAccount = null;
-        _selectedCreditAccount = null;
-
-        var configuredTypeIds = _postingSetups.Select(p => p.TransactionPageTypeId).ToHashSet();
-        _availableTypes = _transactionTypes
-            .Where(t => t.RequiresAutoPosting && !configuredTypeIds.Contains(t.Id))
-            .ToList();
-
-        if (!_availableTypes.Any())
-        {
-            Snackbar.Add("All transaction types requiring posting are already configured", Severity.Info);
-            return;
-        }
-
-        _dialogVisible = true;
+        if (_selectedType == null) return null;
+        return _setupLines.FirstOrDefault(l => 
+            l.TransactionPageTypeId == _selectedType.Id && 
+            l.LineItemCode == fieldCode);
     }
 
-    private void OpenEditDialog(PostingSetup setup)
+    private void OpenEditDialog(TransactionFieldDefinitions.FieldDefinition field, PostingSetupLine? existingLine)
     {
-        _isEditing = true;
-        _editId = setup.Id;
-        _editTransactionPageTypeId = setup.TransactionPageTypeId;
-        _editDescription = setup.Description;
-        _editCompanyId = setup.CompanyId;
-        _selectedDebitAccount = _accounts.FirstOrDefault(a => a.Id == setup.DebitAccountId);
-        _selectedCreditAccount = _accounts.FirstOrDefault(a => a.Id == setup.CreditAccountId);
-        _availableTypes = _transactionTypes.Where(t => t.Id == setup.TransactionPageTypeId).ToList();
+        _editFieldCode = field.Code;
+        _editFieldName = field.Name;
+        _editFieldDescription = field.Description;
+        _editLineId = existingLine?.Id ?? 0;
+        _editDescription = existingLine?.Description;
+        _selectedDebitAccount = existingLine?.DebitAccountId != null 
+            ? _accounts.FirstOrDefault(a => a.Id == existingLine.DebitAccountId) 
+            : null;
+        _selectedCreditAccount = existingLine?.CreditAccountId != null 
+            ? _accounts.FirstOrDefault(a => a.Id == existingLine.CreditAccountId) 
+            : null;
         _dialogVisible = true;
     }
 
@@ -230,58 +255,50 @@
         return Task.FromResult(result);
     }
 
-    private async Task SaveSetup()
+    private async Task SaveLine()
     {
-        if (_editTransactionPageTypeId == 0)
-        {
-            Snackbar.Add("Please select a transaction type", Severity.Warning);
-            return;
-        }
-
-        if (_selectedDebitAccount == null || _selectedCreditAccount == null)
-        {
-            Snackbar.Add("Please select both debit and credit accounts", Severity.Warning);
-            return;
-        }
+        if (_selectedType == null) return;
 
         try
         {
             await using var context = await DbFactory.CreateDbContextAsync();
 
-            if (_isEditing)
+            if (_editLineId > 0)
             {
-                var existing = await context.PostingSetups.FindAsync(_editId);
+                var existing = await context.PostingSetupLines.FindAsync(_editLineId);
                 if (existing != null)
                 {
-                    existing.DebitAccountId = _selectedDebitAccount.Id;
-                    existing.DebitAccountCode = _selectedDebitAccount.AccountCode;
-                    existing.DebitAccountName = _selectedDebitAccount.AccountName;
-                    existing.CreditAccountId = _selectedCreditAccount.Id;
-                    existing.CreditAccountCode = _selectedCreditAccount.AccountCode;
-                    existing.CreditAccountName = _selectedCreditAccount.AccountName;
+                    existing.DebitAccountId = _selectedDebitAccount?.Id;
+                    existing.DebitAccountCode = _selectedDebitAccount?.AccountCode;
+                    existing.DebitAccountName = _selectedDebitAccount?.AccountName;
+                    existing.CreditAccountId = _selectedCreditAccount?.Id;
+                    existing.CreditAccountCode = _selectedCreditAccount?.AccountCode;
+                    existing.CreditAccountName = _selectedCreditAccount?.AccountName;
                     existing.Description = _editDescription;
                     existing.ModifiedAt = DateTime.UtcNow;
                 }
             }
             else
             {
-                var newSetup = new PostingSetup
+                var newLine = new PostingSetupLine
                 {
-                    TransactionPageTypeId = _editTransactionPageTypeId,
-                    DebitAccountId = _selectedDebitAccount.Id,
-                    DebitAccountCode = _selectedDebitAccount.AccountCode,
-                    DebitAccountName = _selectedDebitAccount.AccountName,
-                    CreditAccountId = _selectedCreditAccount.Id,
-                    CreditAccountCode = _selectedCreditAccount.AccountCode,
-                    CreditAccountName = _selectedCreditAccount.AccountName,
+                    TransactionPageTypeId = _selectedType.Id,
+                    LineItemCode = _editFieldCode,
+                    LineItemName = _editFieldName,
+                    DebitAccountId = _selectedDebitAccount?.Id,
+                    DebitAccountCode = _selectedDebitAccount?.AccountCode,
+                    DebitAccountName = _selectedDebitAccount?.AccountName,
+                    CreditAccountId = _selectedCreditAccount?.Id,
+                    CreditAccountCode = _selectedCreditAccount?.AccountCode,
+                    CreditAccountName = _selectedCreditAccount?.AccountName,
                     Description = _editDescription,
                     CreatedAt = DateTime.UtcNow
                 };
-                context.PostingSetups.Add(newSetup);
+                context.PostingSetupLines.Add(newLine);
             }
 
             await context.SaveChangesAsync();
-            Snackbar.Add(_isEditing ? "Posting setup updated" : "Posting setup created", Severity.Success);
+            Snackbar.Add("Posting configuration saved", Severity.Success);
             CloseDialog();
             await LoadData();
         }
@@ -291,31 +308,56 @@
         }
     }
 
-    private async Task DeleteSetup(PostingSetup setup)
+    private async Task SeedDefaultsForType()
     {
+        if (_selectedType == null) return;
+
+        var fields = TransactionFieldDefinitions.GetFieldsForTransactionType(_selectedType.Code);
+        if (!fields.Any()) return;
+
         var confirmed = await DialogService.ShowMessageBox(
-            "Delete Posting Setup",
-            $"Are you sure you want to delete the posting setup for '{setup.TransactionPageType?.Name}'?",
-            yesText: "Delete", cancelText: "Cancel");
+            "Initialize All Fields",
+            $"This will create posting setup entries for all {fields.Count} amount fields of '{_selectedType.Name}'. Existing entries will not be modified. Continue?",
+            yesText: "Yes", cancelText: "Cancel");
 
         if (confirmed != true) return;
 
         try
         {
             await using var context = await DbFactory.CreateDbContextAsync();
-            var item = await context.PostingSetups.FindAsync(setup.Id);
-            if (item != null)
+            
+            var existingCodes = await context.PostingSetupLines
+                .Where(l => !l.IsDeleted && l.TransactionPageTypeId == _selectedType.Id)
+                .Select(l => l.LineItemCode)
+                .ToListAsync();
+
+            var toAdd = fields
+                .Where(f => !existingCodes.Contains(f.Code))
+                .Select(f => new PostingSetupLine
+                {
+                    TransactionPageTypeId = _selectedType.Id,
+                    LineItemCode = f.Code,
+                    LineItemName = f.Name,
+                    SortOrder = f.SortOrder,
+                    CreatedAt = DateTime.UtcNow
+                })
+                .ToList();
+
+            if (toAdd.Any())
             {
-                item.IsDeleted = true;
-                item.ModifiedAt = DateTime.UtcNow;
+                context.PostingSetupLines.AddRange(toAdd);
                 await context.SaveChangesAsync();
-                Snackbar.Add("Posting setup deleted", Severity.Success);
+                Snackbar.Add($"Added {toAdd.Count} posting setup entries", Severity.Success);
                 await LoadData();
+            }
+            else
+            {
+                Snackbar.Add("All fields already have entries", Severity.Info);
             }
         }
         catch (Exception ex)
         {
-            Snackbar.Add($"Error deleting: {ex.Message}", Severity.Error);
+            Snackbar.Add($"Error: {ex.Message}", Severity.Error);
         }
     }
 }
