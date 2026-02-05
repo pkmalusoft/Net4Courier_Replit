@@ -1521,6 +1521,115 @@ public class DatabaseInitializationService : BackgroundService
                 SELECT 'PHP', 'Philippine Peso', '₱', 2, TRUE, FALSE, FALSE, CURRENT_TIMESTAMP WHERE NOT EXISTS (SELECT 1 FROM ""Currencies"" WHERE ""Code"" = 'PHP');
             ", stoppingToken);
 
+            // Create DRS Reconciliation tables
+            await dbContext.Database.ExecuteSqlRawAsync(@"
+                CREATE TABLE IF NOT EXISTS ""CourierCashSubmissions"" (
+                    ""Id"" BIGSERIAL PRIMARY KEY,
+                    ""DRSId"" BIGINT NOT NULL,
+                    ""CourierId"" INT NOT NULL,
+                    ""CourierName"" VARCHAR(255),
+                    ""SubmissionDate"" TIMESTAMP NOT NULL,
+                    ""CashSubmittedAmount"" DECIMAL(18,2) DEFAULT 0,
+                    ""SubmissionTime"" TIMESTAMP NOT NULL,
+                    ""ReceivedById"" INT,
+                    ""ReceivedByName"" VARCHAR(255),
+                    ""ReceivedAt"" TIMESTAMP,
+                    ""ReceivedAmount"" DECIMAL(18,2),
+                    ""ReceiptNo"" VARCHAR(50),
+                    ""ReceiptVoucherId"" BIGINT,
+                    ""Remarks"" TEXT,
+                    ""IsAcknowledged"" BOOLEAN DEFAULT FALSE,
+                    ""IsActive"" BOOLEAN DEFAULT TRUE,
+                    ""CreatedAt"" TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    ""ModifiedAt"" TIMESTAMP,
+                    ""CreatedBy"" INT,
+                    ""ModifiedBy"" INT,
+                    ""CreatedByName"" TEXT,
+                    ""ModifiedByName"" TEXT,
+                    ""IsDeleted"" BOOLEAN DEFAULT FALSE,
+                    ""IsDemo"" BOOLEAN DEFAULT FALSE
+                );
+                CREATE INDEX IF NOT EXISTS ""IX_CourierCashSubmissions_DRSId"" ON ""CourierCashSubmissions""(""DRSId"");
+                CREATE INDEX IF NOT EXISTS ""IX_CourierCashSubmissions_CourierId"" ON ""CourierCashSubmissions""(""CourierId"");
+                CREATE INDEX IF NOT EXISTS ""IX_CourierCashSubmissions_SubmissionDate"" ON ""CourierCashSubmissions""(""SubmissionDate"");
+            ", stoppingToken);
+
+            await dbContext.Database.ExecuteSqlRawAsync(@"
+                CREATE TABLE IF NOT EXISTS ""DRSReconciliationStatements"" (
+                    ""Id"" BIGSERIAL PRIMARY KEY,
+                    ""DRSId"" BIGINT NOT NULL,
+                    ""DRSNo"" VARCHAR(50),
+                    ""CashSubmissionId"" BIGINT NOT NULL,
+                    ""ReceiptNo"" VARCHAR(50),
+                    ""StatementDate"" TIMESTAMP NOT NULL,
+                    ""CourierId"" INT NOT NULL,
+                    ""CourierName"" VARCHAR(255),
+                    ""TotalMaterialCost"" DECIMAL(18,2) DEFAULT 0,
+                    ""TotalCODAmount"" DECIMAL(18,2) DEFAULT 0,
+                    ""TotalOtherCharges"" DECIMAL(18,2) DEFAULT 0,
+                    ""TotalCollectible"" DECIMAL(18,2) DEFAULT 0,
+                    ""TotalCollected"" DECIMAL(18,2) DEFAULT 0,
+                    ""TotalDiscount"" DECIMAL(18,2) DEFAULT 0,
+                    ""CashSubmitted"" DECIMAL(18,2) DEFAULT 0,
+                    ""ExpenseBills"" DECIMAL(18,2) DEFAULT 0,
+                    ""Balance"" DECIMAL(18,2) DEFAULT 0,
+                    ""IsSettled"" BOOLEAN DEFAULT FALSE,
+                    ""SettledAt"" TIMESTAMP,
+                    ""SettledById"" INT,
+                    ""SettledByName"" VARCHAR(255),
+                    ""Remarks"" TEXT,
+                    ""IsActive"" BOOLEAN DEFAULT TRUE,
+                    ""CreatedAt"" TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    ""ModifiedAt"" TIMESTAMP,
+                    ""CreatedBy"" INT,
+                    ""ModifiedBy"" INT,
+                    ""IsDeleted"" BOOLEAN DEFAULT FALSE,
+                    ""IsDemo"" BOOLEAN DEFAULT FALSE
+                );
+                CREATE INDEX IF NOT EXISTS ""IX_DRSReconciliationStatements_DRSId"" ON ""DRSReconciliationStatements""(""DRSId"");
+                CREATE INDEX IF NOT EXISTS ""IX_DRSReconciliationStatements_CashSubmissionId"" ON ""DRSReconciliationStatements""(""CashSubmissionId"");
+                CREATE INDEX IF NOT EXISTS ""IX_DRSReconciliationStatements_StatementDate"" ON ""DRSReconciliationStatements""(""StatementDate"");
+            ", stoppingToken);
+
+            await dbContext.Database.ExecuteSqlRawAsync(@"
+                CREATE TABLE IF NOT EXISTS ""DRSReconciliationLines"" (
+                    ""Id"" BIGSERIAL PRIMARY KEY,
+                    ""DRSId"" BIGINT NOT NULL,
+                    ""CashSubmissionId"" BIGINT NOT NULL,
+                    ""InscanId"" BIGINT NOT NULL,
+                    ""AWBNo"" VARCHAR(50),
+                    ""MaterialCost"" DECIMAL(18,2) DEFAULT 0,
+                    ""CODAmount"" DECIMAL(18,2) DEFAULT 0,
+                    ""OtherCharges"" DECIMAL(18,2) DEFAULT 0,
+                    ""TotalCollectible"" DECIMAL(18,2) DEFAULT 0,
+                    ""MaterialCollected"" DECIMAL(18,2) DEFAULT 0,
+                    ""CODCollected"" DECIMAL(18,2) DEFAULT 0,
+                    ""OtherCollected"" DECIMAL(18,2) DEFAULT 0,
+                    ""AmountCollected"" DECIMAL(18,2) DEFAULT 0,
+                    ""DiscountAmount"" DECIMAL(18,2) DEFAULT 0,
+                    ""DiscountReason"" TEXT,
+                    ""DiscountApproved"" BOOLEAN DEFAULT FALSE,
+                    ""DiscountApprovedById"" INT,
+                    ""DiscountApprovedByName"" VARCHAR(255),
+                    ""DiscountApprovedAt"" TIMESTAMP,
+                    ""Status"" INT DEFAULT 1,
+                    ""Remarks"" TEXT,
+                    ""IsActive"" BOOLEAN DEFAULT TRUE,
+                    ""CreatedAt"" TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    ""ModifiedAt"" TIMESTAMP,
+                    ""CreatedBy"" INT,
+                    ""ModifiedBy"" INT,
+                    ""IsDeleted"" BOOLEAN DEFAULT FALSE,
+                    ""IsDemo"" BOOLEAN DEFAULT FALSE
+                );
+                CREATE INDEX IF NOT EXISTS ""IX_DRSReconciliationLines_DRSId"" ON ""DRSReconciliationLines""(""DRSId"");
+                CREATE INDEX IF NOT EXISTS ""IX_DRSReconciliationLines_CashSubmissionId"" ON ""DRSReconciliationLines""(""CashSubmissionId"");
+                CREATE INDEX IF NOT EXISTS ""IX_DRSReconciliationLines_InscanId"" ON ""DRSReconciliationLines""(""InscanId"");
+                CREATE INDEX IF NOT EXISTS ""IX_DRSReconciliationLines_AWBNo"" ON ""DRSReconciliationLines""(""AWBNo"");
+            ", stoppingToken);
+
+            _logger.LogInformation("DRS Reconciliation tables created");
+
             // Seed Countries
             await dbContext.Database.ExecuteSqlRawAsync(@"
                 INSERT INTO ""Countries"" (""Name"", ""Code"", ""IATACode"", ""IsActive"", ""IsDeleted"", ""IsDemo"", ""CreatedAt"")
