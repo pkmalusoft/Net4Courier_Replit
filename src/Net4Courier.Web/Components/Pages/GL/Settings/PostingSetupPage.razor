@@ -4,11 +4,11 @@
 @using Net4Courier.Finance.Services
 @using Microsoft.EntityFrameworkCore
 @using Microsoft.AspNetCore.Authorization
-@using Truebooks.Platform.Core.MultiTenancy
+@using Microsoft.AspNetCore.Components.Authorization
 @attribute [Authorize]
 
 @inject IDbContextFactory<ApplicationDbContext> DbFactory
-@inject ITenantContext TenantContext
+@inject AuthenticationStateProvider AuthStateProvider
 @inject ISnackbar Snackbar
 @inject IDialogService DialogService
 @rendermode InteractiveServer
@@ -167,6 +167,7 @@
     private List<GLChartOfAccount> _accounts = new();
     private TransactionPageType? _selectedType;
     private bool _loading = true;
+    private long? _companyId;
 
     private bool _dialogVisible;
     private string _editFieldCode = string.Empty;
@@ -179,6 +180,17 @@
 
     protected override async Task OnInitializedAsync()
     {
+        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+        var user = authState.User;
+        if (user.Identity?.IsAuthenticated == true)
+        {
+            var companyIdClaim = user.FindFirst("CompanyId")?.Value;
+            if (long.TryParse(companyIdClaim, out var cid)) _companyId = cid;
+        }
+        if (_companyId == null || _companyId == 0)
+        {
+            _companyId = 1; // Default to company 1 if no claim found
+        }
         await LoadData();
     }
 
@@ -195,11 +207,11 @@
                 .ToListAsync();
 
             _setupLines = await context.PostingSetupLines
-                .Where(l => !l.IsDeleted)
+                .Where(l => !l.IsDeleted && (l.CompanyId == null || l.CompanyId == _companyId))
                 .ToListAsync();
 
             _accounts = await context.GLChartOfAccounts
-                .Where(a => !a.IsDeleted && a.IsActive)
+                .Where(a => !a.IsDeleted && a.IsActive && a.CompanyId == _companyId)
                 .OrderBy(a => a.AccountCode)
                 .ToListAsync();
 
@@ -285,6 +297,7 @@
                     TransactionPageTypeId = _selectedType.Id,
                     LineItemCode = _editFieldCode,
                     LineItemName = _editFieldName,
+                    CompanyId = _companyId,
                     DebitAccountId = _selectedDebitAccount?.Id,
                     DebitAccountCode = _selectedDebitAccount?.AccountCode,
                     DebitAccountName = _selectedDebitAccount?.AccountName,
@@ -327,7 +340,7 @@
             await using var context = await DbFactory.CreateDbContextAsync();
             
             var existingCodes = await context.PostingSetupLines
-                .Where(l => !l.IsDeleted && l.TransactionPageTypeId == _selectedType.Id)
+                .Where(l => !l.IsDeleted && l.TransactionPageTypeId == _selectedType.Id && (l.CompanyId == null || l.CompanyId == _companyId))
                 .Select(l => l.LineItemCode)
                 .ToListAsync();
 
@@ -339,6 +352,7 @@
                     LineItemCode = f.Code,
                     LineItemName = f.Name,
                     SortOrder = f.SortOrder,
+                    CompanyId = _companyId,
                     CreatedAt = DateTime.UtcNow
                 })
                 .ToList();
