@@ -697,18 +697,24 @@ public class ImportExcelService
         int colSpecialInstr = GetCol("Special Instructions");
         
         int row = headerRow + 1; // Data starts after header row
+        int emptyRowCount = 0;
         while (true)
         {
             var awbNo = colAwb > 0 ? sheet.Cell(row, colAwb).GetString()?.Trim() : null;
             var consigneeName = colConsigneeName > 0 ? sheet.Cell(row, colConsigneeName).GetString()?.Trim() : null;
             
-            // When auto-generating AWB, use consignee name to detect rows; otherwise use AWB
-            var hasData = autoGenerateAwb 
-                ? !string.IsNullOrWhiteSpace(consigneeName) 
-                : !string.IsNullOrWhiteSpace(awbNo);
+            // Use consignee name to detect rows with data (works for both auto-generate modes)
+            var hasData = !string.IsNullOrWhiteSpace(consigneeName) || !string.IsNullOrWhiteSpace(awbNo);
             
             if (!hasData)
-                break;
+            {
+                emptyRowCount++;
+                if (emptyRowCount >= 3) // Stop after 3 consecutive empty rows
+                    break;
+                row++;
+                continue;
+            }
+            emptyRowCount = 0; // Reset counter when we find data
             
             var shipment = new ImportShipmentDto
             {
@@ -780,6 +786,19 @@ public class ImportExcelService
                     shipment.CodCollectionAmount = (decimal)codCollVal.GetNumber();
                 else if (decimal.TryParse(sheet.Cell(row, colCodColl).GetString(), out var codColl))
                     shipment.CodCollectionAmount = codColl;
+            }
+            
+            // Check for missing AWB when auto-generate is disabled
+            if (!autoGenerateAwb && string.IsNullOrWhiteSpace(shipment.AWBNo))
+            {
+                errors.Add(new ImportValidationError 
+                { 
+                    Sheet = "Shipments", 
+                    RowNumber = row, 
+                    Column = "AWB No", 
+                    Message = "AWB number is required when auto-generate is disabled",
+                    IsCritical = true
+                });
             }
             
             if (string.IsNullOrWhiteSpace(shipment.ConsigneeName))

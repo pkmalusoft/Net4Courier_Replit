@@ -153,11 +153,8 @@ else
                                    Href="@($"/import-bags/{context.Id}")" Title="Manage Bags" />
                     <MudIconButton Icon="@Icons.Material.Filled.QrCodeScanner" Size="Size.Small" Color="Color.Success" 
                                    Href="@($"/import-inscan/{context.Id}")" Title="Inscan Shipments" />
-                    @if (context.Status == ImportMasterStatus.Draft)
-                    {
-                        <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" Color="Color.Error" 
-                                       OnClick="@(() => ConfirmDeleteImportMaster(context))" Title="Delete Draft" />
-                    }
+                    <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" Color="Color.Error" 
+                                   OnClick="@(() => ConfirmDeleteImportMaster(context))" Title="Delete Import" />
                 </MudTd>
                 <MudTd DataLabel="Import Ref">@context.ImportRefNo</MudTd>
                 <MudTd DataLabel="Mode">
@@ -341,10 +338,28 @@ else
 
     private async Task ConfirmDeleteImportMaster(ImportMaster import)
     {
+        // Get count of related shipments to show in the dialog
+        await using var dbContext = await DbFactory.CreateDbContextAsync();
+        var shipmentCount = await dbContext.ImportShipments
+            .Where(s => s.ImportMasterId == import.Id && !s.IsDeleted)
+            .CountAsync();
+        var bagCount = await dbContext.ImportBags
+            .Where(b => b.ImportMasterId == import.Id && !b.IsDeleted)
+            .CountAsync();
+        
+        var warningText = $"Are you sure you want to permanently delete Import '{import.ImportRefNo}'?";
+        if (shipmentCount > 0 || bagCount > 0)
+        {
+            warningText += $"\n\nThis will also delete:";
+            if (bagCount > 0) warningText += $"\n- {bagCount} bag(s)";
+            if (shipmentCount > 0) warningText += $"\n- {shipmentCount} shipment(s)";
+        }
+        warningText += "\n\nThis action cannot be undone.";
+        
         var parameters = new DialogParameters<ConfirmDialog>
         {
-            { x => x.ContentText, $"Are you sure you want to delete Import Master '{import.ImportRefNo}' and all its shipments? This action cannot be undone." },
-            { x => x.ButtonText, "Delete" },
+            { x => x.ContentText, warningText },
+            { x => x.ButtonText, "Delete Permanently" },
             { x => x.Color, Color.Error }
         };
         var options = new DialogOptions { CloseButton = true, MaxWidth = MaxWidth.Small };
@@ -362,54 +377,115 @@ else
         try
         {
             await using var dbContext = await DbFactory.CreateDbContextAsync();
+            var strategy = dbContext.Database.CreateExecutionStrategy();
             
-            var importMaster = await dbContext.ImportMasters
-                .FirstOrDefaultAsync(m => m.Id == importMasterId && !m.IsDeleted);
-            
-            if (importMaster == null)
+            await strategy.ExecuteAsync(async () =>
             {
-                Snackbar.Add("Import Master not found", Severity.Warning);
-                return;
-            }
+                await using var transaction = await dbContext.Database.BeginTransactionAsync();
+                try
+                {
+                    var importMaster = await dbContext.ImportMasters
+                        .FirstOrDefaultAsync(m => m.Id == importMasterId && !m.IsDeleted);
+                    
+                    if (importMaster == null)
+                    {
+                        Snackbar.Add("Import Master not found", Severity.Warning);
+                        return;
+                    }
+                    
+                    // Get all bag IDs for this import
+                    var bagIds = await dbContext.ImportBags
+                        .Where(b => b.ImportMasterId == importMasterId && !b.IsDeleted)
+                        .Select(b => b.Id)
+                        .ToListAsync();
+
+                    // Get all shipment IDs for this import (both via bags and direct)
+                    var shipmentIds = await dbContext.ImportShipments
+                        .Where(s => s.ImportMasterId == importMasterId && !s.IsDeleted)
+                        .Select(s => s.Id)
+                        .ToListAsync();
+                    
+                    if (bagIds.Any())
+                    {
+                        var bagShipmentIds = await dbContext.ImportShipments
+                            .Where(s => s.ImportBagId != null && bagIds.Contains(s.ImportBagId.Value) && !s.IsDeleted)
+                            .Select(s => s.Id)
+                            .ToListAsync();
+                        shipmentIds = shipmentIds.Union(bagShipmentIds).Distinct().ToList();
+                    }
+                    
+                    // Delete dependent tables for shipments (notes, other charges)
+                    if (shipmentIds.Any())
+                    {
+                        await dbContext.ImportShipmentNotes
+                            .Where(n => shipmentIds.Contains(n.ImportShipmentId) && !n.IsDeleted)
+                            .ExecuteUpdateAsync(n => n
+                                .SetProperty(x => x.IsDeleted, true)
+                                .SetProperty(x => x.ModifiedAt, DateTime.UtcNow));
+                        
+                        await dbContext.Set<Net4Courier.Operations.Entities.ImportShipmentOtherCharge>()
+                            .Where(c => shipmentIds.Contains(c.ImportShipmentId) && !c.IsDeleted)
+                            .ExecuteUpdateAsync(c => c
+                                .SetProperty(x => x.IsDeleted, true)
+                                .SetProperty(x => x.ModifiedAt, DateTime.UtcNow));
+                    }
+
+                    // Delete shipments linked via bags
+                    if (bagIds.Any())
+                    {
+                        await dbContext.ImportShipments
+                            .Where(s => s.ImportBagId != null && bagIds.Contains(s.ImportBagId.Value))
+                            .ExecuteUpdateAsync(s => s
+                                .SetProperty(x => x.IsDeleted, true)
+                                .SetProperty(x => x.ModifiedAt, DateTime.UtcNow));
+                    }
+                    
+                    // Delete shipments linked directly via ImportMasterId
+                    await dbContext.ImportShipments
+                        .Where(s => s.ImportMasterId == importMasterId && !s.IsDeleted)
+                        .ExecuteUpdateAsync(s => s
+                            .SetProperty(x => x.IsDeleted, true)
+                            .SetProperty(x => x.ModifiedAt, DateTime.UtcNow));
+
+                    // Delete documents linked to import master
+                    await dbContext.ImportDocuments
+                        .Where(d => d.ImportMasterId == importMasterId && !d.IsDeleted)
+                        .ExecuteUpdateAsync(d => d
+                            .SetProperty(x => x.IsDeleted, true)
+                            .SetProperty(x => x.ModifiedAt, DateTime.UtcNow));
+
+                    // Delete bags
+                    if (bagIds.Any())
+                    {
+                        await dbContext.ImportBags
+                            .Where(b => bagIds.Contains(b.Id))
+                            .ExecuteUpdateAsync(b => b
+                                .SetProperty(x => x.IsDeleted, true)
+                                .SetProperty(x => x.ModifiedAt, DateTime.UtcNow));
+                    }
+
+                    // Delete the import master
+                    await dbContext.ImportMasters
+                        .Where(m => m.Id == importMasterId)
+                        .ExecuteUpdateAsync(m => m
+                            .SetProperty(x => x.IsDeleted, true)
+                            .SetProperty(x => x.ModifiedAt, DateTime.UtcNow));
+
+                    await transaction.CommitAsync();
+                    Snackbar.Add("Import and all related records deleted successfully", Severity.Success);
+                }
+                catch
+                {
+                    await transaction.RollbackAsync();
+                    throw;
+                }
+            });
             
-            if (importMaster.Status != ImportMasterStatus.Draft)
-            {
-                Snackbar.Add("Only Draft Import Masters can be deleted", Severity.Warning);
-                return;
-            }
-            
-            var bagIds = await dbContext.ImportBags
-                .Where(b => b.ImportMasterId == importMasterId && !b.IsDeleted)
-                .Select(b => b.Id)
-                .ToListAsync();
-
-            if (bagIds.Any())
-            {
-                await dbContext.ImportShipments
-                    .Where(s => s.ImportBagId != null && bagIds.Contains(s.ImportBagId.Value))
-                    .ExecuteUpdateAsync(s => s
-                        .SetProperty(x => x.IsDeleted, true)
-                        .SetProperty(x => x.ModifiedAt, DateTime.UtcNow));
-
-                await dbContext.ImportBags
-                    .Where(b => bagIds.Contains(b.Id))
-                    .ExecuteUpdateAsync(b => b
-                        .SetProperty(x => x.IsDeleted, true)
-                        .SetProperty(x => x.ModifiedAt, DateTime.UtcNow));
-            }
-
-            await dbContext.ImportMasters
-                .Where(m => m.Id == importMasterId)
-                .ExecuteUpdateAsync(m => m
-                    .SetProperty(x => x.IsDeleted, true)
-                    .SetProperty(x => x.ModifiedAt, DateTime.UtcNow));
-
-            Snackbar.Add("Import Master and related records deleted successfully", Severity.Success);
             await LoadDashboardData();
         }
         catch (Exception ex)
         {
-            Snackbar.Add($"Error deleting import master: {ex.Message}", Severity.Error);
+            Snackbar.Add($"Error deleting import: {ex.Message}", Severity.Error);
         }
     }
 
