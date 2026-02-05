@@ -57,6 +57,8 @@ public class ApplicationDbContext : DbContext
     public DbSet<CourierCashSubmission> CourierCashSubmissions => Set<CourierCashSubmission>();
     public DbSet<CourierExpense> CourierExpenses => Set<CourierExpense>();
     public DbSet<CourierLedger> CourierLedgers => Set<CourierLedger>();
+    public DbSet<DRSReconciliationLine> DRSReconciliationLines => Set<DRSReconciliationLine>();
+    public DbSet<DRSReconciliationStatement> DRSReconciliationStatements => Set<DRSReconciliationStatement>();
     public DbSet<OtherChargeType> OtherChargeTypes => Set<OtherChargeType>();
     public DbSet<FuelSurcharge> FuelSurcharges => Set<FuelSurcharge>();
     public DbSet<DiscountContract> DiscountContracts => Set<DiscountContract>();
