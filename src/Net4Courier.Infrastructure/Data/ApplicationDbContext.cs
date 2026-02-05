@@ -93,6 +93,8 @@ public class ApplicationDbContext : DbContext
     public DbSet<VendorBill> VendorBills => Set<VendorBill>();
     public DbSet<Expense> Expenses => Set<Expense>();
     public DbSet<TaxRate> TaxRates => Set<TaxRate>();
+    public DbSet<TransactionPageType> TransactionPageTypes => Set<TransactionPageType>();
+    public DbSet<PostingSetup> PostingSetups => Set<PostingSetup>();
     
     // GL Module Native Entities (long IDs)
     public DbSet<GLChartOfAccount> GLChartOfAccounts => Set<GLChartOfAccount>();
