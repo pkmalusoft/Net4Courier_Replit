@@ -3874,28 +3874,59 @@ RTO, return to origin, failed delivery, undelivered, return management, delivery
 
 ## DRS Reconciliation
 
-**Navigation:** Reconciliation → DRS Reconciliation
+**Navigation:** Finance → Delivery → DRS Cash Receipt → Reconcile
 
-**Purpose:** Match DRS dispatches with actual deliveries and returns.
+**Purpose:** Match DRS dispatches with actual deliveries and reconcile cash/COD collections per AWB.
 
-### Reconciliation Process
+### DRS Cash Receipt Workflow
 
-1. **Select DRS**
-   - Choose courier and date range
-   - View all DRS for the period
+1. **Issue Cash Receipt**
+   - Go to Finance → Delivery → DRS Cash Receipt
+   - Click "New Receipt" to open receipt form
+   - Select DRS from dropdown
+   - Enter received cash amount
+   - Issue receipt (generates receipt number)
 
-2. **Update Status**
-   - Mark each shipment as Delivered, RTS, or Pending
-   - Verify COD amounts collected
+2. **Print/Email Receipt**
+   - Click printer icon to download A5 PDF receipt
+   - Click email icon to send receipt to courier's email
+   - Receipt includes DRS details, amounts, and signature lines
 
-3. **Balance Verification**
-   - Total shipments dispatched
-   - Total delivered
-   - Total returned
-   - COD collected vs expected
+### AWB-Level Reconciliation
+
+After issuing receipt, click "Reconcile" to perform detailed per-AWB reconciliation:
+
+1. **View AWB Grid**
+   Each AWB shows three charge categories:
+   - **Material Cost** - Expected vs Collected
+   - **COD Amount** - Expected vs Collected
+   - **Other Charges** - Expected vs Collected
+
+2. **Enter Collected Amounts**
+   - Collected amounts default to expected values
+   - Modify only when discrepancy exists
+   - System calculates discount automatically
+
+3. **Variance Calculation**
+   - Formula: Collected + Expenses - Receipt = Variance
+   - Complete reconciliation only when variance = 0
+
+4. **Generate Statement**
+   - Click "Complete Reconciliation" to finalize
+   - View/print reconciliation statement showing:
+     - Per-AWB expected vs collected breakdown
+     - Total by category
+     - Expense deductions
+     - Final balance
+
+### Best Practices
+- Issue receipt immediately when courier submits cash
+- Reconcile same day to avoid discrepancies
+- Approve courier expenses before reconciliation
+- Review statement with courier before signing
 
 ### Keywords
-DRS reconciliation, delivery reconciliation, match delivery, verify dispatch, COD verification, delivery status update
+DRS reconciliation, delivery reconciliation, match delivery, verify dispatch, COD verification, delivery status update, cash receipt, courier reconciliation, per-AWB reconciliation
 
 ---
 
@@ -4088,6 +4119,74 @@ control accounts, account mapping, GL mapping, integration accounts, posting acc
 
 ### Keywords
 tax setup, GST, VAT, tax rate, tax configuration, tax calculation
+
+---
+
+### Transaction Page Types (Auto-Posting Configuration)
+
+**Navigation:** Accounts & Finance → General Ledger → Finance Setup → Transaction Page Types
+
+**Purpose:** Define which system pages automatically create journal entries when transactions are processed.
+
+#### Available Transaction Types
+
+| Transaction Type | Description | Example Fields |
+|-----------------|-------------|----------------|
+| AWB_ENTRY | Shipment creation | Freight, Fuel Surcharge, VAT |
+| CUSTOMER_INVOICE | Invoice posting | Revenue, Receivables, VAT |
+| POD_UPDATE | Proof of delivery | COD Collection |
+| PREPAID_AWB_ISSUE | Prepaid AWB sale | AWB Revenue, Stock |
+| CREDIT_NOTE | Customer credit | Revenue reversal |
+| DEBIT_NOTE | Customer debit | Additional charges |
+| COD_REMITTANCE | COD payout | COD Payable, Cash/Bank |
+| EXPENSE_ENTRY | Expense recording | Expense, Payables |
+| CASH_RECEIPT | Cash collection | Cash, Receivables |
+| VENDOR_BILL | Vendor invoice | Expenses, Payables |
+| CASH_PAYMENT | Cash payout | Cash, Payables |
+| BANK_TRANSFER | Fund transfer | Bank accounts |
+
+#### Setup Steps
+1. Go to Transaction Page Types
+2. Enable auto-posting for each required type
+3. Configure Posting Setup for field-level mappings
+
+### Keywords
+transaction types, auto-posting, journal automation, GL integration, posting configuration
+
+---
+
+### Posting Setup (Field-Level Account Mapping)
+
+**Navigation:** Accounts & Finance → General Ledger → Finance Setup → Posting Setup
+
+**Purpose:** Map each transaction amount field to specific debit/credit accounts for automatic journal entry creation.
+
+#### Configuration Process
+
+1. **Select Transaction Type**
+   - Choose from available types (AWB Entry, Invoice, etc.)
+
+2. **Map Amount Fields**
+   For each field (Freight, VAT, COD, etc.):
+   - Select Debit Account (where the amount goes)
+   - Select Credit Account (balancing entry)
+
+3. **Example Mappings**
+
+| Field | Debit Account | Credit Account |
+|-------|---------------|----------------|
+| Freight Charges | Accounts Receivable | Freight Revenue |
+| VAT Amount | Accounts Receivable | VAT Payable |
+| COD Amount | Cash in Hand | COD Payable |
+| Fuel Surcharge | Accounts Receivable | Fuel Revenue |
+
+#### Best Practices
+- Complete all mappings before processing transactions
+- Test with sample transactions
+- Review generated journals for accuracy
+
+### Keywords
+posting setup, field mapping, account mapping, auto-journal, GL posting, debit credit mapping
 
 ---
 
