@@ -326,10 +326,9 @@ public class SchemaAutoSyncService
 
             var script = await File.ReadAllTextAsync(scriptPath, cancellationToken);
             
-            var statements = script
-                .Split(new[] { ";\n", ";\r\n" }, StringSplitOptions.RemoveEmptyEntries)
-                .Where(s => !string.IsNullOrWhiteSpace(s) && !s.Trim().StartsWith("--"))
-                .Select(s => s.Trim() + ";")
+            // Parse statements more carefully - handle CREATE TABLE blocks correctly
+            var statements = ParseSqlStatements(script)
+                .Where(s => s.Contains("CREATE TABLE") || s.Contains("ALTER TABLE") || s.Contains("CREATE INDEX"))
                 .ToList();
 
             _logger.LogInformation("Executing {Count} statements from {Path}", statements.Count, scriptPath);
@@ -338,10 +337,7 @@ public class SchemaAutoSyncService
             {
                 try
                 {
-                    if (statement.Contains("CREATE TABLE") || statement.Contains("ALTER TABLE") || statement.Contains("CREATE INDEX"))
-                    {
-                        await dbContext.Database.ExecuteSqlRawAsync(statement, cancellationToken);
-                    }
+                    await dbContext.Database.ExecuteSqlRawAsync(statement, cancellationToken);
                 }
                 catch (Exception ex)
                 {
@@ -357,5 +353,81 @@ public class SchemaAutoSyncService
             _logger.LogError(ex, "Failed to execute schema script: {Path}", scriptPath);
             return false;
         }
+    }
+
+    private List<string> ParseSqlStatements(string script)
+    {
+        var statements = new List<string>();
+        var currentStatement = new StringBuilder();
+        var inCreateTable = false;
+        var parenthesesDepth = 0;
+
+        var lines = script.Split(new[] { "\r\n", "\n" }, StringSplitOptions.None);
+        
+        foreach (var line in lines)
+        {
+            var trimmedLine = line.Trim();
+            
+            // Skip pure comment lines and empty lines when not in a statement
+            if (currentStatement.Length == 0 && (string.IsNullOrWhiteSpace(trimmedLine) || trimmedLine.StartsWith("--")))
+            {
+                continue;
+            }
+
+            // Add line to current statement
+            currentStatement.AppendLine(line);
+
+            // Track CREATE TABLE blocks
+            if (trimmedLine.Contains("CREATE TABLE", StringComparison.OrdinalIgnoreCase))
+            {
+                inCreateTable = true;
+            }
+
+            // Count parentheses for CREATE TABLE blocks
+            if (inCreateTable)
+            {
+                foreach (var c in trimmedLine)
+                {
+                    if (c == '(') parenthesesDepth++;
+                    else if (c == ')') parenthesesDepth--;
+                }
+            }
+
+            // Check for statement terminator
+            var endsWithSemicolon = trimmedLine.EndsWith(";") || trimmedLine.EndsWith(";--");
+            
+            if (endsWithSemicolon)
+            {
+                if (inCreateTable && parenthesesDepth > 0)
+                {
+                    // Still inside CREATE TABLE block, continue
+                    continue;
+                }
+
+                // Statement complete
+                var stmt = currentStatement.ToString().Trim();
+                if (!string.IsNullOrWhiteSpace(stmt))
+                {
+                    statements.Add(stmt);
+                }
+                currentStatement.Clear();
+                inCreateTable = false;
+                parenthesesDepth = 0;
+            }
+        }
+
+        // Handle any remaining content
+        var remaining = currentStatement.ToString().Trim();
+        if (!string.IsNullOrWhiteSpace(remaining) && !remaining.StartsWith("--"))
+        {
+            // Add semicolon if missing
+            if (!remaining.EndsWith(";"))
+            {
+                remaining += ";";
+            }
+            statements.Add(remaining);
+        }
+
+        return statements;
     }
 }
