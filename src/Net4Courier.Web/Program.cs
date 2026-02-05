@@ -151,6 +151,7 @@ builder.Services.AddScoped<RatingEngineService>();
 builder.Services.AddScoped<DRSReconciliationService>();
 builder.Services.AddScoped<InvoicingService>();
 builder.Services.AddScoped<ShipmentStatusService>();
+builder.Services.AddScoped<Net4Courier.Infrastructure.Services.SchemaAutoSyncService>();
 builder.Services.AddScoped<StatusEventMappingService>();
 builder.Services.AddScoped<MAWBService>();
 builder.Services.AddScoped<AWBNumberService>();
@@ -895,10 +896,27 @@ public class DatabaseInitializationService : BackgroundService
         
         using var scope = _serviceProvider.CreateScope();
         var dbContext = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        var schemaSync = scope.ServiceProvider.GetRequiredService<Net4Courier.Infrastructure.Services.SchemaAutoSyncService>();
 
         try
         {
+            // Step 1: Ensure base tables are created from EF model
             await dbContext.Database.EnsureCreatedAsync(stoppingToken);
+
+            // Step 2: Auto-sync schema (creates missing tables/columns from EF model)
+            var autoSyncSuccess = await schemaSync.SyncSchemaAsync(dbContext, stoppingToken);
+            
+            // Step 3: Fallback to manual script if auto-sync had issues
+            if (!autoSyncSuccess)
+            {
+                _logger.LogWarning("Auto-sync incomplete, attempting fallback to schema_sync_full.sql...");
+                var scriptPath = Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..", "scripts", "schema_sync_full.sql");
+                if (!File.Exists(scriptPath))
+                {
+                    scriptPath = Path.Combine(Directory.GetCurrentDirectory(), "..", "..", "scripts", "schema_sync_full.sql");
+                }
+                await schemaSync.ExecuteSchemaScriptAsync(dbContext, scriptPath, stoppingToken);
+            }
 
             // GL Module Tables - Native long-based IDs
             await dbContext.Database.ExecuteSqlRawAsync(@"
