@@ -686,5 +686,128 @@ ALTER TABLE "TransferOrders" ADD COLUMN IF NOT EXISTS "IsDemo" BOOLEAN DEFAULT F
 ALTER TABLE "TransferOrderItems" ADD COLUMN IF NOT EXISTS "IsDemo" BOOLEAN DEFAULT FALSE;
 
 -- =============================================
+-- PART 3: DRS RECONCILIATION TABLES (New Feature)
+-- =============================================
+
+-- CourierCashSubmissions (DRS Cash Receipt) - extends AuditableEntity
+CREATE TABLE IF NOT EXISTS "CourierCashSubmissions" (
+    "Id" BIGSERIAL PRIMARY KEY,
+    "DRSId" BIGINT NOT NULL,
+    "CourierId" INT NOT NULL,
+    "CourierName" VARCHAR(255),
+    "SubmissionDate" TIMESTAMP NOT NULL,
+    "CashSubmittedAmount" DECIMAL(18,2) DEFAULT 0,
+    "SubmissionTime" TIMESTAMP NOT NULL,
+    "ReceivedById" INT,
+    "ReceivedByName" VARCHAR(255),
+    "ReceivedAt" TIMESTAMP,
+    "ReceivedAmount" DECIMAL(18,2),
+    "ReceiptNo" VARCHAR(50),
+    "ReceiptVoucherId" BIGINT,
+    "Remarks" TEXT,
+    "IsAcknowledged" BOOLEAN DEFAULT FALSE,
+    "IsActive" BOOLEAN DEFAULT TRUE,
+    "CreatedAt" TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    "ModifiedAt" TIMESTAMP,
+    "CreatedBy" INT,
+    "ModifiedBy" INT,
+    "CreatedByName" TEXT,
+    "ModifiedByName" TEXT,
+    "IsDeleted" BOOLEAN DEFAULT FALSE,
+    "IsDemo" BOOLEAN DEFAULT FALSE,
+    CONSTRAINT "FK_CourierCashSubmissions_DRS" FOREIGN KEY ("DRSId") 
+        REFERENCES "DRS"("Id") ON DELETE RESTRICT
+);
+
+-- DRSReconciliationStatements (Completed reconciliation summary) - extends BaseEntity
+CREATE TABLE IF NOT EXISTS "DRSReconciliationStatements" (
+    "Id" BIGSERIAL PRIMARY KEY,
+    "DRSId" BIGINT NOT NULL,
+    "DRSNo" VARCHAR(50),
+    "CashSubmissionId" BIGINT NOT NULL,
+    "ReceiptNo" VARCHAR(50),
+    "StatementDate" TIMESTAMP NOT NULL,
+    "CourierId" INT NOT NULL,
+    "CourierName" VARCHAR(255),
+    "TotalMaterialCost" DECIMAL(18,2) DEFAULT 0,
+    "TotalCODAmount" DECIMAL(18,2) DEFAULT 0,
+    "TotalOtherCharges" DECIMAL(18,2) DEFAULT 0,
+    "TotalCollectible" DECIMAL(18,2) DEFAULT 0,
+    "TotalCollected" DECIMAL(18,2) DEFAULT 0,
+    "TotalDiscount" DECIMAL(18,2) DEFAULT 0,
+    "CashSubmitted" DECIMAL(18,2) DEFAULT 0,
+    "ExpenseBills" DECIMAL(18,2) DEFAULT 0,
+    "Balance" DECIMAL(18,2) DEFAULT 0,
+    "IsSettled" BOOLEAN DEFAULT FALSE,
+    "SettledAt" TIMESTAMP,
+    "SettledById" INT,
+    "SettledByName" VARCHAR(255),
+    "Remarks" TEXT,
+    "IsActive" BOOLEAN DEFAULT TRUE,
+    "CreatedAt" TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    "ModifiedAt" TIMESTAMP,
+    "CreatedBy" INT,
+    "ModifiedBy" INT,
+    "IsDeleted" BOOLEAN DEFAULT FALSE,
+    "IsDemo" BOOLEAN DEFAULT FALSE,
+    CONSTRAINT "FK_DRSReconciliationStatements_DRS" FOREIGN KEY ("DRSId") 
+        REFERENCES "DRS"("Id") ON DELETE RESTRICT,
+    CONSTRAINT "FK_DRSReconciliationStatements_CashSubmission" FOREIGN KEY ("CashSubmissionId") 
+        REFERENCES "CourierCashSubmissions"("Id") ON DELETE RESTRICT
+);
+
+-- DRSReconciliationLines (Per-AWB reconciliation details) - extends BaseEntity
+CREATE TABLE IF NOT EXISTS "DRSReconciliationLines" (
+    "Id" BIGSERIAL PRIMARY KEY,
+    "DRSId" BIGINT NOT NULL,
+    "CashSubmissionId" BIGINT NOT NULL,
+    "InscanId" BIGINT NOT NULL,
+    "AWBNo" VARCHAR(50),
+    "MaterialCost" DECIMAL(18,2) DEFAULT 0,
+    "CODAmount" DECIMAL(18,2) DEFAULT 0,
+    "OtherCharges" DECIMAL(18,2) DEFAULT 0,
+    "TotalCollectible" DECIMAL(18,2) DEFAULT 0,
+    "MaterialCollected" DECIMAL(18,2) DEFAULT 0,
+    "CODCollected" DECIMAL(18,2) DEFAULT 0,
+    "OtherCollected" DECIMAL(18,2) DEFAULT 0,
+    "AmountCollected" DECIMAL(18,2) DEFAULT 0,
+    "DiscountAmount" DECIMAL(18,2) DEFAULT 0,
+    "DiscountReason" TEXT,
+    "DiscountApproved" BOOLEAN DEFAULT FALSE,
+    "DiscountApprovedById" INT,
+    "DiscountApprovedByName" VARCHAR(255),
+    "DiscountApprovedAt" TIMESTAMP,
+    "Status" INT DEFAULT 1,
+    "Remarks" TEXT,
+    "IsActive" BOOLEAN DEFAULT TRUE,
+    "CreatedAt" TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    "ModifiedAt" TIMESTAMP,
+    "CreatedBy" INT,
+    "ModifiedBy" INT,
+    "IsDeleted" BOOLEAN DEFAULT FALSE,
+    "IsDemo" BOOLEAN DEFAULT FALSE,
+    CONSTRAINT "FK_DRSReconciliationLines_DRS" FOREIGN KEY ("DRSId") 
+        REFERENCES "DRS"("Id") ON DELETE RESTRICT,
+    CONSTRAINT "FK_DRSReconciliationLines_CashSubmission" FOREIGN KEY ("CashSubmissionId") 
+        REFERENCES "CourierCashSubmissions"("Id") ON DELETE RESTRICT,
+    CONSTRAINT "FK_DRSReconciliationLines_Inscan" FOREIGN KEY ("InscanId") 
+        REFERENCES "InscanMasters"("Id") ON DELETE RESTRICT
+);
+
+-- Create indexes for DRS Reconciliation tables
+CREATE INDEX IF NOT EXISTS "IX_CourierCashSubmissions_DRSId" ON "CourierCashSubmissions"("DRSId");
+CREATE INDEX IF NOT EXISTS "IX_CourierCashSubmissions_CourierId" ON "CourierCashSubmissions"("CourierId");
+CREATE INDEX IF NOT EXISTS "IX_CourierCashSubmissions_SubmissionDate" ON "CourierCashSubmissions"("SubmissionDate");
+
+CREATE INDEX IF NOT EXISTS "IX_DRSReconciliationStatements_DRSId" ON "DRSReconciliationStatements"("DRSId");
+CREATE INDEX IF NOT EXISTS "IX_DRSReconciliationStatements_CashSubmissionId" ON "DRSReconciliationStatements"("CashSubmissionId");
+CREATE INDEX IF NOT EXISTS "IX_DRSReconciliationStatements_StatementDate" ON "DRSReconciliationStatements"("StatementDate");
+
+CREATE INDEX IF NOT EXISTS "IX_DRSReconciliationLines_DRSId" ON "DRSReconciliationLines"("DRSId");
+CREATE INDEX IF NOT EXISTS "IX_DRSReconciliationLines_CashSubmissionId" ON "DRSReconciliationLines"("CashSubmissionId");
+CREATE INDEX IF NOT EXISTS "IX_DRSReconciliationLines_InscanId" ON "DRSReconciliationLines"("InscanId");
+CREATE INDEX IF NOT EXISTS "IX_DRSReconciliationLines_AWBNo" ON "DRSReconciliationLines"("AWBNo");
+
+-- =============================================
 -- END OF SCHEMA SYNC SCRIPT
 -- =============================================
