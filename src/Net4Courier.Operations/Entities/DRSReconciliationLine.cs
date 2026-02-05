@@ -23,6 +23,9 @@ public class DRSReconciliationLine : BaseEntity
     public decimal OtherCharges { get; set; }
     public decimal TotalCollectible { get; set; }
     
+    public decimal MaterialCollected { get; set; }
+    public decimal CODCollected { get; set; }
+    public decimal OtherCollected { get; set; }
     public decimal AmountCollected { get; set; }
     public decimal DiscountAmount { get; set; }
     public string? DiscountReason { get; set; }
