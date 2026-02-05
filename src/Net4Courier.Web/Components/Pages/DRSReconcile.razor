@@ -1,0 +1,529 @@
+@page "/drs-reconcile"
+@page "/drs-reconcile/{DRSId:long}/{SubmissionId:long}"
+@using Net4Courier.Infrastructure.Data
+@using Net4Courier.Operations.Entities
+@using Net4Courier.Kernel.Enums
+@using Net4Courier.Web.Services
+@using Microsoft.EntityFrameworkCore
+@using Microsoft.AspNetCore.Components.Authorization
+@inject IDbContextFactory<ApplicationDbContext> DbFactory
+@inject ISnackbar Snackbar
+@inject AuthenticationStateProvider AuthStateProvider
+@inject NavigationManager Navigation
+@rendermode InteractiveServer
+
+<PageTitle>DRS Reconciliation</PageTitle>
+
+<MudContainer MaxWidth="MaxWidth.ExtraLarge" Class="py-4">
+    <MudText Typo="Typo.h5" Class="mb-4">DRS Reconciliation</MudText>
+
+    @if (_drs == null)
+    {
+        <MudPaper Class="pa-4">
+            <MudText Typo="Typo.h6" Class="mb-4">Select DRS to Reconcile</MudText>
+            <MudGrid>
+                <MudItem xs="12" md="6">
+                    <MudAutocomplete T="DRS" Label="Search DRS" @bind-Value="_selectedDRS"
+                                     SearchFunc="SearchDRS" ToStringFunc="@(d => d?.DRSNo ?? "")"
+                                     Variant="Variant.Outlined" Dense="true" ShowProgressIndicator="true">
+                        <ItemTemplate Context="drs">
+                            <MudStack Row="true" Justify="Justify.SpaceBetween" Style="width:100%">
+                                <MudText>@drs.DRSNo - @drs.DeliveryEmployeeName</MudText>
+                                <MudText Typo="Typo.caption">@drs.DRSDate.ToString("dd-MMM")</MudText>
+                            </MudStack>
+                        </ItemTemplate>
+                    </MudAutocomplete>
+                </MudItem>
+                <MudItem xs="12" md="3">
+                    <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="LoadDRS"
+                               Disabled="@(_selectedDRS == null)" FullWidth="true">
+                        Load DRS
+                    </MudButton>
+                </MudItem>
+            </MudGrid>
+        </MudPaper>
+    }
+    else
+    {
+        <MudPaper Class="pa-4 mb-4">
+            <MudGrid>
+                <MudItem xs="6" md="2">
+                    <MudText Typo="Typo.caption">DRS No</MudText>
+                    <MudText Typo="Typo.h6">@_drs.DRSNo</MudText>
+                </MudItem>
+                <MudItem xs="6" md="2">
+                    <MudText Typo="Typo.caption">Date</MudText>
+                    <MudText Typo="Typo.body1">@_drs.DRSDate.ToString("dd-MMM-yyyy")</MudText>
+                </MudItem>
+                <MudItem xs="6" md="2">
+                    <MudText Typo="Typo.caption">Courier</MudText>
+                    <MudText Typo="Typo.body1">@_drs.DeliveryEmployeeName</MudText>
+                </MudItem>
+                <MudItem xs="6" md="2">
+                    <MudText Typo="Typo.caption">Receipt No</MudText>
+                    <MudText Typo="Typo.body1" Color="Color.Primary">@(_cashSubmission?.ReceiptNo ?? "-")</MudText>
+                </MudItem>
+                <MudItem xs="6" md="2">
+                    <MudText Typo="Typo.caption">Cash Received</MudText>
+                    <MudText Typo="Typo.h6" Color="Color.Success">@((_cashSubmission?.ReceivedAmount ?? 0).ToString("N2"))</MudText>
+                </MudItem>
+                <MudItem xs="6" md="2">
+                    <MudButton Variant="Variant.Outlined" Size="Size.Small" OnClick="ClearSelection">
+                        Change DRS
+                    </MudButton>
+                </MudItem>
+            </MudGrid>
+        </MudPaper>
+
+        <MudPaper Class="pa-4 mb-4">
+            <MudText Typo="Typo.h6" Class="mb-4">AWB Reconciliation</MudText>
+            
+            <MudTable Items="@_reconciliationLines" Dense="true" Hover="true">
+                <HeaderContent>
+                    <MudTh>AWB No</MudTh>
+                    <MudTh>Consignee</MudTh>
+                    <MudTh Style="text-align:right">Material Cost</MudTh>
+                    <MudTh Style="text-align:right">COD Amount</MudTh>
+                    <MudTh Style="text-align:right">Other Charges</MudTh>
+                    <MudTh Style="text-align:right">Total Collectible</MudTh>
+                    <MudTh Style="text-align:right">Collected</MudTh>
+                    <MudTh Style="text-align:right">Discount</MudTh>
+                    <MudTh>Status</MudTh>
+                </HeaderContent>
+                <RowTemplate>
+                    <MudTd>@context.AWBNo</MudTd>
+                    <MudTd>@context.ConsigneeName</MudTd>
+                    <MudTd Style="text-align:right">@context.MaterialCost.ToString("N2")</MudTd>
+                    <MudTd Style="text-align:right">@context.CODAmount.ToString("N2")</MudTd>
+                    <MudTd Style="text-align:right">@context.OtherCharges.ToString("N2")</MudTd>
+                    <MudTd Style="text-align:right">@context.TotalCollectible.ToString("N2")</MudTd>
+                    <MudTd Style="text-align:right">
+                        <MudNumericField @bind-Value="context.AmountCollected" Format="N2" 
+                                         Variant="Variant.Outlined" Margin="Margin.Dense"
+                                         Style="max-width:100px" HideSpinButtons="true"
+                                         Immediate="true" DebounceInterval="300"
+                                         ValueChanged="@((decimal val) => OnAmountChanged(context, val))" />
+                    </MudTd>
+                    <MudTd Style="text-align:right">
+                        @if (context.DiscountAmount > 0)
+                        {
+                            <MudChip T="string" Size="Size.Small" Color="@(context.DiscountApproved ? Color.Success : Color.Warning)">
+                                @context.DiscountAmount.ToString("N2")
+                            </MudChip>
+                        }
+                        else
+                        {
+                            <span>-</span>
+                        }
+                    </MudTd>
+                    <MudTd>
+                        @if (context.Status == ReconciliationLineStatus.Reconciled)
+                        {
+                            <MudIcon Icon="@Icons.Material.Filled.CheckCircle" Color="Color.Success" Size="Size.Small" />
+                        }
+                        else if (context.Status == ReconciliationLineStatus.DiscountPending)
+                        {
+                            <MudChip T="string" Size="Size.Small" Color="Color.Warning">Discount Pending</MudChip>
+                        }
+                    </MudTd>
+                </RowTemplate>
+                <FooterContent>
+                    <MudTd colspan="2"><strong>Total</strong></MudTd>
+                    <MudTd Style="text-align:right"><strong>@_totalMaterialCost.ToString("N2")</strong></MudTd>
+                    <MudTd Style="text-align:right"><strong>@_totalCOD.ToString("N2")</strong></MudTd>
+                    <MudTd Style="text-align:right"><strong>@_totalOtherCharges.ToString("N2")</strong></MudTd>
+                    <MudTd Style="text-align:right"><strong>@_totalCollectible.ToString("N2")</strong></MudTd>
+                    <MudTd Style="text-align:right"><strong>@_totalCollected.ToString("N2")</strong></MudTd>
+                    <MudTd Style="text-align:right"><strong>@_totalDiscount.ToString("N2")</strong></MudTd>
+                    <MudTd></MudTd>
+                </FooterContent>
+            </MudTable>
+        </MudPaper>
+
+        <MudPaper Class="pa-4 mb-4">
+            <MudGrid>
+                <MudItem xs="12" md="3">
+                    <MudPaper Class="pa-3 text-center" Elevation="0" Style="background-color:var(--mud-palette-background-grey)">
+                        <MudText Typo="Typo.caption">Total Collectible</MudText>
+                        <MudText Typo="Typo.h5">@_totalCollectible.ToString("N2")</MudText>
+                    </MudPaper>
+                </MudItem>
+                <MudItem xs="12" md="3">
+                    <MudPaper Class="pa-3 text-center" Elevation="0" Style="background-color:var(--mud-palette-background-grey)">
+                        <MudText Typo="Typo.caption">Total Collected</MudText>
+                        <MudText Typo="Typo.h5" Color="Color.Primary">@_totalCollected.ToString("N2")</MudText>
+                    </MudPaper>
+                </MudItem>
+                <MudItem xs="12" md="3">
+                    <MudPaper Class="pa-3 text-center" Elevation="0" Style="background-color:var(--mud-palette-background-grey)">
+                        <MudText Typo="Typo.caption">Expense Bills</MudText>
+                        <MudText Typo="Typo.h5">@_totalExpenses.ToString("N2")</MudText>
+                    </MudPaper>
+                </MudItem>
+                <MudItem xs="12" md="3">
+                    <MudPaper Class="pa-3 text-center" Elevation="0" Style="background-color:@(_variance == 0 ? "var(--mud-palette-success-lighten)" : "var(--mud-palette-warning-lighten)")">
+                        <MudText Typo="Typo.caption">Variance (Collected + Expenses - Receipt)</MudText>
+                        <MudText Typo="Typo.h5" Color="@(_variance == 0 ? Color.Success : Color.Warning)">@_variance.ToString("N2")</MudText>
+                    </MudPaper>
+                </MudItem>
+            </MudGrid>
+        </MudPaper>
+
+        @if (_expenses.Any())
+        {
+            <MudPaper Class="pa-4 mb-4">
+                <MudText Typo="Typo.h6" Class="mb-4">Expense Bills Submitted</MudText>
+                <MudTable Items="@_expenses" Dense="true">
+                    <HeaderContent>
+                        <MudTh>Description</MudTh>
+                        <MudTh>Amount</MudTh>
+                        <MudTh>Status</MudTh>
+                    </HeaderContent>
+                    <RowTemplate>
+                        <MudTd>@context.Description</MudTd>
+                        <MudTd>@context.Amount.ToString("N2")</MudTd>
+                        <MudTd>
+                            <MudChip T="string" Size="Size.Small" 
+                                     Color="@(context.Status == ExpenseStatus.Approved ? Color.Success : 
+                                              context.Status == ExpenseStatus.Rejected ? Color.Error : Color.Warning)">
+                                @context.Status.ToString()
+                            </MudChip>
+                        </MudTd>
+                    </RowTemplate>
+                </MudTable>
+            </MudPaper>
+        }
+
+        <MudStack Row="true" Justify="Justify.FlexEnd" Spacing="2">
+            <MudButton Variant="Variant.Outlined" OnClick="ClearSelection">Cancel</MudButton>
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="SaveReconciliation" Disabled="@_saving">
+                @if (_saving)
+                {
+                    <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" />
+                }
+                Save Reconciliation
+            </MudButton>
+            <MudButton Variant="Variant.Filled" Color="Color.Success" OnClick="CompleteReconciliation" 
+                       Disabled="@(_saving || _variance != 0)">
+                Complete & Generate Statement
+            </MudButton>
+        </MudStack>
+    }
+</MudContainer>
+
+@code {
+    [Parameter] public long DRSId { get; set; }
+    [Parameter] public long SubmissionId { get; set; }
+
+    private DRS? _drs;
+    private DRS? _selectedDRS;
+    private CourierCashSubmission? _cashSubmission;
+    private List<ReconciliationLineViewModel> _reconciliationLines = new();
+    private List<CourierExpense> _expenses = new();
+    
+    private bool _loading;
+    private bool _saving;
+
+    private decimal _totalMaterialCost;
+    private decimal _totalCOD;
+    private decimal _totalOtherCharges;
+    private decimal _totalCollectible;
+    private decimal _totalCollected;
+    private decimal _totalDiscount;
+    private decimal _totalExpenses;
+    private decimal _variance;
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (DRSId > 0)
+        {
+            await LoadDRSById(DRSId, SubmissionId);
+        }
+    }
+
+    private async Task<IEnumerable<DRS>> SearchDRS(string value, CancellationToken token)
+    {
+        await using var context = await DbFactory.CreateDbContextAsync();
+        var query = context.DRSs
+            .Where(d => !d.IsDeleted && d.Status != DRSStatus.Reconciled)
+            .AsQueryable();
+
+        if (!string.IsNullOrEmpty(value))
+        {
+            query = query.Where(d => d.DRSNo.Contains(value) || 
+                                     (d.DeliveryEmployeeName != null && d.DeliveryEmployeeName.Contains(value)));
+        }
+
+        return await query
+            .OrderByDescending(d => d.DRSDate)
+            .Take(20)
+            .ToListAsync(token);
+    }
+
+    private async Task LoadDRS()
+    {
+        if (_selectedDRS == null) return;
+        await LoadDRSById(_selectedDRS.Id, 0);
+    }
+
+    private async Task LoadDRSById(long drsId, long submissionId)
+    {
+        _loading = true;
+        StateHasChanged();
+
+        try
+        {
+            await using var context = await DbFactory.CreateDbContextAsync();
+            
+            _drs = await context.DRSs
+                .Include(d => d.Details)
+                    .ThenInclude(d => d.Inscan)
+                .Include(d => d.Expenses)
+                .FirstOrDefaultAsync(d => d.Id == drsId);
+
+            if (_drs == null)
+            {
+                Snackbar.Add("DRS not found", Severity.Error);
+                return;
+            }
+
+            if (submissionId > 0)
+            {
+                _cashSubmission = await context.CourierCashSubmissions
+                    .FirstOrDefaultAsync(c => c.Id == submissionId);
+            }
+            else
+            {
+                _cashSubmission = await context.CourierCashSubmissions
+                    .Where(c => c.DRSId == drsId && c.IsAcknowledged)
+                    .OrderByDescending(c => c.ReceivedAt)
+                    .FirstOrDefaultAsync();
+            }
+
+            _expenses = _drs.Expenses.ToList();
+            _totalExpenses = _expenses.Where(e => e.Status == ExpenseStatus.Approved).Sum(e => e.Amount);
+
+            var existingLines = await context.DRSReconciliationLines
+                .Where(l => l.DRSId == drsId)
+                .ToListAsync();
+
+            _reconciliationLines.Clear();
+            foreach (var detail in _drs.Details.Where(d => d.Status == "Delivered"))
+            {
+                var inscan = detail.Inscan;
+                if (inscan == null) continue;
+
+                var existingLine = existingLines.FirstOrDefault(l => l.InscanId == inscan.Id);
+
+                var line = new ReconciliationLineViewModel
+                {
+                    Id = existingLine?.Id ?? 0,
+                    DRSDetailId = detail.Id,
+                    InscanId = inscan.Id,
+                    AWBNo = inscan.AWBNo ?? "",
+                    ConsigneeName = inscan.Consignee ?? "",
+                    MaterialCost = inscan.CODAmount ?? 0,
+                    CODAmount = inscan.CourierCharge ?? 0,
+                    OtherCharges = inscan.OtherCharge ?? 0,
+                    TotalCollectible = (inscan.CODAmount ?? 0) + (inscan.CourierCharge ?? 0) + (inscan.OtherCharge ?? 0),
+                    AmountCollected = existingLine?.AmountCollected ?? ((inscan.CODAmount ?? 0) + (inscan.CourierCharge ?? 0) + (inscan.OtherCharge ?? 0)),
+                    DiscountAmount = existingLine?.DiscountAmount ?? 0,
+                    DiscountApproved = existingLine?.DiscountApproved ?? false,
+                    Status = existingLine?.Status ?? ReconciliationLineStatus.Pending
+                };
+
+                _reconciliationLines.Add(line);
+            }
+
+            CalculateTotals();
+        }
+        finally
+        {
+            _loading = false;
+            StateHasChanged();
+        }
+    }
+
+    private void OnAmountChanged(ReconciliationLineViewModel line, decimal newValue)
+    {
+        line.AmountCollected = newValue;
+        line.DiscountAmount = line.TotalCollectible - newValue;
+        if (line.DiscountAmount < 0) line.DiscountAmount = 0;
+        
+        if (line.DiscountAmount > 0)
+        {
+            line.Status = ReconciliationLineStatus.DiscountPending;
+        }
+        else
+        {
+            line.Status = ReconciliationLineStatus.Reconciled;
+        }
+
+        CalculateTotals();
+    }
+
+    private void CalculateTotals()
+    {
+        _totalMaterialCost = _reconciliationLines.Sum(l => l.MaterialCost);
+        _totalCOD = _reconciliationLines.Sum(l => l.CODAmount);
+        _totalOtherCharges = _reconciliationLines.Sum(l => l.OtherCharges);
+        _totalCollectible = _reconciliationLines.Sum(l => l.TotalCollectible);
+        _totalCollected = _reconciliationLines.Sum(l => l.AmountCollected);
+        _totalDiscount = _reconciliationLines.Sum(l => l.DiscountAmount);
+
+        var cashReceived = _cashSubmission?.ReceivedAmount ?? 0;
+        _variance = _totalCollected + _totalExpenses - cashReceived;
+        
+        StateHasChanged();
+    }
+
+    private async Task SaveReconciliation()
+    {
+        if (_drs == null || _cashSubmission == null) return;
+
+        _saving = true;
+        StateHasChanged();
+
+        try
+        {
+            await using var context = await DbFactory.CreateDbContextAsync();
+
+            foreach (var line in _reconciliationLines)
+            {
+                if (line.Id > 0)
+                {
+                    var existing = await context.DRSReconciliationLines.FindAsync(line.Id);
+                    if (existing != null)
+                    {
+                        existing.AmountCollected = line.AmountCollected;
+                        existing.DiscountAmount = line.DiscountAmount;
+                        existing.Status = line.Status;
+                    }
+                }
+                else
+                {
+                    var newLine = new DRSReconciliationLine
+                    {
+                        DRSId = _drs.Id,
+                        CashSubmissionId = _cashSubmission.Id,
+                        InscanId = line.InscanId,
+                        AWBNo = line.AWBNo,
+                        MaterialCost = line.MaterialCost,
+                        CODAmount = line.CODAmount,
+                        OtherCharges = line.OtherCharges,
+                        TotalCollectible = line.TotalCollectible,
+                        AmountCollected = line.AmountCollected,
+                        DiscountAmount = line.DiscountAmount,
+                        Status = line.Status
+                    };
+                    context.DRSReconciliationLines.Add(newLine);
+                }
+            }
+
+            await context.SaveChangesAsync();
+            Snackbar.Add("Reconciliation saved", Severity.Success);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _saving = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task CompleteReconciliation()
+    {
+        if (_drs == null || _cashSubmission == null) return;
+        if (_variance != 0)
+        {
+            Snackbar.Add("Variance must be zero to complete reconciliation", Severity.Warning);
+            return;
+        }
+
+        _saving = true;
+        StateHasChanged();
+
+        try
+        {
+            await SaveReconciliation();
+
+            await using var context = await DbFactory.CreateDbContextAsync();
+
+            var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+            var userName = authState.User.Identity?.Name ?? "System";
+
+            var statement = new DRSReconciliationStatement
+            {
+                DRSId = _drs.Id,
+                DRSNo = _drs.DRSNo,
+                CashSubmissionId = _cashSubmission.Id,
+                ReceiptNo = _cashSubmission.ReceiptNo,
+                StatementDate = DateTime.UtcNow,
+                CourierId = _drs.DeliveryEmployeeId ?? 0,
+                CourierName = _drs.DeliveryEmployeeName,
+                TotalCollectible = _totalCollectible,
+                TotalCollected = _totalCollected,
+                TotalDiscount = _totalDiscount,
+                CashSubmitted = _cashSubmission.ReceivedAmount ?? 0,
+                ExpenseBills = _totalExpenses,
+                Balance = _variance,
+                IsSettled = true,
+                SettledAt = DateTime.UtcNow,
+                SettledByName = userName
+            };
+
+            context.DRSReconciliationStatements.Add(statement);
+
+            var drs = await context.DRSs.FindAsync(_drs.Id);
+            if (drs != null)
+            {
+                drs.Status = DRSStatus.Reconciled;
+                drs.ReconciledAt = DateTime.UtcNow;
+                drs.ReconciledByName = userName;
+            }
+
+            await context.SaveChangesAsync();
+
+            Snackbar.Add("Reconciliation completed. Statement generated.", Severity.Success);
+            Navigation.NavigateTo($"/drs-reconciliation-statement/{statement.Id}");
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _saving = false;
+            StateHasChanged();
+        }
+    }
+
+    private void ClearSelection()
+    {
+        _drs = null;
+        _selectedDRS = null;
+        _cashSubmission = null;
+        _reconciliationLines.Clear();
+        Navigation.NavigateTo("/drs-reconcile");
+    }
+
+    private class ReconciliationLineViewModel
+    {
+        public long Id { get; set; }
+        public long DRSDetailId { get; set; }
+        public long InscanId { get; set; }
+        public string AWBNo { get; set; } = "";
+        public string ConsigneeName { get; set; } = "";
+        public decimal MaterialCost { get; set; }
+        public decimal CODAmount { get; set; }
+        public decimal OtherCharges { get; set; }
+        public decimal TotalCollectible { get; set; }
+        public decimal AmountCollected { get; set; }
+        public decimal DiscountAmount { get; set; }
+        public bool DiscountApproved { get; set; }
+        public ReconciliationLineStatus Status { get; set; }
+    }
+}
