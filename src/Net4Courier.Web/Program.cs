@@ -75,6 +75,11 @@ builder.Services.Configure<ForwardedHeadersOptions>(options =>
 builder.Services.AddRazorComponents()
     .AddInteractiveServerComponents();
 
+builder.Services.AddServerSideBlazor().AddCircuitOptions(options => 
+{
+    options.DetailedErrors = builder.Configuration.GetValue<bool>("DetailedErrors", false);
+});
+
 builder.Services.AddHttpContextAccessor();
 
 builder.Services.AddMudServices(config =>
