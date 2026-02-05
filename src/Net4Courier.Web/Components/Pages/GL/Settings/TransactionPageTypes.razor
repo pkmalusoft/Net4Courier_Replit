@@ -1,0 +1,244 @@
+@page "/gl/transaction-page-types"
+@using Net4Courier.Infrastructure.Data
+@using Net4Courier.Finance.Entities
+@using Microsoft.EntityFrameworkCore
+@using Microsoft.AspNetCore.Authorization
+@using Truebooks.Platform.Core.MultiTenancy
+@attribute [Authorize]
+
+@inject IDbContextFactory<ApplicationDbContext> DbFactory
+@inject ITenantContext TenantContext
+@inject ISnackbar Snackbar
+@inject IDialogService DialogService
+@rendermode InteractiveServer
+
+<PageTitle>Transaction Page Types</PageTitle>
+
+<MudPaper Class="pa-4">
+    <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center" Class="mb-4">
+        <div>
+            <MudText Typo="Typo.h5">Transaction Page Types</MudText>
+            <MudText Typo="Typo.body2" Color="Color.Secondary">Configure which system pages require automatic journal postings (global settings)</MudText>
+        </div>
+        <MudStack Row="true" Spacing="2">
+            <MudButton Variant="Variant.Outlined" Color="Color.Secondary" StartIcon="@Icons.Material.Filled.Refresh"
+                       OnClick="SeedDefaults" Disabled="@_loading">Seed Defaults</MudButton>
+        </MudStack>
+    </MudStack>
+
+    @if (_loading)
+    {
+        <MudProgressLinear Indeterminate="true" />
+    }
+    else if (!_items.Any())
+    {
+        <MudAlert Severity="Severity.Info" Class="mb-4">
+            No transaction page types defined. Click "Seed Defaults" to create standard types.
+        </MudAlert>
+    }
+    else
+    {
+        <MudTable Items="@_items" Hover="true" Striped="true" Dense="true">
+            <HeaderContent>
+                <MudTh>Code</MudTh>
+                <MudTh>Name</MudTh>
+                <MudTh>Description</MudTh>
+                <MudTh Style="width: 150px; text-align: center;">Requires Posting</MudTh>
+                <MudTh Style="width: 100px;">Actions</MudTh>
+            </HeaderContent>
+            <RowTemplate>
+                <MudTd DataLabel="Code">
+                    <MudText Typo="Typo.body2"><code>@context.Code</code></MudText>
+                </MudTd>
+                <MudTd DataLabel="Name">
+                    @if (_editingItem?.Id == context.Id)
+                    {
+                        <MudTextField @bind-Value="_editingItem.Name" Variant="Variant.Outlined" Margin="Margin.Dense" />
+                    }
+                    else
+                    {
+                        @context.Name
+                    }
+                </MudTd>
+                <MudTd DataLabel="Description">
+                    @if (_editingItem?.Id == context.Id)
+                    {
+                        <MudTextField @bind-Value="_editingItem.Description" Variant="Variant.Outlined" Margin="Margin.Dense" />
+                    }
+                    else
+                    {
+                        @context.Description
+                    }
+                </MudTd>
+                <MudTd DataLabel="Requires Posting" Style="text-align: center;">
+                    @if (_editingItem?.Id == context.Id)
+                    {
+                        <MudCheckBox @bind-Value="_editingItem.RequiresAutoPosting" Color="Color.Primary" />
+                    }
+                    else
+                    {
+                        @if (context.RequiresAutoPosting)
+                        {
+                            <MudIcon Icon="@Icons.Material.Filled.Check" Color="Color.Success" />
+                        }
+                        else
+                        {
+                            <MudIcon Icon="@Icons.Material.Filled.Close" Color="Color.Default" />
+                        }
+                    }
+                </MudTd>
+                <MudTd DataLabel="Actions">
+                    @if (_editingItem?.Id == context.Id)
+                    {
+                        <MudStack Row="true" Spacing="1">
+                            <MudIconButton Icon="@Icons.Material.Filled.Save" Color="Color.Success" Size="Size.Small"
+                                           OnClick="SaveEdit" Title="Save" />
+                            <MudIconButton Icon="@Icons.Material.Filled.Cancel" Color="Color.Default" Size="Size.Small"
+                                           OnClick="CancelEdit" Title="Cancel" />
+                        </MudStack>
+                    }
+                    else
+                    {
+                        <MudIconButton Icon="@Icons.Material.Filled.Edit" Color="Color.Primary" Size="Size.Small"
+                                       OnClick="@(() => StartEdit(context))" Title="Edit" />
+                    }
+                </MudTd>
+            </RowTemplate>
+        </MudTable>
+    }
+</MudPaper>
+
+@code {
+    private List<TransactionPageType> _items = new();
+    private TransactionPageType? _editingItem;
+    private bool _loading = true;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadData();
+    }
+
+    private async Task LoadData()
+    {
+        _loading = true;
+        try
+        {
+            await using var context = await DbFactory.CreateDbContextAsync();
+            _items = await context.TransactionPageTypes
+                .Where(t => !t.IsDeleted)
+                .OrderBy(t => t.SortOrder)
+                .ThenBy(t => t.Code)
+                .ToListAsync();
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private void StartEdit(TransactionPageType item)
+    {
+        _editingItem = new TransactionPageType
+        {
+            Id = item.Id,
+            Code = item.Code,
+            Name = item.Name,
+            Description = item.Description,
+            RequiresAutoPosting = item.RequiresAutoPosting,
+            SortOrder = item.SortOrder,
+            CompanyId = item.CompanyId
+        };
+    }
+
+    private void CancelEdit()
+    {
+        _editingItem = null;
+    }
+
+    private async Task SaveEdit()
+    {
+        if (_editingItem == null) return;
+
+        try
+        {
+            await using var context = await DbFactory.CreateDbContextAsync();
+            var item = await context.TransactionPageTypes.FindAsync(_editingItem.Id);
+            if (item != null)
+            {
+                item.Name = _editingItem.Name;
+                item.Description = _editingItem.Description;
+                item.RequiresAutoPosting = _editingItem.RequiresAutoPosting;
+                item.ModifiedAt = DateTime.UtcNow;
+                await context.SaveChangesAsync();
+                Snackbar.Add("Transaction page type updated", Severity.Success);
+            }
+            _editingItem = null;
+            await LoadData();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error saving: {ex.Message}", Severity.Error);
+        }
+    }
+
+    private async Task SeedDefaults()
+    {
+        var confirmed = await DialogService.ShowMessageBox(
+            "Seed Default Transaction Page Types",
+            "This will add standard transaction page types if they don't exist. Continue?",
+            yesText: "Yes", cancelText: "Cancel");
+
+        if (confirmed != true) return;
+
+        try
+        {
+            await using var context = await DbFactory.CreateDbContextAsync();
+            var existingCodes = await context.TransactionPageTypes
+                .Where(t => !t.IsDeleted)
+                .Select(t => t.Code)
+                .ToListAsync();
+
+            var defaults = GetDefaultTypes();
+            var toAdd = defaults.Where(d => !existingCodes.Contains(d.Code)).ToList();
+
+            if (toAdd.Any())
+            {
+                foreach (var item in toAdd)
+                {
+                    item.CreatedAt = DateTime.UtcNow;
+                }
+                context.TransactionPageTypes.AddRange(toAdd);
+                await context.SaveChangesAsync();
+                Snackbar.Add($"Added {toAdd.Count} transaction page types", Severity.Success);
+                await LoadData();
+            }
+            else
+            {
+                Snackbar.Add("All default types already exist", Severity.Info);
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error seeding defaults: {ex.Message}", Severity.Error);
+        }
+    }
+
+    private List<TransactionPageType> GetDefaultTypes()
+    {
+        return new List<TransactionPageType>
+        {
+            new() { Code = "AWB_ENTRY", Name = "AWB Creation", Description = "Creating new shipments", RequiresAutoPosting = true, SortOrder = 1 },
+            new() { Code = "CUSTOMER_INVOICE", Name = "Customer Invoice", Description = "Billing customers for services", RequiresAutoPosting = true, SortOrder = 2 },
+            new() { Code = "POD_UPDATE", Name = "Proof of Delivery", Description = "Delivery confirmation and COD collection", RequiresAutoPosting = true, SortOrder = 3 },
+            new() { Code = "PREPAID_AWB_ISSUE", Name = "Prepaid AWB Issue", Description = "Issuing prepaid AWB stock", RequiresAutoPosting = true, SortOrder = 4 },
+            new() { Code = "CREDIT_NOTE", Name = "Credit Note", Description = "Customer credit adjustments", RequiresAutoPosting = true, SortOrder = 5 },
+            new() { Code = "DEBIT_NOTE", Name = "Debit Note", Description = "Customer debit adjustments", RequiresAutoPosting = true, SortOrder = 6 },
+            new() { Code = "COD_REMITTANCE", Name = "COD Remittance", Description = "Cash on delivery remittance to customers", RequiresAutoPosting = true, SortOrder = 7 },
+            new() { Code = "EXPENSE_ENTRY", Name = "Expense Entry", Description = "Recording business expenses", RequiresAutoPosting = true, SortOrder = 8 },
+            new() { Code = "CASH_RECEIPT", Name = "Cash Receipt", Description = "Customer payment receipts", RequiresAutoPosting = true, SortOrder = 9 },
+            new() { Code = "VENDOR_BILL", Name = "Vendor Bill", Description = "Recording vendor invoices", RequiresAutoPosting = false, SortOrder = 10 },
+            new() { Code = "CASH_PAYMENT", Name = "Cash Payment", Description = "Vendor and expense payments", RequiresAutoPosting = false, SortOrder = 11 },
+            new() { Code = "BANK_TRANSFER", Name = "Bank Transfer", Description = "Inter-bank transfers", RequiresAutoPosting = false, SortOrder = 12 }
+        };
+    }
+}

@@ -363,6 +363,47 @@ CREATE TABLE IF NOT EXISTS "Expenses" (
     "IsDemo" BOOLEAN DEFAULT FALSE
 );
 
+-- TransactionPageTypes
+CREATE TABLE IF NOT EXISTS "TransactionPageTypes" (
+    "Id" BIGSERIAL PRIMARY KEY,
+    "Code" VARCHAR(50) NOT NULL,
+    "Name" VARCHAR(100) NOT NULL,
+    "Description" TEXT,
+    "RequiresAutoPosting" BOOLEAN DEFAULT FALSE,
+    "SortOrder" INT DEFAULT 999,
+    "CompanyId" BIGINT,
+    "IsActive" BOOLEAN DEFAULT TRUE,
+    "CreatedAt" TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    "ModifiedAt" TIMESTAMP,
+    "CreatedBy" VARCHAR(255),
+    "ModifiedBy" VARCHAR(255),
+    "IsDeleted" BOOLEAN DEFAULT FALSE,
+    "IsDemo" BOOLEAN DEFAULT FALSE
+);
+
+-- PostingSetups
+CREATE TABLE IF NOT EXISTS "PostingSetups" (
+    "Id" BIGSERIAL PRIMARY KEY,
+    "TransactionPageTypeId" BIGINT NOT NULL,
+    "DebitAccountId" BIGINT NOT NULL,
+    "DebitAccountCode" VARCHAR(50),
+    "DebitAccountName" VARCHAR(255),
+    "CreditAccountId" BIGINT NOT NULL,
+    "CreditAccountCode" VARCHAR(50),
+    "CreditAccountName" VARCHAR(255),
+    "Description" TEXT,
+    "CompanyId" BIGINT,
+    "IsActive" BOOLEAN DEFAULT TRUE,
+    "CreatedAt" TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    "ModifiedAt" TIMESTAMP,
+    "CreatedBy" VARCHAR(255),
+    "ModifiedBy" VARCHAR(255),
+    "IsDeleted" BOOLEAN DEFAULT FALSE,
+    "IsDemo" BOOLEAN DEFAULT FALSE,
+    CONSTRAINT "FK_PostingSetups_TransactionPageTypes" FOREIGN KEY ("TransactionPageTypeId") 
+        REFERENCES "TransactionPageTypes"("Id") ON DELETE RESTRICT
+);
+
 -- =============================================
 -- PART 2: ALTER TABLES (add missing columns)
 -- =============================================
