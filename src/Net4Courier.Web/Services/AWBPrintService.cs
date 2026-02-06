@@ -69,13 +69,15 @@ public class AWBPrintService
             row.RelativeItem(1).BorderLeft(1).Padding(3).Column(orgCol =>
             {
                 orgCol.Item().Text("ORG. STN").FontSize(6);
-                orgCol.Item().AlignCenter().Text(shipment.OriginPortCode ?? "---").Bold().FontSize(14);
+                var orgCode = shipment.OriginPortCode ?? shipment.ConsignorCountry ?? "---";
+                orgCol.Item().AlignCenter().Text(orgCode).Bold().FontSize(orgCode.Length > 5 ? 9 : 14);
             });
             
             row.RelativeItem(1).BorderLeft(1).Padding(3).Column(destCol =>
             {
                 destCol.Item().Text("DEST").FontSize(6);
-                destCol.Item().AlignCenter().Text(shipment.DestinationPortCode ?? "---").Bold().FontSize(14);
+                var destCode = shipment.DestinationPortCode ?? shipment.ConsigneeCountry ?? "---";
+                destCol.Item().AlignCenter().Text(destCode).Bold().FontSize(destCode.Length > 5 ? 9 : 14);
             });
             
             row.RelativeItem(3).BorderLeft(1).Padding(3).Column(barcodeCol =>
