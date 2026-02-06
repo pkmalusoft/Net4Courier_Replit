@@ -347,21 +347,36 @@ app.MapGet("/api/company-logo", async (ApplicationDbContext db, IWebHostEnvironm
         var company = await db.Companies.FirstOrDefaultAsync();
         if (company?.Logo != null && !string.IsNullOrEmpty(company.Logo))
         {
-            var logoPath = Path.Combine(env.WebRootPath, company.Logo.TrimStart('/'));
-            if (File.Exists(logoPath))
+            if (company.Logo.StartsWith("data:"))
             {
-                var ext = Path.GetExtension(logoPath).ToLower();
-                var contentType = ext switch
+                var dataUriParts = company.Logo.Split(',', 2);
+                if (dataUriParts.Length == 2)
                 {
-                    ".png" => "image/png",
-                    ".jpg" or ".jpeg" => "image/jpeg",
-                    ".gif" => "image/gif",
-                    ".svg" => "image/svg+xml",
-                    ".webp" => "image/webp",
-                    _ => "image/png"
-                };
-                var bytes = await File.ReadAllBytesAsync(logoPath);
-                return Results.File(bytes, contentType);
+                    var header = dataUriParts[0];
+                    var base64Data = dataUriParts[1];
+                    var contentType = header.Replace("data:", "").Replace(";base64", "");
+                    var bytes = Convert.FromBase64String(base64Data);
+                    return Results.File(bytes, contentType);
+                }
+            }
+            else
+            {
+                var logoPath = Path.Combine(env.WebRootPath, company.Logo.TrimStart('/'));
+                if (File.Exists(logoPath))
+                {
+                    var ext = Path.GetExtension(logoPath).ToLower();
+                    var contentType = ext switch
+                    {
+                        ".png" => "image/png",
+                        ".jpg" or ".jpeg" => "image/jpeg",
+                        ".gif" => "image/gif",
+                        ".svg" => "image/svg+xml",
+                        ".webp" => "image/webp",
+                        _ => "image/png"
+                    };
+                    var bytes = await File.ReadAllBytesAsync(logoPath);
+                    return Results.File(bytes, contentType);
+                }
             }
         }
         var fallbackPath = Path.Combine(env.WebRootPath, "images", "logo.png");
@@ -446,14 +461,7 @@ app.MapGet("/api/report/shipment-invoice/{id:long}", async (long id, bool? inlin
         if (awb.BranchId.HasValue)
         {
             var branch = await db.Branches.Include(b => b.Company).FirstOrDefaultAsync(b => b.Id == awb.BranchId);
-            if (branch?.Company?.Logo != null)
-            {
-                var logoPath = Path.Combine(env.WebRootPath, branch.Company.Logo.TrimStart('/'));
-                if (File.Exists(logoPath))
-                {
-                    logoData = await File.ReadAllBytesAsync(logoPath);
-                }
-            }
+            logoData = ResolveLogoBytes(branch?.Company?.Logo, env.WebRootPath);
         }
         
         var pdf = printService.GenerateShipmentInvoice(awb, logoData, $"INV-{awb.AWBNo}");
@@ -493,14 +501,7 @@ app.MapGet("/api/report/tracking/{awbNo}", async (string awbNo, bool? inline, Ap
             if (awb.BranchId.HasValue)
             {
                 var branch = await db.Branches.Include(b => b.Company).FirstOrDefaultAsync(b => b.Id == awb.BranchId);
-                if (branch?.Company?.Logo != null)
-                {
-                    var logoPath = Path.Combine(env.WebRootPath, branch.Company.Logo.TrimStart('/'));
-                    if (File.Exists(logoPath))
-                    {
-                        logoData = await File.ReadAllBytesAsync(logoPath);
-                    }
-                }
+                logoData = ResolveLogoBytes(branch?.Company?.Logo, env.WebRootPath);
             }
             
             var pdf = printService.GenerateTrackingReport(awb, timeline, serviceTypeName, logoData);
@@ -519,14 +520,7 @@ app.MapGet("/api/report/tracking/{awbNo}", async (string awbNo, bool? inline, Ap
             if (branchId.HasValue)
             {
                 var branch = await db.Branches.Include(b => b.Company).FirstOrDefaultAsync(b => b.Id == branchId);
-                if (branch?.Company?.Logo != null)
-                {
-                    var logoPath = Path.Combine(env.WebRootPath, branch.Company.Logo.TrimStart('/'));
-                    if (File.Exists(logoPath))
-                    {
-                        logoData = await File.ReadAllBytesAsync(logoPath);
-                    }
-                }
+                logoData = ResolveLogoBytes(branch?.Company?.Logo, env.WebRootPath);
             }
             
             var transactionDate = importShipment.ImportMaster?.TransactionDate ?? importShipment.CreatedAt;
@@ -550,34 +544,7 @@ app.MapGet("/api/report/invoice/{id:long}", async (long id, ApplicationDbContext
     if (invoice == null) return Results.NotFound();
     
     var company = await db.Companies.FirstOrDefaultAsync(c => !c.IsDeleted);
-    byte[]? logoData = null;
-    if (!string.IsNullOrEmpty(company?.Logo))
-    {
-        Console.WriteLine($"[Invoice PDF] Logo path: {company.Logo}");
-        try
-        {
-            var logoPath = company.Logo.TrimStart('/');
-            var fullPath = Path.Combine(env.WebRootPath ?? env.ContentRootPath, logoPath);
-            Console.WriteLine($"[Invoice PDF] Full path: {fullPath}");
-            if (File.Exists(fullPath))
-            {
-                logoData = await File.ReadAllBytesAsync(fullPath);
-                Console.WriteLine($"[Invoice PDF] Logo loaded successfully, size: {logoData?.Length ?? 0} bytes");
-            }
-            else
-            {
-                Console.WriteLine($"[Invoice PDF] Logo file not found at: {fullPath}");
-            }
-        }
-        catch (Exception ex)
-        {
-            Console.WriteLine($"[Invoice PDF] Failed to load logo: {ex.Message}");
-        }
-    }
-    else
-    {
-        Console.WriteLine($"[Invoice PDF] No logo URL found for company");
-    }
+    byte[]? logoData = ResolveLogoBytes(company?.Logo, env.WebRootPath ?? env.ContentRootPath);
     
     Net4Courier.Operations.Entities.InscanMaster? shipment = null;
     if (invoice.Details.Any())
@@ -617,23 +584,7 @@ app.MapGet("/api/report/domestic-invoice/{id:long}", async (long id, Application
         : null;
     var currency = branch?.Currency?.Code ?? company?.Currency?.Code ?? "AED";
     
-    byte[]? logoData = null;
-    if (!string.IsNullOrEmpty(company?.Logo))
-    {
-        try
-        {
-            var logoPath = company.Logo.TrimStart('/');
-            var fullPath = Path.Combine(env.WebRootPath ?? env.ContentRootPath, logoPath);
-            if (File.Exists(fullPath))
-            {
-                logoData = await File.ReadAllBytesAsync(fullPath);
-            }
-        }
-        catch (Exception ex)
-        {
-            Console.WriteLine($"[Domestic Invoice PDF] Failed to load logo: {ex.Message}");
-        }
-    }
+    byte[]? logoData = ResolveLogoBytes(company?.Logo, env.WebRootPath ?? env.ContentRootPath);
     
     var pdf = reportService.GenerateDomesticInvoicePdf(invoice, currency, logoData, company?.Name, company?.TaxNumber);
     return Results.File(pdf, "application/pdf", $"DomesticInvoice-{invoice.InvoiceNo}.pdf");
@@ -648,22 +599,7 @@ app.MapGet("/api/report/duty-receipt/{id:long}", async (long id, bool? inline, A
     var company = branch != null ? await db.Companies.Include(c => c.City).Include(c => c.Country).FirstOrDefaultAsync(c => c.Id == branch.CompanyId) : null;
     var currency = branch?.Currency?.Code ?? "AED";
     
-    byte[]? logoData = null;
-    if (company != null && !string.IsNullOrEmpty(company.Logo))
-    {
-        try
-        {
-            var logoPath = Path.Combine(env.WebRootPath, company.Logo.TrimStart('/'));
-            if (System.IO.File.Exists(logoPath))
-            {
-                logoData = await System.IO.File.ReadAllBytesAsync(logoPath);
-            }
-        }
-        catch (Exception ex)
-        {
-            Console.WriteLine($"[Duty Receipt PDF] Failed to load logo: {ex.Message}");
-        }
-    }
+    byte[]? logoData = ResolveLogoBytes(company?.Logo, env.WebRootPath);
     
     var companyAddress = company != null ? $"{company.Address}, {company.City?.Name}, {company.Country?.Name}" : null;
     var pdf = reportService.GenerateDutyReceiptPdf(shipment, currency, logoData, company?.Name, companyAddress, company?.Phone, company?.Email, company?.TaxNumber, null);
@@ -916,6 +852,23 @@ catch (Exception ex)
     Console.WriteLine($"[{DateTime.UtcNow:O}] FATAL ERROR starting server: {ex.Message}");
     Console.WriteLine($"[{DateTime.UtcNow:O}] Stack trace: {ex.StackTrace}");
     throw;
+}
+
+static byte[]? ResolveLogoBytes(string? logo, string webRootPath)
+{
+    if (string.IsNullOrEmpty(logo)) return null;
+    if (logo.StartsWith("data:"))
+    {
+        var parts = logo.Split(',', 2);
+        if (parts.Length == 2)
+        {
+            try { return Convert.FromBase64String(parts[1]); }
+            catch { return null; }
+        }
+        return null;
+    }
+    var filePath = Path.Combine(webRootPath, logo.TrimStart('/'));
+    return File.Exists(filePath) ? File.ReadAllBytes(filePath) : null;
 }
 
 static async Task HandlePasswordReset(string username, string password)

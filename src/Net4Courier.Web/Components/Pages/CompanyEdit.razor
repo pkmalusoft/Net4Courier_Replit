@@ -435,23 +435,21 @@
                 return;
             }
 
-            var uploadsFolder = Path.Combine(Environment.WebRootPath, "uploads", "logos");
-            Directory.CreateDirectory(uploadsFolder);
+            using var memoryStream = new MemoryStream();
+            await file.OpenReadStream(maxAllowedSize: 2 * 1024 * 1024).CopyToAsync(memoryStream);
+            var bytes = memoryStream.ToArray();
+            var base64 = Convert.ToBase64String(bytes);
 
-            var fileName = $"company_{(_company.Id > 0 ? _company.Id : DateTime.UtcNow.Ticks)}_{Guid.NewGuid():N}{extension}";
-            var filePath = Path.Combine(uploadsFolder, fileName);
-
-            await using var stream = new FileStream(filePath, FileMode.Create);
-            await file.OpenReadStream(maxAllowedSize: 2 * 1024 * 1024).CopyToAsync(stream);
-
-            if (!string.IsNullOrEmpty(_company.Logo))
+            var contentType = extension switch
             {
-                var oldPath = Path.Combine(Environment.WebRootPath, _company.Logo.TrimStart('/'));
-                if (File.Exists(oldPath))
-                    File.Delete(oldPath);
-            }
+                ".png" => "image/png",
+                ".jpg" or ".jpeg" => "image/jpeg",
+                ".gif" => "image/gif",
+                ".svg" => "image/svg+xml",
+                _ => "image/png"
+            };
 
-            _company.Logo = $"/uploads/logos/{fileName}";
+            _company.Logo = $"data:{contentType};base64,{base64}";
             Snackbar.Add("Logo uploaded successfully", Severity.Success);
             StateHasChanged();
         }
@@ -463,12 +461,6 @@
 
     private void RemoveLogo()
     {
-        if (!string.IsNullOrEmpty(_company.Logo))
-        {
-            var filePath = Path.Combine(Environment.WebRootPath, _company.Logo.TrimStart('/'));
-            if (File.Exists(filePath))
-                File.Delete(filePath);
-        }
         _company.Logo = null;
         StateHasChanged();
     }
