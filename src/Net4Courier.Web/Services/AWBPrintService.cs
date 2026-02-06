@@ -436,9 +436,9 @@ public class AWBPrintService
                 page.Margin(2);
                 page.DefaultTextStyle(x => x.FontSize(7).FontFamily("Arial"));
                 
-                page.Content().Border(1).Row(mainRow =>
+                page.Content().Border(1).Shrink().Row(mainRow =>
                 {
-                    mainRow.RelativeItem(3).Column(column =>
+                    mainRow.RelativeItem(3).Shrink().Column(column =>
                     {
                         column.Spacing(0);
                         
@@ -453,7 +453,7 @@ public class AWBPrintService
                         BuildGateexReferences(column, shipment);
                     });
                     
-                    mainRow.ConstantItem(28).BorderLeft(1).Column(rightCol =>
+                    mainRow.ConstantItem(28).BorderLeft(1).Shrink().Column(rightCol =>
                     {
                         BuildGateexRightPanel(rightCol, shipment);
                     });
@@ -480,7 +480,7 @@ public class AWBPrintService
             {
                 if (_logoData != null)
                 {
-                    c.Item().Height(18).Image(_logoData).FitHeight();
+                    c.Item().MaxHeight(18).Image(_logoData).FitArea();
                 }
                 else
                 {
@@ -498,7 +498,7 @@ public class AWBPrintService
             {
                 if (shipment.BarcodeImage != null)
                 {
-                    c.Item().AlignCenter().Height(22).Image(shipment.BarcodeImage);
+                    c.Item().AlignCenter().MaxHeight(22).Image(shipment.BarcodeImage).FitArea();
                 }
                 c.Item().AlignCenter().Text(shipment.AWBNo).Bold().FontSize(8);
             });
@@ -538,7 +538,7 @@ public class AWBPrintService
             {
                 if (_logoData != null)
                 {
-                    c.Item().Height(20).Image(_logoData).FitHeight();
+                    c.Item().MaxHeight(20).Image(_logoData).FitArea();
                 }
             });
         });
@@ -587,6 +587,12 @@ public class AWBPrintService
         });
     }
 
+    private static string Truncate(string? text, int maxLength)
+    {
+        if (string.IsNullOrEmpty(text)) return "";
+        return text.Length <= maxLength ? text : text.Substring(0, maxLength) + "..";
+    }
+
     private void BuildGateexShipper(ColumnDescriptor column, InscanMaster shipment)
     {
         column.Item().BorderTop(1).Padding(2).Column(c =>
@@ -596,17 +602,17 @@ public class AWBPrintService
                 r.ConstantItem(35).Text("Account:").FontSize(5).FontColor(Colors.Grey.Darken1);
                 r.RelativeItem().Text(shipment.CustomerId?.ToString() ?? "").FontSize(6);
             });
-            c.Item().Text(shipment.Consignor ?? "").Bold().FontSize(7);
-            c.Item().Text($"{shipment.ConsignorAddress1} {shipment.ConsignorAddress2}".Trim()).FontSize(6);
+            c.Item().Text(Truncate(shipment.Consignor, 50)).Bold().FontSize(7);
+            c.Item().Text(Truncate($"{shipment.ConsignorAddress1} {shipment.ConsignorAddress2}".Trim(), 70)).FontSize(6);
             c.Item().Row(r =>
             {
-                r.RelativeItem().Text(shipment.ConsignorCity ?? "").FontSize(6);
+                r.RelativeItem().Text(Truncate(shipment.ConsignorCity, 25)).FontSize(6);
                 r.ConstantItem(40).Text(shipment.ConsignorPostalCode ?? "").FontSize(6);
             });
             c.Item().Row(r =>
             {
-                r.RelativeItem().Text(shipment.ConsignorCountry ?? "").FontSize(6);
-                r.RelativeItem().Text(shipment.ConsignorPhone ?? shipment.ConsignorMobile ?? "").FontSize(6);
+                r.RelativeItem().Text(Truncate(shipment.ConsignorCountry, 25)).FontSize(6);
+                r.RelativeItem().Text(Truncate(shipment.ConsignorPhone ?? shipment.ConsignorMobile, 20)).FontSize(6);
             });
         });
     }
@@ -615,15 +621,15 @@ public class AWBPrintService
     {
         column.Item().BorderTop(2).Padding(2).Column(c =>
         {
-            c.Item().Text(shipment.Consignee ?? "").Bold().FontSize(8);
-            c.Item().Text($"{shipment.ConsigneeAddress1} {shipment.ConsigneeAddress2}".Trim()).FontSize(6);
+            c.Item().Text(Truncate(shipment.Consignee, 50)).Bold().FontSize(8);
+            c.Item().Text(Truncate($"{shipment.ConsigneeAddress1} {shipment.ConsigneeAddress2}".Trim(), 70)).FontSize(6);
             c.Item().Height(2);
-            c.Item().Text(shipment.ConsigneeCity ?? "").Bold().FontSize(8);
-            c.Item().Text(shipment.ConsigneeCountry ?? "").FontSize(6);
+            c.Item().Text(Truncate(shipment.ConsigneeCity, 25)).Bold().FontSize(8);
+            c.Item().Text(Truncate(shipment.ConsigneeCountry, 25)).FontSize(6);
             c.Item().Row(r =>
             {
-                r.RelativeItem().Text(shipment.ConsigneePhone ?? shipment.ConsigneeMobile ?? "").Bold().FontSize(7);
-                r.RelativeItem().Text(shipment.ConsigneeMobile ?? "").FontSize(6);
+                r.RelativeItem().Text(Truncate(shipment.ConsigneePhone ?? shipment.ConsigneeMobile, 20)).Bold().FontSize(7);
+                r.RelativeItem().Text(Truncate(shipment.ConsigneeMobile, 20)).FontSize(6);
             });
         });
     }
@@ -637,7 +643,7 @@ public class AWBPrintService
         
         column.Item().BorderTop(1).Padding(2).Row(row =>
         {
-            row.RelativeItem().Text($"Remarks: {shipment.Remarks ?? ""}").FontSize(6);
+            row.RelativeItem().Text($"Remarks: {Truncate(shipment.Remarks, 60)}").FontSize(6);
         });
     }
 
@@ -716,7 +722,7 @@ public class AWBPrintService
         if (shipment.BarcodeImageVertical != null)
         {
             column.Item().Height(5);
-            column.Item().AlignCenter().Padding(1).Image(shipment.BarcodeImageVertical).FitWidth();
+            column.Item().MaxHeight(80).AlignCenter().Padding(1).Image(shipment.BarcodeImageVertical).FitArea();
         }
     }
 
