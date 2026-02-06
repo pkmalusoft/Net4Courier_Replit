@@ -721,6 +721,8 @@ app.MapGet("/api/report/duty-receipt/{id:long}", async (long id, bool? inline, A
     
     var branch = await db.Branches.Include(b => b.Currency).FirstOrDefaultAsync(b => b.Id == shipment.BranchId);
     var company = branch != null ? await db.Companies.Include(c => c.City).Include(c => c.Country).FirstOrDefaultAsync(c => c.Id == branch.CompanyId) : null;
+    if (company == null)
+        company = await db.Companies.Include(c => c.City).Include(c => c.Country).FirstOrDefaultAsync(c => !c.IsDeleted);
     var currency = branch?.Currency?.Code ?? "AED";
     
     byte[]? logoData = ResolveLogoBytes(company?.Logo, env.WebRootPath);
