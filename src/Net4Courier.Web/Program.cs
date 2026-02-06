@@ -363,14 +363,15 @@ app.MapGet("/api/diagnostics", (IWebHostEnvironment env) =>
     });
 });
 
-app.MapGet("/api/report/awb/{id:long}", async (long id, ApplicationDbContext db, AWBPrintService printService, ILogger<Program> logger) =>
+app.MapGet("/api/report/awb/{id:long}", async (long id, bool? inline, ApplicationDbContext db, AWBPrintService printService, ILogger<Program> logger) =>
 {
     try
     {
         var awb = await db.InscanMasters.FindAsync(id);
         if (awb == null) return Results.NotFound("AWB not found");
         var pdf = printService.GenerateA5AWB(awb);
-        return Results.File(pdf, "application/pdf", $"AWB-{awb.AWBNo}.pdf");
+        var fileName = inline == true ? null : $"AWB-{awb.AWBNo}.pdf";
+        return Results.File(pdf, "application/pdf", fileName);
     }
     catch (Exception ex)
     {
@@ -379,14 +380,15 @@ app.MapGet("/api/report/awb/{id:long}", async (long id, ApplicationDbContext db,
     }
 });
 
-app.MapGet("/api/report/awb-label/{id:long}", async (long id, ApplicationDbContext db, AWBPrintService printService, ILogger<Program> logger) =>
+app.MapGet("/api/report/awb-label/{id:long}", async (long id, bool? inline, ApplicationDbContext db, AWBPrintService printService, ILogger<Program> logger) =>
 {
     try
     {
         var awb = await db.InscanMasters.FindAsync(id);
         if (awb == null) return Results.NotFound("AWB not found");
         var pdf = printService.GenerateLabel(awb);
-        return Results.File(pdf, "application/pdf", $"Label-{awb.AWBNo}.pdf");
+        var fileName = inline == true ? null : $"Label-{awb.AWBNo}.pdf";
+        return Results.File(pdf, "application/pdf", fileName);
     }
     catch (Exception ex)
     {
@@ -395,7 +397,7 @@ app.MapGet("/api/report/awb-label/{id:long}", async (long id, ApplicationDbConte
     }
 });
 
-app.MapGet("/api/report/shipment-invoice/{id:long}", async (long id, ApplicationDbContext db, AWBPrintService printService, IWebHostEnvironment env, ILogger<Program> logger) =>
+app.MapGet("/api/report/shipment-invoice/{id:long}", async (long id, bool? inline, ApplicationDbContext db, AWBPrintService printService, IWebHostEnvironment env, ILogger<Program> logger) =>
 {
     try
     {
@@ -417,7 +419,8 @@ app.MapGet("/api/report/shipment-invoice/{id:long}", async (long id, Application
         }
         
         var pdf = printService.GenerateShipmentInvoice(awb, logoData, $"INV-{awb.AWBNo}");
-        return Results.File(pdf, "application/pdf", $"ShipmentInvoice-{awb.AWBNo}.pdf");
+        var fileName = inline == true ? null : $"ShipmentInvoice-{awb.AWBNo}.pdf";
+        return Results.File(pdf, "application/pdf", fileName);
     }
     catch (Exception ex)
     {
@@ -426,7 +429,7 @@ app.MapGet("/api/report/shipment-invoice/{id:long}", async (long id, Application
     }
 });
 
-app.MapGet("/api/report/tracking/{awbNo}", async (string awbNo, ApplicationDbContext db, AWBPrintService printService, IWebHostEnvironment env, ILogger<Program> logger) =>
+app.MapGet("/api/report/tracking/{awbNo}", async (string awbNo, bool? inline, ApplicationDbContext db, AWBPrintService printService, IWebHostEnvironment env, ILogger<Program> logger) =>
 {
     try
     {
@@ -462,7 +465,8 @@ app.MapGet("/api/report/tracking/{awbNo}", async (string awbNo, ApplicationDbCon
         }
         
         var pdf = printService.GenerateTrackingReport(awb, timeline, serviceTypeName, logoData);
-        return Results.File(pdf, "application/pdf", $"Tracking-{awb.AWBNo}.pdf");
+        var fileName = inline == true ? null : $"Tracking-{awb.AWBNo}.pdf";
+        return Results.File(pdf, "application/pdf", fileName);
     }
     catch (Exception ex)
     {
@@ -566,7 +570,7 @@ app.MapGet("/api/report/domestic-invoice/{id:long}", async (long id, Application
     return Results.File(pdf, "application/pdf", $"DomesticInvoice-{invoice.InvoiceNo}.pdf");
 });
 
-app.MapGet("/api/report/duty-receipt/{id:long}", async (long id, ApplicationDbContext db, ReportingService reportService, IWebHostEnvironment env) =>
+app.MapGet("/api/report/duty-receipt/{id:long}", async (long id, bool? inline, ApplicationDbContext db, ReportingService reportService, IWebHostEnvironment env) =>
 {
     var shipment = await db.InscanMasters.FindAsync(id);
     if (shipment == null) return Results.NotFound();
@@ -594,7 +598,8 @@ app.MapGet("/api/report/duty-receipt/{id:long}", async (long id, ApplicationDbCo
     
     var companyAddress = company != null ? $"{company.Address}, {company.City?.Name}, {company.Country?.Name}" : null;
     var pdf = reportService.GenerateDutyReceiptPdf(shipment, currency, logoData, company?.Name, companyAddress, company?.Phone, company?.Email, company?.TaxNumber, null);
-    return Results.File(pdf, "application/pdf", $"DutyReceipt-{shipment.AWBNo}.pdf");
+    var fileName = inline == true ? null : $"DutyReceipt-{shipment.AWBNo}.pdf";
+    return Results.File(pdf, "application/pdf", fileName);
 });
 
 app.MapGet("/api/report/receipt/{id:long}", async (long id, ApplicationDbContext db, ReportingService reportService) =>

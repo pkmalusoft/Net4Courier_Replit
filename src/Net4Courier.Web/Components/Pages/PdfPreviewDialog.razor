@@ -1,0 +1,104 @@
+@using MudBlazor
+@using Microsoft.JSInterop
+@inject IJSRuntime JSRuntime
+@implements IDisposable
+
+<MudDialog Style="overflow: hidden;">
+    <TitleContent>
+        <div class="d-flex align-center gap-2">
+            <MudIcon Icon="@Icons.Material.Filled.PictureAsPdf" Color="Color.Error" />
+            <MudText Typo="Typo.h6">@Title</MudText>
+        </div>
+    </TitleContent>
+    <DialogContent>
+        <div style="width: 100%; height: 70vh; position: relative;">
+            @if (_isLoading)
+            {
+                <div style="position: absolute; top: 0; left: 0; right: 0; bottom: 0; display: flex; align-items: center; justify-content: center; background: #f5f5f5; border-radius: 4px; z-index: 1;">
+                    <MudStack AlignItems="AlignItems.Center" Spacing="2">
+                        <MudProgressCircular Indeterminate="true" Color="Color.Primary" Size="Size.Large" />
+                        <MudText Typo="Typo.body2" Color="Color.Secondary">Loading document...</MudText>
+                    </MudStack>
+                </div>
+            }
+            @if (_hasError)
+            {
+                <div style="position: absolute; top: 0; left: 0; right: 0; bottom: 0; display: flex; align-items: center; justify-content: center; background: #f5f5f5; border-radius: 4px; z-index: 1;">
+                    <MudStack AlignItems="AlignItems.Center" Spacing="2">
+                        <MudIcon Icon="@Icons.Material.Filled.ErrorOutline" Color="Color.Error" Size="Size.Large" />
+                        <MudText Typo="Typo.body1" Color="Color.Error">Failed to load document</MudText>
+                        <MudButton Variant="Variant.Outlined" Color="Color.Primary" OnClick="OpenInNewTab">Open in New Tab</MudButton>
+                    </MudStack>
+                </div>
+            }
+            <iframe @ref="_iframeRef"
+                    src="@InlineUrl"
+                    style="width: 100%; height: 100%; border: 1px solid #e0e0e0; border-radius: 4px;"
+                    @onload="OnIframeLoaded"></iframe>
+        </div>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Cancel" Variant="Variant.Text" Color="Color.Default">Close</MudButton>
+        <MudButton OnClick="DownloadPdf" Variant="Variant.Outlined" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Download">Download</MudButton>
+        <MudButton OnClick="PrintPdf" Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Print">Print</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] private MudDialogInstance MudDialog { get; set; } = null!;
+
+    [Parameter] public string PdfUrl { get; set; } = "";
+    [Parameter] public string Title { get; set; } = "Document Preview";
+
+    private ElementReference _iframeRef;
+    private bool _isLoading = true;
+    private bool _hasError = false;
+    private DotNetObjectReference<PdfPreviewDialog>? _dotNetRef;
+
+    private string InlineUrl => PdfUrl.Contains('?') ? $"{PdfUrl}&inline=true" : $"{PdfUrl}?inline=true";
+
+    protected override void OnInitialized()
+    {
+        _dotNetRef = DotNetObjectReference.Create(this);
+    }
+
+    private async Task OnIframeLoaded()
+    {
+        _isLoading = false;
+        if (_dotNetRef != null)
+        {
+            await JSRuntime.InvokeVoidAsync("pdfPreviewHelper.setupLoadTimeout", _iframeRef, _dotNetRef, 10000);
+        }
+        StateHasChanged();
+    }
+
+    [JSInvokable]
+    public void OnLoadError()
+    {
+        _hasError = true;
+        _isLoading = false;
+        InvokeAsync(StateHasChanged);
+    }
+
+    private void Cancel() => MudDialog.Cancel();
+
+    private async Task PrintPdf()
+    {
+        await JSRuntime.InvokeVoidAsync("pdfPreviewHelper.printPdf", _iframeRef);
+    }
+
+    private async Task DownloadPdf()
+    {
+        await JSRuntime.InvokeVoidAsync("pdfPreviewHelper.downloadPdf", PdfUrl, Title);
+    }
+
+    private async Task OpenInNewTab()
+    {
+        await JSRuntime.InvokeVoidAsync("open", InlineUrl, "_blank");
+    }
+
+    public void Dispose()
+    {
+        _dotNetRef?.Dispose();
+    }
+}
