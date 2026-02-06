@@ -437,6 +437,12 @@ app.MapGet("/api/report/awb/{id:long}", async (long id, bool? inline, Applicatio
             logoData = ResolveLogoBytes(branch?.Company?.Logo, env.WebRootPath);
             companyName = branch?.Company?.Name;
         }
+        if (logoData == null)
+        {
+            var company = await db.Companies.FirstOrDefaultAsync(c => !c.IsDeleted);
+            logoData = ResolveLogoBytes(company?.Logo, env.WebRootPath);
+            companyName ??= company?.Name;
+        }
         var pdf = printService.GenerateA5AWB(awb, companyName, logoData);
         var fileName = inline == true ? null : $"AWB-{awb.AWBNo}.pdf";
         return Results.File(pdf, "application/pdf", fileName);
@@ -461,6 +467,12 @@ app.MapGet("/api/report/awb-label/{id:long}", async (long id, bool? inline, Appl
             var branch = await db.Branches.Include(b => b.Company).FirstOrDefaultAsync(b => b.Id == awb.BranchId);
             logoData = ResolveLogoBytes(branch?.Company?.Logo, env.WebRootPath);
             companyName = branch?.Company?.Name;
+        }
+        if (logoData == null)
+        {
+            var company = await db.Companies.FirstOrDefaultAsync(c => !c.IsDeleted);
+            logoData = ResolveLogoBytes(company?.Logo, env.WebRootPath);
+            companyName ??= company?.Name;
         }
         var pdf = printService.GenerateLabel(awb, companyName, logoData);
         var fileName = inline == true ? null : $"Label-{awb.AWBNo}.pdf";
@@ -487,6 +499,12 @@ app.MapGet("/api/report/awb-by-awbno/{awbNo}", async (string awbNo, bool? inline
             logoData = ResolveLogoBytes(branch?.Company?.Logo, env.WebRootPath);
             companyName = branch?.Company?.Name;
         }
+        if (logoData == null)
+        {
+            var company = await db.Companies.FirstOrDefaultAsync(c => !c.IsDeleted);
+            logoData = ResolveLogoBytes(company?.Logo, env.WebRootPath);
+            companyName ??= company?.Name;
+        }
         var pdf = printService.GenerateA5AWB(awb, companyName, logoData);
         var fileName = inline == true ? null : $"AWB-{awb.AWBNo}.pdf";
         return Results.File(pdf, "application/pdf", fileName);
@@ -512,6 +530,12 @@ app.MapGet("/api/report/awb-label-by-awbno/{awbNo}", async (string awbNo, bool? 
             logoData = ResolveLogoBytes(branch?.Company?.Logo, env.WebRootPath);
             companyName = branch?.Company?.Name;
         }
+        if (logoData == null)
+        {
+            var company = await db.Companies.FirstOrDefaultAsync(c => !c.IsDeleted);
+            logoData = ResolveLogoBytes(company?.Logo, env.WebRootPath);
+            companyName ??= company?.Name;
+        }
         var pdf = printService.GenerateLabel(awb, companyName, logoData);
         var fileName = inline == true ? null : $"Label-{awb.AWBNo}.pdf";
         return Results.File(pdf, "application/pdf", fileName);
@@ -535,6 +559,11 @@ app.MapGet("/api/report/shipment-invoice/{id:long}", async (long id, bool? inlin
         {
             var branch = await db.Branches.Include(b => b.Company).FirstOrDefaultAsync(b => b.Id == awb.BranchId);
             logoData = ResolveLogoBytes(branch?.Company?.Logo, env.WebRootPath);
+        }
+        if (logoData == null)
+        {
+            var company = await db.Companies.FirstOrDefaultAsync(c => !c.IsDeleted);
+            logoData = ResolveLogoBytes(company?.Logo, env.WebRootPath);
         }
         
         var pdf = printService.GenerateShipmentInvoice(awb, logoData, $"INV-{awb.AWBNo}");
@@ -576,6 +605,11 @@ app.MapGet("/api/report/tracking/{awbNo}", async (string awbNo, bool? inline, Ap
                 var branch = await db.Branches.Include(b => b.Company).FirstOrDefaultAsync(b => b.Id == awb.BranchId);
                 logoData = ResolveLogoBytes(branch?.Company?.Logo, env.WebRootPath);
             }
+            if (logoData == null)
+            {
+                var company = await db.Companies.FirstOrDefaultAsync(c => !c.IsDeleted);
+                logoData = ResolveLogoBytes(company?.Logo, env.WebRootPath);
+            }
             
             var pdf = printService.GenerateTrackingReport(awb, timeline, serviceTypeName, logoData);
             var fileName = inline == true ? null : $"Tracking-{awb.AWBNo}.pdf";
@@ -594,6 +628,11 @@ app.MapGet("/api/report/tracking/{awbNo}", async (string awbNo, bool? inline, Ap
             {
                 var branch = await db.Branches.Include(b => b.Company).FirstOrDefaultAsync(b => b.Id == branchId);
                 logoData = ResolveLogoBytes(branch?.Company?.Logo, env.WebRootPath);
+            }
+            if (logoData == null)
+            {
+                var company = await db.Companies.FirstOrDefaultAsync(c => !c.IsDeleted);
+                logoData = ResolveLogoBytes(company?.Logo, env.WebRootPath);
             }
             
             var transactionDate = importShipment.ImportMaster?.TransactionDate ?? importShipment.CreatedAt;
