@@ -363,80 +363,112 @@ app.MapGet("/api/diagnostics", (IWebHostEnvironment env) =>
     });
 });
 
-app.MapGet("/api/report/awb/{id:long}", async (long id, ApplicationDbContext db, AWBPrintService printService) =>
+app.MapGet("/api/report/awb/{id:long}", async (long id, ApplicationDbContext db, AWBPrintService printService, ILogger<Program> logger) =>
 {
-    var awb = await db.InscanMasters.FindAsync(id);
-    if (awb == null) return Results.NotFound();
-    var pdf = printService.GenerateA5AWB(awb);
-    return Results.File(pdf, "application/pdf", $"AWB-{awb.AWBNo}.pdf");
-});
-
-app.MapGet("/api/report/awb-label/{id:long}", async (long id, ApplicationDbContext db, AWBPrintService printService) =>
-{
-    var awb = await db.InscanMasters.FindAsync(id);
-    if (awb == null) return Results.NotFound();
-    var pdf = printService.GenerateLabel(awb);
-    return Results.File(pdf, "application/pdf", $"Label-{awb.AWBNo}.pdf");
-});
-
-app.MapGet("/api/report/shipment-invoice/{id:long}", async (long id, ApplicationDbContext db, AWBPrintService printService, IWebHostEnvironment env) =>
-{
-    var awb = await db.InscanMasters.FindAsync(id);
-    if (awb == null) return Results.NotFound();
-    
-    byte[]? logoData = null;
-    if (awb.BranchId.HasValue)
+    try
     {
-        var branch = await db.Branches.Include(b => b.Company).FirstOrDefaultAsync(b => b.Id == awb.BranchId);
-        if (branch?.Company?.Logo != null)
+        var awb = await db.InscanMasters.FindAsync(id);
+        if (awb == null) return Results.NotFound("AWB not found");
+        var pdf = printService.GenerateA5AWB(awb);
+        return Results.File(pdf, "application/pdf", $"AWB-{awb.AWBNo}.pdf");
+    }
+    catch (Exception ex)
+    {
+        logger.LogError(ex, "Error generating AWB print for ID {Id}", id);
+        return Results.Problem($"Error generating AWB print: {ex.Message}");
+    }
+});
+
+app.MapGet("/api/report/awb-label/{id:long}", async (long id, ApplicationDbContext db, AWBPrintService printService, ILogger<Program> logger) =>
+{
+    try
+    {
+        var awb = await db.InscanMasters.FindAsync(id);
+        if (awb == null) return Results.NotFound("AWB not found");
+        var pdf = printService.GenerateLabel(awb);
+        return Results.File(pdf, "application/pdf", $"Label-{awb.AWBNo}.pdf");
+    }
+    catch (Exception ex)
+    {
+        logger.LogError(ex, "Error generating AWB label for ID {Id}", id);
+        return Results.Problem($"Error generating AWB label: {ex.Message}");
+    }
+});
+
+app.MapGet("/api/report/shipment-invoice/{id:long}", async (long id, ApplicationDbContext db, AWBPrintService printService, IWebHostEnvironment env, ILogger<Program> logger) =>
+{
+    try
+    {
+        var awb = await db.InscanMasters.FindAsync(id);
+        if (awb == null) return Results.NotFound("AWB not found");
+        
+        byte[]? logoData = null;
+        if (awb.BranchId.HasValue)
         {
-            var logoPath = Path.Combine(env.WebRootPath, branch.Company.Logo.TrimStart('/'));
-            if (File.Exists(logoPath))
+            var branch = await db.Branches.Include(b => b.Company).FirstOrDefaultAsync(b => b.Id == awb.BranchId);
+            if (branch?.Company?.Logo != null)
             {
-                logoData = await File.ReadAllBytesAsync(logoPath);
+                var logoPath = Path.Combine(env.WebRootPath, branch.Company.Logo.TrimStart('/'));
+                if (File.Exists(logoPath))
+                {
+                    logoData = await File.ReadAllBytesAsync(logoPath);
+                }
             }
         }
+        
+        var pdf = printService.GenerateShipmentInvoice(awb, logoData, $"INV-{awb.AWBNo}");
+        return Results.File(pdf, "application/pdf", $"ShipmentInvoice-{awb.AWBNo}.pdf");
     }
-    
-    var pdf = printService.GenerateShipmentInvoice(awb, logoData, $"INV-{awb.AWBNo}");
-    return Results.File(pdf, "application/pdf", $"ShipmentInvoice-{awb.AWBNo}.pdf");
+    catch (Exception ex)
+    {
+        logger.LogError(ex, "Error generating shipment invoice for ID {Id}", id);
+        return Results.Problem($"Error generating shipment invoice: {ex.Message}");
+    }
 });
 
-app.MapGet("/api/report/tracking/{awbNo}", async (string awbNo, ApplicationDbContext db, AWBPrintService printService, IWebHostEnvironment env) =>
+app.MapGet("/api/report/tracking/{awbNo}", async (string awbNo, ApplicationDbContext db, AWBPrintService printService, IWebHostEnvironment env, ILogger<Program> logger) =>
 {
-    var awb = await db.InscanMasters
-        .FirstOrDefaultAsync(a => a.AWBNo == awbNo);
-    if (awb == null) return Results.NotFound("AWB not found");
-    
-    var timeline = await db.ShipmentStatusHistories
-        .Include(h => h.Status)
-        .Where(h => h.InscanMasterId == awb.Id)
-        .OrderByDescending(h => h.ChangedAt)
-        .ToListAsync();
-    
-    string? serviceTypeName = null;
-    if (awb.ShipmentModeId.HasValue)
+    try
     {
-        var shipmentMode = await db.ShipmentModes.FindAsync(awb.ShipmentModeId.Value);
-        serviceTypeName = shipmentMode?.Name;
-    }
-    
-    byte[]? logoData = null;
-    if (awb.BranchId.HasValue)
-    {
-        var branch = await db.Branches.Include(b => b.Company).FirstOrDefaultAsync(b => b.Id == awb.BranchId);
-        if (branch?.Company?.Logo != null)
+        var awb = await db.InscanMasters
+            .FirstOrDefaultAsync(a => a.AWBNo == awbNo);
+        if (awb == null) return Results.NotFound("AWB not found");
+        
+        var timeline = await db.ShipmentStatusHistories
+            .Include(h => h.Status)
+            .Where(h => h.InscanMasterId == awb.Id)
+            .OrderByDescending(h => h.ChangedAt)
+            .ToListAsync();
+        
+        string? serviceTypeName = null;
+        if (awb.ShipmentModeId.HasValue)
         {
-            var logoPath = Path.Combine(env.WebRootPath, branch.Company.Logo.TrimStart('/'));
-            if (File.Exists(logoPath))
+            var shipmentMode = await db.ShipmentModes.FindAsync(awb.ShipmentModeId.Value);
+            serviceTypeName = shipmentMode?.Name;
+        }
+        
+        byte[]? logoData = null;
+        if (awb.BranchId.HasValue)
+        {
+            var branch = await db.Branches.Include(b => b.Company).FirstOrDefaultAsync(b => b.Id == awb.BranchId);
+            if (branch?.Company?.Logo != null)
             {
-                logoData = await File.ReadAllBytesAsync(logoPath);
+                var logoPath = Path.Combine(env.WebRootPath, branch.Company.Logo.TrimStart('/'));
+                if (File.Exists(logoPath))
+                {
+                    logoData = await File.ReadAllBytesAsync(logoPath);
+                }
             }
         }
+        
+        var pdf = printService.GenerateTrackingReport(awb, timeline, serviceTypeName, logoData);
+        return Results.File(pdf, "application/pdf", $"Tracking-{awb.AWBNo}.pdf");
     }
-    
-    var pdf = printService.GenerateTrackingReport(awb, timeline, serviceTypeName, logoData);
-    return Results.File(pdf, "application/pdf", $"Tracking-{awb.AWBNo}.pdf");
+    catch (Exception ex)
+    {
+        logger.LogError(ex, "Error generating tracking report for AWB {AwbNo}", awbNo);
+        return Results.Problem($"Error generating tracking report: {ex.Message}");
+    }
 });
 
 app.MapGet("/api/report/invoice/{id:long}", async (long id, ApplicationDbContext db, ReportingService reportService, IWebHostEnvironment env) =>
