@@ -1139,6 +1139,219 @@ public class AWBPrintService
         });
     }
 
+    public byte[] GenerateImportTrackingReport(ImportShipment shipment, DateTime transactionDate, byte[]? logoData = null)
+    {
+        var document = Document.Create(container =>
+        {
+            container.Page(page =>
+            {
+                page.Size(PageSizes.A4);
+                page.Margin(30);
+                page.DefaultTextStyle(x => x.FontSize(10).FontFamily("Arial"));
+                
+                page.Header().Column(col =>
+                {
+                    col.Item().Row(row =>
+                    {
+                        row.RelativeItem().Column(c =>
+                        {
+                            if (logoData != null)
+                            {
+                                c.Item().Width(120).Image(logoData);
+                            }
+                            else
+                            {
+                                c.Item().Text("Net4Courier").Bold().FontSize(20).FontColor(Colors.Blue.Darken2);
+                            }
+                        });
+                        row.RelativeItem().AlignRight().Column(c =>
+                        {
+                            c.Item().Text("SHIPMENT TRACKING").Bold().FontSize(16).FontColor(Colors.Grey.Darken3);
+                            c.Item().Text("Import Shipment").FontSize(9).FontColor(Colors.Grey.Medium);
+                        });
+                    });
+                    col.Item().Height(15);
+                    col.Item().LineHorizontal(1).LineColor(Colors.Grey.Lighten2);
+                    col.Item().Height(15);
+                });
+                
+                page.Content().Column(column =>
+                {
+                    column.Spacing(15);
+                    
+                    column.Item().Background(Colors.Blue.Lighten5).Padding(15).Row(row =>
+                    {
+                        row.RelativeItem().Column(c =>
+                        {
+                            c.Item().Text("AWB NUMBER").FontSize(9).FontColor(Colors.Grey.Darken1).Bold();
+                            c.Item().Height(3);
+                            c.Item().Text(shipment.AWBNo ?? "N/A").Bold().FontSize(18).FontColor(Colors.Blue.Darken3);
+                        });
+                        row.RelativeItem().AlignCenter().Column(c =>
+                        {
+                            c.Item().Text("DATE").FontSize(9).FontColor(Colors.Grey.Darken1).Bold();
+                            c.Item().Height(3);
+                            c.Item().Text(transactionDate.ToString("dd MMM yyyy")).FontSize(12);
+                        });
+                        row.RelativeItem().AlignRight().Column(c =>
+                        {
+                            c.Item().Text("STATUS").FontSize(9).FontColor(Colors.Grey.Darken1).Bold();
+                            c.Item().Height(3);
+                            var statusColor = shipment.Status switch
+                            {
+                                ImportShipmentStatus.HandedOver => Colors.Green.Darken2,
+                                ImportShipmentStatus.Released => Colors.Blue.Darken2,
+                                ImportShipmentStatus.Cleared => Colors.Blue.Lighten1,
+                                ImportShipmentStatus.Expected => Colors.Orange.Darken2,
+                                ImportShipmentStatus.CustomsHold or ImportShipmentStatus.OnHold => Colors.Red.Darken2,
+                                _ => Colors.Grey.Darken2
+                            };
+                            c.Item().Text(shipment.Status.ToString()).Bold().FontSize(14).FontColor(statusColor);
+                        });
+                    });
+                    
+                    column.Item().Row(row =>
+                    {
+                        row.RelativeItem().Border(1).BorderColor(Colors.Grey.Lighten2).Padding(15).Column(c =>
+                        {
+                            c.Item().Row(r =>
+                            {
+                                r.ConstantItem(10).Height(10).Background(Colors.Grey.Lighten1);
+                                r.ConstantItem(10);
+                                r.RelativeItem().Text("FROM (SHIPPER)").Bold().FontSize(9).FontColor(Colors.Grey.Darken2);
+                            });
+                            c.Item().Height(8);
+                            c.Item().Text(shipment.ShipperName ?? "N/A").Bold().FontSize(11);
+                            c.Item().Height(4);
+                            c.Item().Text(shipment.ShipperAddress ?? "").FontSize(9).FontColor(Colors.Grey.Darken1);
+                            c.Item().Height(2);
+                            c.Item().Text($"{shipment.ShipperCity ?? ""}, {shipment.ShipperCountry ?? ""}".Trim().TrimEnd(',')).FontSize(9).FontColor(Colors.Grey.Darken1);
+                            c.Item().Height(4);
+                            if (!string.IsNullOrEmpty(shipment.ShipperPhone))
+                            {
+                                c.Item().Text($"Tel: {shipment.ShipperPhone}").FontSize(8).FontColor(Colors.Grey.Medium);
+                            }
+                        });
+                        row.ConstantItem(20);
+                        row.RelativeItem().Border(1).BorderColor(Colors.Blue.Lighten3).Padding(15).Column(c =>
+                        {
+                            c.Item().Row(r =>
+                            {
+                                r.ConstantItem(10).Height(10).Background(Colors.Blue.Darken2);
+                                r.ConstantItem(10);
+                                r.RelativeItem().Text("TO (CONSIGNEE)").Bold().FontSize(9).FontColor(Colors.Blue.Darken2);
+                            });
+                            c.Item().Height(8);
+                            c.Item().Text(shipment.ConsigneeName ?? "N/A").Bold().FontSize(11);
+                            c.Item().Height(4);
+                            c.Item().Text(shipment.ConsigneeAddress ?? "").FontSize(9).FontColor(Colors.Grey.Darken1);
+                            c.Item().Height(2);
+                            c.Item().Text($"{shipment.ConsigneeCity ?? ""}, {shipment.ConsigneePostalCode ?? ""} {shipment.ConsigneeCountry ?? ""}".Trim().TrimEnd(',')).FontSize(9).FontColor(Colors.Grey.Darken1);
+                            c.Item().Height(4);
+                            if (!string.IsNullOrEmpty(shipment.ConsigneePhone) || !string.IsNullOrEmpty(shipment.ConsigneeMobile))
+                            {
+                                c.Item().Text($"Tel: {shipment.ConsigneePhone ?? shipment.ConsigneeMobile}").FontSize(8).FontColor(Colors.Grey.Medium);
+                            }
+                        });
+                    });
+                    
+                    column.Item().Border(1).BorderColor(Colors.Grey.Lighten2).Table(table =>
+                    {
+                        table.ColumnsDefinition(cols =>
+                        {
+                            cols.RelativeColumn();
+                            cols.RelativeColumn();
+                            cols.RelativeColumn();
+                            cols.RelativeColumn();
+                        });
+                        void AddCell(string label, string value)
+                        {
+                            table.Cell().Border(1).BorderColor(Colors.Grey.Lighten3).Padding(8).Column(c =>
+                            {
+                                c.Item().Text(label).FontSize(8).FontColor(Colors.Grey.Darken1).Bold();
+                                c.Item().Height(3);
+                                c.Item().Text(value).FontSize(10);
+                            });
+                        }
+                        AddCell("PIECES", shipment.Pieces.ToString());
+                        AddCell("WEIGHT", $"{shipment.Weight:F2} kg");
+                        AddCell("VOLUME WEIGHT", $"{shipment.VolumetricWeight?.ToString("F2") ?? "0.00"} kg");
+                        AddCell("CHARGEABLE WEIGHT", $"{shipment.ChargeableWeight?.ToString("F2") ?? "0.00"} kg");
+                        AddCell("SHIPMENT TYPE", shipment.ShipmentType.ToString());
+                        AddCell("IMPORT TYPE", shipment.ImportType.ToString());
+                        AddCell("PAYMENT MODE", shipment.PaymentMode.ToString());
+                        AddCell("COD AMOUNT", shipment.CODAmount?.ToString("F2") ?? "0.00");
+                        if (!string.IsNullOrEmpty(shipment.ReferenceNo))
+                        {
+                            AddCell("REFERENCE", shipment.ReferenceNo);
+                            AddCell("CUSTOMS STATUS", shipment.CustomsStatus.ToString());
+                        }
+                    });
+                    
+                    if (shipment.DutyAmount > 0 || shipment.VATAmount > 0 || shipment.OtherCharges > 0)
+                    {
+                        column.Item().Border(1).BorderColor(Colors.Grey.Lighten2).Padding(15).Column(c =>
+                        {
+                            c.Item().Text("CUSTOMS & DUTY CHARGES").Bold().FontSize(11).FontColor(Colors.Grey.Darken3);
+                            c.Item().Height(8);
+                            c.Item().Row(r =>
+                            {
+                                r.RelativeItem().Text($"Duty: {shipment.DutyAmount?.ToString("F2") ?? "0.00"}").FontSize(10);
+                                r.RelativeItem().Text($"VAT: {shipment.VATAmount?.ToString("F2") ?? "0.00"}").FontSize(10);
+                                r.RelativeItem().Text($"Other: {shipment.OtherCharges?.ToString("F2") ?? "0.00"}").FontSize(10);
+                                r.RelativeItem().Text($"Total: {shipment.TotalCustomsCharges?.ToString("F2") ?? "0.00"}").Bold().FontSize(10);
+                            });
+                        });
+                    }
+                    
+                    column.Item().Column(c =>
+                    {
+                        c.Item().Text("SHIPMENT TIMELINE").Bold().FontSize(12).FontColor(Colors.Grey.Darken3);
+                        c.Item().Height(10);
+                        c.Item().Border(1).BorderColor(Colors.Grey.Lighten2).Padding(15).Column(timeCol =>
+                        {
+                            void AddEvent(string label, DateTime? date, string? user)
+                            {
+                                if (date == null) return;
+                                timeCol.Item().Row(r =>
+                                {
+                                    r.ConstantItem(12).Height(12).AlignCenter().Background(Colors.Blue.Lighten1);
+                                    r.ConstantItem(10);
+                                    r.RelativeItem().Column(ec =>
+                                    {
+                                        ec.Item().Text(label).Bold().FontSize(10);
+                                        ec.Item().Text($"{date.Value.ToLocalTime():dd MMM yyyy HH:mm}{(user != null ? $" by {user}" : "")}").FontSize(9).FontColor(Colors.Grey.Darken1);
+                                    });
+                                });
+                                timeCol.Item().Height(8);
+                            }
+                            AddEvent("Inscanned", shipment.InscannedAt, shipment.InscannedByUserName);
+                            AddEvent("Customs Cleared", shipment.CustomsClearedAt, shipment.CustomsClearedByUserName);
+                            AddEvent("Released", shipment.ReleasedAt, shipment.ReleasedByUserName);
+                            AddEvent("Handed Over", shipment.HandedOverAt, shipment.HandedOverToUserName);
+                            if (shipment.InscannedAt == null && shipment.CustomsClearedAt == null && shipment.ReleasedAt == null && shipment.HandedOverAt == null)
+                            {
+                                timeCol.Item().AlignCenter().Text("No timeline events recorded yet.").FontSize(10).FontColor(Colors.Grey.Darken1);
+                            }
+                        });
+                    });
+                });
+                
+                page.Footer().AlignCenter().Text(t =>
+                {
+                    t.Span("Generated on ").FontSize(8).FontColor(Colors.Grey.Medium);
+                    t.Span(DateTime.Now.ToString("dd MMM yyyy HH:mm")).FontSize(8).FontColor(Colors.Grey.Medium);
+                    t.Span(" | Page ").FontSize(8).FontColor(Colors.Grey.Medium);
+                    t.CurrentPageNumber().FontSize(8).FontColor(Colors.Grey.Medium);
+                    t.Span(" of ").FontSize(8).FontColor(Colors.Grey.Medium);
+                    t.TotalPages().FontSize(8).FontColor(Colors.Grey.Medium);
+                });
+            });
+        });
+        
+        return document.GeneratePdf();
+    }
+
     public byte[] GenerateTrackingReport(InscanMaster shipment, List<ShipmentStatusHistory> timeline, string? serviceTypeName = null, byte[]? logoData = null)
     {
         var document = Document.Create(container =>
