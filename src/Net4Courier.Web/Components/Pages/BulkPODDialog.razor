@@ -3,7 +3,7 @@
 @using Net4Courier.Infrastructure.Data
 @using Net4Courier.Operations.Entities
 @using Net4Courier.Kernel.Enums
-@inject ApplicationDbContext DbContext
+@inject IDbContextFactory<ApplicationDbContext> DbFactory
 @inject ISnackbar Snackbar
 @inject Net4Courier.Web.Services.ShipmentStatusService ShipmentStatusService
 
@@ -110,6 +110,7 @@
 
         try
         {
+            await using var dbContext = await DbFactory.CreateDbContextAsync();
             var courierStatus = _status switch
             {
                 DeliveryStatus.Delivered => CourierStatus.Delivered,
@@ -119,7 +120,12 @@
                 _ => CourierStatus.OnHold
             };
 
-            foreach (var awb in SelectedAwbs)
+            var awbIds = SelectedAwbs.Select(a => a.Id).ToList();
+            var trackedAwbs = await dbContext.InscanMasters
+                .Where(i => awbIds.Contains(i.Id))
+                .ToListAsync();
+
+            foreach (var awb in trackedAwbs)
             {
                 var tracking = new AWBTracking
                 {
@@ -136,15 +142,15 @@
                     IsPublic = true
                 };
 
-                DbContext.AWBTrackings.Add(tracking);
+                dbContext.AWBTrackings.Add(tracking);
 
                 awb.CourierStatusId = courierStatus;
                 awb.ModifiedAt = DateTime.UtcNow;
             }
 
-            await DbContext.SaveChangesAsync();
+            await dbContext.SaveChangesAsync();
             
-            foreach (var awb in SelectedAwbs)
+            foreach (var awb in trackedAwbs)
             {
                 if (_status == DeliveryStatus.Delivered || _status == DeliveryStatus.PartialDelivery)
                 {

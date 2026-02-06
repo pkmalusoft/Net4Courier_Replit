@@ -6,7 +6,7 @@
 @using Net4Courier.Kernel.Enums
 @using Net4Courier.Web.Services
 @using Microsoft.AspNetCore.Components.Authorization
-@inject ApplicationDbContext DbContext
+@inject IDbContextFactory<ApplicationDbContext> DbFactory
 @inject IPermissionService PermissionService
 @inject NavigationManager Navigation
 @inject ISnackbar Snackbar
@@ -403,12 +403,14 @@ else
         _loading = true;
         try
         {
+            await using var dbContext = await DbFactory.CreateDbContextAsync();
+
             var authState = await AuthStateProvider.GetAuthenticationStateAsync();
             var userIdClaim = authState.User.FindFirst("UserId")?.Value;
             if (long.TryParse(userIdClaim, out var userId))
             {
                 _currentUserId = userId;
-                var user = await DbContext.Users.FindAsync(userId);
+                var user = await dbContext.Users.FindAsync(userId);
                 _currentUserName = user?.FullName ?? user?.Username;
             }
 
@@ -420,7 +422,7 @@ else
             _canAddNotes = permissions.Contains(FeatureCodes.NotesAdd);
             _canDeleteNotes = permissions.Contains(FeatureCodes.NotesDelete);
 
-            _shipment = await DbContext.InscanMasters
+            _shipment = await dbContext.InscanMasters
                 .Include(s => s.Notes.Where(n => !n.IsDeleted))
                 .ThenInclude(n => n.Mentions)
                 .FirstOrDefaultAsync(s => s.Id == Id);
@@ -431,13 +433,13 @@ else
 
                 if (_shipment.CustomerId.HasValue)
                 {
-                    var customer = await DbContext.Parties.FindAsync(_shipment.CustomerId.Value);
+                    var customer = await dbContext.Parties.FindAsync(_shipment.CustomerId.Value);
                     _customerName = customer?.Name;
                 }
 
                 if (_shipment.ForwardingAgentId.HasValue)
                 {
-                    var agent = await DbContext.Parties.FindAsync(_shipment.ForwardingAgentId.Value);
+                    var agent = await dbContext.Parties.FindAsync(_shipment.ForwardingAgentId.Value);
                     _forwardingAgentName = agent?.Name;
                 }
             }
@@ -470,6 +472,8 @@ else
     {
         if (string.IsNullOrWhiteSpace(_newNoteText) || _currentUserId == null) return;
 
+        await using var dbContext = await DbFactory.CreateDbContextAsync();
+
         var note = new ShipmentNote
         {
             ShipmentId = Id,
@@ -479,7 +483,7 @@ else
             CreatedAt = DateTime.UtcNow
         };
 
-        var mentions = ParseMentions(_newNoteText);
+        var mentions = ParseMentions(_newNoteText, dbContext);
         foreach (var mention in mentions)
         {
             note.Mentions.Add(new ShipmentNoteMention
@@ -490,8 +494,8 @@ else
             });
         }
 
-        DbContext.ShipmentNotes.Add(note);
-        await DbContext.SaveChangesAsync();
+        dbContext.ShipmentNotes.Add(note);
+        await dbContext.SaveChangesAsync();
 
         _newNoteText = string.Empty;
         _notes.Insert(0, note);
@@ -500,14 +504,19 @@ else
 
     private async Task DeleteNote(ShipmentNote note)
     {
-        note.IsDeleted = true;
-        note.ModifiedAt = DateTime.UtcNow;
-        await DbContext.SaveChangesAsync();
+        await using var dbContext = await DbFactory.CreateDbContextAsync();
+        var entity = await dbContext.ShipmentNotes.FindAsync(note.Id);
+        if (entity != null)
+        {
+            entity.IsDeleted = true;
+            entity.ModifiedAt = DateTime.UtcNow;
+            await dbContext.SaveChangesAsync();
+        }
         _notes.Remove(note);
         Snackbar.Add("Note deleted", Severity.Success);
     }
 
-    private List<(long userId, string userName)> ParseMentions(string text)
+    private List<(long userId, string userName)> ParseMentions(string text, ApplicationDbContext dbContext)
     {
         var mentions = new List<(long, string)>();
         var regex = new System.Text.RegularExpressions.Regex(@"@(\w+)");
@@ -516,7 +525,7 @@ else
         foreach (System.Text.RegularExpressions.Match match in matches)
         {
             var username = match.Groups[1].Value;
-            var user = DbContext.Users.FirstOrDefault(u => u.Username.ToLower() == username.ToLower());
+            var user = dbContext.Users.FirstOrDefault(u => u.Username.ToLower() == username.ToLower());
             if (user != null)
             {
                 mentions.Add((user.Id, user.FullName ?? user.Username));

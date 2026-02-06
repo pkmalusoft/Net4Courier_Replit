@@ -1,5 +1,5 @@
 @page "/mawb-list"
-@inject ApplicationDbContext DbContext
+@inject IDbContextFactory<ApplicationDbContext> DbFactory
 @inject NavigationManager NavigationManager
 @inject IDialogService DialogService
 @inject ISnackbar Snackbar
@@ -116,7 +116,8 @@
     private async Task Search()
     {
         _loading = true;
-        var query = DbContext.MasterAirwaybills
+        await using var dbContext = await DbFactory.CreateDbContextAsync();
+        var query = dbContext.MasterAirwaybills
             .Include(m => m.Bags)
             .Where(m => !m.IsDeleted)
             .AsQueryable();
@@ -220,9 +221,14 @@
 
         if (confirm == true)
         {
-            mawb.IsDeleted = true;
-            mawb.ModifiedAt = DateTime.UtcNow;
-            await DbContext.SaveChangesAsync();
+            await using var dbContext = await DbFactory.CreateDbContextAsync();
+            var entity = await dbContext.MasterAirwaybills.FindAsync(mawb.Id);
+            if (entity != null)
+            {
+                entity.IsDeleted = true;
+                entity.ModifiedAt = DateTime.UtcNow;
+                await dbContext.SaveChangesAsync();
+            }
             Snackbar.Add("MAWB deleted successfully", Severity.Success);
             await Search();
         }

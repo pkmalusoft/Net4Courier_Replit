@@ -1,5 +1,5 @@
 @page "/shipment-modes"
-@inject ApplicationDbContext DbContext
+@inject IDbContextFactory<ApplicationDbContext> DbFactory
 @inject ISnackbar Snackbar
 @inject IDialogService DialogService
 @using Microsoft.EntityFrameworkCore
@@ -95,7 +95,8 @@
     private async Task LoadData()
     {
         _loading = true;
-        _shipmentModes = await DbContext.ShipmentModes
+        await using var dbContext = await DbFactory.CreateDbContextAsync();
+        _shipmentModes = await dbContext.ShipmentModes
             .Where(s => !s.IsDeleted)
             .OrderBy(s => s.SortOrder)
             .ThenBy(s => s.Name)
@@ -138,9 +139,10 @@
 
         try
         {
+            await using var dbContext = await DbFactory.CreateDbContextAsync();
             if (_editingMode.Id == 0)
             {
-                var exists = await DbContext.ShipmentModes.AnyAsync(s => s.Code == _editingMode.Code && !s.IsDeleted);
+                var exists = await dbContext.ShipmentModes.AnyAsync(s => s.Code == _editingMode.Code && !s.IsDeleted);
                 if (exists)
                 {
                     Snackbar.Add("A shipment mode with this code already exists", Severity.Warning);
@@ -148,13 +150,13 @@
                 }
 
                 _editingMode.CreatedAt = DateTime.UtcNow;
-                DbContext.ShipmentModes.Add(_editingMode);
-                await DbContext.SaveChangesAsync();
+                dbContext.ShipmentModes.Add(_editingMode);
+                await dbContext.SaveChangesAsync();
                 Snackbar.Add("Shipment mode added successfully", Severity.Success);
             }
             else
             {
-                var existing = await DbContext.ShipmentModes.FindAsync(_editingMode.Id);
+                var existing = await dbContext.ShipmentModes.FindAsync(_editingMode.Id);
                 if (existing != null)
                 {
                     existing.Code = _editingMode.Code;
@@ -163,7 +165,7 @@
                     existing.SortOrder = _editingMode.SortOrder;
                     existing.IsActive = _editingMode.IsActive;
                     existing.ModifiedAt = DateTime.UtcNow;
-                    await DbContext.SaveChangesAsync();
+                    await dbContext.SaveChangesAsync();
                     Snackbar.Add("Shipment mode updated successfully", Severity.Success);
                 }
             }
@@ -188,9 +190,14 @@
         {
             try
             {
-                mode.IsDeleted = true;
-                mode.ModifiedAt = DateTime.UtcNow;
-                await DbContext.SaveChangesAsync();
+                await using var dbContext = await DbFactory.CreateDbContextAsync();
+                var entity = await dbContext.ShipmentModes.FindAsync(mode.Id);
+                if (entity != null)
+                {
+                    entity.IsDeleted = true;
+                    entity.ModifiedAt = DateTime.UtcNow;
+                    await dbContext.SaveChangesAsync();
+                }
                 Snackbar.Add("Shipment mode deleted", Severity.Success);
                 await LoadData();
             }

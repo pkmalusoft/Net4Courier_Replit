@@ -1,6 +1,6 @@
 @page "/awb-entry"
 @page "/awb-entry/{Id:long}"
-@inject ApplicationDbContext DbContext
+@inject IDbContextFactory<ApplicationDbContext> DbFactory
 @inject NavigationManager NavigationManager
 @inject ISnackbar Snackbar
 @inject IDialogService DialogService
@@ -689,7 +689,8 @@
             return;
         }
         
-        var prepaidAwb = await DbContext.PrepaidAWBs
+        await using var dbContext = await DbFactory.CreateDbContextAsync();
+        var prepaidAwb = await dbContext.PrepaidAWBs
             .Include(p => p.PrepaidDocument)
             .FirstOrDefaultAsync(p => p.AWBNo == _inscan.AWBNo && !p.IsUsed && !p.IsDeleted);
         
@@ -765,10 +766,11 @@
         _controlAccountId = null;
         _controlAccountName = "";
         
+        await using var dbContext = await DbFactory.CreateDbContextAsync();
         if (paymentMode == PaymentMode.COD)
         {
             var controlType = ControlAccountType.CODControl;
-            var setting = await DbContext.ControlAccountSettings
+            var setting = await dbContext.ControlAccountSettings
                 .Include(s => s.AccountHead)
                 .FirstOrDefaultAsync(s => s.AccountType == controlType && !s.IsDeleted);
             if (setting?.AccountHead != null)
@@ -783,7 +785,7 @@
         }
         else if (paymentMode == PaymentMode.Prepaid)
         {
-            var setting = await DbContext.ControlAccountSettings
+            var setting = await dbContext.ControlAccountSettings
                 .Include(s => s.AccountHead)
                 .FirstOrDefaultAsync(s => s.AccountType == ControlAccountType.PrepaidControl && !s.IsDeleted);
             if (setting?.AccountHead != null)
@@ -798,7 +800,7 @@
         }
         else if (paymentMode == PaymentMode.PickupCash)
         {
-            var setting = await DbContext.ControlAccountSettings
+            var setting = await dbContext.ControlAccountSettings
                 .Include(s => s.AccountHead)
                 .FirstOrDefaultAsync(s => s.AccountType == ControlAccountType.CashAccount && !s.IsDeleted);
             if (setting?.AccountHead != null)
@@ -898,10 +900,11 @@
     {
         await LoadCurrentUser();
         
-        _customers = await DbContext.Parties.Include(p => p.Addresses).Where(p => p.PartyType == PartyType.Customer && p.IsActive && !p.IsDeleted).OrderBy(p => p.Name).ToListAsync();
-        _forwardingAgents = await DbContext.Parties.Where(p => p.PartyType == PartyType.ForwardingAgent && p.IsActive && !p.IsDeleted).OrderBy(p => p.Name).ToListAsync();
-        _cities = await DbContext.Cities.Include(c => c.Country).Include(c => c.State).Where(c => c.IsActive).OrderBy(c => c.Name).ToListAsync();
-        _shipmentModes = await DbContext.ShipmentModes.Where(s => s.IsActive && !s.IsDeleted).OrderBy(s => s.SortOrder).ToListAsync();
+        await using var dbContext = await DbFactory.CreateDbContextAsync();
+        _customers = await dbContext.Parties.Include(p => p.Addresses).Where(p => p.PartyType == PartyType.Customer && p.IsActive && !p.IsDeleted).OrderBy(p => p.Name).ToListAsync();
+        _forwardingAgents = await dbContext.Parties.Where(p => p.PartyType == PartyType.ForwardingAgent && p.IsActive && !p.IsDeleted).OrderBy(p => p.Name).ToListAsync();
+        _cities = await dbContext.Cities.Include(c => c.Country).Include(c => c.State).Where(c => c.IsActive).OrderBy(c => c.Name).ToListAsync();
+        _shipmentModes = await dbContext.ShipmentModes.Where(s => s.IsActive && !s.IsDeleted).OrderBy(s => s.SortOrder).ToListAsync();
         
         // Set default Shipment Mode to "Air" for new AWBs
         if (Id == 0 && !_inscan.ShipmentModeId.HasValue)
@@ -917,13 +920,13 @@
             }
         }
         
-        _serviceTypes = await DbContext.ServiceTypes.Where(s => s.IsActive && !s.IsDeleted).OrderBy(s => s.SortOrder).ToListAsync();
-        _airports = await DbContext.Ports.Where(p => p.PortType == PortType.Airport && p.IsActive && !p.IsDeleted).OrderBy(p => p.Name).ToListAsync();
-        _courierEmployees = await DbContext.Employees.Include(e => e.Designation).Include(e => e.Department).Where(e => e.IsActive && (e.Designation!.Name == "Courier" || e.Department!.Name == "Couriers")).OrderBy(e => e.Name).ToListAsync();
-        _operationsEmployees = await DbContext.Employees.Include(e => e.Department).Where(e => e.IsActive && e.Department!.Name == "Operations").OrderBy(e => e.Name).ToListAsync();
-        _currencies = await DbContext.Currencies.Where(c => c.IsActive && !c.IsDeleted).OrderBy(c => c.Code).ToListAsync();
+        _serviceTypes = await dbContext.ServiceTypes.Where(s => s.IsActive && !s.IsDeleted).OrderBy(s => s.SortOrder).ToListAsync();
+        _airports = await dbContext.Ports.Where(p => p.PortType == PortType.Airport && p.IsActive && !p.IsDeleted).OrderBy(p => p.Name).ToListAsync();
+        _courierEmployees = await dbContext.Employees.Include(e => e.Designation).Include(e => e.Department).Where(e => e.IsActive && (e.Designation!.Name == "Courier" || e.Department!.Name == "Couriers")).OrderBy(e => e.Name).ToListAsync();
+        _operationsEmployees = await dbContext.Employees.Include(e => e.Department).Where(e => e.IsActive && e.Department!.Name == "Operations").OrderBy(e => e.Name).ToListAsync();
+        _currencies = await dbContext.Currencies.Where(c => c.IsActive && !c.IsDeleted).OrderBy(c => c.Code).ToListAsync();
         
-        _currentBranch = await DbContext.Branches.Include(b => b.Country).FirstOrDefaultAsync(b => !b.IsDeleted && b.IsActive);
+        _currentBranch = await dbContext.Branches.Include(b => b.Country).FirstOrDefaultAsync(b => !b.IsDeleted && b.IsActive);
         if (_currentBranch != null)
         {
             _nextAWBPreview = await AWBNumberService.PreviewNextAWBNumber(_currentBranch.Id);
@@ -939,10 +942,10 @@
                 var userIdClaim = user.FindFirst("UserId")?.Value;
                 if (long.TryParse(userIdClaim, out var userId))
                 {
-                    var dbUser = await DbContext.Users.FindAsync(userId);
+                    var dbUser = await dbContext.Users.FindAsync(userId);
                     if (dbUser != null)
                     {
-                        _loggedInCustomerParty = await DbContext.Parties
+                        _loggedInCustomerParty = await dbContext.Parties
                             .Include(p => p.Addresses)
                             .FirstOrDefaultAsync(p => p.Email == dbUser.Email && p.PartyType == PartyType.Customer && !p.IsDeleted);
                     }
@@ -953,7 +956,7 @@
         if (Id > 0)
         {
             _autoGenerateAWB = false;
-            var existing = await DbContext.InscanMasters.FindAsync(Id);
+            var existing = await dbContext.InscanMasters.FindAsync(Id);
             if (existing != null)
             {
                 _inscan = existing;
@@ -1035,8 +1038,9 @@
 
     private async Task<string> GenerateFallbackAWBNo()
     {
+        await using var dbContext = await DbFactory.CreateDbContextAsync();
         var today = DateTime.Today.ToString("yyyyMMdd");
-        var count = await DbContext.InscanMasters.CountAsync(i => i.AWBNo.StartsWith(today)) + 1;
+        var count = await dbContext.InscanMasters.CountAsync(i => i.AWBNo.StartsWith(today)) + 1;
         return $"{today}{count:D4}";
     }
     
@@ -1386,6 +1390,7 @@
 
         try
         {
+            await using var dbContext = await DbFactory.CreateDbContextAsync();
             if (_transactionDate.HasValue)
             {
                 var date = _transactionDate.Value.Date;
@@ -1417,8 +1422,8 @@
                 _inscan.BarcodeImage = barcodeH;
                 _inscan.BarcodeImageVertical = barcodeV;
                 
-                DbContext.InscanMasters.Add(_inscan);
-                await DbContext.SaveChangesAsync();
+                dbContext.InscanMasters.Add(_inscan);
+                await dbContext.SaveChangesAsync();
                 
                 var pickupNoRef = _inscan.PickupRequestId.HasValue ? $" (from Pickup Request)" : "";
                 await ShipmentStatusService.SetStatus(
@@ -1428,7 +1433,7 @@
                 
                 if (_inscan.PickupRequestId.HasValue && _inscan.PickupRequestShipmentId.HasValue)
                 {
-                    var shipmentLine = await DbContext.PickupRequestShipments.FindAsync(_inscan.PickupRequestShipmentId.Value);
+                    var shipmentLine = await dbContext.PickupRequestShipments.FindAsync(_inscan.PickupRequestShipmentId.Value);
                     if (shipmentLine != null)
                     {
                         shipmentLine.AWBId = _inscan.Id;
@@ -1437,7 +1442,7 @@
                         shipmentLine.BookedAt = DateTime.UtcNow;
                     }
                     
-                    var pickupRequest = await DbContext.PickupRequests
+                    var pickupRequest = await dbContext.PickupRequests
                         .Include(p => p.Shipments)
                         .FirstOrDefaultAsync(p => p.Id == _inscan.PickupRequestId.Value);
                         
@@ -1451,7 +1456,7 @@
                         }
                     }
                     
-                    await DbContext.SaveChangesAsync();
+                    await dbContext.SaveChangesAsync();
                 }
             }
             else
@@ -1459,8 +1464,8 @@
                 _inscan.ModifiedAt = DateTime.UtcNow;
                 _inscan.ModifiedBy = _currentUserId;
                 _inscan.ModifiedByName = _currentUserName;
-                DbContext.InscanMasters.Update(_inscan);
-                await DbContext.SaveChangesAsync();
+                dbContext.InscanMasters.Update(_inscan);
+                await dbContext.SaveChangesAsync();
             }
             
             await SaveOtherCharges();
@@ -1545,7 +1550,8 @@
 
         if (result != null && !result.Canceled && result.Data is List<AWBOtherCharge> selectedCharges)
         {
-            var chargeTypes = await DbContext.OtherChargeTypes.ToListAsync();
+            await using var dbContext = await DbFactory.CreateDbContextAsync();
+            var chargeTypes = await dbContext.OtherChargeTypes.ToListAsync();
             _selectedOtherCharges = selectedCharges.Select(c => new OtherChargeSelection
             {
                 ChargeTypeId = c.OtherChargeTypeId,
@@ -1560,7 +1566,8 @@
     {
         if (Id > 0)
         {
-            var charges = await DbContext.AWBOtherCharges
+            await using var dbContext = await DbFactory.CreateDbContextAsync();
+            var charges = await dbContext.AWBOtherCharges
                 .Include(c => c.OtherChargeType)
                 .Where(c => c.InscanId == Id)
                 .ToListAsync();
@@ -1579,19 +1586,20 @@
         var inscanId = _inscan.Id;
         if (inscanId > 0)
         {
-            var existingCharges = await DbContext.AWBOtherCharges.Where(c => c.InscanId == inscanId).ToListAsync();
-            DbContext.AWBOtherCharges.RemoveRange(existingCharges);
+            await using var dbContext = await DbFactory.CreateDbContextAsync();
+            var existingCharges = await dbContext.AWBOtherCharges.Where(c => c.InscanId == inscanId).ToListAsync();
+            dbContext.AWBOtherCharges.RemoveRange(existingCharges);
 
             foreach (var charge in _selectedOtherCharges)
             {
-                DbContext.AWBOtherCharges.Add(new AWBOtherCharge
+                dbContext.AWBOtherCharges.Add(new AWBOtherCharge
                 {
                     InscanId = inscanId,
                     OtherChargeTypeId = charge.ChargeTypeId,
                     Amount = charge.Amount
                 });
             }
-            await DbContext.SaveChangesAsync();
+            await dbContext.SaveChangesAsync();
         }
     }
 

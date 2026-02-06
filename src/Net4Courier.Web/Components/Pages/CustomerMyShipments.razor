@@ -1,6 +1,6 @@
 @page "/customer/my-shipments"
 @layout CustomerLayout
-@inject ApplicationDbContext DbContext
+@inject IDbContextFactory<ApplicationDbContext> DbFactory
 @inject NavigationManager NavigationManager
 @inject Microsoft.AspNetCore.Components.Authorization.AuthenticationStateProvider AuthStateProvider
 @using Microsoft.EntityFrameworkCore
@@ -152,10 +152,11 @@
             var userIdClaim = user.FindFirst("UserId")?.Value;
             if (long.TryParse(userIdClaim, out var userId))
             {
-                var dbUser = await DbContext.Users.FindAsync(userId);
+                await using var dbContext = await DbFactory.CreateDbContextAsync();
+                var dbUser = await dbContext.Users.FindAsync(userId);
                 if (dbUser != null)
                 {
-                    var party = await DbContext.Parties
+                    var party = await dbContext.Parties
                         .FirstOrDefaultAsync(p => p.Email == dbUser.Email && !p.IsDeleted);
                     if (party != null)
                     {
@@ -175,7 +176,8 @@
         
         try
         {
-            var query = DbContext.InscanMasters
+            await using var dbContext = await DbFactory.CreateDbContextAsync();
+            var query = dbContext.InscanMasters
                 .Where(a => a.CustomerId == _customerId && !a.IsDeleted);
             
             if (!string.IsNullOrEmpty(_searchText))

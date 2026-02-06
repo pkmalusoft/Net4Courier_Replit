@@ -5,7 +5,7 @@
 @using Net4Courier.Operations.Entities
 @using Net4Courier.Kernel.Enums
 @using Net4Courier.Web.Services
-@inject ApplicationDbContext DbContext
+@inject IDbContextFactory<ApplicationDbContext> DbFactory
 @inject ISnackbar Snackbar
 @inject AuthenticationStateProvider AuthStateProvider
 
@@ -127,7 +127,8 @@
 
     private async Task CreateRTS()
     {
-        var currentStatus = await DbContext.ShipmentStatusHistories
+        await using var dbContext = await DbFactory.CreateDbContextAsync();
+        var currentStatus = await dbContext.ShipmentStatusHistories
             .Where(h => h.InscanMasterId == OriginalShipment.Id)
             .OrderByDescending(h => h.ChangedAt)
             .ThenByDescending(h => h.Id)
@@ -147,7 +148,7 @@
             return;
         }
         
-        var existingRTS = await DbContext.InscanMasters
+        var existingRTS = await dbContext.InscanMasters
             .AnyAsync(i => i.OriginalShipmentId == OriginalShipment.Id && i.IsRTS && !i.IsDeleted);
         if (existingRTS)
         {
@@ -235,8 +236,8 @@
                 rtsShipment.ChargeableWeight = Math.Max(rtsShipment.Weight ?? 0, rtsShipment.VolumetricWeight ?? 0);
             }
             
-            DbContext.InscanMasters.Add(rtsShipment);
-            await DbContext.SaveChangesAsync();
+            dbContext.InscanMasters.Add(rtsShipment);
+            await dbContext.SaveChangesAsync();
             
             await ShipmentStatusService.SetStatus(
                 rtsShipment.Id,

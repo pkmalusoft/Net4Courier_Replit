@@ -1,5 +1,5 @@
 @page "/awb-list"
-@inject ApplicationDbContext DbContext
+@inject IDbContextFactory<ApplicationDbContext> DbFactory
 @inject NavigationManager NavigationManager
 @inject IDialogService DialogService
 @inject ISnackbar Snackbar
@@ -185,6 +185,7 @@
     private async Task Search()
     {
         _loading = true;
+        await using var dbContext = await DbFactory.CreateDbContextAsync();
         var results = new List<ShipmentListItem>();
         
         var from = _fromDate.HasValue ? DateTime.SpecifyKind(_fromDate.Value, DateTimeKind.Utc) : (DateTime?)null;
@@ -192,7 +193,7 @@
         
         if (_typeFilter != ShipmentTypeFilter.Import)
         {
-            var inscanQuery = DbContext.InscanMasters.Where(i => !i.IsDeleted).AsQueryable();
+            var inscanQuery = dbContext.InscanMasters.Where(i => !i.IsDeleted).AsQueryable();
 
             if (!string.IsNullOrWhiteSpace(_searchString))
             {
@@ -234,7 +235,7 @@
         
         if (_typeFilter != ShipmentTypeFilter.Domestic && !_statusFilter.HasValue)
         {
-            var importQuery = DbContext.ImportShipments.Where(i => !i.IsDeleted).AsQueryable();
+            var importQuery = dbContext.ImportShipments.Where(i => !i.IsDeleted).AsQueryable();
 
             if (!string.IsNullOrWhiteSpace(_searchString))
             {
@@ -277,7 +278,7 @@
         var pickupIds = _shipments.Where(s => s.PickupRequestId.HasValue).Select(s => s.PickupRequestId!.Value).Distinct().ToList();
         if (pickupIds.Any())
         {
-            _pickupNoLookup = await DbContext.PickupRequests
+            _pickupNoLookup = await dbContext.PickupRequests
                 .Where(p => pickupIds.Contains(p.Id))
                 .ToDictionaryAsync(p => p.Id, p => p.PickupNo);
         }
@@ -313,7 +314,8 @@
 
     private async Task OpenStatusDialogById(long id)
     {
-        var shipment = await DbContext.InscanMasters.FindAsync(id);
+        await using var dbContext = await DbFactory.CreateDbContextAsync();
+        var shipment = await dbContext.InscanMasters.FindAsync(id);
         if (shipment == null) return;
         
         var parameters = new DialogParameters<UpdateStatusDialog> { { x => x.Shipment, shipment } };
@@ -328,7 +330,8 @@
 
     private async Task DeleteAWBById(long id)
     {
-        var shipment = await DbContext.InscanMasters.FindAsync(id);
+        await using var dbContext = await DbFactory.CreateDbContextAsync();
+        var shipment = await dbContext.InscanMasters.FindAsync(id);
         if (shipment == null) return;
         
         var confirm = await DialogService.ShowMessageBox("Confirm Delete", $"Are you sure you want to delete AWB {shipment.AWBNo}?", yesText: "Delete", cancelText: "Cancel");
@@ -336,7 +339,7 @@
         if (confirm == true)
         {
             shipment.IsDeleted = true;
-            await DbContext.SaveChangesAsync();
+            await dbContext.SaveChangesAsync();
             await Search();
             Snackbar.Add("AWB deleted successfully", Severity.Success);
         }
@@ -348,11 +351,12 @@
         
         if (confirm == true)
         {
-            var shipment = await DbContext.ImportShipments.FindAsync(item.Id);
+            await using var dbContext = await DbFactory.CreateDbContextAsync();
+            var shipment = await dbContext.ImportShipments.FindAsync(item.Id);
             if (shipment != null)
             {
                 shipment.IsDeleted = true;
-                await DbContext.SaveChangesAsync();
+                await dbContext.SaveChangesAsync();
                 await Search();
                 Snackbar.Add("Import shipment deleted successfully", Severity.Success);
             }

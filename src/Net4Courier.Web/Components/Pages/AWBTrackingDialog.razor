@@ -1,4 +1,4 @@
-@inject ApplicationDbContext DbContext
+@inject IDbContextFactory<ApplicationDbContext> DbFactory
 @inject ISnackbar Snackbar
 @inject Net4Courier.Web.Services.ShipmentStatusService ShipmentStatusService
 @using Microsoft.EntityFrameworkCore
@@ -87,7 +87,8 @@
 
     private async Task LoadTrackingHistory()
     {
-        _trackingHistory = await DbContext.AWBTrackings
+        await using var dbContext = await DbFactory.CreateDbContextAsync();
+        _trackingHistory = await dbContext.AWBTrackings
             .Where(t => t.InscanId == Shipment.Id)
             .OrderByDescending(t => t.EventDateTime)
             .ToListAsync();
@@ -107,6 +108,8 @@
 
     private async Task AddTrackingEvent()
     {
+        await using var dbContext = await DbFactory.CreateDbContextAsync();
+        
         var tracking = new AWBTracking
         {
             InscanId = Shipment.Id,
@@ -118,21 +121,27 @@
             CreatedAt = DateTime.UtcNow
         };
 
-        DbContext.AWBTrackings.Add(tracking);
+        dbContext.AWBTrackings.Add(tracking);
         
-        Shipment.CourierStatusId = _newStatus;
-        Shipment.ModifiedAt = DateTime.UtcNow;
-        
-        if (_newStatus == CourierStatus.Delivered)
+        var shipment = await dbContext.InscanMasters.FindAsync(Shipment.Id);
+        if (shipment != null)
         {
-            Shipment.DeliveredDate = DateTime.UtcNow;
-        }
-        else if (_newStatus == CourierStatus.PickedUp)
-        {
-            Shipment.PickedUpDate = DateTime.UtcNow;
+            shipment.CourierStatusId = _newStatus;
+            shipment.ModifiedAt = DateTime.UtcNow;
+            
+            if (_newStatus == CourierStatus.Delivered)
+            {
+                shipment.DeliveredDate = DateTime.UtcNow;
+            }
+            else if (_newStatus == CourierStatus.PickedUp)
+            {
+                shipment.PickedUpDate = DateTime.UtcNow;
+            }
         }
 
-        await DbContext.SaveChangesAsync();
+        await dbContext.SaveChangesAsync();
+        
+        Shipment.CourierStatusId = _newStatus;
         
         var statusCode = _newStatus switch
         {

@@ -1,6 +1,6 @@
 @page "/mawb-entry"
 @page "/mawb-entry/{Id:long}"
-@inject ApplicationDbContext DbContext
+@inject IDbContextFactory<ApplicationDbContext> DbFactory
 @inject NavigationManager NavigationManager
 @inject ISnackbar Snackbar
 @inject MAWBService MawbService
@@ -190,19 +190,20 @@
 
     protected override async Task OnInitializedAsync()
     {
-        _countries = await DbContext.Countries
+        await using var dbContext = await DbFactory.CreateDbContextAsync();
+        _countries = await dbContext.Countries
             .Where(c => c.IsActive && !c.IsDeleted)
             .OrderBy(c => c.Name)
             .ToListAsync();
 
-        _airports = await DbContext.Ports
+        _airports = await dbContext.Ports
             .Where(p => p.PortType == PortType.Airport && p.IsActive && !p.IsDeleted)
             .OrderBy(p => p.Name)
             .ToListAsync();
 
         if (_isEdit)
         {
-            var mawb = await DbContext.MasterAirwaybills.FindAsync(Id);
+            var mawb = await dbContext.MasterAirwaybills.FindAsync(Id);
             if (mawb != null)
             {
                 _mawb = mawb;
@@ -216,13 +217,12 @@
                 if (mawb.DestinationCountryId.HasValue)
                     _destinationCountry = _countries.FirstOrDefault(c => c.Id == mawb.DestinationCountryId);
                 if (mawb.OriginCityId.HasValue)
-                    _originCity = await DbContext.Cities.Include(c => c.Country).FirstOrDefaultAsync(c => c.Id == mawb.OriginCityId);
+                    _originCity = await dbContext.Cities.Include(c => c.Country).FirstOrDefaultAsync(c => c.Id == mawb.OriginCityId);
                 if (mawb.DestinationCityId.HasValue)
-                    _destinationCity = await DbContext.Cities.Include(c => c.Country).FirstOrDefaultAsync(c => c.Id == mawb.DestinationCityId);
+                    _destinationCity = await dbContext.Cities.Include(c => c.Country).FirstOrDefaultAsync(c => c.Id == mawb.DestinationCityId);
                 if (mawb.CoLoaderId.HasValue)
-                    _coLoader = await DbContext.Parties.FindAsync(mawb.CoLoaderId);
+                    _coLoader = await dbContext.Parties.FindAsync(mawb.CoLoaderId);
                     
-                // Load selected airports by code
                 if (!string.IsNullOrEmpty(mawb.OriginAirportCode))
                     _originAirport = _airports.FirstOrDefault(a => a.IATACode == mawb.OriginAirportCode);
                 if (!string.IsNullOrEmpty(mawb.DestinationAirportCode))
@@ -245,7 +245,8 @@
 
     private async Task<IEnumerable<City>> SearchOriginCities(string? value, CancellationToken cancellationToken)
     {
-        var query = DbContext.Cities.Include(c => c.Country).AsQueryable();
+        await using var dbContext = await DbFactory.CreateDbContextAsync();
+        var query = dbContext.Cities.Include(c => c.Country).AsQueryable();
         
         if (_originCountry != null)
             query = query.Where(c => c.CountryId == _originCountry.Id);
@@ -258,7 +259,8 @@
 
     private async Task<IEnumerable<City>> SearchDestinationCities(string? value, CancellationToken cancellationToken)
     {
-        var query = DbContext.Cities.Include(c => c.Country).AsQueryable();
+        await using var dbContext = await DbFactory.CreateDbContextAsync();
+        var query = dbContext.Cities.Include(c => c.Country).AsQueryable();
         
         if (_destinationCountry != null)
             query = query.Where(c => c.CountryId == _destinationCountry.Id);
@@ -271,7 +273,8 @@
 
     private async Task<IEnumerable<Party>> SearchCoLoaders(string? value, CancellationToken cancellationToken)
     {
-        var query = DbContext.Parties
+        await using var dbContext = await DbFactory.CreateDbContextAsync();
+        var query = dbContext.Parties
             .Where(p => p.PartyType == PartyType.CoLoader && p.IsActive && !p.IsDeleted);
 
         if (!string.IsNullOrWhiteSpace(value))
@@ -311,7 +314,6 @@
             _mawb.CoLoaderId = _coLoader?.Id;
             _mawb.CoLoaderName = _coLoader?.Name;
 
-            // Set airport codes from selected ports
             _mawb.OriginAirportCode = _originAirport?.IATACode;
             _mawb.DestinationAirportCode = _destinationAirport?.IATACode;
 
