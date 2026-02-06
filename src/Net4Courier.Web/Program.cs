@@ -731,6 +731,37 @@ app.MapGet("/api/report/duty-receipt/{id:long}", async (long id, bool? inline, A
     return Results.File(pdf, "application/pdf", fileName);
 });
 
+app.MapGet("/api/report/duty-receipt-by-awbno/{awbNo}", async (string awbNo, bool? inline, ApplicationDbContext db, ReportingService reportService, IWebHostEnvironment env) =>
+{
+    var shipment = await db.InscanMasters.FirstOrDefaultAsync(i => i.AWBNo == awbNo);
+    if (shipment == null)
+    {
+        var importShipment = await db.ImportShipments
+            .Include(i => i.ImportMaster)
+            .FirstOrDefaultAsync(i => i.AWBNo == awbNo);
+        if (importShipment == null) return Results.NotFound();
+        shipment = MapImportToInscanMaster(importShipment);
+        if (importShipment.ImportMaster != null)
+        {
+            shipment.BranchId = importShipment.ImportMaster.BranchId;
+            shipment.CompanyId = importShipment.ImportMaster.CompanyId;
+        }
+    }
+
+    var branch = await db.Branches.Include(b => b.Currency).FirstOrDefaultAsync(b => b.Id == shipment.BranchId);
+    var company = branch != null ? await db.Companies.Include(c => c.City).Include(c => c.Country).FirstOrDefaultAsync(c => c.Id == branch.CompanyId) : null;
+    if (company == null)
+        company = await db.Companies.Include(c => c.City).Include(c => c.Country).FirstOrDefaultAsync(c => !c.IsDeleted);
+    var currency = branch?.Currency?.Code ?? "AED";
+
+    byte[]? logoData = ResolveLogoBytes(company?.Logo, env.WebRootPath);
+
+    var companyAddress = company != null ? $"{company.Address}, {company.City?.Name}, {company.Country?.Name}" : null;
+    var pdf = reportService.GenerateDutyReceiptPdf(shipment, currency, logoData, company?.Name, companyAddress, company?.Phone, company?.Email, company?.TaxNumber, null);
+    var fileName = inline == true ? null : $"DutyReceipt-{shipment.AWBNo}.pdf";
+    return Results.File(pdf, "application/pdf", fileName);
+});
+
 app.MapGet("/api/report/receipt/{id:long}", async (long id, ApplicationDbContext db, ReportingService reportService, IWebHostEnvironment env) =>
 {
     var receipt = await db.Receipts.Include(r => r.Allocations).FirstOrDefaultAsync(r => r.Id == id);
@@ -1039,10 +1070,13 @@ static InscanMaster MapImportToInscanMaster(ImportShipment import)
         MovementTypeId = MovementType.InternationalImport,
         DocumentTypeId = import.ShipmentType == ImportShipmentType.Document ? DocumentType.Document : DocumentType.ParcelUpto30Kg,
         PaymentModeId = import.PaymentMode,
+        CustomsValue = import.DeclaredValue,
         DutyVatAmount = (import.DutyAmount ?? 0) + (import.VATAmount ?? 0),
         OtherCharge = import.OtherCharges,
         NetTotal = import.TotalCustomsCharges,
         Currency = import.Currency,
+        IsCOD = import.IsCOD,
+        CODAmount = import.CODAmount,
     };
 }
 
