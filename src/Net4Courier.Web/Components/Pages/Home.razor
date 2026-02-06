@@ -8,6 +8,7 @@
 @using Net4Courier.Operations.Entities
 @using Net4Courier.Kernel.Enums
 @using Net4Courier.Web.Services
+@using System.Linq
 
 <PageTitle>Dashboard - Net4Courier</PageTitle>
 
@@ -295,12 +296,12 @@ else
                         View All
                     </MudButton>
                 </div>
-                @if (_recentShipments.Any())
+                @if (_recentShipmentItems.Any())
                 {
-                    <MudTable Items="@_recentShipments" Hover="true" Dense="true" Elevation="0" Class="rounded-lg">
+                    <MudTable Items="@_recentShipmentItems" Hover="true" Dense="true" Elevation="0" Class="rounded-lg">
                         <HeaderContent>
                             <MudTh Style="font-weight: 600;">AWB No</MudTh>
-                            <MudTh Style="font-weight: 600;">Consignor</MudTh>
+                            <MudTh Style="font-weight: 600;">Shipper</MudTh>
                             <MudTh Style="font-weight: 600;">Destination</MudTh>
                             <MudTh Style="font-weight: 600;">Type</MudTh>
                             <MudTh Style="font-weight: 600;">Status</MudTh>
@@ -308,25 +309,25 @@ else
                         </HeaderContent>
                         <RowTemplate>
                             <MudTd DataLabel="AWB No">
-                                <MudLink Href="@($"/tracking/{context.AWBNo}")" Color="Color.Primary" Style="font-weight: 500;">
+                                <MudLink Href="@context.TrackingUrl" Color="Color.Primary" Style="font-weight: 500;">
                                     @context.AWBNo
                                 </MudLink>
                             </MudTd>
-                            <MudTd DataLabel="Consignor">
+                            <MudTd DataLabel="Shipper">
                                 <div>
-                                    <MudText Typo="Typo.body2" Style="font-weight: 500;">@context.Consignor</MudText>
-                                    <MudText Typo="Typo.caption" Color="Color.Secondary">@context.ConsignorCity</MudText>
+                                    <MudText Typo="Typo.body2" Style="font-weight: 500;">@context.ShipperName</MudText>
+                                    <MudText Typo="Typo.caption" Color="Color.Secondary">@context.ShipperCity</MudText>
                                 </div>
                             </MudTd>
-                            <MudTd DataLabel="Destination">@context.ConsigneeCity, @context.ConsigneeCountry</MudTd>
+                            <MudTd DataLabel="Destination">@context.DestinationCity, @context.DestinationCountry</MudTd>
                             <MudTd DataLabel="Type">
-                                <MudChip T="string" Color="@GetMovementTypeColor(context.MovementTypeId)" Size="Size.Small" Variant="Variant.Filled" Style="font-size: 0.7rem;">
-                                    @GetMovementTypeName(context.MovementTypeId)
+                                <MudChip T="string" Color="@context.TypeColor" Size="Size.Small" Variant="Variant.Filled" Style="font-size: 0.7rem;">
+                                    @context.TypeName
                                 </MudChip>
                             </MudTd>
                             <MudTd DataLabel="Status">
-                                <MudChip T="string" Color="@GetStatusColor(context.CourierStatusId)" Size="Size.Small" Variant="Variant.Outlined" Style="font-size: 0.7rem;">
-                                    @context.CourierStatusId.ToString()
+                                <MudChip T="string" Color="@context.StatusColor" Size="Size.Small" Variant="Variant.Outlined" Style="font-size: 0.7rem;">
+                                    @context.StatusName
                                 </MudChip>
                             </MudTd>
                             <MudTd DataLabel="Date">
@@ -406,7 +407,7 @@ else
 @code {
     private bool _isLoading = true;
     private DashboardStats _stats = new();
-    private List<InscanMaster> _recentShipments = new();
+    private List<RecentShipmentItem> _recentShipmentItems = new();
     private MudAutocomplete<SearchResult>? _searchField;
     private SearchResult? _selectedResult;
 
@@ -484,11 +485,13 @@ else
         var today = DateTime.UtcNow.Date;
         var startOfMonth = new DateTime(today.Year, today.Month, 1, 0, 0, 0, DateTimeKind.Utc);
 
-        _stats.TotalShipments = await context.InscanMasters
-            .CountAsync(s => !s.IsDeleted);
+        var inscanCount = await context.InscanMasters.CountAsync(s => !s.IsDeleted);
+        var importCount = await context.ImportShipments.CountAsync(s => !s.IsDeleted);
+        _stats.TotalShipments = inscanCount + importCount;
 
-        _stats.TodayShipments = await context.InscanMasters
-            .CountAsync(s => !s.IsDeleted && s.TransactionDate.Date == today);
+        var inscanToday = await context.InscanMasters.CountAsync(s => !s.IsDeleted && s.TransactionDate.Date == today);
+        var importToday = await context.ImportShipments.Include(s => s.ImportMaster).CountAsync(s => !s.IsDeleted && s.ImportMaster != null && s.ImportMaster.TransactionDate.Date == today);
+        _stats.TodayShipments = inscanToday + importToday;
 
         _stats.PendingDeliveries = await context.InscanMasters
             .CountAsync(s => !s.IsDeleted && s.CourierStatusId == CourierStatus.Pending);
@@ -525,18 +528,67 @@ else
         _stats.ExportShipments = await context.InscanMasters
             .CountAsync(s => !s.IsDeleted && s.MovementTypeId == MovementType.InternationalExport);
 
-        _stats.ImportShipments = await context.InscanMasters
+        var inscanImportCount = await context.InscanMasters
             .CountAsync(s => !s.IsDeleted && s.MovementTypeId == MovementType.InternationalImport);
+        _stats.ImportShipments = inscanImportCount + importCount;
 
         _stats.TranshipmentShipments = await context.InscanMasters
             .CountAsync(s => !s.IsDeleted && s.MovementTypeId == MovementType.Transhipment);
 
-        _recentShipments = await context.InscanMasters
+        var recentInscanRaw = await context.InscanMasters
             .Where(s => !s.IsDeleted)
             .OrderByDescending(s => s.TransactionDate)
             .ThenByDescending(s => s.Id)
             .Take(10)
+            .Select(s => new { s.AWBNo, s.Consignor, s.ConsignorCity, s.ConsigneeCity, s.ConsigneeCountry, s.MovementTypeId, s.CourierStatusId, s.TransactionDate })
             .ToListAsync();
+
+        var recentInscan = recentInscanRaw.Select(s => new RecentShipmentItem
+        {
+            AWBNo = s.AWBNo,
+            ShipperName = s.Consignor ?? "-",
+            ShipperCity = s.ConsignorCity ?? "-",
+            DestinationCity = s.ConsigneeCity ?? "-",
+            DestinationCountry = s.ConsigneeCountry ?? "-",
+            TypeName = GetMovementTypeName(s.MovementTypeId),
+            TypeColor = GetMovementTypeColor(s.MovementTypeId),
+            StatusName = s.CourierStatusId.ToString(),
+            StatusColor = GetStatusColor(s.CourierStatusId),
+            TransactionDate = s.TransactionDate,
+            TrackingUrl = $"/tracking/{s.AWBNo}",
+            IsImport = false
+        }).ToList();
+
+        var recentImportRaw = await context.ImportShipments
+            .Include(s => s.ImportMaster)
+            .Where(s => !s.IsDeleted)
+            .OrderByDescending(s => s.ImportMaster!.TransactionDate)
+            .ThenByDescending(s => s.Id)
+            .Take(10)
+            .Select(s => new { s.AWBNo, s.ShipperName, s.ShipperCity, s.ConsigneeCity, s.ConsigneeCountry, s.Status, s.ImportMasterId, TransactionDate = s.ImportMaster != null ? s.ImportMaster.TransactionDate : s.CreatedAt })
+            .ToListAsync();
+
+        var recentImport = recentImportRaw.Select(s => new RecentShipmentItem
+        {
+            AWBNo = s.AWBNo,
+            ShipperName = s.ShipperName ?? "-",
+            ShipperCity = s.ShipperCity ?? "-",
+            DestinationCity = s.ConsigneeCity ?? "-",
+            DestinationCountry = s.ConsigneeCountry ?? "-",
+            TypeName = "Import",
+            TypeColor = Color.Info,
+            StatusName = s.Status.ToString(),
+            StatusColor = GetImportStatusColor(s.Status),
+            TransactionDate = s.TransactionDate,
+            TrackingUrl = $"/import-customs/{s.ImportMasterId}",
+            IsImport = true
+        }).ToList();
+
+        _recentShipmentItems = recentInscan
+            .Concat(recentImport)
+            .OrderByDescending(s => s.TransactionDate)
+            .Take(10)
+            .ToList();
     }
 
     private string FormatCurrency(decimal amount)
@@ -549,7 +601,7 @@ else
         return $"{code} {amount:N0}";
     }
 
-    private Color GetStatusColor(CourierStatus status) => status switch
+    private static Color GetStatusColor(CourierStatus status) => status switch
     {
         CourierStatus.Delivered => Color.Success,
         CourierStatus.InTransit => Color.Primary,
@@ -559,7 +611,17 @@ else
         _ => Color.Default
     };
 
-    private Color GetMovementTypeColor(MovementType type) => type switch
+    private static Color GetImportStatusColor(ImportShipmentStatus status) => status switch
+    {
+        ImportShipmentStatus.Cleared or ImportShipmentStatus.Released or ImportShipmentStatus.HandedOver => Color.Success,
+        ImportShipmentStatus.Inscanned or ImportShipmentStatus.ReceivedAtWarehouse => Color.Info,
+        ImportShipmentStatus.PendingCustoms or ImportShipmentStatus.AwaitingDocuments => Color.Warning,
+        ImportShipmentStatus.CustomsHold or ImportShipmentStatus.UnderExamination or ImportShipmentStatus.OnHold => Color.Error,
+        ImportShipmentStatus.Expected => Color.Default,
+        _ => Color.Default
+    };
+
+    private static Color GetMovementTypeColor(MovementType type) => type switch
     {
         MovementType.Domestic => Color.Primary,
         MovementType.InternationalExport => Color.Success,
@@ -568,7 +630,7 @@ else
         _ => Color.Default
     };
 
-    private string GetMovementTypeName(MovementType type) => type switch
+    private static string GetMovementTypeName(MovementType type) => type switch
     {
         MovementType.Domestic => "Domestic",
         MovementType.InternationalExport => "Export",
@@ -586,6 +648,22 @@ else
             CloseOnEscapeKey = true
         };
         await DialogService.ShowAsync<ReportsDialog>("Reports", options);
+    }
+
+    private class RecentShipmentItem
+    {
+        public string AWBNo { get; set; } = "";
+        public string ShipperName { get; set; } = "";
+        public string ShipperCity { get; set; } = "";
+        public string DestinationCity { get; set; } = "";
+        public string DestinationCountry { get; set; } = "";
+        public string TypeName { get; set; } = "";
+        public Color TypeColor { get; set; }
+        public string StatusName { get; set; } = "";
+        public Color StatusColor { get; set; }
+        public DateTime TransactionDate { get; set; }
+        public string TrackingUrl { get; set; } = "";
+        public bool IsImport { get; set; }
     }
 
     private class DashboardStats
