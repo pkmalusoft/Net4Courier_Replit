@@ -340,6 +340,44 @@ app.Use(async (context, next) =>
 
 app.MapGet("/health", () => Results.Ok("Healthy"));
 
+app.MapGet("/api/company-logo", async (ApplicationDbContext db, IWebHostEnvironment env) =>
+{
+    try
+    {
+        var company = await db.Companies.FirstOrDefaultAsync();
+        if (company?.Logo != null && !string.IsNullOrEmpty(company.Logo))
+        {
+            var logoPath = Path.Combine(env.WebRootPath, company.Logo.TrimStart('/'));
+            if (File.Exists(logoPath))
+            {
+                var ext = Path.GetExtension(logoPath).ToLower();
+                var contentType = ext switch
+                {
+                    ".png" => "image/png",
+                    ".jpg" or ".jpeg" => "image/jpeg",
+                    ".gif" => "image/gif",
+                    ".svg" => "image/svg+xml",
+                    ".webp" => "image/webp",
+                    _ => "image/png"
+                };
+                var bytes = await File.ReadAllBytesAsync(logoPath);
+                return Results.File(bytes, contentType);
+            }
+        }
+        var fallbackPath = Path.Combine(env.WebRootPath, "images", "logo.png");
+        if (File.Exists(fallbackPath))
+        {
+            var fallbackBytes = await File.ReadAllBytesAsync(fallbackPath);
+            return Results.File(fallbackBytes, "image/png");
+        }
+        return Results.NotFound();
+    }
+    catch
+    {
+        return Results.NotFound();
+    }
+});
+
 app.MapGet("/api/diagnostics", (IWebHostEnvironment env) => 
 {
     var webRootExists = Directory.Exists(env.WebRootPath);
