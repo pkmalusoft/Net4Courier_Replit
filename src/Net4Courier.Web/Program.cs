@@ -355,8 +355,15 @@ app.MapGet("/api/company-logo", async (ApplicationDbContext db, IWebHostEnvironm
                     var header = dataUriParts[0];
                     var base64Data = dataUriParts[1];
                     var contentType = header.Replace("data:", "").Replace(";base64", "");
-                    var bytes = Convert.FromBase64String(base64Data);
-                    return Results.File(bytes, contentType);
+                    try
+                    {
+                        var bytes = Convert.FromBase64String(base64Data);
+                        return Results.File(bytes, contentType);
+                    }
+                    catch (FormatException)
+                    {
+                        return Results.NotFound("Logo data is corrupted");
+                    }
                 }
             }
             else
@@ -446,6 +453,40 @@ app.MapGet("/api/report/awb-label/{id:long}", async (long id, bool? inline, Appl
     catch (Exception ex)
     {
         logger.LogError(ex, "Error generating AWB label for ID {Id}", id);
+        return Results.Problem($"Error generating AWB label: {ex.Message}");
+    }
+});
+
+app.MapGet("/api/report/awb-by-awbno/{awbNo}", async (string awbNo, bool? inline, ApplicationDbContext db, AWBPrintService printService, ILogger<Program> logger) =>
+{
+    try
+    {
+        var awb = await db.InscanMasters.FirstOrDefaultAsync(i => i.AWBNo == awbNo);
+        if (awb == null) return Results.NotFound("AWB not found");
+        var pdf = printService.GenerateA5AWB(awb);
+        var fileName = inline == true ? null : $"AWB-{awb.AWBNo}.pdf";
+        return Results.File(pdf, "application/pdf", fileName);
+    }
+    catch (Exception ex)
+    {
+        logger.LogError(ex, "Error generating AWB print for AWBNo {AWBNo}", awbNo);
+        return Results.Problem($"Error generating AWB print: {ex.Message}");
+    }
+});
+
+app.MapGet("/api/report/awb-label-by-awbno/{awbNo}", async (string awbNo, bool? inline, ApplicationDbContext db, AWBPrintService printService, ILogger<Program> logger) =>
+{
+    try
+    {
+        var awb = await db.InscanMasters.FirstOrDefaultAsync(i => i.AWBNo == awbNo);
+        if (awb == null) return Results.NotFound("AWB not found");
+        var pdf = printService.GenerateLabel(awb);
+        var fileName = inline == true ? null : $"Label-{awb.AWBNo}.pdf";
+        return Results.File(pdf, "application/pdf", fileName);
+    }
+    catch (Exception ex)
+    {
+        logger.LogError(ex, "Error generating AWB label for AWBNo {AWBNo}", awbNo);
         return Results.Problem($"Error generating AWB label: {ex.Message}");
     }
 });
@@ -2465,6 +2506,48 @@ public class DatabaseInitializationService : BackgroundService
                     await dbContext.SaveChangesAsync(stoppingToken);
                     _logger.LogInformation("Seeded Import Masters");
                 }
+            }
+
+            try
+            {
+                var env = scope.ServiceProvider.GetRequiredService<IWebHostEnvironment>();
+                var companies = await dbContext.Companies.ToListAsync(stoppingToken);
+                foreach (var company in companies)
+                {
+                    if (!string.IsNullOrEmpty(company.Logo) && !company.Logo.StartsWith("data:"))
+                    {
+                        var logoPath = Path.Combine(env.WebRootPath, company.Logo.TrimStart('/'));
+                        if (File.Exists(logoPath))
+                        {
+                            var bytes = await File.ReadAllBytesAsync(logoPath, stoppingToken);
+                            var ext = Path.GetExtension(logoPath).ToLower();
+                            var contentType = ext switch
+                            {
+                                ".png" => "image/png",
+                                ".jpg" or ".jpeg" => "image/jpeg",
+                                ".gif" => "image/gif",
+                                ".svg" => "image/svg+xml",
+                                _ => "image/png"
+                            };
+                            company.Logo = $"data:{contentType};base64,{Convert.ToBase64String(bytes)}";
+                            _logger.LogInformation("Migrated company '{Name}' logo from file path to database storage", company.Name);
+                        }
+                        else
+                        {
+                            _logger.LogWarning("Company '{Name}' logo file not found at '{Path}', clearing logo reference", company.Name, logoPath);
+                            company.Logo = null;
+                        }
+                    }
+                }
+                if (dbContext.ChangeTracker.HasChanges())
+                {
+                    await dbContext.SaveChangesAsync(stoppingToken);
+                    _logger.LogInformation("Company logo migration completed");
+                }
+            }
+            catch (Exception logoEx)
+            {
+                _logger.LogWarning(logoEx, "Company logo migration encountered an issue");
             }
 
             _logger.LogInformation("Database initialization completed successfully");

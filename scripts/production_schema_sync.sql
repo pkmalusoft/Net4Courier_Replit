@@ -489,5 +489,41 @@ CREATE INDEX IF NOT EXISTS "IX_ShipmentStatusHistories_StatusId" ON "ShipmentSta
 CREATE INDEX IF NOT EXISTS "IX_ImportShipments_AWBNo" ON "ImportShipments"("AWBNo");
 CREATE INDEX IF NOT EXISTS "IX_ImportShipments_ImportMasterId" ON "ImportShipments"("ImportMasterId");
 
+-- ============================================
+-- Companies (Company Master Table)
+-- ============================================
+ALTER TABLE "Companies" ADD COLUMN IF NOT EXISTS "Name" VARCHAR(200);
+ALTER TABLE "Companies" ADD COLUMN IF NOT EXISTS "Code" VARCHAR(50);
+ALTER TABLE "Companies" ADD COLUMN IF NOT EXISTS "Address" TEXT;
+ALTER TABLE "Companies" ADD COLUMN IF NOT EXISTS "PostalCode" VARCHAR(20);
+ALTER TABLE "Companies" ADD COLUMN IF NOT EXISTS "Phone" VARCHAR(50);
+ALTER TABLE "Companies" ADD COLUMN IF NOT EXISTS "Email" VARCHAR(200);
+ALTER TABLE "Companies" ADD COLUMN IF NOT EXISTS "Website" VARCHAR(200);
+ALTER TABLE "Companies" ADD COLUMN IF NOT EXISTS "TaxNumber" VARCHAR(100);
+ALTER TABLE "Companies" ADD COLUMN IF NOT EXISTS "RegistrationNumber" VARCHAR(100);
+ALTER TABLE "Companies" ADD COLUMN IF NOT EXISTS "Logo" TEXT;
+ALTER TABLE "Companies" ADD COLUMN IF NOT EXISTS "ContactPerson" VARCHAR(200);
+ALTER TABLE "Companies" ADD COLUMN IF NOT EXISTS "ContactPersonPhone" VARCHAR(50);
+ALTER TABLE "Companies" ADD COLUMN IF NOT EXISTS "ContactPersonEmail" VARCHAR(200);
+ALTER TABLE "Companies" ADD COLUMN IF NOT EXISTS "SubscriptionStartDate" TIMESTAMP WITH TIME ZONE;
+ALTER TABLE "Companies" ADD COLUMN IF NOT EXISTS "SubscriptionEndDate" TIMESTAMP WITH TIME ZONE;
+ALTER TABLE "Companies" ADD COLUMN IF NOT EXISTS "SubscriptionPlan" VARCHAR(100);
+ALTER TABLE "Companies" ADD COLUMN IF NOT EXISTS "CountryId" BIGINT;
+ALTER TABLE "Companies" ADD COLUMN IF NOT EXISTS "StateId" BIGINT;
+ALTER TABLE "Companies" ADD COLUMN IF NOT EXISTS "CityId" BIGINT;
+ALTER TABLE "Companies" ADD COLUMN IF NOT EXISTS "CurrencyId" BIGINT;
+ALTER TABLE "Companies" ADD COLUMN IF NOT EXISTS "UseAwbStockManagement" BOOLEAN DEFAULT TRUE;
+ALTER TABLE "Companies" ADD COLUMN IF NOT EXISTS "InvoiceTermsAndConditions" TEXT;
+ALTER TABLE "Companies" ADD COLUMN IF NOT EXISTS "BankAccountTitle" VARCHAR(200);
+ALTER TABLE "Companies" ADD COLUMN IF NOT EXISTS "BankAccountTitleArabic" VARCHAR(200);
+ALTER TABLE "Companies" ADD COLUMN IF NOT EXISTS "BankAccountNumber" VARCHAR(100);
+ALTER TABLE "Companies" ADD COLUMN IF NOT EXISTS "BankIBANNumber" VARCHAR(100);
+ALTER TABLE "Companies" ADD COLUMN IF NOT EXISTS "BankAccountType" VARCHAR(50);
+ALTER TABLE "Companies" ADD COLUMN IF NOT EXISTS "BankAccountTypeArabic" VARCHAR(100);
+ALTER TABLE "Companies" ADD COLUMN IF NOT EXISTS "BankCurrency" VARCHAR(20);
+ALTER TABLE "Companies" ADD COLUMN IF NOT EXISTS "BankSWIFTCode" VARCHAR(50);
+ALTER TABLE "Companies" ADD COLUMN IF NOT EXISTS "BankName" VARCHAR(200);
+ALTER TABLE "Companies" ADD COLUMN IF NOT EXISTS "BankNameArabic" VARCHAR(200);
+
 -- Done! All columns should now be present.
 SELECT 'Production schema sync completed successfully!' AS result;
