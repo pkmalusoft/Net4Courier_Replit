@@ -87,16 +87,6 @@ public class AWBPrintService
                     barcodeCol.Item().AlignCenter().Height(40).Image(shipment.BarcodeImage);
                 }
                 barcodeCol.Item().AlignCenter().Text($"*{shipment.AWBNo}*").FontSize(8);
-
-                var dutyVat = shipment.DutyVatAmount ?? 0;
-                var cod = shipment.CODAmount ?? 0;
-                var total = dutyVat + cod;
-                barcodeCol.Item().PaddingTop(2).Column(chargesCol =>
-                {
-                    chargesCol.Item().Text($"DUTY /VAT : {(dutyVat > 0 ? dutyVat.ToString("N2") : "")}").FontSize(7).FontColor(Colors.Red.Darken2);
-                    chargesCol.Item().Text($"COD : {(cod > 0 ? cod.ToString("N2") : "")}").FontSize(7).FontColor(Colors.Red.Darken2);
-                    chargesCol.Item().Text($"TOTAL AMOUNT: {(total > 0 ? total.ToString("N2") : "")}").Bold().FontSize(7).FontColor(Colors.Red.Darken2);
-                });
             });
         });
     }
@@ -298,8 +288,12 @@ public class AWBPrintService
                 
                 serviceCol.Item().BorderTop(1).Padding(3).Column(c =>
                 {
-                    c.Item().Text("SVC CODE").FontSize(6);
-                    c.Item().AlignCenter().Text("---").FontSize(10);
+                    var dutyVat = shipment.DutyVatAmount ?? 0;
+                    var cod = shipment.CODAmount ?? 0;
+                    var total = dutyVat + cod;
+                    c.Item().Text($"DUTY /VAT : {(dutyVat > 0 ? dutyVat.ToString("N2") : "")}").FontSize(7).FontColor(Colors.Red.Darken2);
+                    c.Item().Text($"COD : {(cod > 0 ? cod.ToString("N2") : "")}").FontSize(7).FontColor(Colors.Red.Darken2);
+                    c.Item().Text($"TOTAL AMOUNT: {(total > 0 ? total.ToString("N2") : "")}").Bold().FontSize(7).FontColor(Colors.Red.Darken2);
                 });
                 
                 serviceCol.Item().BorderTop(1).Padding(3).Column(c =>
