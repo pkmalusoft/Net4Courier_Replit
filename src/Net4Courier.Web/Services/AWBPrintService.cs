@@ -9,22 +9,20 @@ namespace Net4Courier.Web.Services;
 
 public class AWBPrintService
 {
-    private readonly byte[]? _logoData;
+    private byte[]? _logoData;
 
-    public AWBPrintService(IWebHostEnvironment? env = null)
+    public AWBPrintService()
     {
-        if (env != null)
-        {
-            var logoPath = Path.Combine(env.WebRootPath, "images", "gatex-logo.png");
-            if (File.Exists(logoPath))
-            {
-                _logoData = File.ReadAllBytes(logoPath);
-            }
-        }
     }
 
-    public byte[] GenerateA5AWB(InscanMaster shipment, string? companyName = null)
+    public void SetLogoData(byte[]? logoData)
     {
+        _logoData = logoData;
+    }
+
+    public byte[] GenerateA5AWB(InscanMaster shipment, string? companyName = null, byte[]? logoData = null)
+    {
+        var effectiveLogo = logoData ?? _logoData;
         var document = Document.Create(container =>
         {
             container.Page(page =>
@@ -37,7 +35,7 @@ public class AWBPrintService
                 {
                     column.Spacing(3);
                     
-                    BuildHeader(column, shipment, companyName ?? "Net4Courier");
+                    BuildHeader(column, shipment, companyName ?? "Net4Courier", effectiveLogo);
                     BuildShipperSection(column, shipment);
                     BuildReceiverSection(column, shipment);
                     BuildShipmentInfoSection(column, shipment);
@@ -50,15 +48,16 @@ public class AWBPrintService
         return document.GeneratePdf();
     }
 
-    private void BuildHeader(ColumnDescriptor column, InscanMaster shipment, string companyName)
+    private void BuildHeader(ColumnDescriptor column, InscanMaster shipment, string companyName, byte[]? logoData = null)
     {
+        var effectiveLogo = logoData ?? _logoData;
         column.Item().Border(1).Row(row =>
         {
             row.RelativeItem(2).Padding(5).Column(headerCol =>
             {
-                if (_logoData != null)
+                if (effectiveLogo != null)
                 {
-                    headerCol.Item().Height(35).Image(_logoData).FitHeight();
+                    headerCol.Item().Height(35).Image(effectiveLogo).FitHeight();
                 }
                 else
                 {
@@ -426,8 +425,9 @@ public class AWBPrintService
         });
     }
 
-    public byte[] GenerateLabel(InscanMaster shipment, string? companyName = null)
+    public byte[] GenerateLabel(InscanMaster shipment, string? companyName = null, byte[]? logoData = null)
     {
+        var effectiveLogo = logoData ?? _logoData;
         var document = Document.Create(container =>
         {
             container.Page(page =>
@@ -442,8 +442,8 @@ public class AWBPrintService
                     {
                         column.Spacing(0);
                         
-                        BuildGateexHeader(column, shipment, companyName ?? "Net4Courier");
-                        BuildGateexOriginDest(column, shipment);
+                        BuildGateexHeader(column, shipment, companyName ?? "Net4Courier", effectiveLogo);
+                        BuildGateexOriginDest(column, shipment, effectiveLogo);
                         BuildGateexService(column, shipment);
                         BuildGateexWeight(column, shipment);
                         BuildGateexShipper(column, shipment);
@@ -472,15 +472,16 @@ public class AWBPrintService
         return "---";
     }
 
-    private void BuildGateexHeader(ColumnDescriptor column, InscanMaster shipment, string companyName)
+    private void BuildGateexHeader(ColumnDescriptor column, InscanMaster shipment, string companyName, byte[]? logoData = null)
     {
+        var effectiveLogo = logoData ?? _logoData;
         column.Item().Row(row =>
         {
             row.RelativeItem(1).Padding(2).Column(c =>
             {
-                if (_logoData != null)
+                if (effectiveLogo != null)
                 {
-                    c.Item().MaxHeight(18).Image(_logoData).FitArea();
+                    c.Item().MaxHeight(18).Image(effectiveLogo).FitArea();
                 }
                 else
                 {
@@ -505,8 +506,9 @@ public class AWBPrintService
         });
     }
 
-    private void BuildGateexOriginDest(ColumnDescriptor column, InscanMaster shipment)
+    private void BuildGateexOriginDest(ColumnDescriptor column, InscanMaster shipment, byte[]? logoData = null)
     {
+        var effectiveLogo = logoData ?? _logoData;
         column.Item().BorderTop(1).Row(row =>
         {
             row.RelativeItem(1).Padding(2).Column(c =>
@@ -536,9 +538,9 @@ public class AWBPrintService
             
             row.RelativeItem(1).BorderLeft(1).Padding(2).AlignCenter().Column(c =>
             {
-                if (_logoData != null)
+                if (effectiveLogo != null)
                 {
-                    c.Item().MaxHeight(20).Image(_logoData).FitArea();
+                    c.Item().MaxHeight(20).Image(effectiveLogo).FitArea();
                 }
             });
         });
@@ -726,15 +728,16 @@ public class AWBPrintService
         }
     }
 
-    private void BuildLabelHeader(ColumnDescriptor column, InscanMaster shipment, string companyName)
+    private void BuildLabelHeader(ColumnDescriptor column, InscanMaster shipment, string companyName, byte[]? logoData = null)
     {
+        var effectiveLogo = logoData ?? _logoData;
         column.Item().Row(row =>
         {
             row.RelativeItem(1).Padding(3).Column(c =>
             {
-                if (_logoData != null)
+                if (effectiveLogo != null)
                 {
-                    c.Item().Height(25).Image(_logoData).FitHeight();
+                    c.Item().Height(25).Image(effectiveLogo).FitHeight();
                 }
                 else
                 {

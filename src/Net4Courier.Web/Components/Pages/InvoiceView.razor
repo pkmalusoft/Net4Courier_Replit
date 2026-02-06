@@ -341,20 +341,26 @@ else
             var companyName = company?.Name ?? "Net4Courier";
             var companyEmail = company?.Email ?? "noreply@net4courier.com";
 
-            // Load company logo for PDF (same logic as download API)
             byte[]? logoData = null;
             if (!string.IsNullOrEmpty(company?.Logo))
             {
                 try
                 {
-                    var logoPath = company.Logo.TrimStart('/');
-                    var fullPath = Path.Combine(Environment.WebRootPath ?? Environment.ContentRootPath, logoPath);
-                    if (File.Exists(fullPath))
+                    if (company.Logo.StartsWith("data:"))
                     {
-                        logoData = await File.ReadAllBytesAsync(fullPath);
+                        var parts = company.Logo.Split(',', 2);
+                        if (parts.Length == 2)
+                            logoData = Convert.FromBase64String(parts[1]);
+                    }
+                    else
+                    {
+                        var logoPath = company.Logo.TrimStart('/');
+                        var fullPath = Path.Combine(Environment.WebRootPath ?? Environment.ContentRootPath, logoPath);
+                        if (File.Exists(fullPath))
+                            logoData = await File.ReadAllBytesAsync(fullPath);
                     }
                 }
-                catch { /* Logo loading failed, continue without logo */ }
+                catch { }
             }
 
             // Get shipment for commercial invoice format (same logic as download API)
@@ -381,7 +387,7 @@ else
             }
             else
             {
-                pdfBytes = ReportingService.GenerateInvoicePdf(_invoice);
+                pdfBytes = ReportingService.GenerateInvoicePdf(_invoice, logoData, companyName);
             }
 
             var subject = $"Invoice {_invoice.InvoiceNo} from {companyName}";

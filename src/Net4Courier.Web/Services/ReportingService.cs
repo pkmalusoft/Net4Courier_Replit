@@ -18,7 +18,7 @@ public class ReportingService
         _context = context;
     }
 
-    public byte[] GenerateAWBLabel(InscanMaster awb)
+    public byte[] GenerateAWBLabel(InscanMaster awb, byte[]? logoData = null, string? companyName = null)
     {
         var document = Document.Create(container =>
         {
@@ -32,7 +32,14 @@ public class ReportingService
                 {
                     col.Item().Border(1).Padding(5).Column(inner =>
                     {
-                        inner.Item().Text("Net4Courier").Bold().FontSize(14).AlignCenter();
+                        if (logoData != null)
+                        {
+                            inner.Item().AlignCenter().Height(30).Image(logoData).FitHeight();
+                        }
+                        else
+                        {
+                            inner.Item().Text(companyName ?? "Net4Courier").Bold().FontSize(14).AlignCenter();
+                        }
                         inner.Item().Text("Tracking Label").FontSize(8).AlignCenter();
                         inner.Item().PaddingVertical(5).LineHorizontal(1);
                         
@@ -96,7 +103,7 @@ public class ReportingService
         return document.GeneratePdf();
     }
 
-    public byte[] GenerateInvoicePdf(Invoice invoice)
+    public byte[] GenerateInvoicePdf(Invoice invoice, byte[]? logoData = null, string? companyName = null)
     {
         var document = Document.Create(container =>
         {
@@ -112,7 +119,14 @@ public class ReportingService
                     {
                         row.RelativeItem().Column(c =>
                         {
-                            c.Item().Text("Net4Courier").Bold().FontSize(18);
+                            if (logoData != null)
+                            {
+                                c.Item().Height(40).Image(logoData).FitHeight();
+                            }
+                            else
+                            {
+                                c.Item().Text(companyName ?? "Net4Courier").Bold().FontSize(18);
+                            }
                             c.Item().Text("Courier & Logistics Services").FontSize(10);
                         });
                         row.RelativeItem().AlignRight().Column(c =>
@@ -564,7 +578,7 @@ public class ReportingService
         return document.GeneratePdf();
     }
 
-    public byte[] GenerateReceiptPdf(Receipt receipt)
+    public byte[] GenerateReceiptPdf(Receipt receipt, byte[]? logoData = null, string? companyName = null)
     {
         var document = Document.Create(container =>
         {
@@ -576,7 +590,14 @@ public class ReportingService
 
                 page.Content().Column(col =>
                 {
-                    col.Item().AlignCenter().Text("Net4Courier").Bold().FontSize(16);
+                    if (logoData != null)
+                    {
+                        col.Item().AlignCenter().Height(40).Image(logoData).FitHeight();
+                    }
+                    else
+                    {
+                        col.Item().AlignCenter().Text(companyName ?? "Net4Courier").Bold().FontSize(16);
+                    }
                     col.Item().AlignCenter().Text("RECEIPT").Bold().FontSize(14);
                     col.Item().PaddingVertical(10).LineHorizontal(1);
 
@@ -633,7 +654,7 @@ public class ReportingService
         return document.GeneratePdf();
     }
 
-    public async Task<byte[]> GenerateMAWBManifest(long mawbId)
+    public async Task<byte[]> GenerateMAWBManifest(long mawbId, byte[]? logoData = null, string? companyName = null)
     {
         var mawb = await _context.MasterAirwaybills
             .Include(m => m.Bags)
@@ -832,7 +853,7 @@ public class ReportingService
         return document.GeneratePdf();
     }
 
-    public byte[] GenerateAirWaybillPdf(InscanMaster awb)
+    public byte[] GenerateAirWaybillPdf(InscanMaster awb, byte[]? logoData = null, string? companyName = null)
     {
         var document = Document.Create(container =>
         {
@@ -848,7 +869,7 @@ public class ReportingService
                     {
                         main.Item().Background("#1976D2").Padding(5).Row(row =>
                         {
-                            row.RelativeItem().Text("Net4Courier").Bold().FontSize(14).FontColor(Colors.White);
+                            row.RelativeItem().Text(companyName ?? "Net4Courier").Bold().FontSize(14).FontColor(Colors.White);
                             row.ConstantItem(100).AlignRight().Text("AIR WAYBILL").Bold().FontSize(12).FontColor(Colors.White);
                         });
 
@@ -1027,7 +1048,7 @@ public class ReportingService
         return document.GeneratePdf();
     }
 
-    public byte[] GenerateManifestLabel(InscanMaster awb, string? bagNo = null, string? mawbNo = null)
+    public byte[] GenerateManifestLabel(InscanMaster awb, string? bagNo = null, string? mawbNo = null, byte[]? logoData = null, string? companyName = null)
     {
         var document = Document.Create(container =>
         {
@@ -1041,7 +1062,7 @@ public class ReportingService
                 {
                     col.Item().Background("#1976D2").Padding(6).Row(row =>
                     {
-                        row.RelativeItem().Text("Net4Courier").Bold().FontSize(12).FontColor(Colors.White);
+                        row.RelativeItem().Text(companyName ?? "Net4Courier").Bold().FontSize(12).FontColor(Colors.White);
                         row.ConstantItem(80).AlignRight().Text("MANIFEST LABEL").FontSize(8).FontColor(Colors.White);
                     });
 
@@ -1119,7 +1140,7 @@ public class ReportingService
         return document.GeneratePdf();
     }
 
-    public async Task<byte[]> GenerateExportManifest(long mawbId)
+    public async Task<byte[]> GenerateExportManifest(long mawbId, byte[]? logoData = null, string? companyName = null)
     {
         var mawb = await _context.MasterAirwaybills
             .Include(m => m.Bags)
@@ -1150,7 +1171,7 @@ public class ReportingService
                         row.RelativeItem().Column(c =>
                         {
                             c.Item().Text("EXPORT MANIFEST").Bold().FontSize(18);
-                            c.Item().Text("Net4Courier - International Shipments").FontSize(10);
+                            c.Item().Text($"{companyName ?? "Net4Courier"} - International Shipments").FontSize(10);
                         });
                         row.ConstantItem(200).AlignRight().Column(c =>
                         {
@@ -1299,7 +1320,7 @@ public class ReportingService
         return document.GeneratePdf();
     }
 
-    public async Task<byte[]> GenerateDomesticManifest(long mawbId)
+    public async Task<byte[]> GenerateDomesticManifest(long mawbId, byte[]? logoData = null, string? companyName = null)
     {
         var mawb = await _context.MasterAirwaybills
             .Include(m => m.Bags)
@@ -1330,7 +1351,7 @@ public class ReportingService
                         row.RelativeItem().Column(c =>
                         {
                             c.Item().Text("DOMESTIC MANIFEST").Bold().FontSize(16);
-                            c.Item().Text("Net4Courier - Local Shipments").FontSize(10);
+                            c.Item().Text($"{companyName ?? "Net4Courier"} - Local Shipments").FontSize(10);
                         });
                         row.ConstantItem(150).AlignRight().Column(c =>
                         {
@@ -1463,7 +1484,7 @@ public class ReportingService
         return document.GeneratePdf();
     }
 
-    public async Task<byte[]> GenerateManifestLabels(long mawbId)
+    public async Task<byte[]> GenerateManifestLabels(long mawbId, byte[]? logoData = null, string? companyName = null)
     {
         var mawb = await _context.MasterAirwaybills.FindAsync(mawbId);
         if (mawb == null)
@@ -1492,7 +1513,7 @@ public class ReportingService
                     {
                         col.Item().Background("#1976D2").Padding(6).Row(row =>
                         {
-                            row.RelativeItem().Text("Net4Courier").Bold().FontSize(12).FontColor(Colors.White);
+                            row.RelativeItem().Text(companyName ?? "Net4Courier").Bold().FontSize(12).FontColor(Colors.White);
                             row.ConstantItem(80).AlignRight().Text("MANIFEST LABEL").FontSize(8).FontColor(Colors.White);
                         });
 
@@ -1820,7 +1841,7 @@ public class ReportingService
         return document.GeneratePdf();
     }
 
-    public byte[] GenerateCashReceiptPdf(CourierCashSubmission submission, DRS? drs, string companyName)
+    public byte[] GenerateCashReceiptPdf(CourierCashSubmission submission, DRS? drs, string companyName, byte[]? logoData = null)
     {
         var document = Document.Create(container =>
         {
@@ -1836,7 +1857,14 @@ public class ReportingService
                     {
                         row.RelativeItem().Column(c =>
                         {
-                            c.Item().Text(companyName).Bold().FontSize(16);
+                            if (logoData != null)
+                            {
+                                c.Item().Height(40).Image(logoData).FitHeight();
+                            }
+                            else
+                            {
+                                c.Item().Text(companyName).Bold().FontSize(16);
+                            }
                             c.Item().Text("Courier & Logistics Services").FontSize(9);
                         });
                         row.RelativeItem().AlignRight().Column(c =>

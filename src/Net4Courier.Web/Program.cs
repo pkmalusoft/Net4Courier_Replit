@@ -164,7 +164,7 @@ builder.Services.AddScoped<IPermissionService, PermissionService>();
 builder.Services.AddScoped<ImportExcelService>();
 builder.Services.AddScoped<ShipmentExcelService>();
 builder.Services.AddSingleton<BarcodeService>();
-builder.Services.AddScoped<AWBPrintService>(sp => new AWBPrintService(sp.GetRequiredService<IWebHostEnvironment>()));
+builder.Services.AddScoped<AWBPrintService>();
 builder.Services.AddScoped<IDemoDataService, DemoDataService>();
 builder.Services.AddScoped<PODUpdateService>();
 builder.Services.AddScoped<PODExcelService>();
@@ -423,13 +423,21 @@ app.MapGet("/api/diagnostics", (IWebHostEnvironment env) =>
     });
 });
 
-app.MapGet("/api/report/awb/{id:long}", async (long id, bool? inline, ApplicationDbContext db, AWBPrintService printService, ILogger<Program> logger) =>
+app.MapGet("/api/report/awb/{id:long}", async (long id, bool? inline, ApplicationDbContext db, AWBPrintService printService, IWebHostEnvironment env, ILogger<Program> logger) =>
 {
     try
     {
         var awb = await db.InscanMasters.FindAsync(id);
         if (awb == null) return Results.NotFound("AWB not found");
-        var pdf = printService.GenerateA5AWB(awb);
+        byte[]? logoData = null;
+        string? companyName = null;
+        if (awb.BranchId.HasValue)
+        {
+            var branch = await db.Branches.Include(b => b.Company).FirstOrDefaultAsync(b => b.Id == awb.BranchId);
+            logoData = ResolveLogoBytes(branch?.Company?.Logo, env.WebRootPath);
+            companyName = branch?.Company?.Name;
+        }
+        var pdf = printService.GenerateA5AWB(awb, companyName, logoData);
         var fileName = inline == true ? null : $"AWB-{awb.AWBNo}.pdf";
         return Results.File(pdf, "application/pdf", fileName);
     }
@@ -440,13 +448,21 @@ app.MapGet("/api/report/awb/{id:long}", async (long id, bool? inline, Applicatio
     }
 });
 
-app.MapGet("/api/report/awb-label/{id:long}", async (long id, bool? inline, ApplicationDbContext db, AWBPrintService printService, ILogger<Program> logger) =>
+app.MapGet("/api/report/awb-label/{id:long}", async (long id, bool? inline, ApplicationDbContext db, AWBPrintService printService, IWebHostEnvironment env, ILogger<Program> logger) =>
 {
     try
     {
         var awb = await db.InscanMasters.FindAsync(id);
         if (awb == null) return Results.NotFound("AWB not found");
-        var pdf = printService.GenerateLabel(awb);
+        byte[]? logoData = null;
+        string? companyName = null;
+        if (awb.BranchId.HasValue)
+        {
+            var branch = await db.Branches.Include(b => b.Company).FirstOrDefaultAsync(b => b.Id == awb.BranchId);
+            logoData = ResolveLogoBytes(branch?.Company?.Logo, env.WebRootPath);
+            companyName = branch?.Company?.Name;
+        }
+        var pdf = printService.GenerateLabel(awb, companyName, logoData);
         var fileName = inline == true ? null : $"Label-{awb.AWBNo}.pdf";
         return Results.File(pdf, "application/pdf", fileName);
     }
@@ -457,13 +473,21 @@ app.MapGet("/api/report/awb-label/{id:long}", async (long id, bool? inline, Appl
     }
 });
 
-app.MapGet("/api/report/awb-by-awbno/{awbNo}", async (string awbNo, bool? inline, ApplicationDbContext db, AWBPrintService printService, ILogger<Program> logger) =>
+app.MapGet("/api/report/awb-by-awbno/{awbNo}", async (string awbNo, bool? inline, ApplicationDbContext db, AWBPrintService printService, IWebHostEnvironment env, ILogger<Program> logger) =>
 {
     try
     {
         var awb = await db.InscanMasters.FirstOrDefaultAsync(i => i.AWBNo == awbNo);
         if (awb == null) return Results.NotFound("AWB not found");
-        var pdf = printService.GenerateA5AWB(awb);
+        byte[]? logoData = null;
+        string? companyName = null;
+        if (awb.BranchId.HasValue)
+        {
+            var branch = await db.Branches.Include(b => b.Company).FirstOrDefaultAsync(b => b.Id == awb.BranchId);
+            logoData = ResolveLogoBytes(branch?.Company?.Logo, env.WebRootPath);
+            companyName = branch?.Company?.Name;
+        }
+        var pdf = printService.GenerateA5AWB(awb, companyName, logoData);
         var fileName = inline == true ? null : $"AWB-{awb.AWBNo}.pdf";
         return Results.File(pdf, "application/pdf", fileName);
     }
@@ -474,13 +498,21 @@ app.MapGet("/api/report/awb-by-awbno/{awbNo}", async (string awbNo, bool? inline
     }
 });
 
-app.MapGet("/api/report/awb-label-by-awbno/{awbNo}", async (string awbNo, bool? inline, ApplicationDbContext db, AWBPrintService printService, ILogger<Program> logger) =>
+app.MapGet("/api/report/awb-label-by-awbno/{awbNo}", async (string awbNo, bool? inline, ApplicationDbContext db, AWBPrintService printService, IWebHostEnvironment env, ILogger<Program> logger) =>
 {
     try
     {
         var awb = await db.InscanMasters.FirstOrDefaultAsync(i => i.AWBNo == awbNo);
         if (awb == null) return Results.NotFound("AWB not found");
-        var pdf = printService.GenerateLabel(awb);
+        byte[]? logoData = null;
+        string? companyName = null;
+        if (awb.BranchId.HasValue)
+        {
+            var branch = await db.Branches.Include(b => b.Company).FirstOrDefaultAsync(b => b.Id == awb.BranchId);
+            logoData = ResolveLogoBytes(branch?.Company?.Logo, env.WebRootPath);
+            companyName = branch?.Company?.Name;
+        }
+        var pdf = printService.GenerateLabel(awb, companyName, logoData);
         var fileName = inline == true ? null : $"Label-{awb.AWBNo}.pdf";
         return Results.File(pdf, "application/pdf", fileName);
     }
@@ -609,7 +641,7 @@ app.MapGet("/api/report/invoice/{id:long}", async (long id, ApplicationDbContext
     }
     else
     {
-        pdf = reportService.GenerateInvoicePdf(invoice);
+        pdf = reportService.GenerateInvoicePdf(invoice, logoData, company?.Name);
     }
     return Results.File(pdf, "application/pdf", $"Invoice-{invoice.InvoiceNo}.pdf");
 });
@@ -648,24 +680,27 @@ app.MapGet("/api/report/duty-receipt/{id:long}", async (long id, bool? inline, A
     return Results.File(pdf, "application/pdf", fileName);
 });
 
-app.MapGet("/api/report/receipt/{id:long}", async (long id, ApplicationDbContext db, ReportingService reportService) =>
+app.MapGet("/api/report/receipt/{id:long}", async (long id, ApplicationDbContext db, ReportingService reportService, IWebHostEnvironment env) =>
 {
     var receipt = await db.Receipts.Include(r => r.Allocations).FirstOrDefaultAsync(r => r.Id == id);
     if (receipt == null) return Results.NotFound();
-    var pdf = reportService.GenerateReceiptPdf(receipt);
+    var company = await db.Companies.FirstOrDefaultAsync(c => !c.IsDeleted);
+    byte[]? logoData = ResolveLogoBytes(company?.Logo, env.WebRootPath);
+    var pdf = reportService.GenerateReceiptPdf(receipt, logoData, company?.Name);
     return Results.File(pdf, "application/pdf", $"Receipt-{receipt.ReceiptNo}.pdf");
 });
 
-app.MapGet("/api/report/cash-receipt/{id:long}", async (long id, ApplicationDbContext db, ReportingService reportService) =>
+app.MapGet("/api/report/cash-receipt/{id:long}", async (long id, ApplicationDbContext db, ReportingService reportService, IWebHostEnvironment env) =>
 {
     var submission = await db.CourierCashSubmissions.Include(s => s.DRS).FirstOrDefaultAsync(s => s.Id == id);
     if (submission == null) return Results.NotFound();
     var company = await db.Companies.FirstOrDefaultAsync(c => !c.IsDeleted);
-    var pdf = reportService.GenerateCashReceiptPdf(submission, submission.DRS, company?.Name ?? "Net4Courier");
+    byte[]? logoData = ResolveLogoBytes(company?.Logo, env.WebRootPath);
+    var pdf = reportService.GenerateCashReceiptPdf(submission, submission.DRS, company?.Name ?? "Net4Courier", logoData);
     return Results.File(pdf, "application/pdf", $"CashReceipt-{submission.ReceiptNo ?? id.ToString()}.pdf");
 });
 
-app.MapPost("/api/report/cash-receipt/{id:long}/email", async (long id, string email, ApplicationDbContext db, ReportingService reportService, IGmailEmailService emailService) =>
+app.MapPost("/api/report/cash-receipt/{id:long}/email", async (long id, string email, ApplicationDbContext db, ReportingService reportService, IGmailEmailService emailService, IWebHostEnvironment env) =>
 {
     var submission = await db.CourierCashSubmissions.Include(s => s.DRS).FirstOrDefaultAsync(s => s.Id == id);
     if (submission == null) return Results.NotFound();
@@ -678,8 +713,9 @@ app.MapPost("/api/report/cash-receipt/{id:long}/email", async (long id, string e
     var company = await db.Companies.FirstOrDefaultAsync(c => !c.IsDeleted);
     var companyName = company?.Name ?? "Net4Courier";
     var fromEmail = company?.Email ?? "noreply@net4courier.com";
+    byte[]? logoData = ResolveLogoBytes(company?.Logo, env.WebRootPath);
     
-    var pdf = reportService.GenerateCashReceiptPdf(submission, submission.DRS, companyName);
+    var pdf = reportService.GenerateCashReceiptPdf(submission, submission.DRS, companyName, logoData);
     
     var subject = $"Cash Receipt - {submission.ReceiptNo ?? "Receipt"} - {submission.SubmissionDate:dd-MMM-yyyy}";
     var htmlBody = $@"
@@ -702,46 +738,58 @@ app.MapPost("/api/report/cash-receipt/{id:long}/email", async (long id, string e
     return success ? Results.Ok(new { message = "Email sent successfully" }) : Results.Problem("Failed to send email");
 });
 
-app.MapGet("/api/report/mawb/{id:long}", async (long id, ReportingService reportService) =>
+app.MapGet("/api/report/mawb/{id:long}", async (long id, ApplicationDbContext db, ReportingService reportService, IWebHostEnvironment env) =>
 {
-    var pdf = await reportService.GenerateMAWBManifest(id);
+    var company = await db.Companies.FirstOrDefaultAsync(c => !c.IsDeleted);
+    byte[]? logoData = ResolveLogoBytes(company?.Logo, env.WebRootPath);
+    var pdf = await reportService.GenerateMAWBManifest(id, logoData, company?.Name);
     if (pdf.Length == 0) return Results.NotFound();
     return Results.File(pdf, "application/pdf", $"MAWB-Manifest-{id}.pdf");
 });
 
-app.MapGet("/api/report/awb-print/{id:long}", async (long id, ApplicationDbContext db, ReportingService reportService) =>
+app.MapGet("/api/report/awb-print/{id:long}", async (long id, ApplicationDbContext db, ReportingService reportService, IWebHostEnvironment env) =>
 {
     var awb = await db.InscanMasters.FindAsync(id);
     if (awb == null) return Results.NotFound();
-    var pdf = reportService.GenerateAirWaybillPdf(awb);
+    var company = await db.Companies.FirstOrDefaultAsync(c => !c.IsDeleted);
+    byte[]? logoData = ResolveLogoBytes(company?.Logo, env.WebRootPath);
+    var pdf = reportService.GenerateAirWaybillPdf(awb, logoData, company?.Name);
     return Results.File(pdf, "application/pdf", $"AirWaybill-{awb.AWBNo}.pdf");
 });
 
-app.MapGet("/api/report/manifest-label/{id:long}", async (long id, ApplicationDbContext db, ReportingService reportService) =>
+app.MapGet("/api/report/manifest-label/{id:long}", async (long id, ApplicationDbContext db, ReportingService reportService, IWebHostEnvironment env) =>
 {
     var awb = await db.InscanMasters.FindAsync(id);
     if (awb == null) return Results.NotFound();
-    var pdf = reportService.GenerateManifestLabel(awb, awb.BagNo, awb.MAWBNo);
+    var company = await db.Companies.FirstOrDefaultAsync(c => !c.IsDeleted);
+    byte[]? logoData = ResolveLogoBytes(company?.Logo, env.WebRootPath);
+    var pdf = reportService.GenerateManifestLabel(awb, awb.BagNo, awb.MAWBNo, logoData, company?.Name);
     return Results.File(pdf, "application/pdf", $"Label-{awb.AWBNo}.pdf");
 });
 
-app.MapGet("/api/report/mawb-labels/{id:long}", async (long id, ReportingService reportService) =>
+app.MapGet("/api/report/mawb-labels/{id:long}", async (long id, ApplicationDbContext db, ReportingService reportService, IWebHostEnvironment env) =>
 {
-    var pdf = await reportService.GenerateManifestLabels(id);
+    var company = await db.Companies.FirstOrDefaultAsync(c => !c.IsDeleted);
+    byte[]? logoData = ResolveLogoBytes(company?.Logo, env.WebRootPath);
+    var pdf = await reportService.GenerateManifestLabels(id, logoData, company?.Name);
     if (pdf.Length == 0) return Results.NotFound();
     return Results.File(pdf, "application/pdf", $"MAWB-Labels-{id}.pdf");
 });
 
-app.MapGet("/api/report/export-manifest/{id:long}", async (long id, ReportingService reportService) =>
+app.MapGet("/api/report/export-manifest/{id:long}", async (long id, ApplicationDbContext db, ReportingService reportService, IWebHostEnvironment env) =>
 {
-    var pdf = await reportService.GenerateExportManifest(id);
+    var company = await db.Companies.FirstOrDefaultAsync(c => !c.IsDeleted);
+    byte[]? logoData = ResolveLogoBytes(company?.Logo, env.WebRootPath);
+    var pdf = await reportService.GenerateExportManifest(id, logoData, company?.Name);
     if (pdf.Length == 0) return Results.NotFound();
     return Results.File(pdf, "application/pdf", $"Export-Manifest-{id}.pdf");
 });
 
-app.MapGet("/api/report/domestic-manifest/{id:long}", async (long id, ReportingService reportService) =>
+app.MapGet("/api/report/domestic-manifest/{id:long}", async (long id, ApplicationDbContext db, ReportingService reportService, IWebHostEnvironment env) =>
 {
-    var pdf = await reportService.GenerateDomesticManifest(id);
+    var company = await db.Companies.FirstOrDefaultAsync(c => !c.IsDeleted);
+    byte[]? logoData = ResolveLogoBytes(company?.Logo, env.WebRootPath);
+    var pdf = await reportService.GenerateDomesticManifest(id, logoData, company?.Name);
     if (pdf.Length == 0) return Results.NotFound();
     return Results.File(pdf, "application/pdf", $"Domestic-Manifest-{id}.pdf");
 });
