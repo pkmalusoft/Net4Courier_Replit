@@ -23,11 +23,13 @@ public class GlobalSearchService
 
         await using var context = await _contextFactory.CreateDbContextAsync();
 
-        var awbResults = await SearchAWBsAsync(context, query, maxResults / 3 + 2);
-        var customerResults = await SearchCustomersAsync(context, query, maxResults / 3 + 2);
-        var invoiceResults = await SearchInvoicesAsync(context, query, maxResults / 3 + 2);
+        var awbResults = await SearchAWBsAsync(context, query, maxResults / 4 + 2);
+        var importResults = await SearchImportShipmentsAsync(context, query, maxResults / 4 + 2);
+        var customerResults = await SearchCustomersAsync(context, query, maxResults / 4 + 2);
+        var invoiceResults = await SearchInvoicesAsync(context, query, maxResults / 4 + 2);
 
         results.AddRange(awbResults);
+        results.AddRange(importResults);
         results.AddRange(customerResults);
         results.AddRange(invoiceResults);
 
@@ -55,6 +57,30 @@ public class GlobalSearchService
             Status = a.CourierStatusId.ToString(),
             NavigateUrl = $"/tracking/{a.AWBNo}",
             Icon = "LocalShipping"
+        }).ToList();
+    }
+
+    private async Task<List<SearchResult>> SearchImportShipmentsAsync(ApplicationDbContext context, string query, int limit)
+    {
+        var searchPattern = $"%{query}%";
+        var imports = await context.ImportShipments
+            .Where(a => !a.IsDeleted &&
+                (EF.Functions.ILike(a.AWBNo, searchPattern) ||
+                 (a.ShipperName != null && EF.Functions.ILike(a.ShipperName, searchPattern)) ||
+                 EF.Functions.ILike(a.ConsigneeName, searchPattern)))
+            .OrderByDescending(a => a.CreatedAt)
+            .Take(limit)
+            .Select(a => new { a.Id, a.AWBNo, a.ShipperName, a.ConsigneeCity, a.ConsigneeCountry, a.Status })
+            .ToListAsync();
+
+        return imports.Select(a => new SearchResult
+        {
+            Type = SearchResultType.AWB,
+            Title = a.AWBNo,
+            Subtitle = $"Import: {a.ShipperName} → {a.ConsigneeCity}, {a.ConsigneeCountry}",
+            Status = a.Status.ToString(),
+            NavigateUrl = $"/tracking/{a.AWBNo}",
+            Icon = "FlightLand"
         }).ToList();
     }
 

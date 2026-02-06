@@ -8,6 +8,8 @@ using Net4Courier.Infrastructure.Services;
 using Net4Courier.Web.Components;
 using Net4Courier.Web.Services;
 using Net4Courier.Operations.Services;
+using Net4Courier.Operations.Entities;
+using Net4Courier.Kernel.Enums;
 using QuestPDF.Infrastructure;
 
 // Log startup immediately
@@ -490,7 +492,12 @@ app.MapGet("/api/report/awb-by-awbno/{awbNo}", async (string awbNo, bool? inline
     try
     {
         var awb = await db.InscanMasters.FirstOrDefaultAsync(i => i.AWBNo == awbNo);
-        if (awb == null) return Results.NotFound("AWB not found");
+        if (awb == null)
+        {
+            var importShipment = await db.ImportShipments.FirstOrDefaultAsync(i => i.AWBNo == awbNo && !i.IsDeleted);
+            if (importShipment == null) return Results.NotFound("AWB not found");
+            awb = MapImportToInscanMaster(importShipment);
+        }
         byte[]? logoData = null;
         string? companyName = null;
         if (awb.BranchId.HasValue)
@@ -521,7 +528,12 @@ app.MapGet("/api/report/awb-label-by-awbno/{awbNo}", async (string awbNo, bool? 
     try
     {
         var awb = await db.InscanMasters.FirstOrDefaultAsync(i => i.AWBNo == awbNo);
-        if (awb == null) return Results.NotFound("AWB not found");
+        if (awb == null)
+        {
+            var importShipment = await db.ImportShipments.FirstOrDefaultAsync(i => i.AWBNo == awbNo && !i.IsDeleted);
+            if (importShipment == null) return Results.NotFound("AWB not found");
+            awb = MapImportToInscanMaster(importShipment);
+        }
         byte[]? logoData = null;
         string? companyName = null;
         if (awb.BranchId.HasValue)
@@ -997,6 +1009,41 @@ static byte[]? ResolveLogoBytes(string? logo, string webRootPath)
     }
     var filePath = Path.Combine(webRootPath, logo.TrimStart('/'));
     return File.Exists(filePath) ? File.ReadAllBytes(filePath) : null;
+}
+
+static InscanMaster MapImportToInscanMaster(ImportShipment import)
+{
+    return new InscanMaster
+    {
+        Id = import.Id,
+        AWBNo = import.AWBNo,
+        ReferenceNo = import.ReferenceNo,
+        TransactionDate = import.CreatedAt,
+        Consignor = import.ShipperName,
+        ConsignorAddress1 = import.ShipperAddress,
+        ConsignorCity = import.ShipperCity,
+        ConsignorCountry = import.ShipperCountry,
+        ConsignorPhone = import.ShipperPhone,
+        Consignee = import.ConsigneeName,
+        ConsigneeAddress1 = import.ConsigneeAddress,
+        ConsigneeCity = import.ConsigneeCity,
+        ConsigneeState = import.ConsigneeState,
+        ConsigneeCountry = import.ConsigneeCountry,
+        ConsigneePostalCode = import.ConsigneePostalCode,
+        ConsigneePhone = import.ConsigneePhone,
+        ConsigneeMobile = import.ConsigneeMobile,
+        Pieces = import.Pieces,
+        Weight = import.Weight,
+        ChargeableWeight = import.ChargeableWeight ?? import.Weight,
+        CargoDescription = import.ContentsDescription,
+        MovementTypeId = MovementType.InternationalImport,
+        DocumentTypeId = import.ShipmentType == ImportShipmentType.Document ? DocumentType.Document : DocumentType.ParcelUpto30Kg,
+        PaymentModeId = import.PaymentMode,
+        DutyVatAmount = (import.DutyAmount ?? 0) + (import.VATAmount ?? 0),
+        OtherCharge = import.OtherCharges,
+        NetTotal = import.TotalCustomsCharges,
+        Currency = import.Currency,
+    };
 }
 
 static async Task HandlePasswordReset(string username, string password)
