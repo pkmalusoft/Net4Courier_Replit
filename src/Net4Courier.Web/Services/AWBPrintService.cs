@@ -265,6 +265,11 @@ public class AWBPrintService
                         c.Item().Text("Currency").FontSize(6);
                         c.Item().Text(shipment.Currency ?? "AED").FontSize(8);
                     });
+                    valRow.RelativeItem().BorderLeft(1).PaddingLeft(3).Column(c =>
+                    {
+                        c.Item().Text("Reference No.").FontSize(6);
+                        c.Item().Text(shipment.ReferenceNo ?? "").Bold().FontSize(8);
+                    });
                 });
             });
             
