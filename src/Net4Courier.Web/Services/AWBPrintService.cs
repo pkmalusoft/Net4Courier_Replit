@@ -595,6 +595,17 @@ public class AWBPrintService
         });
     }
 
+    private static string CombinePhoneNumbers(string? phone, string? mobile)
+    {
+        var hasPhone = !string.IsNullOrWhiteSpace(phone);
+        var hasMobile = !string.IsNullOrWhiteSpace(mobile);
+        if (hasPhone && hasMobile && phone!.Trim() != mobile!.Trim())
+            return $"{phone!.Trim()} / {mobile!.Trim()}";
+        if (hasPhone) return phone!.Trim();
+        if (hasMobile) return mobile!.Trim();
+        return "";
+    }
+
     private static string Truncate(string? text, int maxLength)
     {
         if (string.IsNullOrEmpty(text)) return "";
@@ -620,7 +631,7 @@ public class AWBPrintService
             c.Item().Row(r =>
             {
                 r.RelativeItem().Text(Truncate(shipment.ConsignorCountry, 25)).FontSize(6);
-                r.RelativeItem().Text(Truncate(shipment.ConsignorPhone ?? shipment.ConsignorMobile, 20)).FontSize(6);
+                r.RelativeItem().Text(Truncate(CombinePhoneNumbers(shipment.ConsignorPhone, shipment.ConsignorMobile), 35)).FontSize(6);
             });
         });
     }
@@ -634,11 +645,7 @@ public class AWBPrintService
             c.Item().Height(2);
             c.Item().Text(Truncate(shipment.ConsigneeCity, 25)).Bold().FontSize(8);
             c.Item().Text(Truncate(shipment.ConsigneeCountry, 25)).FontSize(6);
-            c.Item().Row(r =>
-            {
-                r.RelativeItem().Text(Truncate(shipment.ConsigneePhone ?? shipment.ConsigneeMobile, 20)).Bold().FontSize(7);
-                r.RelativeItem().Text(Truncate(shipment.ConsigneeMobile, 20)).FontSize(6);
-            });
+            c.Item().Text(Truncate(CombinePhoneNumbers(shipment.ConsigneePhone, shipment.ConsigneeMobile), 40)).Bold().FontSize(7);
         });
     }
 
