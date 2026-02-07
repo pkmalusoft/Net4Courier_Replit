@@ -81,6 +81,12 @@ This comprehensive knowledge base covers all aspects of Net4Courier - from picku
    - [Use General Ledger Module](#how-to-use-general-ledger)
    - [Email Reports to Customers/Suppliers](#how-to-email-reports)
    
+   **Cost Management Guides**
+   - [Set Up Cost Rate Cards](#how-to-set-up-cost-rate-cards)
+   - [Enter MAWB Costs and Allocate to Shipments](#how-to-enter-mawb-costs-and-allocate-to-shipments)
+   - [Actualize Shipment Costs](#how-to-actualize-shipment-costs)
+   - [View Profitability Reports](#how-to-view-profitability-reports)
+   
    **Help & Feedback**
    - [Suggest a New Topic](#suggest-a-new-how-to-topic)
    - [Quick Reference Table](#how-to-guides---quick-reference)
@@ -118,9 +124,11 @@ This comprehensive knowledge base covers all aspects of Net4Courier - from picku
 5. [Pricing & Billing](#pricing--billing)
    - [Zone Management](#zone-management)
    - [Rate Cards](#rate-cards)
+   - [Cost Rate Cards](#cost-rate-cards)
    - [Rate Simulator](#rate-simulator)
    - [Charges Configuration](#charges-configuration)
    - [Discounts & Contracts](#discounts--contracts)
+   - [Cost Management](#cost-management)
 
 6. [System Settings](#system-settings)
    - [Company Setup](#company-setup)
@@ -3179,6 +3187,268 @@ The General Ledger module provides comprehensive financial management with the f
 
 ---
 
+# Cost Management Guides
+
+## How to Set Up Cost Rate Cards
+
+**Navigation:** Pricing → Cost Rate Cards (`/cost-rate-cards`)
+
+**When to Use:** When you need to define how much your forwarding agents charge you for shipping services — this is your "cost side" pricing, as opposed to sales rate cards which define what you charge your customers.
+
+**Understanding Rate Card Types:**
+
+| Type | Purpose | Example |
+|------|---------|---------|
+| Sales | What you charge customers | Your published rates |
+| Cost | What agents charge you | Agent's pricing to you |
+| Both | Used for both sales and cost | Shared rate structure |
+
+**Detailed Steps:**
+
+1. **Create a Cost Rate Card**
+   - Navigate to **Pricing → Cost Rate Cards**
+   - Click **"+ New Cost Rate Card"**
+   - Fill in the details:
+     - **Name**: Descriptive name (e.g., "DHL Agent Rates Q1 2026")
+     - **Rate Card Type**: Select **Cost** (or **Both** if used for sales too)
+     - **Movement Type**: Domestic, International, or All
+     - **Service Type**: Express, Economy, etc.
+     - **Payment Mode**: Prepaid, COD, Credit
+     - **Valid From / Valid To**: Validity period
+
+2. **Assign Agent to Rate Card**
+   - In the Agent Assignments section, click **"+ Assign Agent"**
+   - Search and select the forwarding agent (party)
+   - Set the assignment's effective date range
+   - Save the assignment
+   - Multiple agents can share the same cost rate card
+
+3. **Configure Zone Pricing**
+   - Add zones to the rate card (origin-destination pairs)
+   - For each zone, configure cost-specific fields:
+     - **Base Weight**: Starting weight included in base rate
+     - **Base Rate**: Cost for base weight
+     - **Additional Per Kg**: Cost per kg beyond base weight
+     - **Cost Min Charge**: Minimum charge for this zone
+     - **Fuel Surcharge %**: Agent's fuel surcharge percentage
+     - **Handling Charge**: Per-shipment handling fee
+     - **Per Shipment Charge**: Fixed charge per shipment
+     - **Peak Surcharge**: Seasonal/peak period surcharge
+
+4. **Add Weight Slabs (Optional)**
+   - For each zone, you can define weight-based slabs:
+     - **From Weight / To Weight**: Weight range for this slab
+     - **Rule Type**: PerStep, PerKg, or FlatAfter
+     - **Rate**: Cost per the rule type
+   - Slabs allow tiered pricing (e.g., 0-5kg at one rate, 5-10kg at another)
+
+5. **Activate the Rate Card**
+   - Review all zones and pricing
+   - Change status from **Draft** to **Active**
+   - The system will automatically use this rate card when calculating costs for shipments handled by the assigned agent
+
+**Tips:**
+- Create separate cost rate cards for each agent if their pricing differs
+- Use the "Both" type sparingly — typically sales and cost rates are different
+- Review and update cost rate cards when agent contracts renew
+- The system compares sales charges vs cost charges to calculate your profit margin
+
+---
+
+## How to Enter MAWB Costs and Allocate to Shipments
+
+**Navigation:** Finance → Cost Management → MAWB Cost Entry (`/mawb-cost-entry`)
+
+**When to Use:** When you receive a cost invoice from a forwarding agent for an entire Master Air Waybill (MAWB), and you need to distribute that cost across the individual shipments (HAWBs) within the MAWB.
+
+**Detailed Steps:**
+
+1. **Select the MAWB**
+   - Navigate to **Finance → Cost Management → MAWB Cost Entry**
+   - Use the MAWB search field to find and select the MAWB
+   - The system loads the MAWB details and all associated shipments (HAWBs)
+
+2. **Enter MAWB-Level Costs**
+   - Fill in the cost fields from the agent's invoice:
+     - **Forwarding Agent**: Select the agent who billed you
+     - **Air Freight Cost**: Main freight charge from the agent
+     - **Fuel Surcharge Cost**: Fuel surcharge on the invoice
+     - **Handling Cost**: Handling/terminal charges
+     - **Other Cost**: Any miscellaneous charges
+     - **Total MAWB Cost**: Auto-calculated sum of all costs
+   - Enter the vendor invoice reference:
+     - **Vendor Invoice No**: The agent's invoice number
+     - **Vendor Invoice Date**: The date on the agent's invoice
+
+3. **Choose Allocation Method**
+   - Select how costs should be distributed to individual shipments:
+
+   | Method | How It Works | Best For |
+   |--------|-------------|----------|
+   | Chargeable Weight | Pro-rata by each shipment's chargeable weight | Most common — fair weight-based split |
+   | Gross Weight | Pro-rata by actual gross weight | When chargeable weight isn't set |
+   | Pieces | Equal split by number of pieces | Uniform-sized shipments |
+   | CBM | Pro-rata by cubic meter volume | Volume-heavy cargo |
+   | Manual | You enter each shipment's cost manually | Special cases or negotiations |
+
+4. **Allocate Costs**
+   - Click **"Allocate"** to distribute the MAWB cost
+   - The system calculates each shipment's share:
+     - Example: If MAWB cost is 1,000 and Shipment A weighs 30kg out of 100kg total, Shipment A gets 300
+   - Review the allocation table showing each HAWB's allocated cost
+   - Any rounding difference is automatically added to the last shipment
+
+5. **Save the Allocation**
+   - Review the per-shipment breakdown
+   - Click **"Save"** to record the allocation
+   - Each shipment's estimated cost fields are updated
+
+**Tips:**
+- Always enter the vendor invoice number for audit trail
+- Chargeable Weight is the most commonly used method in air freight
+- For manual allocation, ensure all shipment costs sum to the MAWB total
+- You can re-allocate if the method needs to change (before cost locking)
+
+---
+
+## How to Actualize Shipment Costs
+
+**Navigation:** Finance → Cost Management → Cost Actualization (`/cost-actualization`)
+
+**When to Use:** After receiving actual invoices from forwarding agents, use this page to record the real costs and compare them against the estimated costs from rate cards or MAWB allocation. This helps identify cost variances and lock costs after verification.
+
+**Detailed Steps:**
+
+1. **Search for Shipments**
+   - Navigate to **Finance → Cost Management → Cost Actualization**
+   - Filter shipments by:
+     - **Date Range**: Shipment date period
+     - **Agent**: Specific forwarding agent
+     - **Branch**: Specific branch
+     - **Status**: All, Pending (not yet actualized), or Locked
+   - Click **"Search"** to load matching shipments
+
+2. **Review Estimated vs Actual Costs**
+   - The table shows each shipment with:
+
+   | Column | Meaning |
+   |--------|---------|
+   | AWB No | Shipment number |
+   | Agent | Forwarding agent used |
+   | Estimated Freight | Cost calculated from rate card |
+   | Estimated Fuel | Fuel surcharge from rate card |
+   | Estimated Handling | Handling charge from rate card |
+   | Estimated Total | Sum of estimated costs |
+   | Actual Freight | Real freight cost from invoice |
+   | Actual Fuel | Real fuel surcharge from invoice |
+   | Actual Handling | Real handling charge from invoice |
+   | Actual Total | Sum of actual costs |
+   | Variance | Difference (Actual minus Estimated) |
+
+3. **Enter Actual Costs**
+   - For each shipment, enter the actual costs from the agent's invoice:
+     - **Actual Freight Cost**: Real freight charge
+     - **Actual Fuel Surcharge Cost**: Real fuel surcharge
+     - **Actual Handling Cost**: Real handling charge
+   - The system automatically calculates:
+     - **Actual Total Cost**: Sum of actual amounts
+     - **Cost Variance**: Actual Total minus Estimated Total
+     - **Gross Margin**: Sales Total minus Actual Total
+     - **Gross Margin %**: Margin as a percentage of sales
+
+4. **Add Invoice Reference**
+   - Enter the agent's invoice reference for audit:
+     - **Cost Invoice Ref**: The vendor's invoice number
+   - This links the actual cost to a specific vendor invoice
+
+5. **Lock Costs**
+   - After verifying actual costs are correct, click **"Lock"** on each shipment
+   - Locking prevents further changes to the cost fields
+   - The lock timestamp is recorded for audit purposes
+   - Locked shipments show a lock icon and cannot be edited
+
+**Understanding Variance:**
+
+| Variance | Meaning | Color |
+|----------|---------|-------|
+| Negative (green) | Actual cost less than estimated — you saved money | Green |
+| Zero | Costs matched estimates perfectly | Normal |
+| Positive (red) | Actual cost exceeded estimates — cost overrun | Red |
+
+**Tips:**
+- Actualize costs promptly after receiving vendor invoices
+- Investigate large positive variances — they may indicate rate card issues
+- Lock costs before running profitability reports for accurate results
+- Unlocked costs use estimated values in reports (less reliable)
+
+---
+
+## How to View Profitability Reports
+
+**Navigation:** Finance → Cost Management → Profitability Report (`/profitability-report`)
+
+**When to Use:** To analyze your profit margins across different dimensions — by shipment, customer, forwarding agent, zone, or MAWB. Use these reports to identify profitable routes, negotiate better rates, and make data-driven business decisions.
+
+**Detailed Steps:**
+
+1. **Select Report View**
+   - Choose one of five analysis views:
+
+   | View | Shows | Best For |
+   |------|-------|----------|
+   | Shipment-wise | Margin per individual shipment | Identifying loss-making shipments |
+   | Customer-wise | Aggregated margin per customer | Customer profitability ranking |
+   | Agent-wise | Aggregated margin per forwarding agent | Agent cost comparison |
+   | Zone-wise | Aggregated margin per origin-destination zone | Route profitability |
+   | MAWB-wise | Margin per Master Air Waybill | Consolidated shipment analysis |
+
+2. **Set Filters**
+   - **Date Range**: Period to analyze
+   - **Branch**: Specific branch or all branches
+   - **Customer**: Specific customer (optional)
+   - **Agent**: Specific forwarding agent (optional)
+   - Click **"Generate"**
+
+3. **Read the Report**
+   - Each row shows:
+     - **Sales Total**: What you charged the customer (freight + surcharges)
+     - **Cost Total**: What the agent charged you (freight + surcharges)
+     - **Gross Margin**: Sales minus Cost (your profit)
+     - **Margin %**: Margin as a percentage of sales revenue
+
+4. **Understand the Color Coding**
+   - **Green (positive margin)**: Profitable — you earned more than you paid
+   - **Red (negative margin)**: Loss-making — you paid more than you charged
+   - **Yellow/Orange (low margin)**: Marginal — barely breaking even
+
+5. **Take Action on Insights**
+
+   | Finding | Recommended Action |
+   |---------|-------------------|
+   | Customer with negative margin | Review sales rate card, consider rate increase |
+   | Agent with high costs | Negotiate better rates or find alternative agent |
+   | Zone with low margin | Adjust zone pricing in sales rate cards |
+   | MAWB with variance | Check cost actualization, verify vendor invoices |
+   | Shipment at a loss | Investigate — was it a special rate or error? |
+
+**Example Workflow — Monthly Profitability Review:**
+
+1. Open Profitability Report → Select **Customer-wise** view
+2. Set date range to last month
+3. Sort by **Margin %** (ascending) to see worst performers first
+4. For loss-making customers, drill into **Shipment-wise** view filtered by that customer
+5. Compare their sales rate card against the cost rate card
+6. Decide: increase customer rates, negotiate lower agent costs, or accept as strategic pricing
+
+**Tips:**
+- Run profitability reports after actualizing costs for the period (otherwise estimates are used)
+- Use the Agent-wise view when negotiating agent contract renewals
+- Export to Excel for further analysis or board presentations
+- Compare month-over-month to track margin trends
+- Locked (actualized) costs give the most accurate margin picture
+
+---
+
 # Suggest a New How-To Topic
 
 **Can't find what you're looking for?**
@@ -3234,6 +3504,12 @@ Based on user requests, these guides are coming soon:
 | Set up rate cards | Finance Guides |
 | Rate simulator | Finance Guides |
 | Generate reports | Finance Guides |
+| Set up cost rate cards | Cost Management Guides |
+| Enter MAWB costs | Cost Management Guides |
+| Allocate costs to shipments | Cost Management Guides |
+| Actualize shipment costs | Cost Management Guides |
+| Lock verified costs | Cost Management Guides |
+| View profitability reports | Cost Management Guides |
 
 ---
 
@@ -4866,6 +5142,105 @@ discount, volume discount, contract discount, special pricing, promotional rate,
 
 ---
 
+## Cost Rate Cards
+
+**Navigation:** Pricing → Cost Rate Cards (`/cost-rate-cards`)
+
+**Purpose:** Manage the rates that forwarding agents charge you, enabling the system to calculate shipment costs and profitability.
+
+### Sales vs Cost Rate Cards
+
+| Aspect | Sales Rate Card | Cost Rate Card |
+|--------|----------------|----------------|
+| Purpose | What you charge customers | What agents charge you |
+| Assigned To | Customers (via CustomerRateAssignment) | Agents (via AgentRateAssignment) |
+| Used For | Revenue calculation | Cost calculation |
+| Rate Card Type | Sales | Cost (or Both) |
+
+### Cost-Specific Zone Fields
+
+Each zone in a cost rate card has additional cost fields:
+
+| Field | Description |
+|-------|-------------|
+| Cost Min Charge | Minimum charge the agent applies |
+| Sales Min Charge | Corresponding sales minimum (for dual-type cards) |
+| Fuel Surcharge % | Agent's fuel surcharge percentage |
+| Handling Charge | Per-shipment handling fee |
+| Per Shipment Charge | Fixed charge per shipment |
+| Peak Surcharge | Seasonal or peak period surcharge |
+
+### Agent Rate Assignments
+
+- Each forwarding agent can be assigned to one or more cost rate cards
+- Assignments have effective date ranges for contract period tracking
+- When calculating cost, the system finds the applicable rate card via the agent assignment
+- If no agent-specific assignment exists, the system falls back to rate cards with type "Cost" or "Both"
+
+### Keywords
+cost rate card, agent rate card, forwarding agent pricing, cost pricing, agent assignment, cost calculation, vendor rate
+
+---
+
+## Cost Management
+
+**Navigation:** Finance → Cost Management
+
+**Purpose:** Track, allocate, and analyze the costs of shipments to understand profitability.
+
+### Cost Management Workflow
+
+The cost management process follows these steps:
+
+```
+1. Set Up Cost Rate Cards     →  Define agent pricing
+2. Agent Rate Assignments     →  Link agents to rate cards
+3. MAWB Cost Entry           →  Record consolidated costs
+4. Cost Allocation           →  Distribute MAWB costs to shipments
+5. Cost Actualization        →  Record actual vendor invoice costs
+6. Lock Costs               →  Freeze verified costs
+7. Profitability Reports     →  Analyze margins
+```
+
+### Cost Tracking on Shipments
+
+Each shipment (InscanMaster) tracks both estimated and actual costs:
+
+| Field Group | Fields | Source |
+|-------------|--------|--------|
+| Sales Charges | SalesFreightCharge, SalesFuelSurcharge, SalesHandlingCharge, SalesTotalCharge | Sales rate card |
+| Estimated Costs | EstimatedFreightCost, EstimatedFuelSurchargeCost, EstimatedHandlingCost, EstimatedTotalCost | Cost rate card or MAWB allocation |
+| Actual Costs | ActualFreightCost, ActualFuelSurchargeCost, ActualHandlingCost, ActualTotalCost | Vendor invoice (cost actualization) |
+| Margin | GrossMargin, GrossMarginPercent, CostVariance | Calculated |
+| Lock | IsCostLocked, CostLockedAt, CostInvoiceRef | Cost actualization |
+
+### MAWB Cost Allocation Methods
+
+When distributing MAWB-level costs to individual shipments:
+
+| Method | Formula | Best For |
+|--------|---------|----------|
+| Chargeable Weight | Shipment ChargeableWt / Total ChargeableWt × MAWB Cost | Air freight (most common) |
+| Gross Weight | Shipment GrossWt / Total GrossWt × MAWB Cost | When chargeable weight unavailable |
+| Pieces | Shipment Pieces / Total Pieces × MAWB Cost | Uniform-sized cargo |
+| CBM | Shipment CBM / Total CBM × MAWB Cost | Volume-based cargo |
+| Manual | User enters each amount | Special negotiations |
+
+### Profitability Report Views
+
+| View | Aggregation | Key Metric |
+|------|-------------|------------|
+| Shipment-wise | Per AWB | Individual margin |
+| Customer-wise | Per customer | Customer profitability |
+| Agent-wise | Per forwarding agent | Agent cost efficiency |
+| Zone-wise | Per origin-destination zone | Route profitability |
+| MAWB-wise | Per Master Air Waybill | Consolidated margin |
+
+### Keywords
+cost management, cost tracking, MAWB cost, cost allocation, cost actualization, actual cost, estimated cost, variance, profitability, margin, gross margin, cost locking, vendor invoice, forwarding agent cost
+
+---
+
 # System Settings
 
 ## Company Setup
@@ -5206,6 +5581,13 @@ status code, status ID, shipment status, tracking status, courier status, AWB st
 | Delete all business data | Platform Administration → Manage Demo Data |
 | Manage tenant settings | Platform Administration → Tenant Settings |
 | Initial setup | /setup (first-time only) |
+| Set up cost rate cards | Pricing → Cost Rate Cards |
+| Assign agent to cost rate card | Pricing → Cost Rate Cards → Agent Assignments |
+| Enter MAWB costs | Finance → Cost Management → MAWB Cost Entry |
+| Allocate MAWB costs to shipments | Finance → Cost Management → MAWB Cost Entry → Allocate |
+| Actualize shipment costs | Finance → Cost Management → Cost Actualization |
+| Lock shipment costs | Finance → Cost Management → Cost Actualization → Lock |
+| View profitability report | Finance → Cost Management → Profitability Report |
 
 ## New Features (January 2026)
 
@@ -5226,6 +5608,21 @@ status code, status ID, shipment status, tracking status, courier status, AWB st
 | **Platform Administration** | New admin section: Tenant Settings, Subscription Management, Demo Data Management |
 | **Three-Tier Security** | Server-side role authorization for sensitive admin features |
 
+## New Features (February 2026)
+
+| Feature | Description |
+|---------|-------------|
+| **Cost Rate Cards** | Define what forwarding agents charge you, with Sales/Cost/Both rate card types |
+| **Agent Rate Assignments** | Link forwarding agents to cost rate cards with effective date tracking |
+| **Cost Zone Pricing** | Cost-specific zone fields: Fuel Surcharge %, Handling Charge, Per Shipment Charge, Peak Surcharge, Min Charges |
+| **MAWB Cost Entry** | Record MAWB-level costs from vendor invoices with forwarding agent and invoice reference |
+| **Cost Allocation Engine** | Distribute MAWB costs to shipments by Chargeable Weight, Gross Weight, Pieces, CBM, or Manual |
+| **Cost Actualization** | Compare estimated vs actual costs, track variance, enter vendor invoice references |
+| **Cost Locking** | Freeze verified costs with timestamp to prevent further changes |
+| **Profitability Report** | Five analysis views: Shipment-wise, Customer-wise, Agent-wise, Zone-wise, MAWB-wise with margin color coding |
+| **Sales + Cost Tracking** | Each shipment tracks sales charges, estimated costs, actual costs, variance, and gross margin |
+| **Rating Engine Enhancement** | CalculateCost(), CalculateRateAndCost(), FindApplicableCostRateCard() methods for automated cost calculation |
+
 ## Keyboard Shortcuts
 
 | Shortcut | Action |
@@ -5239,16 +5636,16 @@ status code, status ID, shipment status, tracking status, courier status, AWB st
 
 **Operations:** pickup, collection, inscan, AWB, shipment, manifest, MAWB, bag, DRS, outscan, dispatch, POD, delivery, RTS, return, tracking, import, warehouse, unified
 
-**Finance:** invoice, receipt, payment, journal, ledger, GL, AR, AP, tax, GST, aging, credit note, debit note, email report, branch currency, default currency
+**Finance:** invoice, receipt, payment, journal, ledger, GL, AR, AP, tax, GST, aging, credit note, debit note, email report, branch currency, default currency, cost, actual cost, estimated cost, variance, margin, profitability, cost actualization, cost locking, vendor invoice
 
 **CRM:** customer, party, contract, SLA, complaint, ticket, department, designation
 
-**Pricing:** rate card, zone, slab, fuel surcharge, discount, charges, simulator, international zone, domestic zone
+**Pricing:** rate card, zone, slab, fuel surcharge, discount, charges, simulator, international zone, domestic zone, cost rate card, agent rate card, agent assignment, cost allocation, MAWB cost, allocation method
 
 **System:** company, branch, user, role, permission, status, service type, currency, movement type, AWB config, setup, demo data, delete all data, platform admin, tenant, subscription
 
 ---
 
-*Last Updated: January 30, 2026*
-*Version: 2.1*
+*Last Updated: February 7, 2026*
+*Version: 2.2*
 *Net4Courier - Linked To Deliver*
