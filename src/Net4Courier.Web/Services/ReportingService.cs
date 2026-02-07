@@ -1627,7 +1627,7 @@ public class ReportingService
                         {
                             if (shipment.BarcodeImage != null && shipment.BarcodeImage.Length > 0)
                             {
-                                try { c.Item().Height(30).Image(shipment.BarcodeImage); }
+                                try { c.Item().MaxHeight(30).Image(shipment.BarcodeImage).FitArea(); }
                                 catch { }
                             }
                             c.Item().AlignCenter().Text($"*{hwbNo}*").FontSize(10);
@@ -1637,7 +1637,7 @@ public class ReportingService
                         {
                             if (logoData != null && logoData.Length > 0)
                             {
-                                try { c.Item().Width(100).Height(50).Image(logoData).FitHeight(); }
+                                try { c.Item().MaxWidth(100).MaxHeight(50).Image(logoData).FitArea(); }
                                 catch { }
                             }
                         });
@@ -1659,11 +1659,11 @@ public class ReportingService
                         
                         row.RelativeItem(1).AlignRight().Column(c =>
                         {
-                            c.Item().Text(text => { text.Span("Account Number").FontSize(8); text.Span($" : {customerAccount ?? "DUTY" + (shipment.CustomerId?.ToString() ?? "")}").FontSize(9); });
-                            c.Item().Text(text => { text.Span("Invoice Number").FontSize(8); text.Span($" : {invoiceNo}").FontSize(9); });
-                            c.Item().Text(text => { text.Span("HWB Number").FontSize(8); text.Span($" : {hwbNo}").FontSize(9); });
-                            c.Item().Text(text => { text.Span("Date").FontSize(8); text.Span($" : {invoiceDate:dd/MM/yyyy}").FontSize(9); });
-                            c.Item().Text(text => { text.Span("Payment Due Date").FontSize(8); text.Span($" : {invoiceDate:dd/MM/yyyy}").FontSize(9); });
+                            c.Item().Text(text => { text.Span("Account Number: ").FontSize(8); text.Span(customerAccount ?? "DUTY" + (shipment.CustomerId?.ToString() ?? "")).FontSize(9); });
+                            c.Item().Text(text => { text.Span("Invoice Number: ").FontSize(8); text.Span(invoiceNo).FontSize(9); });
+                            c.Item().Text(text => { text.Span("HWB Number: ").FontSize(8); text.Span(hwbNo).FontSize(9); });
+                            c.Item().Text(text => { text.Span("Date: ").FontSize(8); text.Span(invoiceDate.ToString("dd/MM/yyyy")).FontSize(9); });
+                            c.Item().Text(text => { text.Span("Payment Due Date: ").FontSize(8); text.Span(invoiceDate.ToString("dd/MM/yyyy")).FontSize(9); });
                         });
                     });
 
@@ -1801,7 +1801,7 @@ public class ReportingService
                         {
                             if (shipment.BarcodeImage != null && shipment.BarcodeImage.Length > 0)
                             {
-                                try { c.Item().Height(25).Image(shipment.BarcodeImage); }
+                                try { c.Item().MaxHeight(25).Image(shipment.BarcodeImage).FitArea(); }
                                 catch { }
                             }
                             c.Item().AlignCenter().Text($"*{hwbNo}*").FontSize(8);
@@ -1814,7 +1814,7 @@ public class ReportingService
                         {
                             if (shipment.BarcodeImage != null && shipment.BarcodeImage.Length > 0)
                             {
-                                try { c.Item().Height(25).Image(shipment.BarcodeImage); }
+                                try { c.Item().MaxHeight(25).Image(shipment.BarcodeImage).FitArea(); }
                                 catch { }
                             }
                             c.Item().AlignCenter().Text($"*{invoiceNo}*").FontSize(8);
