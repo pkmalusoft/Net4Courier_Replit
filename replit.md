@@ -42,7 +42,7 @@ The application is built on .NET 8 Blazor Server, adopting a modular architectur
 - **Cash & Bank Module**: Independent transaction management and bank account management.
 - **Error Handling**: Robust global error handling with `ErrorBoundary`, `PageErrorHandler`, and `MudBlazor Snackbar`.
 - **Demo Data & Setup**: Admin feature to create/delete demo data, initial setup dialog, and a secure initial setup wizard.
-- **Platform Administration**: Dedicated admin section with Tenant Settings, Subscription Management, and user management features.
+- **Platform Administration**: Dedicated admin section with Tenant Settings, Subscription Management, user management features, and Branch Data Reassignment tool for fixing orphaned records after branch deletion.
 - **Utility Features**: CLI password reset utility, AWB barcode generation, tracking/shipment invoice PDF generation, customer CRM with complaints/tickets, branch display settings, branch currency as default, and "Delete All Business Data" feature.
 - **Audit Log System**: Comprehensive audit logging for all entity changes, accessible via a dashboard with filters and Excel export.
 - **Customer Zones**: Geographic zone management for customer and courier assignments, facilitating pickup notifications in the PWA mobile app.

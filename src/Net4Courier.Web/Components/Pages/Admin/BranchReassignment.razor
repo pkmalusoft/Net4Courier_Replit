@@ -1,0 +1,363 @@
+@page "/admin/branch-reassignment"
+@using Microsoft.EntityFrameworkCore
+@using Microsoft.AspNetCore.Authorization
+@using Net4Courier.Infrastructure.Data
+@using Net4Courier.Masters.Entities
+@attribute [Authorize(Roles = "PlatformAdmin,Administrator")]
+@inject IDbContextFactory<ApplicationDbContext> DbFactory
+@inject ISnackbar Snackbar
+@inject IDialogService DialogService
+
+<PageTitle>Branch Data Reassignment - Net4Courier</PageTitle>
+
+<MudContainer MaxWidth="MaxWidth.Large" Class="mt-4">
+    <MudPaper Class="pa-4">
+        <MudStack Spacing="4">
+            <MudText Typo="Typo.h4">Branch Data Reassignment</MudText>
+            <MudText Typo="Typo.body1" Color="Color.Secondary">
+                Scan for records referencing deleted or missing branches and reassign them to an active branch.
+                This fixes issues caused by branch deletion (e.g., reports failing to load).
+            </MudText>
+
+            <MudDivider />
+
+            <MudStack Row="true" Spacing="2" AlignItems="AlignItems.Center">
+                <MudButton Variant="Variant.Filled" Color="Color.Primary"
+                           StartIcon="@Icons.Material.Filled.Search"
+                           OnClick="ScanOrphanedRecords"
+                           Disabled="_scanning">
+                    @if (_scanning)
+                    {
+                        <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" />
+                    }
+                    Scan for Orphaned Records
+                </MudButton>
+            </MudStack>
+
+            @if (_scanComplete)
+            {
+                @if (_orphanedTables.Count == 0)
+                {
+                    <MudAlert Severity="Severity.Success">
+                        No orphaned records found. All records reference valid, active branches.
+                    </MudAlert>
+                }
+                else
+                {
+                    <MudAlert Severity="Severity.Warning" Class="mb-2">
+                        Found @_totalOrphanedRecords orphaned record(s) across @_orphanedTables.Count table(s).
+                        These records reference branches that have been deleted or no longer exist.
+                    </MudAlert>
+
+                    @if (_deletedBranches.Count > 0)
+                    {
+                        <MudText Typo="Typo.subtitle1" Class="mb-2">Deleted Branches Found:</MudText>
+                        <MudSimpleTable Dense="true" Bordered="true" Striped="true" Class="mb-4" Style="max-width: 600px;">
+                            <thead>
+                                <tr>
+                                    <th>Branch ID</th>
+                                    <th>Branch Name</th>
+                                    <th>Status</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var b in _deletedBranches)
+                                {
+                                    <tr>
+                                        <td>@b.Id</td>
+                                        <td>@b.Name</td>
+                                        <td><MudChip T="string" Color="Color.Error" Size="Size.Small">Deleted</MudChip></td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </MudSimpleTable>
+                    }
+
+                    <MudTable Items="@_orphanedTables" Dense="true" Bordered="true" Striped="true" Hover="true">
+                        <HeaderContent>
+                            <MudTh>Table</MudTh>
+                            <MudTh>Orphaned Records</MudTh>
+                            <MudTh>Deleted Branch IDs</MudTh>
+                        </HeaderContent>
+                        <RowTemplate>
+                            <MudTd>@context.TableName</MudTd>
+                            <MudTd>
+                                <MudChip T="string" Color="Color.Warning" Size="Size.Small">@context.Count</MudChip>
+                            </MudTd>
+                            <MudTd>@string.Join(", ", context.BranchIds)</MudTd>
+                        </RowTemplate>
+                    </MudTable>
+
+                    <MudDivider Class="my-4" />
+
+                    <MudText Typo="Typo.h6">Reassign to Active Branch</MudText>
+                    <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-2">
+                        Select an active branch to reassign all orphaned records to:
+                    </MudText>
+
+                    <MudStack Row="true" Spacing="2" AlignItems="AlignItems.Center">
+                        <MudSelect T="long?" @bind-Value="_targetBranchId" Label="Target Branch" Variant="Variant.Outlined"
+                                   Style="max-width: 400px;">
+                            @foreach (var branch in _activeBranches)
+                            {
+                                <MudSelectItem T="long?" Value="@branch.Id">@branch.Name (ID: @branch.Id)</MudSelectItem>
+                            }
+                        </MudSelect>
+
+                        <MudButton Variant="Variant.Filled" Color="Color.Warning"
+                                   StartIcon="@Icons.Material.Filled.SwapHoriz"
+                                   OnClick="ReassignRecords"
+                                   Disabled="@(_reassigning || _targetBranchId == null)">
+                            @if (_reassigning)
+                            {
+                                <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" />
+                            }
+                            Reassign All Records
+                        </MudButton>
+                    </MudStack>
+
+                    @if (_reassignComplete)
+                    {
+                        <MudAlert Severity="Severity.Success" Class="mt-2">
+                            Successfully reassigned @_totalReassigned record(s) to branch "@_targetBranchName".
+                        </MudAlert>
+                    }
+                }
+
+                @if (_skippedTables.Count > 0)
+                {
+                    <MudAlert Severity="Severity.Info" Class="mt-2">
+                        @_skippedTables.Count table(s) were skipped during scan (table may not exist in database yet):
+                        <ul>
+                            @foreach (var msg in _skippedTables)
+                            {
+                                <li>@msg</li>
+                            }
+                        </ul>
+                    </MudAlert>
+                }
+            }
+
+            <MudDivider Class="my-4" />
+
+            <MudText Typo="Typo.subtitle2" Color="Color.Secondary">
+                <b>Note:</b> This tool scans all operational and financial tables for records that reference
+                branches marked as deleted. Reassigning moves these records to a valid branch so that
+                reports, printouts, and other features work correctly.
+            </MudText>
+        </MudStack>
+    </MudPaper>
+</MudContainer>
+
+@code {
+    private bool _scanning;
+    private bool _scanComplete;
+    private bool _reassigning;
+    private bool _reassignComplete;
+    private long? _targetBranchId;
+    private string _targetBranchName = "";
+    private int _totalOrphanedRecords;
+    private int _totalReassigned;
+    private List<OrphanedTableInfo> _orphanedTables = new();
+    private List<Branch> _activeBranches = new();
+    private List<Branch> _deletedBranches = new();
+    private List<string> _skippedTables = new();
+
+    private static readonly (string TableName, string ColumnName)[] TablesWithBranchId = new[]
+    {
+        ("InscanMasters", "BranchId"),
+        ("QuickInscanMasters", "BranchId"),
+        ("ImportMasters", "BranchId"),
+        ("MasterAirwaybills", "BranchId"),
+        ("PrepaidDocuments", "BranchId"),
+        ("TransferOrders", "BranchId"),
+        ("DRSs", "BranchId"),
+        ("PickupSchedules", "BranchId"),
+        ("PickupRequests", "BranchId"),
+        ("PickupCommitments", "BranchId"),
+        ("CourierLedgers", "BranchId"),
+        ("CODRemittances", "BranchId"),
+        ("Manifests", "BranchId"),
+        ("AWBTrackings", "BranchId"),
+        ("Tickets", "BranchId"),
+        ("AWBStocks", "BranchId"),
+        ("CustomerAwbBalances", "BranchId"),
+        ("Vehicles", "BranchId"),
+        ("CustomerAwbIssues", "BranchId"),
+        ("ShipmentStatusHistories", "BranchId"),
+        ("PickupStatusHistories", "BranchId"),
+        ("PickupIncentives", "BranchId"),
+        ("Invoices", "BranchId"),
+        ("Receipts", "BranchId"),
+        ("Expenses", "BranchId"),
+        ("VendorBills", "BranchId"),
+        ("Journals", "BranchId"),
+        ("CashBankTransactions", "BranchId"),
+        ("BankReconciliations", "BranchId"),
+        ("DebitNotes", "BranchId"),
+        ("CreditNotes", "BranchId"),
+        ("BankAccounts", "BranchId"),
+        ("EmpostLicenses", "BranchId"),
+    };
+
+    private async Task ScanOrphanedRecords()
+    {
+        _scanning = true;
+        _scanComplete = false;
+        _reassignComplete = false;
+        _orphanedTables.Clear();
+        _deletedBranches.Clear();
+        _skippedTables.Clear();
+        StateHasChanged();
+
+        try
+        {
+            await using var db = await DbFactory.CreateDbContextAsync();
+
+            _activeBranches = await db.Branches
+                .Where(b => !b.IsDeleted && b.IsActive)
+                .OrderBy(b => b.Name)
+                .ToListAsync();
+
+            _deletedBranches = await db.Branches
+                .Where(b => b.IsDeleted)
+                .OrderBy(b => b.Id)
+                .ToListAsync();
+
+            var activeBranchIds = _activeBranches.Select(b => b.Id).ToHashSet();
+
+            foreach (var (tableName, columnName) in TablesWithBranchId)
+            {
+                try
+                {
+                    var checkSql = $@"
+                        SELECT COUNT(*) as cnt, 
+                               array_agg(DISTINCT ""{columnName}"") as branch_ids
+                        FROM ""{tableName}""
+                        WHERE ""{columnName}"" IS NOT NULL
+                        AND ""{columnName}"" NOT IN (
+                            SELECT ""Id"" FROM ""Branches"" WHERE ""IsDeleted"" = false
+                        )";
+
+                    using var cmd = db.Database.GetDbConnection().CreateCommand();
+                    cmd.CommandText = checkSql;
+                    await db.Database.OpenConnectionAsync();
+                    using var reader = await cmd.ExecuteReaderAsync();
+                    if (await reader.ReadAsync())
+                    {
+                        var count = reader.GetInt64(0);
+                        if (count > 0)
+                        {
+                            var branchIdsValue = reader.GetValue(1);
+                            var branchIds = new List<long>();
+                            if (branchIdsValue is long[] longArr)
+                                branchIds.AddRange(longArr);
+                            else if (branchIdsValue is Array arr)
+                                foreach (var item in arr)
+                                    if (item != null && long.TryParse(item.ToString(), out var bid))
+                                        branchIds.Add(bid);
+
+                            _orphanedTables.Add(new OrphanedTableInfo
+                            {
+                                TableName = tableName,
+                                ColumnName = columnName,
+                                Count = (int)count,
+                                BranchIds = branchIds
+                            });
+                        }
+                    }
+                    await db.Database.CloseConnectionAsync();
+                }
+                catch (Exception ex)
+                {
+                    _skippedTables.Add($"{tableName}: {ex.Message}");
+                }
+            }
+
+            _totalOrphanedRecords = _orphanedTables.Sum(t => t.Count);
+            _scanComplete = true;
+
+            if (_activeBranches.Count == 1)
+                _targetBranchId = _activeBranches[0].Id;
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error scanning: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _scanning = false;
+        }
+    }
+
+    private async Task ReassignRecords()
+    {
+        if (_targetBranchId == null) return;
+
+        var targetName = _activeBranches.FirstOrDefault(b => b.Id == _targetBranchId)?.Name ?? "Unknown";
+        var confirmed = await DialogService.ShowMessageBox(
+            "Confirm Reassignment",
+            $"This will reassign {_totalOrphanedRecords} record(s) across {_orphanedTables.Count} table(s) to branch \"{targetName}\". This action cannot be undone. Continue?",
+            yesText: "Reassign", cancelText: "Cancel");
+        if (confirmed != true) return;
+
+        _reassigning = true;
+        _totalReassigned = 0;
+        StateHasChanged();
+
+        try
+        {
+            await using var db = await DbFactory.CreateDbContextAsync();
+
+            var targetBranch = await db.Branches.FindAsync(_targetBranchId.Value);
+            if (targetBranch == null)
+            {
+                Snackbar.Add("Target branch not found", Severity.Error);
+                return;
+            }
+            _targetBranchName = targetBranch.Name;
+
+            foreach (var table in _orphanedTables)
+            {
+                try
+                {
+                    var updateSql = $@"
+                        UPDATE ""{table.TableName}""
+                        SET ""{table.ColumnName}"" = @p0
+                        WHERE ""{table.ColumnName}"" IS NOT NULL
+                        AND ""{table.ColumnName}"" NOT IN (
+                            SELECT ""Id"" FROM ""Branches"" WHERE ""IsDeleted"" = false
+                        )";
+
+                    var affected = await db.Database.ExecuteSqlRawAsync(updateSql, _targetBranchId.Value);
+                    _totalReassigned += affected;
+                }
+                catch (Exception ex)
+                {
+                    Snackbar.Add($"Error updating {table.TableName}: {ex.Message}", Severity.Error);
+                }
+            }
+
+            _reassignComplete = true;
+            Snackbar.Add($"Successfully reassigned {_totalReassigned} records to branch \"{_targetBranchName}\"", Severity.Success);
+
+            await ScanOrphanedRecords();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error reassigning: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _reassigning = false;
+        }
+    }
+
+    private class OrphanedTableInfo
+    {
+        public string TableName { get; set; } = "";
+        public string ColumnName { get; set; } = "";
+        public int Count { get; set; }
+        public List<long> BranchIds { get; set; } = new();
+    }
+}
