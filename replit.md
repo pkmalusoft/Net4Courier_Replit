@@ -92,5 +92,29 @@ The application is built on .NET 8 Blazor Server, adopting a modular architectur
 - Toggle between reorganized 12-section menu and legacy layout
 - User preference persistence
 
+### Cost Update Module
+**Status**: Phase 1-5 Implemented (Feb 2026)
+
+**Entities Added**:
+- `AgentRateAssignment` - Links forwarding agents to cost rate cards (mirrors CustomerRateAssignment)
+- `RateCardType` enum (Sales/Cost/Both) on RateCard entity
+- Cost-specific fields on RateCardZone: FuelSurchargePercent, HandlingCharge, PerShipmentCharge, PeakSurcharge, CostMinCharge, SalesMinCharge (both sales and cost variants)
+- Cost tracking fields on InscanMaster: SalesRateCardId, SalesFreightCharge, SalesFuelSurcharge, SalesHandlingCharge, SalesTotalCharge, CostRateCardId, CostAgentId, EstimatedFreightCost/FuelSurchargeCost/HandlingCost/TotalCost, ActualFreightCost/FuelSurchargeCost/HandlingCost/TotalCost, CostVariance, GrossMargin, GrossMarginPercent, IsCostLocked, CostLockedAt, CostInvoiceRef
+- MAWB cost fields: ForwardingAgentId/Name, TotalMAWBCost, AirFreightCost, FuelSurchargeCost, HandlingCost, OtherCost, VendorInvoiceNo/Date, AllocationMethod (CostAllocationMethod enum), IsCostAllocated
+
+**Engine**:
+- `CalculateCost()` method in RatingEngineService - mirrors CalculateRate() using agent rate cards
+- `CalculateRateAndCost()` method for simultaneous sales+cost calculation
+- `FindApplicableCostRateCard()` - lookups via AgentRateAssignment or RateCardType=Cost/Both
+- `CalculateCostCharges()` - mirrors sales charge calculation using cost rates from zones/slabs
+
+**Pages**:
+- `/cost-rate-cards` - Cost Rate Card Management with agent assignments
+- `/mawb-cost-entry` - MAWB cost entry and HAWB allocation (pro-rata by weight/pieces/CBM/manual)
+- `/cost-actualization` - Actual vs estimated cost entry with variance tracking and cost locking
+- `/profitability-report` - Multi-view report (Shipment/Customer/Agent/Zone/MAWB) with margin analysis
+
+**Nav**: Cost Rate Cards under Pricing; MAWB Cost Entry, Cost Actualization, Profitability Report under Finance > Cost Management
+
 ### Other Planned Features
 - (Add future feature requests here)

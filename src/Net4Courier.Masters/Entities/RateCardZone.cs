@@ -60,6 +60,17 @@ public class RateCardZone : AuditableEntity
     /// </summary>
     public decimal AdditionalRate { get; set; } = 0m;
     
+    public decimal FuelSurchargePercent { get; set; } = 0m;
+    public decimal HandlingCharge { get; set; } = 0m;
+    public decimal PerShipmentCharge { get; set; } = 0m;
+    public decimal PeakSurcharge { get; set; } = 0m;
+    public decimal CostFuelSurchargePercent { get; set; } = 0m;
+    public decimal CostHandlingCharge { get; set; } = 0m;
+    public decimal CostPerShipmentCharge { get; set; } = 0m;
+    public decimal CostPeakSurcharge { get; set; } = 0m;
+    public decimal CostMinCharge { get; set; } = 0m;
+    public decimal SalesMinCharge { get; set; } = 0m;
+    
     public decimal MarginBaseRate => SalesBaseRate - CostBaseRate;
     public decimal MarginPerKg => SalesPerKg - CostPerKg;
     

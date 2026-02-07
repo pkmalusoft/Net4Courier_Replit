@@ -61,5 +61,29 @@ public class MasterAirwaybill : AuditableEntity
     public string? CustomsDeclarationNo { get; set; }
     public string? ExportPermitNo { get; set; }
     
+    public long? ForwardingAgentId { get; set; }
+    public string? ForwardingAgentName { get; set; }
+    public decimal? TotalMAWBCost { get; set; }
+    public decimal? AirFreightCost { get; set; }
+    public decimal? FuelSurchargeCost { get; set; }
+    public decimal? HandlingCost { get; set; }
+    public decimal? OtherCost { get; set; }
+    public string? VendorInvoiceNo { get; set; }
+    public DateTime? VendorInvoiceDate { get; set; }
+    public CostAllocationMethod AllocationMethod { get; set; } = CostAllocationMethod.ChargeableWeight;
+    public bool IsCostAllocated { get; set; }
+    public DateTime? CostAllocatedAt { get; set; }
+    public long? CostAllocatedByUserId { get; set; }
+    public string? CostAllocatedByUserName { get; set; }
+    
     public virtual ICollection<MAWBBag> Bags { get; set; } = new List<MAWBBag>();
+}
+
+public enum CostAllocationMethod
+{
+    ChargeableWeight = 1,
+    GrossWeight = 2,
+    Pieces = 3,
+    CBM = 4,
+    Manual = 5
 }

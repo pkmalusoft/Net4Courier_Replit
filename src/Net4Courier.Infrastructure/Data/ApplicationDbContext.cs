@@ -132,6 +132,7 @@ public class ApplicationDbContext : DbContext
     public DbSet<RateCardZone> RateCardZones => Set<RateCardZone>();
     public DbSet<RateCardSlabRule> RateCardSlabRules => Set<RateCardSlabRule>();
     public DbSet<CustomerRateAssignment> CustomerRateAssignments => Set<CustomerRateAssignment>();
+    public DbSet<AgentRateAssignment> AgentRateAssignments => Set<AgentRateAssignment>();
     public DbSet<SlabRuleTemplate> SlabRuleTemplates => Set<SlabRuleTemplate>();
     public DbSet<SlabRuleTemplateDetail> SlabRuleTemplateDetails => Set<SlabRuleTemplateDetail>();
     

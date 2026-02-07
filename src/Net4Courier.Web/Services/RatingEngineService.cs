@@ -419,6 +419,319 @@ public class RatingEngineService
 
         return (baseRate, slabTotal, rules);
     }
+
+    public async Task<CostRatingResult> CalculateCost(CostRatingRequest request)
+    {
+        var result = new CostRatingResult { Request = request };
+        var stepOrder = 1;
+
+        try
+        {
+            var (rateCard, rateCardSource) = await FindApplicableCostRateCard(request);
+            if (rateCard == null)
+            {
+                result.ErrorMessage = "No applicable cost rate card found for this shipment";
+                return result;
+            }
+
+            result.RateCardId = rateCard.Id;
+            result.RateCardName = rateCard.RateCardName;
+            result.RateCardSource = rateCardSource;
+
+            result.FormulaTrace.Add(new FormulaTraceStep
+            {
+                Order = stepOrder++,
+                Category = "Cost Rate Card Selection",
+                Description = $"Selected: {rateCard.RateCardName}",
+                Formula = rateCardSource
+            });
+
+            var (zone, zonePath) = await ResolveZoneWithTrace(rateCard.Id, request.DestinationCountryId, request.DestinationCityId, request.ServiceTypeId, request.ShipmentModeId, request.DocumentType);
+            if (zone == null)
+            {
+                result.ErrorMessage = "No zone found for destination in cost rate card";
+                return result;
+            }
+
+            result.ZoneCode = zone.ZoneMatrix?.ZoneCode ?? "";
+            result.ZoneName = zone.ZoneMatrix?.ZoneName ?? "";
+
+            result.FormulaTrace.Add(new FormulaTraceStep
+            {
+                Order = stepOrder++,
+                Category = "Zone Resolution",
+                Description = $"Zone: {result.ZoneCode} - {result.ZoneName}",
+                Formula = zonePath
+            });
+
+            var salesRequest = new RatingRequest
+            {
+                ActualWeight = request.ActualWeight,
+                Length = request.Length,
+                Width = request.Width,
+                Height = request.Height,
+                VolumetricDivisor = request.VolumetricDivisor
+            };
+            var (chargeableWeight, volumetricWeight, weightFormula) = CalculateChargeableWeightWithTrace(salesRequest);
+            result.ChargeableWeight = chargeableWeight;
+
+            result.FormulaTrace.Add(new FormulaTraceStep
+            {
+                Order = stepOrder++,
+                Category = "Weight Calculation",
+                Description = "Chargeable Weight",
+                Formula = weightFormula,
+                Value = chargeableWeight
+            });
+
+            var (baseCharge, slabCharge, rules) = CalculateCostCharges(zone, chargeableWeight);
+            result.FreightCost = baseCharge + slabCharge;
+            result.AppliedRules = rules;
+
+            result.FormulaTrace.Add(new FormulaTraceStep
+            {
+                Order = stepOrder++,
+                Category = "Freight Cost",
+                Description = string.Join("; ", rules),
+                Formula = $"Freight = {result.FreightCost:N2}",
+                Value = result.FreightCost
+            });
+
+            if (zone.CostFuelSurchargePercent > 0)
+            {
+                result.FuelSurchargeCost = result.FreightCost * (zone.CostFuelSurchargePercent / 100m);
+                result.FormulaTrace.Add(new FormulaTraceStep
+                {
+                    Order = stepOrder++,
+                    Category = "Fuel Surcharge",
+                    Description = $"{zone.CostFuelSurchargePercent:N2}% of {result.FreightCost:N2}",
+                    Formula = $"FSC = {result.FuelSurchargeCost:N2}",
+                    Value = result.FuelSurchargeCost
+                });
+            }
+
+            result.HandlingCost = zone.CostHandlingCharge;
+            if (result.HandlingCost > 0)
+            {
+                result.FormulaTrace.Add(new FormulaTraceStep
+                {
+                    Order = stepOrder++,
+                    Category = "Handling Charge",
+                    Formula = $"Handling = {result.HandlingCost:N2}",
+                    Value = result.HandlingCost
+                });
+            }
+
+            result.PerShipmentCost = zone.CostPerShipmentCharge;
+            result.PeakSurchargeCost = zone.CostPeakSurcharge;
+
+            result.TotalCost = result.FreightCost + result.FuelSurchargeCost
+                + result.HandlingCost + result.PerShipmentCost + result.PeakSurchargeCost;
+
+            if (zone.CostMinCharge > 0 && result.TotalCost < zone.CostMinCharge)
+            {
+                result.TotalCost = zone.CostMinCharge;
+                result.MinChargeApplied = zone.CostMinCharge;
+                result.FormulaTrace.Add(new FormulaTraceStep
+                {
+                    Order = stepOrder++,
+                    Category = "Minimum Charge Applied",
+                    Formula = $"Min Charge = {zone.CostMinCharge:N2}",
+                    Value = zone.CostMinCharge
+                });
+            }
+
+            result.FormulaTrace.Add(new FormulaTraceStep
+            {
+                Order = stepOrder++,
+                Category = "Total Cost",
+                Description = $"Freight {result.FreightCost:N2} + FSC {result.FuelSurchargeCost:N2} + Handling {result.HandlingCost:N2} + Per-Shipment {result.PerShipmentCost:N2} + Peak {result.PeakSurchargeCost:N2}",
+                Formula = $"Total = {result.TotalCost:N2}",
+                Value = result.TotalCost
+            });
+
+            result.Success = true;
+        }
+        catch (Exception ex)
+        {
+            result.ErrorMessage = $"Cost calculation error: {ex.Message}";
+        }
+
+        return result;
+    }
+
+    public async Task<(RatingResult? sales, CostRatingResult? cost)> CalculateRateAndCost(RatingRequest salesRequest, long? agentId)
+    {
+        var salesResult = await CalculateRate(salesRequest);
+
+        CostRatingResult? costResult = null;
+        if (agentId.HasValue)
+        {
+            var costRequest = new CostRatingRequest
+            {
+                AgentId = agentId.Value,
+                MovementType = salesRequest.MovementType,
+                PaymentMode = salesRequest.PaymentMode,
+                ServiceTypeId = salesRequest.ServiceTypeId,
+                ShipmentModeId = salesRequest.ShipmentModeId,
+                DocumentType = salesRequest.DocumentType,
+                OriginCountryId = salesRequest.OriginCountryId,
+                OriginCityId = salesRequest.OriginCityId,
+                DestinationCountryId = salesRequest.DestinationCountryId,
+                DestinationCityId = salesRequest.DestinationCityId,
+                ActualWeight = salesRequest.ActualWeight,
+                Length = salesRequest.Length,
+                Width = salesRequest.Width,
+                Height = salesRequest.Height,
+                Pieces = salesRequest.Pieces,
+                VolumetricDivisor = salesRequest.VolumetricDivisor
+            };
+            costResult = await CalculateCost(costRequest);
+        }
+
+        return (salesResult, costResult);
+    }
+
+    private async Task<(RateCard? rateCard, string source)> FindApplicableCostRateCard(CostRatingRequest request)
+    {
+        var today = DateTime.UtcNow;
+
+        var assignment = await _dbContext.AgentRateAssignments
+            .Include(a => a.RateCard)
+            .Include(a => a.Agent)
+            .Where(a => a.AgentId == request.AgentId
+                     && a.IsActive && !a.IsDeleted
+                     && a.EffectiveFrom <= today
+                     && (!a.EffectiveTo.HasValue || a.EffectiveTo >= today))
+            .OrderBy(a => a.Priority)
+            .FirstOrDefaultAsync();
+
+        if (assignment?.RateCard != null && assignment.RateCard.Status == RateCardStatus.Active)
+        {
+            var agentName = assignment.Agent?.Name ?? "Agent";
+            return (assignment.RateCard, $"Agent Assignment: {agentName} (Priority {assignment.Priority})");
+        }
+
+        var baseQuery = _dbContext.RateCards
+            .Where(r => r.Status == RateCardStatus.Active
+                     && !r.IsDeleted
+                     && (r.RateCardType == RateCardType.Cost || r.RateCardType == RateCardType.Both)
+                     && r.MovementTypeId == request.MovementType
+                     && r.PaymentModeId == request.PaymentMode
+                     && r.ForwardingAgentId == request.AgentId
+                     && r.ValidFrom <= today
+                     && (!r.ValidTo.HasValue || r.ValidTo >= today));
+
+        if (request.ServiceTypeId.HasValue)
+            baseQuery = baseQuery.Where(r => r.ServiceTypeId == request.ServiceTypeId || r.ServiceTypeId == null);
+        if (request.ShipmentModeId.HasValue)
+            baseQuery = baseQuery.Where(r => r.ShipmentModeId == request.ShipmentModeId || r.ShipmentModeId == null);
+
+        var agentCard = await baseQuery
+            .OrderByDescending(r => r.ServiceTypeId.HasValue)
+            .ThenByDescending(r => r.ShipmentModeId.HasValue)
+            .ThenByDescending(r => r.CreatedAt)
+            .FirstOrDefaultAsync();
+
+        if (agentCard != null) return (agentCard, $"Agent Cost Rate Card: {agentCard.RateCardName}");
+
+        var defaultCostQuery = _dbContext.RateCards
+            .Where(r => r.Status == RateCardStatus.Active
+                     && !r.IsDeleted
+                     && (r.RateCardType == RateCardType.Cost || r.RateCardType == RateCardType.Both)
+                     && r.MovementTypeId == request.MovementType
+                     && r.ForwardingAgentId == null
+                     && r.IsDefault
+                     && r.ValidFrom <= today
+                     && (!r.ValidTo.HasValue || r.ValidTo >= today));
+
+        var defaultCostCard = await defaultCostQuery.FirstOrDefaultAsync();
+        return (defaultCostCard, defaultCostCard != null ? "Default Cost Rate Card" : "No matching cost rate card found");
+    }
+
+    private (decimal baseCharge, decimal slabCharge, List<string> rules) CalculateCostCharges(RateCardZone zone, decimal weight)
+    {
+        var rules = new List<string>();
+        var slabRules = zone.SlabRules
+            .Where(s => !s.IsDeleted)
+            .OrderBy(s => s.FromWeight)
+            .ToList();
+
+        var hasFlatPlusAdditional = slabRules.Any(s => s.CalculationMode == SlabCalculationMode.FlatPlusAdditional);
+
+        if (hasFlatPlusAdditional)
+        {
+            var slab = slabRules.First(s => s.CalculationMode == SlabCalculationMode.FlatPlusAdditional);
+            var flatRate = slab.CostFlatRate ?? slab.FlatRate ?? 0;
+            var additionalRate = slab.CostPerKgRate ?? slab.Additional1KgRate ?? 0;
+            var maxWeight = slab.ToWeight;
+            var additionalWeight = Math.Max(0, weight - maxWeight);
+            var additionalCharge = additionalWeight * additionalRate;
+            var totalCharge = flatRate + additionalCharge;
+
+            rules.Add($"Cost: {slab.FromWeight:N1}-{maxWeight:N1}kg = {flatRate:N2} (flat) + {additionalWeight:N3}kg × {additionalRate:N2}/kg = {totalCharge:N2}");
+            return (0m, totalCharge, rules);
+        }
+
+        var baseWeight = zone.BaseWeight;
+        var costBaseRate = zone.CostBaseRate;
+        var costPerKg = zone.CostPerKg;
+
+        if (costBaseRate == 0 && costPerKg == 0)
+        {
+            rules.Add("No cost rates configured for this zone");
+            return (0m, 0m, rules);
+        }
+
+        if (zone.AdditionalRate > 0 && costBaseRate > 0)
+        {
+            if (weight <= baseWeight)
+            {
+                rules.Add($"Cost Base: Up to {baseWeight:N3}kg = {costBaseRate:N2}");
+                return (0m, costBaseRate, rules);
+            }
+
+            var excessWeight = weight - baseWeight;
+            var additionalWeight = zone.AdditionalWeight > 0 ? zone.AdditionalWeight : 1m;
+            var steps = Math.Ceiling(excessWeight / additionalWeight);
+            var costAdditionalRate = costPerKg > 0 ? costPerKg : zone.AdditionalRate;
+            var additionalCharge = steps * costAdditionalRate;
+            var totalCharge = costBaseRate + additionalCharge;
+
+            rules.Add($"Cost: Up to {baseWeight:N3}kg = {costBaseRate:N2} + {steps:N0} × {additionalWeight:N3}kg @ {costAdditionalRate:N2} = {totalCharge:N2}");
+            return (0m, totalCharge, rules);
+        }
+
+        rules.Add($"Cost Base: {baseWeight:N3}kg @ {costBaseRate:N2}");
+        if (weight <= baseWeight)
+        {
+            return (costBaseRate, 0m, rules);
+        }
+
+        decimal slabTotal = 0m;
+        foreach (var slab in slabRules)
+        {
+            if (weight <= slab.FromWeight) break;
+            var effectiveFrom = Math.Max(slab.FromWeight, baseWeight);
+            var effectiveTo = Math.Min(slab.ToWeight, weight);
+            if (effectiveTo <= effectiveFrom) continue;
+
+            var slabWeight = effectiveTo - effectiveFrom;
+            var costRate = slab.CostPerKgRate ?? slab.IncrementRate;
+            var slabCharge = slabWeight * costRate;
+            slabTotal += slabCharge;
+            rules.Add($"Cost Slab {slab.FromWeight:N1}-{slab.ToWeight:N1}kg: {slabWeight:N3}kg @ {costRate:N2}/kg = {slabCharge:N2}");
+        }
+
+        if (slabTotal == 0 && costPerKg > 0)
+        {
+            var excessWeight = weight - baseWeight;
+            slabTotal = excessWeight * costPerKg;
+            rules.Add($"Cost Additional: {excessWeight:N3}kg @ {costPerKg:N2}/kg = {slabTotal:N2}");
+        }
+
+        return (costBaseRate, slabTotal, rules);
+    }
 }
 
 public class RatingRequest
@@ -476,4 +789,46 @@ public class FormulaTraceStep
     public string Description { get; set; } = "";
     public string Formula { get; set; } = "";
     public decimal? Value { get; set; }
+}
+
+public class CostRatingRequest
+{
+    public long AgentId { get; set; }
+    public MovementType MovementType { get; set; } = MovementType.Domestic;
+    public PaymentMode PaymentMode { get; set; } = PaymentMode.Prepaid;
+    public long? ServiceTypeId { get; set; }
+    public long? ShipmentModeId { get; set; }
+    public DocumentType? DocumentType { get; set; }
+    public long? OriginCountryId { get; set; }
+    public long? OriginCityId { get; set; }
+    public long? DestinationCountryId { get; set; }
+    public long? DestinationCityId { get; set; }
+    public decimal ActualWeight { get; set; }
+    public decimal Length { get; set; }
+    public decimal Width { get; set; }
+    public decimal Height { get; set; }
+    public int Pieces { get; set; } = 1;
+    public decimal VolumetricDivisor { get; set; } = 5000m;
+}
+
+public class CostRatingResult
+{
+    public CostRatingRequest Request { get; set; } = new();
+    public bool Success { get; set; }
+    public string? ErrorMessage { get; set; }
+    public long? RateCardId { get; set; }
+    public string RateCardName { get; set; } = "";
+    public string RateCardSource { get; set; } = "";
+    public string ZoneCode { get; set; } = "";
+    public string ZoneName { get; set; } = "";
+    public decimal ChargeableWeight { get; set; }
+    public decimal FreightCost { get; set; }
+    public decimal FuelSurchargeCost { get; set; }
+    public decimal HandlingCost { get; set; }
+    public decimal PerShipmentCost { get; set; }
+    public decimal PeakSurchargeCost { get; set; }
+    public decimal TotalCost { get; set; }
+    public decimal? MinChargeApplied { get; set; }
+    public List<string> AppliedRules { get; set; } = new();
+    public List<FormulaTraceStep> FormulaTrace { get; set; } = new();
 }

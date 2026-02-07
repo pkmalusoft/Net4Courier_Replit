@@ -1,0 +1,539 @@
+@page "/cost-actualization"
+@using Microsoft.EntityFrameworkCore
+@inject IDbContextFactory<ApplicationDbContext> DbFactory
+@inject IDialogService DialogService
+@inject ISnackbar Snackbar
+@rendermode InteractiveServer
+
+<PageTitle>Cost Actualization</PageTitle>
+
+<MudContainer MaxWidth="MaxWidth.ExtraLarge" Class="mt-4">
+
+    <MudGrid Class="mb-4">
+        <MudItem xs="12" md="3">
+            <MudPaper Class="pa-4" Elevation="2">
+                <MudText Typo="Typo.caption" Color="Color.Primary">Total Estimated</MudText>
+                <MudText Typo="Typo.h5">@_totalEstimated.ToString("N2")</MudText>
+            </MudPaper>
+        </MudItem>
+        <MudItem xs="12" md="3">
+            <MudPaper Class="pa-4" Elevation="2">
+                <MudText Typo="Typo.caption" Color="Color.Secondary">Total Actual</MudText>
+                <MudText Typo="Typo.h5">@_totalActual.ToString("N2")</MudText>
+            </MudPaper>
+        </MudItem>
+        <MudItem xs="12" md="3">
+            <MudPaper Class="pa-4" Elevation="2">
+                <MudText Typo="Typo.caption" Color="@(_totalVariance >= 0 ? Color.Success : Color.Error)">Total Variance</MudText>
+                <MudText Typo="Typo.h5" Color="@(_totalVariance >= 0 ? Color.Success : Color.Error)">@_totalVariance.ToString("N2")</MudText>
+            </MudPaper>
+        </MudItem>
+        <MudItem xs="12" md="3">
+            <MudPaper Class="pa-4" Elevation="2">
+                <MudText Typo="Typo.caption" Color="Color.Info">Average Margin %</MudText>
+                <MudText Typo="Typo.h5">@_avgMarginPercent.ToString("N2")%</MudText>
+            </MudPaper>
+        </MudItem>
+    </MudGrid>
+
+    <MudPaper Class="pa-4">
+        <MudText Typo="Typo.h5" Class="mb-4">Cost Actualization</MudText>
+
+        <MudGrid Class="mb-4">
+            <MudItem xs="12" md="3">
+                <MudTextField @bind-Value="_searchAwb" Label="Search AWB No" Variant="Variant.Outlined" Margin="Margin.Dense"
+                              Adornment="Adornment.End" AdornmentIcon="@Icons.Material.Filled.Search"
+                              Immediate="true" DebounceInterval="300" OnDebounceIntervalElapsed="LoadShipments" />
+            </MudItem>
+            <MudItem xs="12" md="2">
+                <MudDatePicker @bind-Date="_dateFrom" Label="Date From" Variant="Variant.Outlined" Margin="Margin.Dense"
+                               Clearable="true" DateFormat="dd-MMM-yyyy" />
+            </MudItem>
+            <MudItem xs="12" md="2">
+                <MudDatePicker @bind-Date="_dateTo" Label="Date To" Variant="Variant.Outlined" Margin="Margin.Dense"
+                               Clearable="true" DateFormat="dd-MMM-yyyy" />
+            </MudItem>
+            <MudItem xs="12" md="2">
+                <MudCheckBox @bind-Value="_onlyWithEstimated" Label="With Estimated Cost" Color="Color.Primary"
+                             Class="mt-1" />
+            </MudItem>
+            <MudItem xs="12" md="2">
+                <MudButton Variant="Variant.Outlined" Color="Color.Primary" OnClick="LoadShipments" FullWidth="true"
+                           Class="mt-1" StartIcon="@Icons.Material.Filled.Search">Search</MudButton>
+            </MudItem>
+        </MudGrid>
+
+        <MudTable Items="@_shipments" Hover="true" Striped="true" Loading="@_loading" Dense="true" Elevation="0"
+                  Class="border-solid border" T="ShipmentCostRow">
+            <HeaderContent>
+                <MudTh>AWB No</MudTh>
+                <MudTh>Date</MudTh>
+                <MudTh>Customer</MudTh>
+                <MudTh>Destination</MudTh>
+                <MudTh Style="text-align:right">Weight</MudTh>
+                <MudTh>Agent</MudTh>
+                <MudTh Style="text-align:right">Estimated Cost</MudTh>
+                <MudTh Style="text-align:right">Actual Cost</MudTh>
+                <MudTh Style="text-align:right">Variance</MudTh>
+                <MudTh Style="text-align:right">Variance %</MudTh>
+                <MudTh Style="text-align:center">Status</MudTh>
+                <MudTh Style="width:50px"></MudTh>
+            </HeaderContent>
+            <RowTemplate>
+                <MudTd DataLabel="AWB No">@context.AWBNo</MudTd>
+                <MudTd DataLabel="Date">@context.TransactionDate.ToString("dd-MMM-yyyy")</MudTd>
+                <MudTd DataLabel="Customer">@(context.CustomerName ?? "—")</MudTd>
+                <MudTd DataLabel="Destination">@(context.Destination ?? "—")</MudTd>
+                <MudTd DataLabel="Weight" Style="text-align:right">@((context.ChargeableWeight ?? context.Weight ?? 0).ToString("N2"))</MudTd>
+                <MudTd DataLabel="Agent">@(context.AgentName ?? "—")</MudTd>
+                <MudTd DataLabel="Estimated Cost" Style="text-align:right">@((context.EstimatedTotalCost ?? 0).ToString("N2"))</MudTd>
+                <MudTd DataLabel="Actual Cost" Style="text-align:right">
+                    @if (context.ActualTotalCost.HasValue)
+                    {
+                        @context.ActualTotalCost.Value.ToString("N2")
+                    }
+                    else
+                    {
+                        <MudText Color="Color.Warning">—</MudText>
+                    }
+                </MudTd>
+                <MudTd DataLabel="Variance" Style="text-align:right">
+                    @if (context.CostVariance.HasValue)
+                    {
+                        <MudText Color="@(context.CostVariance >= 0 ? Color.Success : Color.Error)">@context.CostVariance.Value.ToString("N2")</MudText>
+                    }
+                </MudTd>
+                <MudTd DataLabel="Variance %" Style="text-align:right">
+                    @if (context.VariancePercent.HasValue)
+                    {
+                        <MudText Color="@(context.VariancePercent >= 0 ? Color.Success : Color.Error)">@context.VariancePercent.Value.ToString("N2")%</MudText>
+                    }
+                </MudTd>
+                <MudTd DataLabel="Status" Style="text-align:center">
+                    @if (context.IsCostLocked)
+                    {
+                        <MudIcon Icon="@Icons.Material.Filled.Lock" Size="Size.Small" Color="Color.Success" Title="Locked" />
+                    }
+                    else if (context.ActualTotalCost.HasValue)
+                    {
+                        <MudIcon Icon="@Icons.Material.Filled.LockOpen" Size="Size.Small" Color="Color.Warning" Title="Unlocked" />
+                    }
+                </MudTd>
+                <MudTd>
+                    <MudIconButton Icon="@(_expandedId == context.Id ? Icons.Material.Filled.ExpandLess : Icons.Material.Filled.ExpandMore)"
+                                   Size="Size.Small" OnClick="@(() => ToggleExpand(context.Id))" />
+                </MudTd>
+            </RowTemplate>
+            <ChildRowContent>
+                @if (_expandedId == context.Id)
+                {
+                    <MudTr>
+                        <td colspan="12">
+                            <MudPaper Class="pa-4 ma-2" Elevation="0" Style="background-color: var(--mud-palette-background-grey);">
+                                <MudGrid>
+                                    <MudItem xs="12" md="6">
+                                        <MudText Typo="Typo.subtitle1" Class="mb-2"><b>Cost Comparison</b></MudText>
+                                        <MudSimpleTable Dense="true" Hover="true" Bordered="true" Elevation="0">
+                                            <thead>
+                                                <tr>
+                                                    <th>Component</th>
+                                                    <th style="text-align:right">Estimated</th>
+                                                    <th style="text-align:right">Actual</th>
+                                                    <th style="text-align:right">Variance</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                <tr>
+                                                    <td>Freight</td>
+                                                    <td style="text-align:right">@((context.EstimatedFreightCost ?? 0).ToString("N2"))</td>
+                                                    <td style="text-align:right">@((_editActualFreight ?? 0).ToString("N2"))</td>
+                                                    <td style="text-align:right">@(((context.EstimatedFreightCost ?? 0) - (_editActualFreight ?? 0)).ToString("N2"))</td>
+                                                </tr>
+                                                <tr>
+                                                    <td>Fuel Surcharge</td>
+                                                    <td style="text-align:right">@((context.EstimatedFuelSurchargeCost ?? 0).ToString("N2"))</td>
+                                                    <td style="text-align:right">@((_editActualFuelSurcharge ?? 0).ToString("N2"))</td>
+                                                    <td style="text-align:right">@(((context.EstimatedFuelSurchargeCost ?? 0) - (_editActualFuelSurcharge ?? 0)).ToString("N2"))</td>
+                                                </tr>
+                                                <tr>
+                                                    <td>Handling</td>
+                                                    <td style="text-align:right">@((context.EstimatedHandlingCost ?? 0).ToString("N2"))</td>
+                                                    <td style="text-align:right">@((_editActualHandling ?? 0).ToString("N2"))</td>
+                                                    <td style="text-align:right">@(((context.EstimatedHandlingCost ?? 0) - (_editActualHandling ?? 0)).ToString("N2"))</td>
+                                                </tr>
+                                                <tr style="font-weight:bold">
+                                                    <td>Total</td>
+                                                    <td style="text-align:right">@((context.EstimatedTotalCost ?? 0).ToString("N2"))</td>
+                                                    <td style="text-align:right">@((_editActualTotal ?? 0).ToString("N2"))</td>
+                                                    <td style="text-align:right">@(((context.EstimatedTotalCost ?? 0) - (_editActualTotal ?? 0)).ToString("N2"))</td>
+                                                </tr>
+                                            </tbody>
+                                        </MudSimpleTable>
+                                    </MudItem>
+                                    <MudItem xs="12" md="6">
+                                        <MudText Typo="Typo.subtitle1" Class="mb-2"><b>Enter Actual Costs</b></MudText>
+                                        <MudGrid>
+                                            <MudItem xs="6">
+                                                <MudNumericField @bind-Value="_editActualFreight" Label="Actual Freight Cost" Variant="Variant.Outlined"
+                                                                 Margin="Margin.Dense" Format="N2" Disabled="@context.IsCostLocked"
+                                                                 Immediate="true" OnDebounceIntervalElapsed="RecalcTotal" DebounceInterval="200" />
+                                            </MudItem>
+                                            <MudItem xs="6">
+                                                <MudNumericField @bind-Value="_editActualFuelSurcharge" Label="Actual Fuel Surcharge" Variant="Variant.Outlined"
+                                                                 Margin="Margin.Dense" Format="N2" Disabled="@context.IsCostLocked"
+                                                                 Immediate="true" OnDebounceIntervalElapsed="RecalcTotal" DebounceInterval="200" />
+                                            </MudItem>
+                                            <MudItem xs="6">
+                                                <MudNumericField @bind-Value="_editActualHandling" Label="Actual Handling Cost" Variant="Variant.Outlined"
+                                                                 Margin="Margin.Dense" Format="N2" Disabled="@context.IsCostLocked"
+                                                                 Immediate="true" OnDebounceIntervalElapsed="RecalcTotal" DebounceInterval="200" />
+                                            </MudItem>
+                                            <MudItem xs="6">
+                                                <MudNumericField @bind-Value="_editActualTotal" Label="Actual Total Cost" Variant="Variant.Outlined"
+                                                                 Margin="Margin.Dense" Format="N2" Disabled="@context.IsCostLocked"
+                                                                 Immediate="true" />
+                                            </MudItem>
+                                            <MudItem xs="12">
+                                                <MudTextField @bind-Value="_editInvoiceRef" Label="Cost Invoice Reference" Variant="Variant.Outlined"
+                                                              Margin="Margin.Dense" Disabled="@context.IsCostLocked" />
+                                            </MudItem>
+                                            <MudItem xs="12">
+                                                <MudStack Row="true" Spacing="2" Justify="Justify.FlexEnd">
+                                                    @if (!context.IsCostLocked)
+                                                    {
+                                                        <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Save"
+                                                                   OnClick="@(() => SaveActualCost(context))" Disabled="@_saving">
+                                                            @if (_saving)
+                                                            {
+                                                                <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-1" />
+                                                            }
+                                                            Save Actual Cost
+                                                        </MudButton>
+                                                        @if (context.ActualTotalCost.HasValue)
+                                                        {
+                                                            <MudButton Variant="Variant.Outlined" Color="Color.Warning" StartIcon="@Icons.Material.Filled.Lock"
+                                                                       OnClick="@(() => LockCost(context))" Disabled="@_saving">
+                                                                Lock Cost
+                                                            </MudButton>
+                                                        }
+                                                    }
+                                                    else
+                                                    {
+                                                        <MudAlert Severity="Severity.Info" Dense="true" Class="mb-0">
+                                                            Cost locked on @(context.CostLockedAt?.ToString("dd-MMM-yyyy HH:mm") ?? "—")
+                                                        </MudAlert>
+                                                    }
+                                                </MudStack>
+                                            </MudItem>
+                                        </MudGrid>
+                                    </MudItem>
+                                </MudGrid>
+                            </MudPaper>
+                        </td>
+                    </MudTr>
+                }
+            </ChildRowContent>
+            <NoRecordsContent>
+                <MudText Class="pa-4">No shipments found. Use the search filters above.</MudText>
+            </NoRecordsContent>
+            <LoadingContent>
+                <MudText>Loading shipments...</MudText>
+            </LoadingContent>
+        </MudTable>
+    </MudPaper>
+</MudContainer>
+
+@code {
+    private List<ShipmentCostRow> _shipments = new();
+    private Dictionary<long, string> _agentNames = new();
+    private bool _loading;
+    private bool _saving;
+    private string _searchAwb = "";
+    private DateTime? _dateFrom;
+    private DateTime? _dateTo;
+    private bool _onlyWithEstimated;
+    private long? _expandedId;
+
+    private decimal? _editActualFreight;
+    private decimal? _editActualFuelSurcharge;
+    private decimal? _editActualHandling;
+    private decimal? _editActualTotal;
+    private string? _editInvoiceRef;
+
+    private decimal _totalEstimated;
+    private decimal _totalActual;
+    private decimal _totalVariance;
+    private decimal _avgMarginPercent;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadAgents();
+    }
+
+    private async Task LoadAgents()
+    {
+        await using var db = await DbFactory.CreateDbContextAsync();
+        _agentNames = await db.Parties
+            .Where(p => !p.IsDeleted && p.IsActive &&
+                        (p.PartyType == PartyType.ForwardingAgent || p.PartyType == PartyType.CoLoader))
+            .ToDictionaryAsync(p => p.Id, p => p.Name);
+    }
+
+    private async Task LoadShipments()
+    {
+        _loading = true;
+        _expandedId = null;
+        StateHasChanged();
+
+        try
+        {
+            await using var db = await DbFactory.CreateDbContextAsync();
+            var query = db.InscanMasters
+                .Where(s => !s.IsDeleted)
+                .AsQueryable();
+
+            if (!string.IsNullOrWhiteSpace(_searchAwb))
+            {
+                var search = _searchAwb.Trim().ToLower();
+                query = query.Where(s => s.AWBNo.ToLower().Contains(search));
+            }
+
+            if (_dateFrom.HasValue)
+            {
+                var from = _dateFrom.Value.Date;
+                query = query.Where(s => s.TransactionDate >= from);
+            }
+
+            if (_dateTo.HasValue)
+            {
+                var to = _dateTo.Value.Date.AddDays(1);
+                query = query.Where(s => s.TransactionDate < to);
+            }
+
+            if (_onlyWithEstimated)
+            {
+                query = query.Where(s => s.EstimatedTotalCost != null && s.EstimatedTotalCost > 0);
+            }
+
+            _shipments = await query
+                .OrderByDescending(s => s.TransactionDate)
+                .Take(200)
+                .Select(s => new ShipmentCostRow
+                {
+                    Id = s.Id,
+                    AWBNo = s.AWBNo,
+                    TransactionDate = s.TransactionDate,
+                    CustomerName = s.Consignee,
+                    Destination = s.ConsigneeCity,
+                    Weight = s.Weight,
+                    ChargeableWeight = s.ChargeableWeight,
+                    CostAgentId = s.CostAgentId,
+                    EstimatedFreightCost = s.EstimatedFreightCost,
+                    EstimatedFuelSurchargeCost = s.EstimatedFuelSurchargeCost,
+                    EstimatedHandlingCost = s.EstimatedHandlingCost,
+                    EstimatedTotalCost = s.EstimatedTotalCost,
+                    ActualFreightCost = s.ActualFreightCost,
+                    ActualFuelSurchargeCost = s.ActualFuelSurchargeCost,
+                    ActualHandlingCost = s.ActualHandlingCost,
+                    ActualTotalCost = s.ActualTotalCost,
+                    CostVariance = s.CostVariance,
+                    GrossMarginPercent = s.GrossMarginPercent,
+                    IsCostLocked = s.IsCostLocked,
+                    CostLockedAt = s.CostLockedAt,
+                    SalesTotalCharge = s.SalesTotalCharge,
+                    CostInvoiceRef = s.CostInvoiceRef
+                })
+                .ToListAsync();
+
+            foreach (var s in _shipments)
+            {
+                if (s.CostAgentId.HasValue && _agentNames.TryGetValue(s.CostAgentId.Value, out var name))
+                    s.AgentName = name;
+
+                if (s.EstimatedTotalCost.HasValue && s.EstimatedTotalCost > 0 && s.CostVariance.HasValue)
+                    s.VariancePercent = (s.CostVariance.Value / s.EstimatedTotalCost.Value) * 100;
+            }
+
+            CalculateSummary();
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private void CalculateSummary()
+    {
+        _totalEstimated = _shipments.Sum(s => s.EstimatedTotalCost ?? 0);
+        _totalActual = _shipments.Sum(s => s.ActualTotalCost ?? 0);
+        _totalVariance = _totalEstimated - _totalActual;
+
+        var withMargin = _shipments.Where(s => s.GrossMarginPercent.HasValue).ToList();
+        _avgMarginPercent = withMargin.Count > 0 ? withMargin.Average(s => s.GrossMarginPercent!.Value) : 0;
+    }
+
+    private void ToggleExpand(long id)
+    {
+        if (_expandedId == id)
+        {
+            _expandedId = null;
+            return;
+        }
+
+        _expandedId = id;
+        var row = _shipments.FirstOrDefault(s => s.Id == id);
+        if (row != null)
+        {
+            _editActualFreight = row.ActualFreightCost;
+            _editActualFuelSurcharge = row.ActualFuelSurchargeCost;
+            _editActualHandling = row.ActualHandlingCost;
+            _editActualTotal = row.ActualTotalCost;
+            _editInvoiceRef = row.CostInvoiceRef;
+        }
+    }
+
+    private void RecalcTotal()
+    {
+        _editActualTotal = (_editActualFreight ?? 0) + (_editActualFuelSurcharge ?? 0) + (_editActualHandling ?? 0);
+    }
+
+    private async Task SaveActualCost(ShipmentCostRow row)
+    {
+        if (row.IsCostLocked)
+        {
+            Snackbar.Add("Cost is locked and cannot be edited.", Severity.Warning);
+            return;
+        }
+
+        _saving = true;
+        StateHasChanged();
+
+        try
+        {
+            await using var db = await DbFactory.CreateDbContextAsync();
+            var shipment = await db.InscanMasters.FirstOrDefaultAsync(s => s.Id == row.Id);
+            if (shipment == null)
+            {
+                Snackbar.Add("Shipment not found.", Severity.Error);
+                return;
+            }
+
+            shipment.ActualFreightCost = _editActualFreight;
+            shipment.ActualFuelSurchargeCost = _editActualFuelSurcharge;
+            shipment.ActualHandlingCost = _editActualHandling;
+            shipment.ActualTotalCost = _editActualTotal;
+            shipment.CostInvoiceRef = _editInvoiceRef;
+            shipment.ActualCostEnteredAt = DateTime.UtcNow;
+
+            shipment.CostVariance = (shipment.EstimatedTotalCost ?? 0) - (shipment.ActualTotalCost ?? 0);
+
+            var effectiveCost = shipment.ActualTotalCost ?? shipment.EstimatedTotalCost ?? 0;
+            shipment.GrossMargin = (shipment.SalesTotalCharge ?? 0) - effectiveCost;
+
+            if (shipment.SalesTotalCharge.HasValue && shipment.SalesTotalCharge.Value != 0)
+                shipment.GrossMarginPercent = (shipment.GrossMargin.Value / shipment.SalesTotalCharge.Value) * 100;
+            else
+                shipment.GrossMarginPercent = null;
+
+            await db.SaveChangesAsync();
+
+            row.ActualFreightCost = _editActualFreight;
+            row.ActualFuelSurchargeCost = _editActualFuelSurcharge;
+            row.ActualHandlingCost = _editActualHandling;
+            row.ActualTotalCost = _editActualTotal;
+            row.CostInvoiceRef = _editInvoiceRef;
+            row.CostVariance = shipment.CostVariance;
+            row.GrossMarginPercent = shipment.GrossMarginPercent;
+            row.SalesTotalCharge = shipment.SalesTotalCharge;
+
+            if (row.EstimatedTotalCost.HasValue && row.EstimatedTotalCost > 0 && row.CostVariance.HasValue)
+                row.VariancePercent = (row.CostVariance.Value / row.EstimatedTotalCost.Value) * 100;
+
+            CalculateSummary();
+            Snackbar.Add("Actual cost saved successfully.", Severity.Success);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error saving cost: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _saving = false;
+        }
+    }
+
+    private async Task LockCost(ShipmentCostRow row)
+    {
+        var parameters = new DialogParameters<ConfirmDialog>
+        {
+            { x => x.ContentText, $"Are you sure you want to lock the cost for AWB {row.AWBNo}? This action cannot be undone." },
+            { x => x.ButtonText, "Lock Cost" },
+            { x => x.Color, Color.Warning }
+        };
+
+        var dialog = await DialogService.ShowAsync<ConfirmDialog>("Lock Cost Confirmation", parameters);
+        var result = await dialog.Result;
+
+        if (result != null && !result.Canceled)
+        {
+            _saving = true;
+            StateHasChanged();
+
+            try
+            {
+                await using var db = await DbFactory.CreateDbContextAsync();
+                var shipment = await db.InscanMasters.FirstOrDefaultAsync(s => s.Id == row.Id);
+                if (shipment == null)
+                {
+                    Snackbar.Add("Shipment not found.", Severity.Error);
+                    return;
+                }
+
+                shipment.IsCostLocked = true;
+                shipment.CostLockedAt = DateTime.UtcNow;
+                await db.SaveChangesAsync();
+
+                row.IsCostLocked = true;
+                row.CostLockedAt = shipment.CostLockedAt;
+
+                Snackbar.Add($"Cost locked for AWB {row.AWBNo}.", Severity.Success);
+            }
+            catch (Exception ex)
+            {
+                Snackbar.Add($"Error locking cost: {ex.Message}", Severity.Error);
+            }
+            finally
+            {
+                _saving = false;
+            }
+        }
+    }
+
+    private class ShipmentCostRow
+    {
+        public long Id { get; set; }
+        public string AWBNo { get; set; } = string.Empty;
+        public DateTime TransactionDate { get; set; }
+        public string? CustomerName { get; set; }
+        public string? Destination { get; set; }
+        public decimal? Weight { get; set; }
+        public decimal? ChargeableWeight { get; set; }
+        public long? CostAgentId { get; set; }
+        public string? AgentName { get; set; }
+        public decimal? EstimatedFreightCost { get; set; }
+        public decimal? EstimatedFuelSurchargeCost { get; set; }
+        public decimal? EstimatedHandlingCost { get; set; }
+        public decimal? EstimatedTotalCost { get; set; }
+        public decimal? ActualFreightCost { get; set; }
+        public decimal? ActualFuelSurchargeCost { get; set; }
+        public decimal? ActualHandlingCost { get; set; }
+        public decimal? ActualTotalCost { get; set; }
+        public decimal? CostVariance { get; set; }
+        public decimal? VariancePercent { get; set; }
+        public decimal? GrossMarginPercent { get; set; }
+        public bool IsCostLocked { get; set; }
+        public DateTime? CostLockedAt { get; set; }
+        public decimal? SalesTotalCharge { get; set; }
+        public string? CostInvoiceRef { get; set; }
+    }
+}

@@ -1,0 +1,659 @@
+@page "/mawb-cost-entry"
+@using Microsoft.EntityFrameworkCore
+@inject IDbContextFactory<ApplicationDbContext> DbFactory
+@inject IDialogService DialogService
+@inject ISnackbar Snackbar
+@rendermode InteractiveServer
+
+<PageTitle>MAWB Cost Entry & Allocation</PageTitle>
+
+<MudContainer MaxWidth="MaxWidth.ExtraLarge" Class="mt-4">
+    @if (_selectedMawb == null)
+    {
+        <MudPaper Class="pa-4 mb-4">
+            <MudText Typo="Typo.h5" Class="mb-4">MAWB Cost Entry & Allocation</MudText>
+            <MudGrid Class="mb-4">
+                <MudItem xs="12" md="4">
+                    <MudTextField @bind-Value="_searchText" Label="Search MAWB No" Variant="Variant.Outlined"
+                                  Margin="Margin.Dense" Adornment="Adornment.End" AdornmentIcon="@Icons.Material.Filled.Search"
+                                  Immediate="true" DebounceInterval="300" OnDebounceIntervalElapsed="LoadMawbs" />
+                </MudItem>
+                <MudItem xs="12" md="2">
+                    <MudSelect T="string" @bind-Value="_costFilter" Label="Cost Status" Variant="Variant.Outlined"
+                               Margin="Margin.Dense" Clearable="true">
+                        <MudSelectItem T="string" Value="@("pending")">Pending Cost Entry</MudSelectItem>
+                        <MudSelectItem T="string" Value="@("entered")">Cost Entered</MudSelectItem>
+                        <MudSelectItem T="string" Value="@("allocated")">Allocated</MudSelectItem>
+                    </MudSelect>
+                </MudItem>
+                <MudItem xs="12" md="2">
+                    <MudButton Variant="Variant.Outlined" Color="Color.Primary" OnClick="LoadMawbs" FullWidth="true"
+                               Class="mt-1">Search</MudButton>
+                </MudItem>
+            </MudGrid>
+
+            <MudTable Items="@_mawbs" Hover="true" Striped="true" Loading="@_loading" Dense="true" Elevation="0"
+                      Class="border-solid border" OnRowClick="OnMawbRowClick" T="MasterAirwaybill">
+                <HeaderContent>
+                    <MudTh>MAWB No</MudTh>
+                    <MudTh>Date</MudTh>
+                    <MudTh>Origin</MudTh>
+                    <MudTh>Destination</MudTh>
+                    <MudTh>Carrier</MudTh>
+                    <MudTh>Bags</MudTh>
+                    <MudTh>Pieces</MudTh>
+                    <MudTh>Gross Wt</MudTh>
+                    <MudTh>Chg Wt</MudTh>
+                    <MudTh>Cost Status</MudTh>
+                </HeaderContent>
+                <RowTemplate>
+                    <MudTd DataLabel="MAWB No">
+                        <MudLink OnClick="@(() => SelectMawb(context))">@context.MAWBNo</MudLink>
+                    </MudTd>
+                    <MudTd DataLabel="Date">@context.TransactionDate.ToString("dd-MMM-yyyy")</MudTd>
+                    <MudTd DataLabel="Origin">@(context.OriginCityName ?? "—")</MudTd>
+                    <MudTd DataLabel="Destination">@(context.DestinationCityName ?? "—")</MudTd>
+                    <MudTd DataLabel="Carrier">@(context.CarrierName ?? "—")</MudTd>
+                    <MudTd DataLabel="Bags">@context.TotalBags</MudTd>
+                    <MudTd DataLabel="Pieces">@context.TotalPieces</MudTd>
+                    <MudTd DataLabel="Gross Wt">@context.TotalGrossWeight.ToString("N2")</MudTd>
+                    <MudTd DataLabel="Chg Wt">@context.TotalChargeableWeight.ToString("N2")</MudTd>
+                    <MudTd DataLabel="Cost Status">
+                        @if (context.IsCostAllocated)
+                        {
+                            <MudChip T="string" Size="Size.Small" Color="Color.Success">Allocated</MudChip>
+                        }
+                        else if (context.TotalMAWBCost.HasValue && context.TotalMAWBCost > 0)
+                        {
+                            <MudChip T="string" Size="Size.Small" Color="Color.Warning">Cost Entered</MudChip>
+                        }
+                        else
+                        {
+                            <MudChip T="string" Size="Size.Small" Color="Color.Default">Pending</MudChip>
+                        }
+                    </MudTd>
+                </RowTemplate>
+                <NoRecordsContent>
+                    <MudText Class="pa-4">No MAWBs found.</MudText>
+                </NoRecordsContent>
+                <LoadingContent>
+                    <MudText>Loading MAWBs...</MudText>
+                </LoadingContent>
+            </MudTable>
+        </MudPaper>
+    }
+    else
+    {
+        <MudPaper Class="pa-4 mb-4">
+            <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center" Class="mb-4">
+                <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+                    <MudIconButton Icon="@Icons.Material.Filled.ArrowBack" OnClick="ClearSelection" />
+                    <MudText Typo="Typo.h5">MAWB Cost Entry — @_selectedMawb.MAWBNo</MudText>
+                </MudStack>
+                <MudStack Row="true" Spacing="2">
+                    @if (_selectedMawb.IsCostAllocated)
+                    {
+                        <MudChip T="string" Color="Color.Success" Size="Size.Medium">Allocated on @(_selectedMawb.CostAllocatedAt?.ToString("dd-MMM-yyyy HH:mm"))</MudChip>
+                    }
+                </MudStack>
+            </MudStack>
+
+            <MudGrid Class="mb-2">
+                <MudItem xs="12" md="3">
+                    <MudText Typo="Typo.body2" Class="mud-text-secondary">Date</MudText>
+                    <MudText Typo="Typo.body1">@_selectedMawb.TransactionDate.ToString("dd-MMM-yyyy")</MudText>
+                </MudItem>
+                <MudItem xs="12" md="3">
+                    <MudText Typo="Typo.body2" Class="mud-text-secondary">Route</MudText>
+                    <MudText Typo="Typo.body1">@(_selectedMawb.OriginCityName ?? "—") → @(_selectedMawb.DestinationCityName ?? "—")</MudText>
+                </MudItem>
+                <MudItem xs="12" md="3">
+                    <MudText Typo="Typo.body2" Class="mud-text-secondary">Carrier / Flight</MudText>
+                    <MudText Typo="Typo.body1">@(_selectedMawb.CarrierName ?? "—") @(_selectedMawb.FlightNo ?? "")</MudText>
+                </MudItem>
+                <MudItem xs="12" md="3">
+                    <MudText Typo="Typo.body2" Class="mud-text-secondary">Total Chargeable Weight</MudText>
+                    <MudText Typo="Typo.body1">@_selectedMawb.TotalChargeableWeight.ToString("N2") kg</MudText>
+                </MudItem>
+            </MudGrid>
+        </MudPaper>
+
+        <MudPaper Class="pa-4 mb-4">
+            <MudText Typo="Typo.h6" Class="mb-3">Cost Details</MudText>
+            <MudGrid>
+                <MudItem xs="12" md="4">
+                    <MudSelect T="long?" @bind-Value="_forwardingAgentId" Label="Forwarding Agent" Variant="Variant.Outlined"
+                               Margin="Margin.Dense" Clearable="true">
+                        @foreach (var agent in _agents)
+                        {
+                            <MudSelectItem T="long?" Value="@agent.Id">@agent.Name</MudSelectItem>
+                        }
+                    </MudSelect>
+                </MudItem>
+                <MudItem xs="12" md="4">
+                    <MudTextField @bind-Value="_vendorInvoiceNo" Label="Vendor Invoice No" Variant="Variant.Outlined"
+                                  Margin="Margin.Dense" />
+                </MudItem>
+                <MudItem xs="12" md="4">
+                    <MudDatePicker @bind-Date="_vendorInvoiceDate" Label="Vendor Invoice Date" Variant="Variant.Outlined"
+                                   Margin="Margin.Dense" />
+                </MudItem>
+                <MudItem xs="12" md="3">
+                    <MudNumericField T="decimal" Value="_airFreightCost" Label="Air Freight Cost" Variant="Variant.Outlined"
+                                     Margin="Margin.Dense" Format="N2" Min="0" ValueChanged="@((decimal v) => { _airFreightCost = v; RecalcTotal(); })" />
+                </MudItem>
+                <MudItem xs="12" md="3">
+                    <MudNumericField T="decimal" Value="_fuelSurchargeCost" Label="Fuel Surcharge Cost" Variant="Variant.Outlined"
+                                     Margin="Margin.Dense" Format="N2" Min="0" ValueChanged="@((decimal v) => { _fuelSurchargeCost = v; RecalcTotal(); })" />
+                </MudItem>
+                <MudItem xs="12" md="3">
+                    <MudNumericField T="decimal" Value="_handlingCost" Label="Handling Cost" Variant="Variant.Outlined"
+                                     Margin="Margin.Dense" Format="N2" Min="0" ValueChanged="@((decimal v) => { _handlingCost = v; RecalcTotal(); })" />
+                </MudItem>
+                <MudItem xs="12" md="3">
+                    <MudNumericField T="decimal" Value="_otherCost" Label="Other Cost" Variant="Variant.Outlined"
+                                     Margin="Margin.Dense" Format="N2" Min="0" ValueChanged="@((decimal v) => { _otherCost = v; RecalcTotal(); })" />
+                </MudItem>
+                <MudItem xs="12" md="3">
+                    <MudNumericField T="decimal" @bind-Value="_totalMawbCost" Label="Total MAWB Cost" Variant="Variant.Outlined"
+                                     Margin="Margin.Dense" Format="N2" Min="0" />
+                </MudItem>
+                <MudItem xs="12" md="3">
+                    <MudSelect T="CostAllocationMethod" @bind-Value="_allocationMethod" Label="Allocation Method"
+                               Variant="Variant.Outlined" Margin="Margin.Dense">
+                        <MudSelectItem T="CostAllocationMethod" Value="CostAllocationMethod.ChargeableWeight">Chargeable Weight</MudSelectItem>
+                        <MudSelectItem T="CostAllocationMethod" Value="CostAllocationMethod.GrossWeight">Gross Weight</MudSelectItem>
+                        <MudSelectItem T="CostAllocationMethod" Value="CostAllocationMethod.Pieces">Pieces</MudSelectItem>
+                        <MudSelectItem T="CostAllocationMethod" Value="CostAllocationMethod.CBM">CBM</MudSelectItem>
+                        <MudSelectItem T="CostAllocationMethod" Value="CostAllocationMethod.Manual">Manual</MudSelectItem>
+                    </MudSelect>
+                </MudItem>
+                <MudItem xs="12" md="6" Class="d-flex align-end">
+                    <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="SaveCostDetails"
+                               Disabled="_saving" StartIcon="@Icons.Material.Filled.Save">
+                        @if (_saving) { <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-1" /> }
+                        Save Cost Details
+                    </MudButton>
+                </MudItem>
+            </MudGrid>
+        </MudPaper>
+
+        @if (_totalMawbCost > 0 && _shipments.Any())
+        {
+            <MudPaper Class="pa-4 mb-4">
+                <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center" Class="mb-3">
+                    <MudText Typo="Typo.h6">HAWB Cost Allocation</MudText>
+                    <MudStack Row="true" Spacing="2">
+                        <MudButton Variant="Variant.Outlined" Color="Color.Secondary" OnClick="RecalculateAllocation"
+                                   StartIcon="@Icons.Material.Filled.Calculate">Recalculate</MudButton>
+                        <MudButton Variant="Variant.Filled" Color="Color.Success" OnClick="ApplyAllocation"
+                                   Disabled="_applying" StartIcon="@Icons.Material.Filled.CheckCircle">
+                            @if (_applying) { <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-1" /> }
+                            Apply Allocation
+                        </MudButton>
+                    </MudStack>
+                </MudStack>
+
+                <MudTable Items="@_allocationRows" Hover="true" Striped="true" Dense="true" Elevation="0"
+                          Class="border-solid border">
+                    <HeaderContent>
+                        <MudTh>AWB No</MudTh>
+                        <MudTh>Consignee</MudTh>
+                        <MudTh Style="text-align:right">Weight</MudTh>
+                        <MudTh Style="text-align:right">Chg Weight</MudTh>
+                        <MudTh Style="text-align:right">Pieces</MudTh>
+                        <MudTh Style="text-align:right">Sales Charge</MudTh>
+                        <MudTh Style="text-align:right">Allocated Cost</MudTh>
+                        <MudTh Style="text-align:right">Margin</MudTh>
+                        <MudTh Style="text-align:right">Margin %</MudTh>
+                    </HeaderContent>
+                    <RowTemplate>
+                        <MudTd DataLabel="AWB No">@context.AWBNo</MudTd>
+                        <MudTd DataLabel="Consignee">@(context.Consignee ?? "—")</MudTd>
+                        <MudTd DataLabel="Weight" Style="text-align:right">@((context.Weight ?? 0).ToString("N2"))</MudTd>
+                        <MudTd DataLabel="Chg Weight" Style="text-align:right">@((context.ChargeableWeight ?? 0).ToString("N2"))</MudTd>
+                        <MudTd DataLabel="Pieces" Style="text-align:right">@(context.Pieces ?? 0)</MudTd>
+                        <MudTd DataLabel="Sales Charge" Style="text-align:right">@((context.SalesTotalCharge ?? 0).ToString("N2"))</MudTd>
+                        <MudTd DataLabel="Allocated Cost" Style="text-align:right">
+                            @if (_allocationMethod == CostAllocationMethod.Manual)
+                            {
+                                <MudNumericField T="decimal" Value="context.AllocatedCost" Variant="Variant.Outlined"
+                                                 Margin="Margin.Dense" Format="N2" Min="0" Style="max-width:120px"
+                                                 ValueChanged="@((decimal v) => OnManualCostChanged(context, v))" />
+                            }
+                            else
+                            {
+                                @context.AllocatedCost.ToString("N2")
+                            }
+                        </MudTd>
+                        <MudTd DataLabel="Margin" Style="text-align:right">
+                            <MudText Color="@(context.Margin >= 0 ? Color.Success : Color.Error)">@context.Margin.ToString("N2")</MudText>
+                        </MudTd>
+                        <MudTd DataLabel="Margin %" Style="text-align:right">
+                            <MudText Color="@(context.MarginPercent >= 0 ? Color.Success : Color.Error)">@context.MarginPercent.ToString("N1")%</MudText>
+                        </MudTd>
+                    </RowTemplate>
+                    <FooterContent>
+                        <MudTd colspan="2"><strong>Totals</strong></MudTd>
+                        <MudTd Style="text-align:right"><strong>@_allocationRows.Sum(r => r.Weight ?? 0).ToString("N2")</strong></MudTd>
+                        <MudTd Style="text-align:right"><strong>@_allocationRows.Sum(r => r.ChargeableWeight ?? 0).ToString("N2")</strong></MudTd>
+                        <MudTd Style="text-align:right"><strong>@_allocationRows.Sum(r => r.Pieces ?? 0)</strong></MudTd>
+                        <MudTd Style="text-align:right"><strong>@_allocationRows.Sum(r => r.SalesTotalCharge ?? 0).ToString("N2")</strong></MudTd>
+                        <MudTd Style="text-align:right"><strong>@_allocationRows.Sum(r => r.AllocatedCost).ToString("N2")</strong></MudTd>
+                        <MudTd Style="text-align:right"><strong>@_allocationRows.Sum(r => r.Margin).ToString("N2")</strong></MudTd>
+                        <MudTd></MudTd>
+                    </FooterContent>
+                </MudTable>
+            </MudPaper>
+        }
+    }
+</MudContainer>
+
+@code {
+    private List<MasterAirwaybill> _mawbs = new();
+    private MasterAirwaybill? _selectedMawb;
+    private List<Party> _agents = new();
+    private List<InscanMaster> _shipments = new();
+    private List<AllocationRow> _allocationRows = new();
+    private bool _loading = true;
+    private bool _saving;
+    private bool _applying;
+    private string _searchText = "";
+    private string? _costFilter;
+
+    private long? _forwardingAgentId;
+    private string? _vendorInvoiceNo;
+    private DateTime? _vendorInvoiceDate;
+    private decimal _airFreightCost;
+    private decimal _fuelSurchargeCost;
+    private decimal _handlingCost;
+    private decimal _otherCost;
+    private decimal _totalMawbCost;
+    private CostAllocationMethod _allocationMethod = CostAllocationMethod.ChargeableWeight;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadAgents();
+        await LoadMawbs();
+    }
+
+    private async Task LoadAgents()
+    {
+        await using var db = await DbFactory.CreateDbContextAsync();
+        _agents = await db.Parties
+            .Where(p => p.PartyType == PartyType.ForwardingAgent && p.IsActive && !p.IsDeleted)
+            .OrderBy(p => p.Name)
+            .ToListAsync();
+    }
+
+    private async Task LoadMawbs()
+    {
+        _loading = true;
+        try
+        {
+            await using var db = await DbFactory.CreateDbContextAsync();
+            var query = db.MasterAirwaybills
+                .Where(m => !m.IsDeleted)
+                .AsQueryable();
+
+            if (!string.IsNullOrWhiteSpace(_searchText))
+            {
+                query = query.Where(m => m.MAWBNo.ToLower().Contains(_searchText.ToLower()));
+            }
+
+            if (_costFilter == "pending")
+                query = query.Where(m => m.TotalMAWBCost == null || m.TotalMAWBCost == 0);
+            else if (_costFilter == "entered")
+                query = query.Where(m => m.TotalMAWBCost > 0 && !m.IsCostAllocated);
+            else if (_costFilter == "allocated")
+                query = query.Where(m => m.IsCostAllocated);
+
+            _mawbs = await query.OrderByDescending(m => m.TransactionDate).ThenByDescending(m => m.Id).Take(100).ToListAsync();
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private void OnMawbRowClick(TableRowClickEventArgs<MasterAirwaybill> args)
+    {
+        SelectMawb(args.Item!);
+    }
+
+    private async void SelectMawb(MasterAirwaybill mawb)
+    {
+        _selectedMawb = mawb;
+        _forwardingAgentId = mawb.ForwardingAgentId;
+        _vendorInvoiceNo = mawb.VendorInvoiceNo;
+        _vendorInvoiceDate = mawb.VendorInvoiceDate;
+        _airFreightCost = mawb.AirFreightCost ?? 0;
+        _fuelSurchargeCost = mawb.FuelSurchargeCost ?? 0;
+        _handlingCost = mawb.HandlingCost ?? 0;
+        _otherCost = mawb.OtherCost ?? 0;
+        _totalMawbCost = mawb.TotalMAWBCost ?? 0;
+        _allocationMethod = mawb.AllocationMethod;
+
+        await LoadShipments();
+        if (_totalMawbCost > 0 && _shipments.Any())
+        {
+            CalculateAllocation();
+        }
+        StateHasChanged();
+    }
+
+    private async Task LoadShipments()
+    {
+        await using var db = await DbFactory.CreateDbContextAsync();
+        var directShipments = await db.InscanMasters
+            .Where(s => s.MAWBId == _selectedMawb!.Id && !s.IsDeleted)
+            .OrderBy(s => s.AWBNo)
+            .ToListAsync();
+
+        if (!directShipments.Any())
+        {
+            var bagIds = await db.Set<MAWBBag>()
+                .Where(b => b.MAWBId == _selectedMawb!.Id && !b.IsDeleted)
+                .Select(b => b.Id)
+                .ToListAsync();
+
+            if (bagIds.Any())
+            {
+                directShipments = await db.InscanMasters
+                    .Where(s => s.MAWBBagId.HasValue && bagIds.Contains(s.MAWBBagId.Value) && !s.IsDeleted)
+                    .OrderBy(s => s.AWBNo)
+                    .ToListAsync();
+            }
+        }
+
+        _shipments = directShipments;
+
+        _allocationRows = _shipments.Select(s => new AllocationRow
+        {
+            ShipmentId = s.Id,
+            AWBNo = s.AWBNo,
+            Consignee = s.Consignee,
+            Weight = s.Weight,
+            ChargeableWeight = s.ChargeableWeight,
+            Pieces = s.Pieces,
+            CBM = s.CBM,
+            SalesTotalCharge = s.SalesTotalCharge,
+            AllocatedCost = s.EstimatedTotalCost ?? 0
+        }).ToList();
+    }
+
+    private void RecalcTotal()
+    {
+        _totalMawbCost = _airFreightCost + _fuelSurchargeCost + _handlingCost + _otherCost;
+        if (_allocationRows.Any() && _allocationMethod != CostAllocationMethod.Manual)
+        {
+            CalculateAllocation();
+        }
+    }
+
+    private void CalculateAllocation()
+    {
+        if (_totalMawbCost <= 0 || !_allocationRows.Any()) return;
+
+        if (_allocationMethod == CostAllocationMethod.Manual)
+        {
+            UpdateMargins();
+            return;
+        }
+
+        decimal totalBasis = 0;
+        foreach (var row in _allocationRows)
+        {
+            totalBasis += _allocationMethod switch
+            {
+                CostAllocationMethod.ChargeableWeight => row.ChargeableWeight ?? 0,
+                CostAllocationMethod.GrossWeight => row.Weight ?? 0,
+                CostAllocationMethod.Pieces => row.Pieces ?? 0,
+                CostAllocationMethod.CBM => row.CBM ?? 0,
+                _ => 0
+            };
+        }
+
+        if (totalBasis == 0)
+        {
+            foreach (var row in _allocationRows)
+            {
+                row.AllocatedCost = _totalMawbCost / _allocationRows.Count;
+            }
+        }
+        else
+        {
+            decimal allocated = 0;
+            for (int i = 0; i < _allocationRows.Count; i++)
+            {
+                var row = _allocationRows[i];
+                decimal basis = _allocationMethod switch
+                {
+                    CostAllocationMethod.ChargeableWeight => row.ChargeableWeight ?? 0,
+                    CostAllocationMethod.GrossWeight => row.Weight ?? 0,
+                    CostAllocationMethod.Pieces => row.Pieces ?? 0,
+                    CostAllocationMethod.CBM => row.CBM ?? 0,
+                    _ => 0
+                };
+
+                if (i == _allocationRows.Count - 1)
+                {
+                    row.AllocatedCost = _totalMawbCost - allocated;
+                }
+                else
+                {
+                    row.AllocatedCost = Math.Round(_totalMawbCost * basis / totalBasis, 2);
+                    allocated += row.AllocatedCost;
+                }
+            }
+        }
+
+        UpdateMargins();
+    }
+
+    private void UpdateMargins()
+    {
+        foreach (var row in _allocationRows)
+        {
+            row.Margin = (row.SalesTotalCharge ?? 0) - row.AllocatedCost;
+            row.MarginPercent = (row.SalesTotalCharge ?? 0) != 0
+                ? row.Margin / (row.SalesTotalCharge ?? 1) * 100
+                : 0;
+        }
+    }
+
+    private void OnManualCostChanged(AllocationRow row, decimal value)
+    {
+        row.AllocatedCost = value;
+        UpdateMargins();
+    }
+
+    private void RecalculateAllocation()
+    {
+        CalculateAllocation();
+        Snackbar.Add("Allocation recalculated", Severity.Info);
+    }
+
+    private async Task SaveCostDetails()
+    {
+        if (_selectedMawb == null) return;
+        _saving = true;
+        try
+        {
+            await using var db = await DbFactory.CreateDbContextAsync();
+            var mawb = await db.MasterAirwaybills.FindAsync(_selectedMawb.Id);
+            if (mawb == null) { Snackbar.Add("MAWB not found", Severity.Error); return; }
+
+            var agentName = _forwardingAgentId.HasValue
+                ? _agents.FirstOrDefault(a => a.Id == _forwardingAgentId)?.Name
+                : null;
+
+            mawb.ForwardingAgentId = _forwardingAgentId;
+            mawb.ForwardingAgentName = agentName;
+            mawb.VendorInvoiceNo = _vendorInvoiceNo;
+            mawb.VendorInvoiceDate = _vendorInvoiceDate;
+            mawb.AirFreightCost = _airFreightCost;
+            mawb.FuelSurchargeCost = _fuelSurchargeCost;
+            mawb.HandlingCost = _handlingCost;
+            mawb.OtherCost = _otherCost;
+            mawb.TotalMAWBCost = _totalMawbCost;
+            mawb.AllocationMethod = _allocationMethod;
+            mawb.ModifiedAt = DateTime.UtcNow;
+
+            await db.SaveChangesAsync();
+
+            _selectedMawb.ForwardingAgentId = mawb.ForwardingAgentId;
+            _selectedMawb.ForwardingAgentName = mawb.ForwardingAgentName;
+            _selectedMawb.VendorInvoiceNo = mawb.VendorInvoiceNo;
+            _selectedMawb.VendorInvoiceDate = mawb.VendorInvoiceDate;
+            _selectedMawb.AirFreightCost = mawb.AirFreightCost;
+            _selectedMawb.FuelSurchargeCost = mawb.FuelSurchargeCost;
+            _selectedMawb.HandlingCost = mawb.HandlingCost;
+            _selectedMawb.OtherCost = mawb.OtherCost;
+            _selectedMawb.TotalMAWBCost = mawb.TotalMAWBCost;
+            _selectedMawb.AllocationMethod = mawb.AllocationMethod;
+
+            if (_shipments.Any())
+            {
+                CalculateAllocation();
+            }
+
+            Snackbar.Add("Cost details saved successfully", Severity.Success);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error saving: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _saving = false;
+        }
+    }
+
+    private async Task ApplyAllocation()
+    {
+        if (_selectedMawb == null || !_allocationRows.Any()) return;
+
+        var totalAllocated = _allocationRows.Sum(r => r.AllocatedCost);
+        if (Math.Abs(totalAllocated - _totalMawbCost) > 0.01m)
+        {
+            Snackbar.Add($"Total allocated ({totalAllocated:N2}) does not match MAWB cost ({_totalMawbCost:N2}). Please adjust.", Severity.Warning);
+            return;
+        }
+
+        _applying = true;
+        try
+        {
+            await using var db = await DbFactory.CreateDbContextAsync();
+
+            var shipmentIds = _allocationRows.Select(r => r.ShipmentId).ToList();
+            var shipments = await db.InscanMasters
+                .Where(s => shipmentIds.Contains(s.Id))
+                .ToListAsync();
+
+            decimal totalBasis = 0;
+            if (_allocationMethod != CostAllocationMethod.Manual && _totalMawbCost > 0)
+            {
+                foreach (var row in _allocationRows)
+                {
+                    totalBasis += _allocationMethod switch
+                    {
+                        CostAllocationMethod.ChargeableWeight => row.ChargeableWeight ?? 0,
+                        CostAllocationMethod.GrossWeight => row.Weight ?? 0,
+                        CostAllocationMethod.Pieces => row.Pieces ?? 0,
+                        CostAllocationMethod.CBM => row.CBM ?? 0,
+                        _ => 0
+                    };
+                }
+            }
+
+            foreach (var shipment in shipments)
+            {
+                var row = _allocationRows.FirstOrDefault(r => r.ShipmentId == shipment.Id);
+                if (row == null) continue;
+
+                decimal freightPortion = 0;
+                decimal fuelPortion = 0;
+                decimal handlingPortion = 0;
+
+                if (_allocationMethod == CostAllocationMethod.Manual)
+                {
+                    freightPortion = row.AllocatedCost;
+                }
+                else if (totalBasis > 0)
+                {
+                    decimal basis = _allocationMethod switch
+                    {
+                        CostAllocationMethod.ChargeableWeight => row.ChargeableWeight ?? 0,
+                        CostAllocationMethod.GrossWeight => row.Weight ?? 0,
+                        CostAllocationMethod.Pieces => row.Pieces ?? 0,
+                        CostAllocationMethod.CBM => row.CBM ?? 0,
+                        _ => 0
+                    };
+                    decimal ratio = basis / totalBasis;
+                    freightPortion = Math.Round((_airFreightCost) * ratio, 2);
+                    fuelPortion = Math.Round((_fuelSurchargeCost) * ratio, 2);
+                    handlingPortion = Math.Round((_handlingCost) * ratio, 2);
+                }
+
+                shipment.EstimatedFreightCost = freightPortion;
+                shipment.EstimatedFuelSurchargeCost = fuelPortion;
+                shipment.EstimatedHandlingCost = handlingPortion;
+                shipment.EstimatedTotalCost = row.AllocatedCost;
+                shipment.CostRateAppliedAt = DateTime.UtcNow;
+                shipment.GrossMargin = (shipment.SalesTotalCharge ?? 0) - row.AllocatedCost;
+                shipment.GrossMarginPercent = (shipment.SalesTotalCharge ?? 0) != 0
+                    ? Math.Round(((shipment.SalesTotalCharge ?? 0) - row.AllocatedCost) / (shipment.SalesTotalCharge ?? 1) * 100, 2)
+                    : 0;
+                shipment.ModifiedAt = DateTime.UtcNow;
+            }
+
+            var mawb = await db.MasterAirwaybills.FindAsync(_selectedMawb.Id);
+            if (mawb != null)
+            {
+                mawb.IsCostAllocated = true;
+                mawb.CostAllocatedAt = DateTime.UtcNow;
+                mawb.ModifiedAt = DateTime.UtcNow;
+            }
+
+            await db.SaveChangesAsync();
+
+            _selectedMawb.IsCostAllocated = true;
+            _selectedMawb.CostAllocatedAt = mawb?.CostAllocatedAt;
+
+            Snackbar.Add("Cost allocation applied successfully", Severity.Success);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error applying allocation: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _applying = false;
+        }
+    }
+
+    private async void ClearSelection()
+    {
+        _selectedMawb = null;
+        _shipments.Clear();
+        _allocationRows.Clear();
+        await LoadMawbs();
+        StateHasChanged();
+    }
+
+    private class AllocationRow
+    {
+        public long ShipmentId { get; set; }
+        public string AWBNo { get; set; } = "";
+        public string? Consignee { get; set; }
+        public decimal? Weight { get; set; }
+        public decimal? ChargeableWeight { get; set; }
+        public int? Pieces { get; set; }
+        public decimal? CBM { get; set; }
+        public decimal? SalesTotalCharge { get; set; }
+        public decimal AllocatedCost { get; set; }
+        public decimal Margin { get; set; }
+        public decimal MarginPercent { get; set; }
+    }
+}

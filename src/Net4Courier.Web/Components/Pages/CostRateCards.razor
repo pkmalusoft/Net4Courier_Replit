@@ -1,0 +1,489 @@
+@page "/cost-rate-cards"
+@using Microsoft.EntityFrameworkCore
+@inject IDbContextFactory<ApplicationDbContext> DbFactory
+@inject IDialogService DialogService
+@inject ISnackbar Snackbar
+@inject NavigationManager Navigation
+@rendermode InteractiveServer
+
+<PageTitle>Cost Rate Card Management</PageTitle>
+
+<MudContainer MaxWidth="MaxWidth.ExtraLarge" Class="mt-4">
+    <MudPaper Class="pa-4">
+        <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center" Class="mb-4">
+            <MudText Typo="Typo.h5">Cost Rate Card Management</MudText>
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add"
+                       OnClick="CreateNewCostRateCard">New Cost Rate Card</MudButton>
+        </MudStack>
+
+        <MudGrid Class="mb-4">
+            <MudItem xs="12" md="3">
+                <MudTextField @bind-Value="_searchText" Label="Search" Variant="Variant.Outlined" Margin="Margin.Dense"
+                              Adornment="Adornment.End" AdornmentIcon="@Icons.Material.Filled.Search"
+                              Immediate="true" DebounceInterval="300" OnDebounceIntervalElapsed="SearchRateCards" />
+            </MudItem>
+            <MudItem xs="12" md="2">
+                <MudSelect T="long?" @bind-Value="_agentFilter" Label="Agent" Variant="Variant.Outlined"
+                           Margin="Margin.Dense" Clearable="true">
+                    @foreach (var agent in _agents)
+                    {
+                        <MudSelectItem T="long?" Value="@agent.Id">@agent.Name</MudSelectItem>
+                    }
+                </MudSelect>
+            </MudItem>
+            <MudItem xs="12" md="2">
+                <MudSelect T="MovementType?" @bind-Value="_movementFilter" Label="Movement Type" Variant="Variant.Outlined"
+                           Margin="Margin.Dense" Clearable="true">
+                    <MudSelectItem T="MovementType?" Value="MovementType.Domestic">Domestic</MudSelectItem>
+                    <MudSelectItem T="MovementType?" Value="MovementType.InternationalExport">Export</MudSelectItem>
+                    <MudSelectItem T="MovementType?" Value="MovementType.InternationalImport">Import</MudSelectItem>
+                    <MudSelectItem T="MovementType?" Value="MovementType.Transhipment">Transhipment</MudSelectItem>
+                </MudSelect>
+            </MudItem>
+            <MudItem xs="12" md="2">
+                <MudSelect T="RateCardStatus?" @bind-Value="_statusFilter" Label="Status" Variant="Variant.Outlined"
+                           Margin="Margin.Dense" Clearable="true">
+                    <MudSelectItem T="RateCardStatus?" Value="RateCardStatus.Active">Active</MudSelectItem>
+                    <MudSelectItem T="RateCardStatus?" Value="RateCardStatus.Draft">Draft</MudSelectItem>
+                    <MudSelectItem T="RateCardStatus?" Value="RateCardStatus.Expired">Expired</MudSelectItem>
+                    <MudSelectItem T="RateCardStatus?" Value="RateCardStatus.Suspended">Suspended</MudSelectItem>
+                </MudSelect>
+            </MudItem>
+            <MudItem xs="12" md="2">
+                <MudButton Variant="Variant.Outlined" Color="Color.Primary" OnClick="ApplyFilters" FullWidth="true"
+                           Class="mt-1">Apply Filters</MudButton>
+            </MudItem>
+        </MudGrid>
+
+        <MudTable Items="@_rateCards" Hover="true" Striped="true" Loading="@_loading" Dense="true" Elevation="0"
+                  Class="border-solid border">
+            <HeaderContent>
+                <MudTh>Rate Card Name</MudTh>
+                <MudTh>Agent</MudTh>
+                <MudTh>Movement Type</MudTh>
+                <MudTh>Service</MudTh>
+                <MudTh>Valid From</MudTh>
+                <MudTh>Valid To</MudTh>
+                <MudTh>Status</MudTh>
+                <MudTh Style="width:120px">Actions</MudTh>
+            </HeaderContent>
+            <RowTemplate>
+                <MudTd DataLabel="Rate Card Name">
+                    <MudLink Href="@($"/rate-card/{context.Id}")">@context.RateCardName</MudLink>
+                </MudTd>
+                <MudTd DataLabel="Agent">@GetAgentName(context.ForwardingAgentId)</MudTd>
+                <MudTd DataLabel="Movement Type">@GetMovementTypeName(context.MovementTypeId)</MudTd>
+                <MudTd DataLabel="Service">@(context.ServiceType?.Name ?? "—")</MudTd>
+                <MudTd DataLabel="Valid From">@context.ValidFrom.ToString("dd-MMM-yyyy")</MudTd>
+                <MudTd DataLabel="Valid To">@(context.ValidTo?.ToString("dd-MMM-yyyy") ?? "No Expiry")</MudTd>
+                <MudTd DataLabel="Status">
+                    <MudChip T="string" Size="Size.Small" Color="@GetStatusColor(context.Status)">@context.Status</MudChip>
+                </MudTd>
+                <MudTd>
+                    <MudIconButton Icon="@Icons.Material.Filled.Edit" Size="Size.Small" Color="Color.Primary"
+                                   OnClick="@(() => EditRateCard(context.Id))" Title="Edit" />
+                    <MudIconButton Icon="@Icons.Material.Filled.ContentCopy" Size="Size.Small" Color="Color.Secondary"
+                                   OnClick="@(() => DuplicateRateCard(context))" Title="Duplicate" />
+                    <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" Color="Color.Error"
+                                   OnClick="@(() => DeleteRateCard(context))" Title="Delete" />
+                </MudTd>
+            </RowTemplate>
+            <NoRecordsContent>
+                <MudText Class="pa-4">No cost rate cards found. Click "New Cost Rate Card" to create one.</MudText>
+            </NoRecordsContent>
+            <LoadingContent>
+                <MudText>Loading cost rate cards...</MudText>
+            </LoadingContent>
+        </MudTable>
+    </MudPaper>
+
+    <MudExpansionPanels Class="mt-4">
+        <MudExpansionPanel Text="Agent Rate Assignments" IsInitiallyExpanded="false" @bind-IsExpanded="_assignmentPanelExpanded">
+            <TitleContent>
+                <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+                    <MudIcon Icon="@Icons.Material.Filled.Assignment" />
+                    <MudText Typo="Typo.h6">Agent Rate Assignments</MudText>
+                </MudStack>
+            </TitleContent>
+            <ChildContent>
+                <MudPaper Class="pa-4" Elevation="0">
+                    <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center" Class="mb-4">
+                        <MudText Typo="Typo.subtitle1">Current Assignments</MudText>
+                        <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add"
+                                   Size="Size.Small" OnClick="OpenAddAssignmentDialog">Add Assignment</MudButton>
+                    </MudStack>
+
+                    <MudTable Items="@_assignments" Hover="true" Striped="true" Loading="@_assignmentsLoading" Dense="true"
+                              Elevation="0" Class="border-solid border">
+                        <HeaderContent>
+                            <MudTh>Agent</MudTh>
+                            <MudTh>Rate Card</MudTh>
+                            <MudTh>Effective From</MudTh>
+                            <MudTh>Effective To</MudTh>
+                            <MudTh>Priority</MudTh>
+                            <MudTh>Remarks</MudTh>
+                            <MudTh Style="width:60px">Actions</MudTh>
+                        </HeaderContent>
+                        <RowTemplate>
+                            <MudTd DataLabel="Agent">@(context.Agent?.Name ?? "—")</MudTd>
+                            <MudTd DataLabel="Rate Card">@(context.RateCard?.RateCardName ?? "—")</MudTd>
+                            <MudTd DataLabel="Effective From">@context.EffectiveFrom.ToString("dd-MMM-yyyy")</MudTd>
+                            <MudTd DataLabel="Effective To">@(context.EffectiveTo?.ToString("dd-MMM-yyyy") ?? "No End Date")</MudTd>
+                            <MudTd DataLabel="Priority">@context.Priority</MudTd>
+                            <MudTd DataLabel="Remarks">@(context.Remarks ?? "—")</MudTd>
+                            <MudTd>
+                                <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" Color="Color.Error"
+                                               OnClick="@(() => RemoveAssignment(context))" Title="Remove" />
+                            </MudTd>
+                        </RowTemplate>
+                        <NoRecordsContent>
+                            <MudText Class="pa-4">No agent assignments found.</MudText>
+                        </NoRecordsContent>
+                        <LoadingContent>
+                            <MudText>Loading assignments...</MudText>
+                        </LoadingContent>
+                    </MudTable>
+                </MudPaper>
+            </ChildContent>
+        </MudExpansionPanel>
+    </MudExpansionPanels>
+</MudContainer>
+
+<MudDialog @bind-Visible="_addAssignmentVisible" Options="@(new DialogOptions { MaxWidth = MaxWidth.Small, FullWidth = true })">
+    <TitleContent>
+        <MudText Typo="Typo.h6">Add Agent Rate Assignment</MudText>
+    </TitleContent>
+    <DialogContent>
+        <MudGrid>
+            <MudItem xs="12">
+                <MudSelect T="long?" @bind-Value="_newAssignment.AgentId" Label="Agent" Variant="Variant.Outlined"
+                           Margin="Margin.Dense" Required="true">
+                    @foreach (var agent in _agents)
+                    {
+                        <MudSelectItem T="long?" Value="@agent.Id">@agent.Name</MudSelectItem>
+                    }
+                </MudSelect>
+            </MudItem>
+            <MudItem xs="12">
+                <MudSelect T="long?" @bind-Value="_newAssignment.RateCardId" Label="Rate Card" Variant="Variant.Outlined"
+                           Margin="Margin.Dense" Required="true">
+                    @foreach (var rc in _rateCards)
+                    {
+                        <MudSelectItem T="long?" Value="@rc.Id">@rc.RateCardName</MudSelectItem>
+                    }
+                </MudSelect>
+            </MudItem>
+            <MudItem xs="6">
+                <MudDatePicker @bind-Date="_newAssignmentEffectiveFrom" Label="Effective From" Variant="Variant.Outlined"
+                               Margin="Margin.Dense" Required="true" />
+            </MudItem>
+            <MudItem xs="6">
+                <MudDatePicker @bind-Date="_newAssignmentEffectiveTo" Label="Effective To" Variant="Variant.Outlined"
+                               Margin="Margin.Dense" />
+            </MudItem>
+            <MudItem xs="6">
+                <MudNumericField T="int" @bind-Value="_newAssignment.Priority" Label="Priority" Variant="Variant.Outlined"
+                                 Margin="Margin.Dense" Min="1" />
+            </MudItem>
+            <MudItem xs="12">
+                <MudTextField @bind-Value="_newAssignment.Remarks" Label="Remarks" Variant="Variant.Outlined"
+                              Margin="Margin.Dense" Lines="2" />
+            </MudItem>
+        </MudGrid>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="CloseAddAssignmentDialog">Cancel</MudButton>
+        <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="SaveAssignment">Save</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    private List<RateCard> _rateCards = new();
+    private List<AgentRateAssignment> _assignments = new();
+    private List<Party> _agents = new();
+    private bool _loading = true;
+    private bool _assignmentsLoading;
+    private bool _assignmentPanelExpanded;
+    private string _searchText = "";
+    private long? _agentFilter;
+    private MovementType? _movementFilter;
+    private RateCardStatus? _statusFilter;
+
+    private bool _addAssignmentVisible;
+    private NewAssignmentModel _newAssignment = new();
+    private DateTime? _newAssignmentEffectiveFrom = DateTime.Today;
+    private DateTime? _newAssignmentEffectiveTo;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadAgents();
+        await LoadRateCards();
+        await LoadAssignments();
+    }
+
+    private async Task LoadAgents()
+    {
+        await using var db = await DbFactory.CreateDbContextAsync();
+        _agents = await db.Parties
+            .Where(p => p.PartyType == PartyType.ForwardingAgent && p.IsActive && !p.IsDeleted)
+            .OrderBy(p => p.Name)
+            .ToListAsync();
+    }
+
+    private async Task LoadRateCards()
+    {
+        _loading = true;
+        try
+        {
+            await using var db = await DbFactory.CreateDbContextAsync();
+            var query = db.RateCards
+                .Include(r => r.ServiceType)
+                .Where(r => !r.IsDeleted)
+                .Where(r => r.RateCardType == RateCardType.Cost || r.RateCardType == RateCardType.Both)
+                .AsQueryable();
+
+            if (!string.IsNullOrWhiteSpace(_searchText))
+            {
+                query = query.Where(r => r.RateCardName.ToLower().Contains(_searchText.ToLower()));
+            }
+
+            if (_agentFilter.HasValue)
+            {
+                query = query.Where(r => r.ForwardingAgentId == _agentFilter.Value);
+            }
+
+            if (_statusFilter.HasValue)
+            {
+                query = query.Where(r => r.Status == _statusFilter.Value);
+            }
+
+            if (_movementFilter.HasValue)
+            {
+                query = query.Where(r => r.MovementTypeId == _movementFilter.Value);
+            }
+
+            _rateCards = await query.OrderByDescending(r => r.CreatedAt).Take(100).ToListAsync();
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private async Task LoadAssignments()
+    {
+        _assignmentsLoading = true;
+        try
+        {
+            await using var db = await DbFactory.CreateDbContextAsync();
+            _assignments = await db.AgentRateAssignments
+                .Include(a => a.Agent)
+                .Include(a => a.RateCard)
+                .Where(a => !a.IsDeleted)
+                .Where(a => a.RateCard != null && (a.RateCard.RateCardType == RateCardType.Cost || a.RateCard.RateCardType == RateCardType.Both))
+                .OrderByDescending(a => a.EffectiveFrom)
+                .Take(100)
+                .ToListAsync();
+        }
+        finally
+        {
+            _assignmentsLoading = false;
+        }
+    }
+
+    private async Task SearchRateCards()
+    {
+        await LoadRateCards();
+    }
+
+    private async Task ApplyFilters()
+    {
+        await LoadRateCards();
+    }
+
+    private void CreateNewCostRateCard()
+    {
+        Navigation.NavigateTo("/rate-card/new?type=cost");
+    }
+
+    private void EditRateCard(long id)
+    {
+        Navigation.NavigateTo($"/rate-card/{id}");
+    }
+
+    private async Task DuplicateRateCard(RateCard original)
+    {
+        var parameters = new DialogParameters<ConfirmDialog>
+        {
+            { x => x.ContentText, $"Create a copy of '{original.RateCardName}'?" },
+            { x => x.ButtonText, "Duplicate" },
+            { x => x.Color, Color.Primary }
+        };
+
+        var dialog = await DialogService.ShowAsync<ConfirmDialog>("Duplicate Cost Rate Card", parameters);
+        var result = await dialog.Result;
+
+        if (result != null && !result.Canceled)
+        {
+            await using var db = await DbFactory.CreateDbContextAsync();
+            var newRateCard = new RateCard
+            {
+                RateCardName = $"{original.RateCardName} (Copy)",
+                CourierServiceId = original.CourierServiceId,
+                MovementTypeId = original.MovementTypeId,
+                ZoneCategoryId = original.ZoneCategoryId,
+                PaymentModeId = original.PaymentModeId,
+                RateBasedType = original.RateBasedType,
+                RateCardType = original.RateCardType,
+                ValidFrom = DateTime.UtcNow,
+                Status = RateCardStatus.Draft,
+                CompanyId = original.CompanyId,
+                ForwardingAgentId = original.ForwardingAgentId,
+                ServiceTypeId = original.ServiceTypeId,
+                ShipmentModeId = original.ShipmentModeId,
+                Description = original.Description,
+                CreatedAt = DateTime.UtcNow,
+                IsActive = true
+            };
+
+            db.RateCards.Add(newRateCard);
+            await db.SaveChangesAsync();
+
+            Snackbar.Add("Cost rate card duplicated successfully", Severity.Success);
+            await LoadRateCards();
+        }
+    }
+
+    private async Task DeleteRateCard(RateCard rateCard)
+    {
+        var parameters = new DialogParameters<ConfirmDialog>
+        {
+            { x => x.ContentText, $"Are you sure you want to delete '{rateCard.RateCardName}'?" },
+            { x => x.ButtonText, "Delete" },
+            { x => x.Color, Color.Error }
+        };
+
+        var dialog = await DialogService.ShowAsync<ConfirmDialog>("Delete Cost Rate Card", parameters);
+        var result = await dialog.Result;
+
+        if (result != null && !result.Canceled)
+        {
+            await using var db = await DbFactory.CreateDbContextAsync();
+            var entity = await db.RateCards.FindAsync(rateCard.Id);
+            if (entity != null)
+            {
+                entity.IsDeleted = true;
+                entity.ModifiedAt = DateTime.UtcNow;
+                await db.SaveChangesAsync();
+            }
+
+            Snackbar.Add("Cost rate card deleted", Severity.Success);
+            await LoadRateCards();
+        }
+    }
+
+    private void OpenAddAssignmentDialog()
+    {
+        _newAssignment = new NewAssignmentModel { Priority = 1 };
+        _newAssignmentEffectiveFrom = DateTime.Today;
+        _newAssignmentEffectiveTo = null;
+        _addAssignmentVisible = true;
+    }
+
+    private void CloseAddAssignmentDialog()
+    {
+        _addAssignmentVisible = false;
+    }
+
+    private async Task SaveAssignment()
+    {
+        if (!_newAssignment.AgentId.HasValue || !_newAssignment.RateCardId.HasValue || !_newAssignmentEffectiveFrom.HasValue)
+        {
+            Snackbar.Add("Please fill in all required fields", Severity.Warning);
+            return;
+        }
+
+        await using var db = await DbFactory.CreateDbContextAsync();
+        var company = await db.Companies.FirstOrDefaultAsync(c => c.IsActive && !c.IsDeleted);
+
+        var assignment = new AgentRateAssignment
+        {
+            AgentId = _newAssignment.AgentId.Value,
+            RateCardId = _newAssignment.RateCardId.Value,
+            EffectiveFrom = _newAssignmentEffectiveFrom.Value.ToUniversalTime(),
+            EffectiveTo = _newAssignmentEffectiveTo?.ToUniversalTime(),
+            Priority = _newAssignment.Priority,
+            Remarks = _newAssignment.Remarks,
+            CompanyId = company?.Id,
+            CreatedAt = DateTime.UtcNow,
+            IsActive = true
+        };
+
+        db.AgentRateAssignments.Add(assignment);
+        await db.SaveChangesAsync();
+
+        Snackbar.Add("Agent assignment added successfully", Severity.Success);
+        _addAssignmentVisible = false;
+        await LoadAssignments();
+    }
+
+    private async Task RemoveAssignment(AgentRateAssignment assignment)
+    {
+        var parameters = new DialogParameters<ConfirmDialog>
+        {
+            { x => x.ContentText, $"Remove this agent assignment?" },
+            { x => x.ButtonText, "Remove" },
+            { x => x.Color, Color.Error }
+        };
+
+        var dialog = await DialogService.ShowAsync<ConfirmDialog>("Remove Assignment", parameters);
+        var result = await dialog.Result;
+
+        if (result != null && !result.Canceled)
+        {
+            await using var db = await DbFactory.CreateDbContextAsync();
+            var entity = await db.AgentRateAssignments.FindAsync(assignment.Id);
+            if (entity != null)
+            {
+                entity.IsDeleted = true;
+                entity.ModifiedAt = DateTime.UtcNow;
+                await db.SaveChangesAsync();
+            }
+
+            Snackbar.Add("Assignment removed", Severity.Success);
+            await LoadAssignments();
+        }
+    }
+
+    private string GetAgentName(long? agentId)
+    {
+        if (!agentId.HasValue) return "—";
+        return _agents.FirstOrDefault(a => a.Id == agentId.Value)?.Name ?? "—";
+    }
+
+    private string GetMovementTypeName(MovementType type) => type switch
+    {
+        MovementType.Domestic => "Domestic",
+        MovementType.InternationalExport => "Export",
+        MovementType.InternationalImport => "Import",
+        MovementType.Transhipment => "Transhipment",
+        _ => type.ToString()
+    };
+
+    private Color GetStatusColor(RateCardStatus status) => status switch
+    {
+        RateCardStatus.Active => Color.Success,
+        RateCardStatus.Draft => Color.Warning,
+        RateCardStatus.Expired => Color.Default,
+        RateCardStatus.Suspended => Color.Error,
+        _ => Color.Default
+    };
+
+    private class NewAssignmentModel
+    {
+        public long? AgentId { get; set; }
+        public long? RateCardId { get; set; }
+        public int Priority { get; set; } = 1;
+        public string? Remarks { get; set; }
+    }
+}

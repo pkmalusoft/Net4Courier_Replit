@@ -1,0 +1,507 @@
+@page "/profitability-report"
+@using Microsoft.EntityFrameworkCore
+@inject IDbContextFactory<ApplicationDbContext> DbFactory
+@inject ISnackbar Snackbar
+@rendermode InteractiveServer
+
+<PageTitle>Profitability Report</PageTitle>
+
+<MudContainer MaxWidth="MaxWidth.ExtraLarge" Class="mt-4">
+    <MudPaper Class="pa-4 mb-4">
+        <MudText Typo="Typo.h5" Class="mb-4">Profitability Report</MudText>
+        <MudGrid>
+            <MudItem xs="12" md="2">
+                <MudDatePicker @bind-Date="_dateFrom" Label="Date From" Variant="Variant.Outlined" Margin="Margin.Dense"
+                               DateFormat="dd-MMM-yyyy" Clearable="true" />
+            </MudItem>
+            <MudItem xs="12" md="2">
+                <MudDatePicker @bind-Date="_dateTo" Label="Date To" Variant="Variant.Outlined" Margin="Margin.Dense"
+                               DateFormat="dd-MMM-yyyy" Clearable="true" />
+            </MudItem>
+            <MudItem xs="12" md="2">
+                <MudSelect T="string" @bind-Value="_reportView" Label="Report View" Variant="Variant.Outlined" Margin="Margin.Dense">
+                    <MudSelectItem T="string" Value="@("Shipment-wise")">Shipment-wise</MudSelectItem>
+                    <MudSelectItem T="string" Value="@("Customer-wise")">Customer-wise</MudSelectItem>
+                    <MudSelectItem T="string" Value="@("Agent-wise")">Agent-wise</MudSelectItem>
+                    <MudSelectItem T="string" Value="@("Zone-wise")">Zone-wise</MudSelectItem>
+                    <MudSelectItem T="string" Value="@("MAWB-wise")">MAWB-wise</MudSelectItem>
+                </MudSelect>
+            </MudItem>
+            <MudItem xs="12" md="2">
+                <MudSelect T="MovementType?" @bind-Value="_movementTypeFilter" Label="Movement Type" Variant="Variant.Outlined"
+                           Margin="Margin.Dense" Clearable="true">
+                    <MudSelectItem T="MovementType?" Value="MovementType.Domestic">Domestic</MudSelectItem>
+                    <MudSelectItem T="MovementType?" Value="MovementType.InternationalExport">Export</MudSelectItem>
+                    <MudSelectItem T="MovementType?" Value="MovementType.InternationalImport">Import</MudSelectItem>
+                    <MudSelectItem T="MovementType?" Value="MovementType.Transhipment">Transhipment</MudSelectItem>
+                </MudSelect>
+            </MudItem>
+            <MudItem xs="12" md="2">
+                <MudCheckBox @bind-Value="_showNegativeOnly" Label="Negative Margin Only" Color="Color.Error" Class="mt-1" />
+            </MudItem>
+            <MudItem xs="12" md="2">
+                <MudStack Row="true" Spacing="2">
+                    <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="GenerateReport"
+                               StartIcon="@Icons.Material.Filled.Assessment" Disabled="_loading">
+                        @if (_loading)
+                        {
+                            <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-1" />
+                        }
+                        Generate
+                    </MudButton>
+                    <MudButton Variant="Variant.Outlined" Color="Color.Success" StartIcon="@Icons.Material.Filled.Download"
+                               OnClick="ExportToExcel" Disabled="!_reportGenerated">Export to Excel</MudButton>
+                </MudStack>
+            </MudItem>
+        </MudGrid>
+    </MudPaper>
+
+    @if (_reportGenerated)
+    {
+        <MudGrid Class="mb-4">
+            <MudItem xs="12" md="3">
+                <MudPaper Class="pa-4" Elevation="2">
+                    <MudText Typo="Typo.caption" Color="Color.Primary">Total Sales Revenue</MudText>
+                    <MudText Typo="Typo.h5">@_totalRevenue.ToString("N2")</MudText>
+                </MudPaper>
+            </MudItem>
+            <MudItem xs="12" md="3">
+                <MudPaper Class="pa-4" Elevation="2">
+                    <MudText Typo="Typo.caption" Color="Color.Secondary">Total Direct Cost</MudText>
+                    <MudText Typo="Typo.h5">@_totalCost.ToString("N2")</MudText>
+                </MudPaper>
+            </MudItem>
+            <MudItem xs="12" md="3">
+                <MudPaper Class="pa-4" Elevation="2">
+                    <MudText Typo="Typo.caption" Color="@(_totalMargin >= 0 ? Color.Success : Color.Error)">Total Gross Margin</MudText>
+                    <MudText Typo="Typo.h5" Color="@(_totalMargin >= 0 ? Color.Success : Color.Error)">@_totalMargin.ToString("N2")</MudText>
+                </MudPaper>
+            </MudItem>
+            <MudItem xs="12" md="3">
+                <MudPaper Class="pa-4" Elevation="2">
+                    <MudText Typo="Typo.caption" Color="@(_avgMarginPercent >= 0 ? Color.Success : Color.Error)">Average Margin %</MudText>
+                    <MudText Typo="Typo.h5" Color="@(_avgMarginPercent >= 0 ? Color.Success : Color.Error)">@_avgMarginPercent.ToString("N2")%</MudText>
+                </MudPaper>
+            </MudItem>
+        </MudGrid>
+
+        <MudPaper Class="pa-4">
+            @if (_reportView == "Shipment-wise")
+            {
+                <MudTable Items="@_shipmentRows" Hover="true" Striped="true" Dense="true" Elevation="0" Class="border-solid border">
+                    <HeaderContent>
+                        <MudTh>AWB No</MudTh>
+                        <MudTh>Date</MudTh>
+                        <MudTh>Customer</MudTh>
+                        <MudTh>Origin</MudTh>
+                        <MudTh>Destination</MudTh>
+                        <MudTh Style="text-align:right">Weight</MudTh>
+                        <MudTh Style="text-align:right">Sales Charge</MudTh>
+                        <MudTh Style="text-align:right">Direct Cost</MudTh>
+                        <MudTh Style="text-align:right">Margin</MudTh>
+                        <MudTh Style="text-align:right">Margin %</MudTh>
+                        <MudTh>Agent</MudTh>
+                    </HeaderContent>
+                    <RowTemplate>
+                        <MudTd DataLabel="AWB No">@context.AWBNo</MudTd>
+                        <MudTd DataLabel="Date">@context.Date.ToString("dd-MMM-yyyy")</MudTd>
+                        <MudTd DataLabel="Customer">@context.CustomerName</MudTd>
+                        <MudTd DataLabel="Origin">@context.Origin</MudTd>
+                        <MudTd DataLabel="Destination">@context.Destination</MudTd>
+                        <MudTd DataLabel="Weight" Style="text-align:right">@context.Weight.ToString("N2")</MudTd>
+                        <MudTd DataLabel="Sales Charge" Style="text-align:right">@context.SalesCharge.ToString("N2")</MudTd>
+                        <MudTd DataLabel="Direct Cost" Style="text-align:right">@context.DirectCost.ToString("N2")</MudTd>
+                        <MudTd DataLabel="Margin" Style="@($"text-align:right;color:{(context.Margin >= 0 ? "green" : "red")}")">@context.Margin.ToString("N2")</MudTd>
+                        <MudTd DataLabel="Margin %" Style="@($"text-align:right;color:{(context.MarginPercent >= 0 ? "green" : "red")}")">@context.MarginPercent.ToString("N2")%</MudTd>
+                        <MudTd DataLabel="Agent">@context.AgentName</MudTd>
+                    </RowTemplate>
+                    <NoRecordsContent>
+                        <MudText Class="pa-4">No records found.</MudText>
+                    </NoRecordsContent>
+                </MudTable>
+            }
+            else if (_reportView == "Customer-wise")
+            {
+                <MudTable Items="@_customerRows" Hover="true" Striped="true" Dense="true" Elevation="0" Class="border-solid border">
+                    <HeaderContent>
+                        <MudTh>Customer Name</MudTh>
+                        <MudTh Style="text-align:right"># Shipments</MudTh>
+                        <MudTh Style="text-align:right">Total Weight</MudTh>
+                        <MudTh Style="text-align:right">Total Sales</MudTh>
+                        <MudTh Style="text-align:right">Total Cost</MudTh>
+                        <MudTh Style="text-align:right">Total Margin</MudTh>
+                        <MudTh Style="text-align:right">Avg Margin %</MudTh>
+                    </HeaderContent>
+                    <RowTemplate>
+                        <MudTd DataLabel="Customer Name">@context.CustomerName</MudTd>
+                        <MudTd DataLabel="# Shipments" Style="text-align:right">@context.ShipmentCount</MudTd>
+                        <MudTd DataLabel="Total Weight" Style="text-align:right">@context.TotalWeight.ToString("N2")</MudTd>
+                        <MudTd DataLabel="Total Sales" Style="text-align:right">@context.TotalSales.ToString("N2")</MudTd>
+                        <MudTd DataLabel="Total Cost" Style="text-align:right">@context.TotalCost.ToString("N2")</MudTd>
+                        <MudTd DataLabel="Total Margin" Style="@($"text-align:right;color:{(context.TotalMargin >= 0 ? "green" : "red")}")">@context.TotalMargin.ToString("N2")</MudTd>
+                        <MudTd DataLabel="Avg Margin %" Style="@($"text-align:right;color:{(context.AvgMarginPercent >= 0 ? "green" : "red")}")">@context.AvgMarginPercent.ToString("N2")%</MudTd>
+                    </RowTemplate>
+                    <NoRecordsContent>
+                        <MudText Class="pa-4">No records found.</MudText>
+                    </NoRecordsContent>
+                </MudTable>
+            }
+            else if (_reportView == "Agent-wise")
+            {
+                <MudTable Items="@_agentRows" Hover="true" Striped="true" Dense="true" Elevation="0" Class="border-solid border">
+                    <HeaderContent>
+                        <MudTh>Agent Name</MudTh>
+                        <MudTh Style="text-align:right"># Shipments</MudTh>
+                        <MudTh Style="text-align:right">Total Weight</MudTh>
+                        <MudTh Style="text-align:right">Total Cost</MudTh>
+                        <MudTh Style="text-align:right">Total Sales Against</MudTh>
+                        <MudTh Style="text-align:right">Total Margin</MudTh>
+                        <MudTh Style="text-align:right">Avg Margin %</MudTh>
+                    </HeaderContent>
+                    <RowTemplate>
+                        <MudTd DataLabel="Agent Name">@context.AgentName</MudTd>
+                        <MudTd DataLabel="# Shipments" Style="text-align:right">@context.ShipmentCount</MudTd>
+                        <MudTd DataLabel="Total Weight" Style="text-align:right">@context.TotalWeight.ToString("N2")</MudTd>
+                        <MudTd DataLabel="Total Cost" Style="text-align:right">@context.TotalCost.ToString("N2")</MudTd>
+                        <MudTd DataLabel="Total Sales Against" Style="text-align:right">@context.TotalSales.ToString("N2")</MudTd>
+                        <MudTd DataLabel="Total Margin" Style="@($"text-align:right;color:{(context.TotalMargin >= 0 ? "green" : "red")}")">@context.TotalMargin.ToString("N2")</MudTd>
+                        <MudTd DataLabel="Avg Margin %" Style="@($"text-align:right;color:{(context.AvgMarginPercent >= 0 ? "green" : "red")}")">@context.AvgMarginPercent.ToString("N2")%</MudTd>
+                    </RowTemplate>
+                    <NoRecordsContent>
+                        <MudText Class="pa-4">No records found.</MudText>
+                    </NoRecordsContent>
+                </MudTable>
+            }
+            else if (_reportView == "Zone-wise")
+            {
+                <MudTable Items="@_zoneRows" Hover="true" Striped="true" Dense="true" Elevation="0" Class="border-solid border">
+                    <HeaderContent>
+                        <MudTh>Zone</MudTh>
+                        <MudTh>Movement Type</MudTh>
+                        <MudTh Style="text-align:right"># Shipments</MudTh>
+                        <MudTh Style="text-align:right">Avg Weight</MudTh>
+                        <MudTh Style="text-align:right">Avg Sales</MudTh>
+                        <MudTh Style="text-align:right">Avg Cost</MudTh>
+                        <MudTh Style="text-align:right">Avg Margin</MudTh>
+                        <MudTh Style="text-align:right">Avg Margin %</MudTh>
+                    </HeaderContent>
+                    <RowTemplate>
+                        <MudTd DataLabel="Zone">@context.Zone</MudTd>
+                        <MudTd DataLabel="Movement Type">@context.MovementType</MudTd>
+                        <MudTd DataLabel="# Shipments" Style="text-align:right">@context.ShipmentCount</MudTd>
+                        <MudTd DataLabel="Avg Weight" Style="text-align:right">@context.AvgWeight.ToString("N2")</MudTd>
+                        <MudTd DataLabel="Avg Sales" Style="text-align:right">@context.AvgSales.ToString("N2")</MudTd>
+                        <MudTd DataLabel="Avg Cost" Style="text-align:right">@context.AvgCost.ToString("N2")</MudTd>
+                        <MudTd DataLabel="Avg Margin" Style="@($"text-align:right;color:{(context.AvgMargin >= 0 ? "green" : "red")}")">@context.AvgMargin.ToString("N2")</MudTd>
+                        <MudTd DataLabel="Avg Margin %" Style="@($"text-align:right;color:{(context.AvgMarginPercent >= 0 ? "green" : "red")}")">@context.AvgMarginPercent.ToString("N2")%</MudTd>
+                    </RowTemplate>
+                    <NoRecordsContent>
+                        <MudText Class="pa-4">No records found.</MudText>
+                    </NoRecordsContent>
+                </MudTable>
+            }
+            else if (_reportView == "MAWB-wise")
+            {
+                <MudTable Items="@_mawbRows" Hover="true" Striped="true" Dense="true" Elevation="0" Class="border-solid border">
+                    <HeaderContent>
+                        <MudTh>MAWB No</MudTh>
+                        <MudTh>Date</MudTh>
+                        <MudTh>Agent</MudTh>
+                        <MudTh Style="text-align:right"># HAWBs</MudTh>
+                        <MudTh Style="text-align:right">Total Sales</MudTh>
+                        <MudTh Style="text-align:right">MAWB Cost</MudTh>
+                        <MudTh Style="text-align:right">Allocated Cost</MudTh>
+                        <MudTh Style="text-align:right">Margin</MudTh>
+                        <MudTh Style="text-align:right">Margin %</MudTh>
+                    </HeaderContent>
+                    <RowTemplate>
+                        <MudTd DataLabel="MAWB No">@context.MAWBNo</MudTd>
+                        <MudTd DataLabel="Date">@context.Date.ToString("dd-MMM-yyyy")</MudTd>
+                        <MudTd DataLabel="Agent">@context.AgentName</MudTd>
+                        <MudTd DataLabel="# HAWBs" Style="text-align:right">@context.HAWBCount</MudTd>
+                        <MudTd DataLabel="Total Sales" Style="text-align:right">@context.TotalSales.ToString("N2")</MudTd>
+                        <MudTd DataLabel="MAWB Cost" Style="text-align:right">@context.MAWBCost.ToString("N2")</MudTd>
+                        <MudTd DataLabel="Allocated Cost" Style="text-align:right">@context.AllocatedCost.ToString("N2")</MudTd>
+                        <MudTd DataLabel="Margin" Style="@($"text-align:right;color:{(context.Margin >= 0 ? "green" : "red")}")">@context.Margin.ToString("N2")</MudTd>
+                        <MudTd DataLabel="Margin %" Style="@($"text-align:right;color:{(context.MarginPercent >= 0 ? "green" : "red")}")">@context.MarginPercent.ToString("N2")%</MudTd>
+                    </RowTemplate>
+                    <NoRecordsContent>
+                        <MudText Class="pa-4">No records found.</MudText>
+                    </NoRecordsContent>
+                </MudTable>
+            }
+        </MudPaper>
+    }
+</MudContainer>
+
+@code {
+    private DateTime? _dateFrom;
+    private DateTime? _dateTo;
+    private string _reportView = "Shipment-wise";
+    private MovementType? _movementTypeFilter;
+    private bool _showNegativeOnly;
+    private bool _loading;
+    private bool _reportGenerated;
+
+    private decimal _totalRevenue;
+    private decimal _totalCost;
+    private decimal _totalMargin;
+    private decimal _avgMarginPercent;
+
+    private List<ShipmentRow> _shipmentRows = new();
+    private List<CustomerRow> _customerRows = new();
+    private List<AgentRow> _agentRows = new();
+    private List<ZoneRow> _zoneRows = new();
+    private List<MAWBRow> _mawbRows = new();
+
+    private async Task GenerateReport()
+    {
+        _loading = true;
+        _reportGenerated = false;
+        StateHasChanged();
+
+        try
+        {
+            await using var db = await DbFactory.CreateDbContextAsync();
+
+            var query = db.InscanMasters.AsNoTracking().Where(i => !i.IsDeleted);
+
+            if (_dateFrom.HasValue)
+                query = query.Where(i => i.TransactionDate >= _dateFrom.Value.Date);
+            if (_dateTo.HasValue)
+                query = query.Where(i => i.TransactionDate <= _dateTo.Value.Date);
+            if (_movementTypeFilter.HasValue)
+                query = query.Where(i => i.MovementTypeId == _movementTypeFilter.Value);
+
+            var shipments = await query.Select(i => new
+            {
+                i.Id,
+                i.AWBNo,
+                i.TransactionDate,
+                i.CustomerId,
+                i.Consignee,
+                Origin = i.ConsignorCity ?? "",
+                Destination = i.ConsigneeCity ?? "",
+                Weight = i.ChargeableWeight ?? i.Weight ?? 0m,
+                Sales = i.SalesTotalCharge ?? 0m,
+                Cost = i.ActualTotalCost ?? i.EstimatedTotalCost ?? 0m,
+                i.CostAgentId,
+                i.MAWBId,
+                i.MovementTypeId
+            }).ToListAsync();
+
+            var customerIds = shipments.Where(s => s.CustomerId.HasValue).Select(s => s.CustomerId!.Value).Distinct().ToList();
+            var agentIds = shipments.Where(s => s.CostAgentId.HasValue).Select(s => s.CostAgentId!.Value).Distinct().ToList();
+            var allPartyIds = customerIds.Union(agentIds).Distinct().ToList();
+
+            var parties = await db.Parties.AsNoTracking()
+                .Where(p => allPartyIds.Contains(p.Id))
+                .Select(p => new { p.Id, p.Name })
+                .ToDictionaryAsync(p => p.Id, p => p.Name);
+
+            var enriched = shipments.Select(s => new
+            {
+                s.Id,
+                s.AWBNo,
+                s.TransactionDate,
+                s.CustomerId,
+                CustomerName = s.CustomerId.HasValue && parties.ContainsKey(s.CustomerId.Value) ? parties[s.CustomerId.Value] : (s.Consignee ?? "N/A"),
+                s.Origin,
+                s.Destination,
+                s.Weight,
+                s.Sales,
+                s.Cost,
+                Margin = s.Sales - s.Cost,
+                MarginPercent = s.Sales != 0 ? (s.Sales - s.Cost) / s.Sales * 100m : 0m,
+                s.CostAgentId,
+                AgentName = s.CostAgentId.HasValue && parties.ContainsKey(s.CostAgentId.Value) ? parties[s.CostAgentId.Value] : "",
+                s.MAWBId,
+                s.MovementTypeId
+            }).ToList();
+
+            if (_showNegativeOnly)
+                enriched = enriched.Where(e => e.Margin < 0).ToList();
+
+            _totalRevenue = enriched.Sum(e => e.Sales);
+            _totalCost = enriched.Sum(e => e.Cost);
+            _totalMargin = _totalRevenue - _totalCost;
+            _avgMarginPercent = _totalRevenue != 0 ? _totalMargin / _totalRevenue * 100m : 0m;
+
+            switch (_reportView)
+            {
+                case "Shipment-wise":
+                    _shipmentRows = enriched.Select(e => new ShipmentRow
+                    {
+                        AWBNo = e.AWBNo,
+                        Date = e.TransactionDate,
+                        CustomerName = e.CustomerName,
+                        Origin = e.Origin,
+                        Destination = e.Destination,
+                        Weight = e.Weight,
+                        SalesCharge = e.Sales,
+                        DirectCost = e.Cost,
+                        Margin = e.Margin,
+                        MarginPercent = e.MarginPercent,
+                        AgentName = e.AgentName
+                    }).OrderBy(r => r.Date).ToList();
+                    break;
+
+                case "Customer-wise":
+                    _customerRows = enriched.GroupBy(e => e.CustomerName).Select(g => new CustomerRow
+                    {
+                        CustomerName = g.Key,
+                        ShipmentCount = g.Count(),
+                        TotalWeight = g.Sum(x => x.Weight),
+                        TotalSales = g.Sum(x => x.Sales),
+                        TotalCost = g.Sum(x => x.Cost),
+                        TotalMargin = g.Sum(x => x.Margin),
+                        AvgMarginPercent = g.Sum(x => x.Sales) != 0 ? g.Sum(x => x.Margin) / g.Sum(x => x.Sales) * 100m : 0m
+                    }).OrderByDescending(r => r.TotalMargin).ToList();
+                    break;
+
+                case "Agent-wise":
+                    _agentRows = enriched.Where(e => !string.IsNullOrEmpty(e.AgentName)).GroupBy(e => e.AgentName).Select(g => new AgentRow
+                    {
+                        AgentName = g.Key,
+                        ShipmentCount = g.Count(),
+                        TotalWeight = g.Sum(x => x.Weight),
+                        TotalCost = g.Sum(x => x.Cost),
+                        TotalSales = g.Sum(x => x.Sales),
+                        TotalMargin = g.Sum(x => x.Margin),
+                        AvgMarginPercent = g.Sum(x => x.Sales) != 0 ? g.Sum(x => x.Margin) / g.Sum(x => x.Sales) * 100m : 0m
+                    }).OrderByDescending(r => r.TotalMargin).ToList();
+                    break;
+
+                case "Zone-wise":
+                    _zoneRows = enriched.GroupBy(e => new { e.Destination, e.MovementTypeId }).Select(g => new ZoneRow
+                    {
+                        Zone = string.IsNullOrEmpty(g.Key.Destination) ? "Unknown" : g.Key.Destination,
+                        MovementType = g.Key.MovementTypeId.ToString(),
+                        ShipmentCount = g.Count(),
+                        AvgWeight = g.Average(x => x.Weight),
+                        AvgSales = g.Average(x => x.Sales),
+                        AvgCost = g.Average(x => x.Cost),
+                        AvgMargin = g.Average(x => x.Margin),
+                        AvgMarginPercent = g.Average(x => x.Sales) != 0 ? g.Average(x => x.Margin) / g.Average(x => x.Sales) * 100m : 0m
+                    }).OrderByDescending(r => r.ShipmentCount).ToList();
+                    break;
+
+                case "MAWB-wise":
+                    var mawbIds = enriched.Where(e => e.MAWBId.HasValue).Select(e => e.MAWBId!.Value).Distinct().ToList();
+                    var mawbs = await db.MasterAirwaybills.AsNoTracking()
+                        .Where(m => mawbIds.Contains(m.Id))
+                        .Select(m => new
+                        {
+                            m.Id,
+                            m.MAWBNo,
+                            m.TransactionDate,
+                            m.ForwardingAgentName,
+                            m.TotalMAWBCost,
+                            m.IsCostAllocated
+                        }).ToDictionaryAsync(m => m.Id);
+
+                    _mawbRows = enriched.Where(e => e.MAWBId.HasValue)
+                        .GroupBy(e => e.MAWBId!.Value)
+                        .Where(g => mawbs.ContainsKey(g.Key))
+                        .Select(g =>
+                        {
+                            var mawb = mawbs[g.Key];
+                            var totalSales = g.Sum(x => x.Sales);
+                            var allocatedCost = g.Sum(x => x.Cost);
+                            var mawbCost = mawb.TotalMAWBCost ?? 0m;
+                            var margin = totalSales - allocatedCost;
+                            return new MAWBRow
+                            {
+                                MAWBNo = mawb.MAWBNo,
+                                Date = mawb.TransactionDate,
+                                AgentName = mawb.ForwardingAgentName ?? "",
+                                HAWBCount = g.Count(),
+                                TotalSales = totalSales,
+                                MAWBCost = mawbCost,
+                                AllocatedCost = allocatedCost,
+                                Margin = margin,
+                                MarginPercent = totalSales != 0 ? margin / totalSales * 100m : 0m
+                            };
+                        }).OrderByDescending(r => r.Margin).ToList();
+                    break;
+            }
+
+            _reportGenerated = true;
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error generating report: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private void ExportToExcel()
+    {
+        Snackbar.Add("Excel export coming soon", Severity.Info);
+    }
+
+    private class ShipmentRow
+    {
+        public string AWBNo { get; set; } = "";
+        public DateTime Date { get; set; }
+        public string CustomerName { get; set; } = "";
+        public string Origin { get; set; } = "";
+        public string Destination { get; set; } = "";
+        public decimal Weight { get; set; }
+        public decimal SalesCharge { get; set; }
+        public decimal DirectCost { get; set; }
+        public decimal Margin { get; set; }
+        public decimal MarginPercent { get; set; }
+        public string AgentName { get; set; } = "";
+    }
+
+    private class CustomerRow
+    {
+        public string CustomerName { get; set; } = "";
+        public int ShipmentCount { get; set; }
+        public decimal TotalWeight { get; set; }
+        public decimal TotalSales { get; set; }
+        public decimal TotalCost { get; set; }
+        public decimal TotalMargin { get; set; }
+        public decimal AvgMarginPercent { get; set; }
+    }
+
+    private class AgentRow
+    {
+        public string AgentName { get; set; } = "";
+        public int ShipmentCount { get; set; }
+        public decimal TotalWeight { get; set; }
+        public decimal TotalCost { get; set; }
+        public decimal TotalSales { get; set; }
+        public decimal TotalMargin { get; set; }
+        public decimal AvgMarginPercent { get; set; }
+    }
+
+    private class ZoneRow
+    {
+        public string Zone { get; set; } = "";
+        public string MovementType { get; set; } = "";
+        public int ShipmentCount { get; set; }
+        public decimal AvgWeight { get; set; }
+        public decimal AvgSales { get; set; }
+        public decimal AvgCost { get; set; }
+        public decimal AvgMargin { get; set; }
+        public decimal AvgMarginPercent { get; set; }
+    }
+
+    private class MAWBRow
+    {
+        public string MAWBNo { get; set; } = "";
+        public DateTime Date { get; set; }
+        public string AgentName { get; set; } = "";
+        public int HAWBCount { get; set; }
+        public decimal TotalSales { get; set; }
+        public decimal MAWBCost { get; set; }
+        public decimal AllocatedCost { get; set; }
+        public decimal Margin { get; set; }
+        public decimal MarginPercent { get; set; }
+    }
+}

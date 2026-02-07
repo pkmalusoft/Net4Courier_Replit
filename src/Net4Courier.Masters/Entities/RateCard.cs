@@ -20,11 +20,13 @@ public class RateCard : AuditableEntity
     public long? ServiceTypeId { get; set; }
     public long? ShipmentModeId { get; set; }
     public string? Description { get; set; }
+    public RateCardType RateCardType { get; set; } = RateCardType.Sales;
     
     public virtual ServiceType? ServiceType { get; set; }
     public virtual ShipmentMode? ShipmentMode { get; set; }
     public virtual ICollection<RateCardZone> RateCardZones { get; set; } = new List<RateCardZone>();
     public virtual ICollection<CustomerRateAssignment> CustomerAssignments { get; set; } = new List<CustomerRateAssignment>();
+    public virtual ICollection<AgentRateAssignment> AgentAssignments { get; set; } = new List<AgentRateAssignment>();
 }
 
 public enum RateBasedType
@@ -41,4 +43,11 @@ public enum RateCardStatus
     Active = 2,
     Expired = 3,
     Suspended = 4
+}
+
+public enum RateCardType
+{
+    Sales = 1,
+    Cost = 2,
+    Both = 3
 }

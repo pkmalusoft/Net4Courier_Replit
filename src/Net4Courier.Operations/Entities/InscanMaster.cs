@@ -155,6 +155,36 @@ public class InscanMaster : AuditableEntity
     public long? HoldReleasedByUserId { get; set; }
     public string? HoldReleasedByUserName { get; set; }
     
+    public long? SalesRateCardId { get; set; }
+    public decimal? SalesFreightCharge { get; set; }
+    public decimal? SalesFuelSurcharge { get; set; }
+    public decimal? SalesHandlingCharge { get; set; }
+    public decimal? SalesTotalCharge { get; set; }
+    public DateTime? SalesRateAppliedAt { get; set; }
+    
+    public long? CostRateCardId { get; set; }
+    public long? CostAgentId { get; set; }
+    public decimal? EstimatedFreightCost { get; set; }
+    public decimal? EstimatedFuelSurchargeCost { get; set; }
+    public decimal? EstimatedHandlingCost { get; set; }
+    public decimal? EstimatedTotalCost { get; set; }
+    public DateTime? CostRateAppliedAt { get; set; }
+    
+    public decimal? ActualFreightCost { get; set; }
+    public decimal? ActualFuelSurchargeCost { get; set; }
+    public decimal? ActualHandlingCost { get; set; }
+    public decimal? ActualTotalCost { get; set; }
+    public DateTime? ActualCostEnteredAt { get; set; }
+    public long? ActualCostEnteredByUserId { get; set; }
+    public string? ActualCostEnteredByUserName { get; set; }
+    public string? CostInvoiceRef { get; set; }
+    
+    public decimal? CostVariance { get; set; }
+    public decimal? GrossMargin { get; set; }
+    public decimal? GrossMarginPercent { get; set; }
+    public bool IsCostLocked { get; set; }
+    public DateTime? CostLockedAt { get; set; }
+    
     public virtual MasterAirwaybill? MAWB { get; set; }
     public virtual MAWBBag? MAWBBag { get; set; }
     
