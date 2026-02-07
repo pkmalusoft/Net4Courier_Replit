@@ -283,8 +283,10 @@ else
                             <HeaderContent>
                                 <MudTh>AWB No</MudTh>
                                 <MudTh>Consignee Name</MudTh>
-                                <MudTh>Consignee City</MudTh>
-                                <MudTh>Consignee Country</MudTh>
+                                <MudTh>Address</MudTh>
+                                <MudTh>City</MudTh>
+                                <MudTh>Country</MudTh>
+                                <MudTh>Phone</MudTh>
                                 <MudTh>Shipper Name</MudTh>
                                 <MudTh Style="text-align: right;">Pcs</MudTh>
                                 <MudTh Style="text-align: right;">Wt(Kg)</MudTh>
@@ -293,13 +295,15 @@ else
                                 <MudTh Style="text-align: right;">Duty/VAT</MudTh>
                                 <MudTh Style="text-align: right;">COD/Coll</MudTh>
                                 <MudTh>Payment</MudTh>
-                                <MudTh Style="width: 100px;">Actions</MudTh>
+                                <MudTh Style="width: 130px;">Actions</MudTh>
                             </HeaderContent>
                             <RowTemplate>
                                 <MudTd DataLabel="AWB No">@context.AWBNo</MudTd>
                                 <MudTd DataLabel="Consignee Name">@context.ConsigneeName</MudTd>
-                                <MudTd DataLabel="Consignee City">@context.ConsigneeCity</MudTd>
-                                <MudTd DataLabel="Consignee Country">@context.ConsigneeCountry</MudTd>
+                                <MudTd DataLabel="Address">@(context.ConsigneeAddress?.Length > 25 ? context.ConsigneeAddress[..25] + "..." : context.ConsigneeAddress ?? "-")</MudTd>
+                                <MudTd DataLabel="City">@(context.ConsigneeCity ?? "-")</MudTd>
+                                <MudTd DataLabel="Country">@context.ConsigneeCountry</MudTd>
+                                <MudTd DataLabel="Phone">@(context.ConsigneePhone ?? context.ConsigneeMobile ?? "-")</MudTd>
                                 <MudTd DataLabel="Shipper Name">@context.ShipperName</MudTd>
                                 <MudTd DataLabel="Pieces" Style="text-align: right;">@context.Pieces</MudTd>
                                 <MudTd DataLabel="Weight" Style="text-align: right;">@context.Weight.ToString("N2")</MudTd>
@@ -309,8 +313,10 @@ else
                                 <MudTd DataLabel="COD/Coll" Style="text-align: right;">@(context.CODAmount?.ToString("N2") ?? "-")</MudTd>
                                 <MudTd DataLabel="Payment">@context.PaymentMode.ToString()</MudTd>
                                 <MudTd>
+                                    <MudIconButton Icon="@Icons.Material.Filled.EditLocation" Size="Size.Small" Color="Color.Warning"
+                                                   OnClick="@(() => OpenEditAddressDialog(context))" Title="Edit Address" />
                                     <MudIconButton Icon="@Icons.Material.Filled.Edit" Size="Size.Small" Color="Color.Primary"
-                                                   OnClick="@(() => EditShipment(context))" Title="Edit" />
+                                                   OnClick="@(() => EditShipment(context))" Title="Edit All" />
                                     <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" Color="Color.Error"
                                                    OnClick="@(() => DeleteShipment(context))" Title="Delete" />
                                 </MudTd>
@@ -443,6 +449,53 @@ else
         </MudGrid>
     </MudForm>
 }
+
+<MudDialog @bind-Visible="_editAddressDialogVisible" Options="@(new DialogOptions { MaxWidth = MaxWidth.Small, FullWidth = true })">
+    <TitleContent>
+        <MudText Typo="Typo.h6">
+            <MudIcon Icon="@Icons.Material.Filled.EditLocation" Class="mr-2" />
+            Edit Receiver Address - @(_editingAddressShipment?.AWBNo)
+        </MudText>
+    </TitleContent>
+    <DialogContent>
+        <MudGrid>
+            <MudItem xs="12">
+                <MudTextField @bind-Value="_editName" Label="Consignee Name *" Variant="Variant.Outlined" Required="true" />
+            </MudItem>
+            <MudItem xs="12">
+                <MudTextField @bind-Value="_editAddr" Label="Address" Variant="Variant.Outlined" Lines="2" />
+            </MudItem>
+            <MudItem xs="12" sm="6">
+                <MudTextField @bind-Value="_editCity" Label="City" Variant="Variant.Outlined" />
+            </MudItem>
+            <MudItem xs="12" sm="6">
+                <MudTextField @bind-Value="_editState" Label="State" Variant="Variant.Outlined" />
+            </MudItem>
+            <MudItem xs="12" sm="6">
+                <MudTextField @bind-Value="_editCountry" Label="Country *" Variant="Variant.Outlined" Required="true" />
+            </MudItem>
+            <MudItem xs="12" sm="6">
+                <MudTextField @bind-Value="_editPostalCode" Label="Postal Code" Variant="Variant.Outlined" />
+            </MudItem>
+            <MudItem xs="12" sm="6">
+                <MudTextField @bind-Value="_editPhone" Label="Phone" Variant="Variant.Outlined" />
+            </MudItem>
+            <MudItem xs="12" sm="6">
+                <MudTextField @bind-Value="_editMobile" Label="Mobile" Variant="Variant.Outlined" />
+            </MudItem>
+        </MudGrid>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="CloseEditAddressDialog" Variant="Variant.Text">Cancel</MudButton>
+        <MudButton OnClick="SaveEditedAddress" Variant="Variant.Filled" Color="Color.Primary" Disabled="@_savingAddress">
+            @if (_savingAddress)
+            {
+                <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" />
+            }
+            Save
+        </MudButton>
+    </DialogActions>
+</MudDialog>
 
 @code {
     [Parameter] public long? Id { get; set; }
@@ -874,9 +927,85 @@ else
     //     Navigation.NavigateTo($"/import-shipment-entry/{_import.Id}/new");
     // }
     
+    private ImportShipment? _editingAddressShipment;
+    private bool _editAddressDialogVisible = false;
+    private string _editAddr = "";
+    private string _editCity = "";
+    private string _editState = "";
+    private string _editCountry = "";
+    private string _editPostalCode = "";
+    private string _editPhone = "";
+    private string _editMobile = "";
+    private string _editName = "";
+    private bool _savingAddress = false;
+
+    private void OpenEditAddressDialog(ImportShipment shipment)
+    {
+        _editingAddressShipment = shipment;
+        _editName = shipment.ConsigneeName ?? "";
+        _editAddr = shipment.ConsigneeAddress ?? "";
+        _editCity = shipment.ConsigneeCity ?? "";
+        _editState = shipment.ConsigneeState ?? "";
+        _editCountry = shipment.ConsigneeCountry ?? "";
+        _editPostalCode = shipment.ConsigneePostalCode ?? "";
+        _editPhone = shipment.ConsigneePhone ?? "";
+        _editMobile = shipment.ConsigneeMobile ?? "";
+        _editAddressDialogVisible = true;
+    }
+
+    private void CloseEditAddressDialog()
+    {
+        _editAddressDialogVisible = false;
+        _editingAddressShipment = null;
+    }
+
+    private async Task SaveEditedAddress()
+    {
+        if (_editingAddressShipment == null) return;
+        _savingAddress = true;
+        try
+        {
+            await using var dbContext = await DbFactory.CreateDbContextAsync();
+            var entity = await dbContext.ImportShipments.FindAsync(_editingAddressShipment.Id);
+            if (entity != null)
+            {
+                entity.ConsigneeName = _editName;
+                entity.ConsigneeAddress = _editAddr;
+                entity.ConsigneeCity = _editCity;
+                entity.ConsigneeState = _editState;
+                entity.ConsigneeCountry = _editCountry;
+                entity.ConsigneePostalCode = _editPostalCode;
+                entity.ConsigneePhone = _editPhone;
+                entity.ConsigneeMobile = _editMobile;
+                entity.ModifiedAt = DateTime.UtcNow;
+                await dbContext.SaveChangesAsync();
+
+                _editingAddressShipment.ConsigneeName = _editName;
+                _editingAddressShipment.ConsigneeAddress = _editAddr;
+                _editingAddressShipment.ConsigneeCity = _editCity;
+                _editingAddressShipment.ConsigneeState = _editState;
+                _editingAddressShipment.ConsigneeCountry = _editCountry;
+                _editingAddressShipment.ConsigneePostalCode = _editPostalCode;
+                _editingAddressShipment.ConsigneePhone = _editPhone;
+                _editingAddressShipment.ConsigneeMobile = _editMobile;
+
+                Snackbar.Add("Receiver address updated", Severity.Success);
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Failed to save: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _savingAddress = false;
+            _editAddressDialogVisible = false;
+            _editingAddressShipment = null;
+        }
+    }
+
     private void EditShipment(ImportShipment shipment)
     {
-        // Navigate to edit shipment entry page
         Navigation.NavigateTo($"/import-shipment-entry/{_import.Id}/{shipment.Id}");
     }
     
