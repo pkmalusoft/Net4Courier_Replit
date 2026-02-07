@@ -243,6 +243,9 @@
                                         <MudChip T="string" Color="@GetStatusColor(result.Shipment.CourierStatusId)" Size="Size.Small" Variant="Variant.Filled" Style="font-weight: 600; text-transform: uppercase; letter-spacing: 0.03em;">
                                             @GetStatusDisplayName(result.Shipment.CourierStatusId)
                                         </MudChip>
+                                        <MudChip T="string" Color="@GetMovementTypeColor(result.Shipment.MovementTypeId)" Size="Size.Small" Variant="Variant.Outlined" Style="font-weight: 600;">
+                                            @GetMovementTypeLabel(result.Shipment.MovementTypeId)
+                                        </MudChip>
                                     </div>
                                     <MudText Typo="Typo.caption" Style="color: #9ca3af; margin-top: 4px;">Booked on @DateTimeService.FormatDate(result.Shipment.TransactionDate, "dd MMM yyyy")</MudText>
                                 </div>
@@ -460,10 +463,12 @@
                                         <MudChip T="string" Color="@GetImportStatusColor(result.ImportShipment.Status)" Size="Size.Small" Variant="Variant.Filled" Style="font-weight: 600; text-transform: uppercase; letter-spacing: 0.03em;">
                                             @result.ImportShipment.Status.ToString()
                                         </MudChip>
-                                        <MudChip T="string" Color="Color.Info" Size="Size.Small" Variant="Variant.Outlined">Import</MudChip>
+                                        <MudChip T="string" Color="@GetMovementTypeColor(MovementType.InternationalImport)" Size="Size.Small" Variant="Variant.Outlined" Style="font-weight: 600;">
+                                            @GetMovementTypeLabel(MovementType.InternationalImport)
+                                        </MudChip>
                                     </div>
                                     <MudText Typo="Typo.caption" Style="color: #9ca3af; margin-top: 4px;">
-                                        Created on @DateTimeService.FormatDate(result.ImportShipment.CreatedAt, "dd MMM yyyy")
+                                        Booked on @DateTimeService.FormatDate(result.ImportShipment.CreatedAt, "dd MMM yyyy")
                                         @if (!string.IsNullOrEmpty(result.ImportShipment.ImportMaster?.ImportRefNo))
                                         {
                                             <span> | Import Ref: @result.ImportShipment.ImportMaster.ImportRefNo</span>
@@ -491,7 +496,7 @@
                                 <div class="route-section mb-6">
                                     <div class="route-point">
                                         <div class="route-label from">
-                                            <span class="dot"></span> From (Shipper)
+                                            <span class="dot"></span> From
                                         </div>
                                         <div class="route-name">@(result.ImportShipment.ShipperName ?? "N/A")</div>
                                         <div class="route-address">
@@ -514,7 +519,7 @@
                                     
                                     <div class="route-point">
                                         <div class="route-label to">
-                                            <span class="dot"></span> To (Consignee)
+                                            <span class="dot"></span> To
                                         </div>
                                         <div class="route-name">@(result.ImportShipment.ConsigneeName ?? "N/A")</div>
                                         <div class="route-address">
@@ -534,6 +539,10 @@
                                 <MudDivider Class="my-4" />
 
                                 <div class="specs-grid">
+                                    <div class="spec-item">
+                                        <label>Service</label>
+                                        <div class="value">@(result.ImportShipment.ImportMaster?.ImportMode.ToString() ?? "Air")</div>
+                                    </div>
                                     <div class="spec-item">
                                         <label>Type</label>
                                         <MudChip T="string" Size="Size.Small" Color="@(result.ImportShipment.ShipmentType == ImportShipmentType.Document ? Color.Info : Color.Warning)" Style="margin-top: -4px;">
@@ -555,22 +564,8 @@
                                     @if (!string.IsNullOrEmpty(result.ImportShipment.ContentsDescription))
                                     {
                                         <div class="spec-item" style="grid-column: span 2;">
-                                            <label>Contents</label>
+                                            <label>Commodity</label>
                                             <div class="value">@result.ImportShipment.ContentsDescription</div>
-                                        </div>
-                                    }
-                                    @if (!string.IsNullOrEmpty(result.ImportShipment.ReferenceNo))
-                                    {
-                                        <div class="spec-item">
-                                            <label>Reference</label>
-                                            <div class="value">@result.ImportShipment.ReferenceNo</div>
-                                        </div>
-                                    }
-                                    @if (!string.IsNullOrEmpty(result.ImportShipment.HSCode))
-                                    {
-                                        <div class="spec-item">
-                                            <label>HS Code</label>
-                                            <div class="value">@result.ImportShipment.HSCode</div>
                                         </div>
                                     }
                                 </div>
@@ -578,7 +573,7 @@
                                 @if (result.ImportShipment.Status == ImportShipmentStatus.HandedOver && result.ImportShipment.HandedOverAt.HasValue)
                                 {
                                     <MudAlert Severity="Severity.Success" Variant="Variant.Text" Class="mt-4" Dense="true" Icon="@Icons.Material.Filled.CheckCircle">
-                                        Handed over on: @DateTimeService.FormatDate(result.ImportShipment.HandedOverAt, "dd MMM yyyy")
+                                        Delivered on: @DateTimeService.FormatDate(result.ImportShipment.HandedOverAt, "dd MMM yyyy")
                                     </MudAlert>
                                 }
                                 else if (result.ImportShipment.Status == ImportShipmentStatus.Inscanned && result.ImportShipment.InscannedAt.HasValue)
@@ -590,9 +585,9 @@
                             </div>
 
                             <div class="tracking-footer d-flex justify-space-between align-center">
-                                <MudText Typo="Typo.body2" Style="color: #6b7280;">Total Customs Charges</MudText>
+                                <MudText Typo="Typo.body2" Style="color: #6b7280;">Total Charges</MudText>
                                 <MudText Typo="Typo.h6" Color="Color.Primary" Style="font-weight: 700;">
-                                    @(result.ImportShipment.Currency ?? AuthState.CurrencyCode) @((result.ImportShipment.TotalCustomsCharges ?? 0).ToString("N2"))
+                                    @(result.ImportShipment.Currency ?? AuthState.CurrencyCode) @CalculateImportTotalCharges(result.ImportShipment).ToString("N2")
                                 </MudText>
                             </div>
                         </div>
@@ -1096,6 +1091,37 @@
 
         return timeline;
     }
+
+    private decimal CalculateImportTotalCharges(ImportShipment shipment)
+    {
+        var duty = shipment.DutyAmount ?? 0;
+        var vat = shipment.VATAmount ?? 0;
+        var customs = shipment.TotalCustomsCharges ?? 0;
+        var cod = shipment.CODAmount ?? 0;
+        
+        if (customs > 0)
+            return customs + cod;
+        
+        return duty + vat + cod;
+    }
+
+    private Color GetMovementTypeColor(MovementType movementType) => movementType switch
+    {
+        MovementType.Domestic => Color.Success,
+        MovementType.InternationalExport => Color.Warning,
+        MovementType.InternationalImport => Color.Info,
+        MovementType.Transhipment => Color.Secondary,
+        _ => Color.Default
+    };
+
+    private string GetMovementTypeLabel(MovementType movementType) => movementType switch
+    {
+        MovementType.Domestic => "Domestic",
+        MovementType.InternationalExport => "Export",
+        MovementType.InternationalImport => "Import",
+        MovementType.Transhipment => "Transhipment",
+        _ => "Unknown"
+    };
 
     private string GetImportOriginFull(ImportShipment shipment)
     {
