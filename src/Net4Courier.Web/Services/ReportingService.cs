@@ -1625,9 +1625,10 @@ public class ReportingService
                         
                         row.RelativeItem(2).AlignCenter().Column(c =>
                         {
-                            if (shipment.BarcodeImage != null)
+                            if (shipment.BarcodeImage != null && shipment.BarcodeImage.Length > 0)
                             {
-                                c.Item().Height(30).Image(shipment.BarcodeImage);
+                                try { c.Item().Height(30).Image(shipment.BarcodeImage); }
+                                catch { }
                             }
                             c.Item().AlignCenter().Text($"*{hwbNo}*").FontSize(10);
                         });
@@ -1636,7 +1637,8 @@ public class ReportingService
                         {
                             if (logoData != null && logoData.Length > 0)
                             {
-                                c.Item().Width(100).Height(50).Image(logoData).FitHeight();
+                                try { c.Item().Width(100).Height(50).Image(logoData).FitHeight(); }
+                                catch { }
                             }
                         });
                     });
@@ -1731,10 +1733,18 @@ public class ReportingService
                             var adminFee = shipment.OtherCharge ?? 0;
                             if (adminFee > 0)
                             {
-                                table.Cell().Padding(4).Text("DHL ADMIN FEE-CUSTOMS DUTY-OS").FontSize(9);
+                                table.Cell().Padding(4).Text("ADMIN FEE-CUSTOMS DUTY-OS").FontSize(9);
                                 table.Cell().BorderLeft(1).Padding(4).AlignRight().Text($"{adminFee:N2}").FontSize(9);
                                 table.Cell().BorderLeft(1).Padding(4).AlignRight().Text("0.00").FontSize(9);
                                 table.Cell().BorderLeft(1).Padding(4).AlignRight().Text($"{adminFee:N2}").FontSize(9);
+                            }
+
+                            if (dutyAmount <= 0 && adminFee <= 0)
+                            {
+                                table.Cell().Padding(4).Text("No charges").FontSize(9).FontColor(Colors.Grey.Medium);
+                                table.Cell().BorderLeft(1).Padding(4).AlignRight().Text("0.00").FontSize(9);
+                                table.Cell().BorderLeft(1).Padding(4).AlignRight().Text("0.00").FontSize(9);
+                                table.Cell().BorderLeft(1).Padding(4).AlignRight().Text("0.00").FontSize(9);
                             }
                         });
                     });
@@ -1789,9 +1799,10 @@ public class ReportingService
                     {
                         row.RelativeItem().Column(c =>
                         {
-                            if (shipment.BarcodeImage != null)
+                            if (shipment.BarcodeImage != null && shipment.BarcodeImage.Length > 0)
                             {
-                                c.Item().Height(25).Image(shipment.BarcodeImage);
+                                try { c.Item().Height(25).Image(shipment.BarcodeImage); }
+                                catch { }
                             }
                             c.Item().AlignCenter().Text($"*{hwbNo}*").FontSize(8);
                         });
@@ -1801,9 +1812,10 @@ public class ReportingService
                         });
                         row.RelativeItem().Column(c =>
                         {
-                            if (shipment.BarcodeImage != null)
+                            if (shipment.BarcodeImage != null && shipment.BarcodeImage.Length > 0)
                             {
-                                c.Item().Height(25).Image(shipment.BarcodeImage);
+                                try { c.Item().Height(25).Image(shipment.BarcodeImage); }
+                                catch { }
                             }
                             c.Item().AlignCenter().Text($"*{invoiceNo}*").FontSize(8);
                         });

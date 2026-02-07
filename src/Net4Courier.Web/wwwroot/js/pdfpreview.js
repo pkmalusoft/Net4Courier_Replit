@@ -6,12 +6,24 @@ window.pdfPreviewHelper = {
                 headers: { 'Accept': 'application/pdf' }
             });
             if (!response.ok) {
-                if (dotNetRef) dotNetRef.invokeMethodAsync('OnLoadError');
+                var errorMsg = 'Server returned status ' + response.status;
+                try {
+                    var text = await response.text();
+                    if (text) {
+                        try {
+                            var json = JSON.parse(text);
+                            errorMsg = json.detail || json.title || json.message || errorMsg;
+                        } catch (e2) {
+                            if (text.length < 500) errorMsg = text;
+                        }
+                    }
+                } catch (e3) { }
+                if (dotNetRef) dotNetRef.invokeMethodAsync('OnLoadErrorWithMessage', errorMsg);
                 return null;
             }
             var contentType = response.headers.get('content-type') || '';
             if (contentType.indexOf('text/html') >= 0) {
-                if (dotNetRef) dotNetRef.invokeMethodAsync('OnLoadError');
+                if (dotNetRef) dotNetRef.invokeMethodAsync('OnLoadErrorWithMessage', 'Server returned HTML instead of PDF');
                 return null;
             }
             var blob = await response.blob();
@@ -21,7 +33,8 @@ window.pdfPreviewHelper = {
             }
             return blobUrl;
         } catch (e) {
-            if (dotNetRef) dotNetRef.invokeMethodAsync('OnLoadError');
+            var msg = e.message || 'Network error loading document';
+            if (dotNetRef) dotNetRef.invokeMethodAsync('OnLoadErrorWithMessage', msg);
             return null;
         }
     },

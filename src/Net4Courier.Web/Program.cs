@@ -757,10 +757,17 @@ app.MapGet("/api/report/duty-receipt/{id:long}", async (long id, bool? inline, A
             }
         }
 
-        if (shipment.BarcodeImage == null && !string.IsNullOrEmpty(shipment.AWBNo))
+        try
         {
-            var (h, _) = barcodeService.GenerateBothBarcodes(shipment.AWBNo);
-            shipment.BarcodeImage = h;
+            if (shipment.BarcodeImage == null && !string.IsNullOrEmpty(shipment.AWBNo))
+            {
+                var (h, _) = barcodeService.GenerateBothBarcodes(shipment.AWBNo);
+                shipment.BarcodeImage = h;
+            }
+        }
+        catch (Exception bex)
+        {
+            logger.LogWarning(bex, "Failed to generate barcode for duty receipt, AWB: {AWBNo}", shipment.AWBNo);
         }
 
         var branch = await db.Branches.Include(b => b.Currency).FirstOrDefaultAsync(b => b.Id == shipment.BranchId);
@@ -769,7 +776,15 @@ app.MapGet("/api/report/duty-receipt/{id:long}", async (long id, bool? inline, A
             company = await db.Companies.Include(c => c.City).Include(c => c.Country).FirstOrDefaultAsync(c => !c.IsDeleted);
         var currency = branch?.Currency?.Code ?? "AED";
         
-        byte[]? logoData = ResolveLogoBytes(company?.Logo, env.WebRootPath ?? env.ContentRootPath);
+        byte[]? logoData = null;
+        try
+        {
+            logoData = ResolveLogoBytes(company?.Logo, env.WebRootPath ?? env.ContentRootPath);
+        }
+        catch (Exception lex)
+        {
+            logger.LogWarning(lex, "Failed to resolve logo for duty receipt");
+        }
         
         var companyAddress = company != null ? $"{company.Address}, {company.City?.Name}, {company.Country?.Name}" : null;
         var pdf = reportService.GenerateDutyReceiptPdf(shipment, currency, logoData, company?.Name, companyAddress, company?.Phone, company?.Email, company?.TaxNumber, null);
@@ -778,7 +793,7 @@ app.MapGet("/api/report/duty-receipt/{id:long}", async (long id, bool? inline, A
     }
     catch (Exception ex)
     {
-        logger.LogError(ex, "Error generating duty receipt for ID {Id}", id);
+        logger.LogError(ex, "Error generating duty receipt for ID {Id}. Exception: {Message}, Stack: {Stack}", id, ex.Message, ex.StackTrace);
         return Results.Problem($"Error generating duty receipt: {ex.Message}");
     }
 });
@@ -802,10 +817,17 @@ app.MapGet("/api/report/duty-receipt-by-awbno/{awbNo}", async (string awbNo, boo
             }
         }
 
-        if (shipment.BarcodeImage == null && !string.IsNullOrEmpty(shipment.AWBNo))
+        try
         {
-            var (h, _) = barcodeService.GenerateBothBarcodes(shipment.AWBNo);
-            shipment.BarcodeImage = h;
+            if (shipment.BarcodeImage == null && !string.IsNullOrEmpty(shipment.AWBNo))
+            {
+                var (h, _) = barcodeService.GenerateBothBarcodes(shipment.AWBNo);
+                shipment.BarcodeImage = h;
+            }
+        }
+        catch (Exception bex)
+        {
+            logger.LogWarning(bex, "Failed to generate barcode for duty receipt, AWB: {AWBNo}", shipment.AWBNo);
         }
 
         var branch = await db.Branches.Include(b => b.Currency).FirstOrDefaultAsync(b => b.Id == shipment.BranchId);
@@ -814,7 +836,15 @@ app.MapGet("/api/report/duty-receipt-by-awbno/{awbNo}", async (string awbNo, boo
             company = await db.Companies.Include(c => c.City).Include(c => c.Country).FirstOrDefaultAsync(c => !c.IsDeleted);
         var currency = branch?.Currency?.Code ?? "AED";
 
-        byte[]? logoData = ResolveLogoBytes(company?.Logo, env.WebRootPath ?? env.ContentRootPath);
+        byte[]? logoData = null;
+        try
+        {
+            logoData = ResolveLogoBytes(company?.Logo, env.WebRootPath ?? env.ContentRootPath);
+        }
+        catch (Exception lex)
+        {
+            logger.LogWarning(lex, "Failed to resolve logo for duty receipt");
+        }
 
         var companyAddress = company != null ? $"{company.Address}, {company.City?.Name}, {company.Country?.Name}" : null;
         var pdf = reportService.GenerateDutyReceiptPdf(shipment, currency, logoData, company?.Name, companyAddress, company?.Phone, company?.Email, company?.TaxNumber, null);
@@ -823,7 +853,7 @@ app.MapGet("/api/report/duty-receipt-by-awbno/{awbNo}", async (string awbNo, boo
     }
     catch (Exception ex)
     {
-        logger.LogError(ex, "Error generating duty receipt for AWBNo {AWBNo}", awbNo);
+        logger.LogError(ex, "Error generating duty receipt for AWBNo {AWBNo}. Exception: {Message}, Stack: {Stack}", awbNo, ex.Message, ex.StackTrace);
         return Results.Problem($"Error generating duty receipt: {ex.Message}");
     }
 });
