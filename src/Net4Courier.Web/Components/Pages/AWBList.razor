@@ -108,14 +108,7 @@
                     }
                 </div>
                 <div>
-                    @if (context.IsImport)
-                    {
-                        <MudChip T="string" Color="Color.Info" Size="Size.Small">Import</MudChip>
-                    }
-                    else
-                    {
-                        <MudChip T="string" Color="Color.Default" Size="Size.Small">Domestic</MudChip>
-                    }
+                    <MudChip T="string" Color="@GetMovementTypeColor(context.MovementTypeId)" Size="Size.Small">@GetMovementTypeLabel(context.MovementTypeId)</MudChip>
                 </div>
                 @if (context.PickupRequestId.HasValue && _pickupNoLookup.TryGetValue(context.PickupRequestId.Value, out var pickupNo))
                 {
@@ -163,9 +156,12 @@
         decimal? Weight,
         string Status,
         decimal? Amount,
-        bool IsImport,
+        MovementType MovementTypeId,
         long? PickupRequestId
-    );
+    )
+    {
+        public bool IsImport => MovementTypeId == MovementType.InternationalImport;
+    };
     
     private enum ShipmentTypeFilter { All, Domestic, Import }
 
@@ -227,7 +223,7 @@
                     i.ChargeableWeight,
                     i.CourierStatusId.ToString(),
                     i.NetTotal,
-                    false,
+                    i.MovementTypeId,
                     i.PickupRequestId
                 ))
                 .ToListAsync();
@@ -267,7 +263,7 @@
                     i.ChargeableWeight,
                     i.Status.ToString(),
                     i.TotalCustomsCharges,
-                    true,
+                    MovementType.InternationalImport,
                     null
                 ))
                 .ToListAsync();
@@ -417,6 +413,24 @@
         await DialogService.ShowAsync<PdfPreviewDialog>(title, parameters, options);
     }
 
+    private Color GetMovementTypeColor(MovementType movementType) => movementType switch
+    {
+        MovementType.Domestic => Color.Success,
+        MovementType.InternationalExport => Color.Warning,
+        MovementType.InternationalImport => Color.Info,
+        MovementType.Transhipment => Color.Secondary,
+        _ => Color.Default
+    };
+
+    private string GetMovementTypeLabel(MovementType movementType) => movementType switch
+    {
+        MovementType.Domestic => "Domestic",
+        MovementType.InternationalExport => "Export",
+        MovementType.InternationalImport => "Import",
+        MovementType.Transhipment => "Transhipment",
+        _ => "Unknown"
+    };
+
     private async Task DownloadExcel()
     {
         if (_shipments.Count == 0)
@@ -443,7 +457,7 @@
             foreach (var s in _shipments)
             {
                 worksheet.Cell(row, 1).Value = s.AWBNo;
-                worksheet.Cell(row, 2).Value = s.IsImport ? "Import" : "Domestic";
+                worksheet.Cell(row, 2).Value = GetMovementTypeLabel(s.MovementTypeId);
                 worksheet.Cell(row, 3).Value = s.TransactionDate.ToString("dd/MM/yyyy");
                 worksheet.Cell(row, 4).Value = s.Consignor ?? "";
                 worksheet.Cell(row, 5).Value = s.Consignee ?? "";
