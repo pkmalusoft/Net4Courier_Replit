@@ -1686,7 +1686,7 @@ public class ReportingService
                             row.RelativeItem().Column(c =>
                             {
                                 c.Item().Text(text => { text.Span("Contents: ").FontSize(8); text.Span(shipment.CargoDescription ?? "").Bold().FontSize(9); });
-                                c.Item().Text(text => { text.Span("Assessed Value: ").FontSize(8); text.Span($"{shipment.CustomsValue:N2}").Bold().FontSize(9); });
+                                c.Item().Text(text => { text.Span("Assessed Value: ").FontSize(8); text.Span($"{(shipment.CustomsValue ?? 0):N2}").Bold().FontSize(9); });
                             });
                             row.RelativeItem().AlignRight().Column(c =>
                             {

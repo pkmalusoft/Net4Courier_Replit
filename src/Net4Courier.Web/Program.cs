@@ -738,13 +738,31 @@ app.MapGet("/api/report/domestic-invoice/{id:long}", async (long id, Application
     return Results.File(pdf, "application/pdf", $"DomesticInvoice-{invoice.InvoiceNo}.pdf");
 });
 
-app.MapGet("/api/report/duty-receipt/{id:long}", async (long id, bool? inline, ApplicationDbContext db, ReportingService reportService, IWebHostEnvironment env, ILogger<Program> logger) =>
+app.MapGet("/api/report/duty-receipt/{id:long}", async (long id, bool? inline, ApplicationDbContext db, ReportingService reportService, BarcodeService barcodeService, IWebHostEnvironment env, ILogger<Program> logger) =>
 {
     try
     {
         var shipment = await db.InscanMasters.FindAsync(id);
-        if (shipment == null) return Results.NotFound("Shipment not found");
-        
+        if (shipment == null)
+        {
+            var importShipment = await db.ImportShipments
+                .Include(i => i.ImportMaster)
+                .FirstOrDefaultAsync(i => i.Id == id);
+            if (importShipment == null) return Results.NotFound("Shipment not found");
+            shipment = MapImportToInscanMaster(importShipment);
+            if (importShipment.ImportMaster != null)
+            {
+                shipment.BranchId = importShipment.ImportMaster.BranchId;
+                shipment.CompanyId = importShipment.ImportMaster.CompanyId;
+            }
+        }
+
+        if (shipment.BarcodeImage == null && !string.IsNullOrEmpty(shipment.AWBNo))
+        {
+            var (h, _) = barcodeService.GenerateBothBarcodes(shipment.AWBNo);
+            shipment.BarcodeImage = h;
+        }
+
         var branch = await db.Branches.Include(b => b.Currency).FirstOrDefaultAsync(b => b.Id == shipment.BranchId);
         var company = branch != null ? await db.Companies.Include(c => c.City).Include(c => c.Country).FirstOrDefaultAsync(c => c.Id == branch.CompanyId) : null;
         if (company == null)
@@ -765,7 +783,7 @@ app.MapGet("/api/report/duty-receipt/{id:long}", async (long id, bool? inline, A
     }
 });
 
-app.MapGet("/api/report/duty-receipt-by-awbno/{awbNo}", async (string awbNo, bool? inline, ApplicationDbContext db, ReportingService reportService, IWebHostEnvironment env, ILogger<Program> logger) =>
+app.MapGet("/api/report/duty-receipt-by-awbno/{awbNo}", async (string awbNo, bool? inline, ApplicationDbContext db, ReportingService reportService, BarcodeService barcodeService, IWebHostEnvironment env, ILogger<Program> logger) =>
 {
     try
     {
@@ -782,6 +800,12 @@ app.MapGet("/api/report/duty-receipt-by-awbno/{awbNo}", async (string awbNo, boo
                 shipment.BranchId = importShipment.ImportMaster.BranchId;
                 shipment.CompanyId = importShipment.ImportMaster.CompanyId;
             }
+        }
+
+        if (shipment.BarcodeImage == null && !string.IsNullOrEmpty(shipment.AWBNo))
+        {
+            var (h, _) = barcodeService.GenerateBothBarcodes(shipment.AWBNo);
+            shipment.BarcodeImage = h;
         }
 
         var branch = await db.Branches.Include(b => b.Currency).FirstOrDefaultAsync(b => b.Id == shipment.BranchId);
