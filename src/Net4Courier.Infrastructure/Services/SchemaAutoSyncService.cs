@@ -6,6 +6,18 @@ using System.Text;
 
 namespace Net4Courier.Infrastructure.Services;
 
+public class SchemaSyncResult
+{
+    public bool Success { get; set; }
+    public int TablesCreated { get; set; }
+    public int ColumnsAdded { get; set; }
+    public int StatementsExecuted { get; set; }
+    public int StatementsFailed { get; set; }
+    public List<string> Changes { get; set; } = new();
+    public List<string> Errors { get; set; } = new();
+    public List<string> DetectedMissing { get; set; } = new();
+}
+
 public class SchemaAutoSyncService
 {
     private readonly ILogger<SchemaAutoSyncService> _logger;
@@ -15,8 +27,9 @@ public class SchemaAutoSyncService
         _logger = logger;
     }
 
-    public async Task<bool> SyncSchemaAsync(DbContext dbContext, CancellationToken cancellationToken = default)
+    public async Task<SchemaSyncResult> SyncSchemaWithDetailsAsync(DbContext dbContext, CancellationToken cancellationToken = default)
     {
+        var result = new SchemaSyncResult();
         try
         {
             _logger.LogInformation("Starting automatic schema synchronization...");
@@ -32,23 +45,34 @@ public class SchemaAutoSyncService
             var existingTables = await GetExistingTablesAsync(connection, cancellationToken);
             var existingColumns = await GetExistingColumnsAsync(connection, cancellationToken);
 
-            var sqlStatements = new List<string>();
+            _logger.LogInformation("Found {TableCount} existing tables, {ColumnCount} existing columns in database", 
+                existingTables.Count, existingColumns.Count);
+
+            var sqlStatements = new List<(string Sql, string Description)>();
+            var processedTables = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
             foreach (var entityType in model.GetEntityTypes())
             {
                 var tableName = entityType.GetTableName();
                 if (string.IsNullOrEmpty(tableName)) continue;
+                if (processedTables.Contains(tableName)) continue;
+                processedTables.Add(tableName);
 
-                if (!existingTables.Contains(tableName))
+                var tableExists = existingTables.Any(t => string.Equals(t, tableName, StringComparison.OrdinalIgnoreCase));
+
+                if (!tableExists)
                 {
                     var createTableSql = GenerateCreateTableStatement(entityType, tableName);
-                    sqlStatements.Add(createTableSql);
+                    sqlStatements.Add((createTableSql, $"CREATE TABLE {tableName}"));
+                    result.DetectedMissing.Add($"Table: {tableName} (new)");
                     _logger.LogInformation("Will create table: {TableName}", tableName);
                 }
                 else
                 {
+                    var actualTableName = existingTables.First(t => string.Equals(t, tableName, StringComparison.OrdinalIgnoreCase));
+                    
                     var tableColumns = existingColumns
-                        .Where(c => c.TableName == tableName)
+                        .Where(c => string.Equals(c.TableName, actualTableName, StringComparison.OrdinalIgnoreCase))
                         .Select(c => c.ColumnName)
                         .ToHashSet(StringComparer.OrdinalIgnoreCase);
 
@@ -59,9 +83,10 @@ public class SchemaAutoSyncService
 
                         if (!tableColumns.Contains(columnName))
                         {
-                            var alterSql = GenerateAddColumnStatement(tableName, property);
-                            sqlStatements.Add(alterSql);
-                            _logger.LogInformation("Will add column: {TableName}.{ColumnName}", tableName, columnName);
+                            var alterSql = GenerateAddColumnStatement(actualTableName, property);
+                            sqlStatements.Add((alterSql, $"ADD COLUMN {actualTableName}.{columnName}"));
+                            result.DetectedMissing.Add($"Column: {actualTableName}.{columnName} ({GetPostgresType(property)})");
+                            _logger.LogInformation("Will add column: {TableName}.{ColumnName}", actualTableName, columnName);
                         }
                     }
                 }
@@ -70,32 +95,53 @@ public class SchemaAutoSyncService
             if (sqlStatements.Count == 0)
             {
                 _logger.LogInformation("Schema is already up to date. No changes needed.");
-                return true;
+                result.Success = true;
+                result.Changes.Add("Schema is already up to date. No changes needed.");
+                return result;
             }
 
             _logger.LogInformation("Executing {Count} schema changes...", sqlStatements.Count);
 
-            foreach (var sql in sqlStatements)
+            foreach (var (sql, description) in sqlStatements)
             {
                 try
                 {
                     await dbContext.Database.ExecuteSqlRawAsync(sql, cancellationToken);
-                    _logger.LogDebug("Executed: {Sql}", sql.Length > 200 ? sql[..200] + "..." : sql);
+                    result.StatementsExecuted++;
+                    if (description.StartsWith("CREATE TABLE"))
+                        result.TablesCreated++;
+                    else if (description.StartsWith("ADD COLUMN"))
+                        result.ColumnsAdded++;
+                    result.Changes.Add($"OK: {description}");
+                    _logger.LogInformation("Executed: {Description}", description);
                 }
                 catch (Exception ex)
                 {
-                    _logger.LogWarning(ex, "Failed to execute schema change: {Sql}", sql.Length > 200 ? sql[..200] + "..." : sql);
+                    result.StatementsFailed++;
+                    var errorMsg = $"FAILED: {description} - {ex.Message}";
+                    result.Errors.Add(errorMsg);
+                    _logger.LogWarning(ex, "Failed to execute schema change: {Description} - SQL: {Sql}", description, sql.Length > 300 ? sql[..300] + "..." : sql);
                 }
             }
 
-            _logger.LogInformation("Schema synchronization completed successfully.");
-            return true;
+            result.Success = result.StatementsFailed == 0;
+            _logger.LogInformation("Schema sync completed. Executed: {Executed}, Failed: {Failed}, Tables: {Tables}, Columns: {Columns}",
+                result.StatementsExecuted, result.StatementsFailed, result.TablesCreated, result.ColumnsAdded);
+            return result;
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Schema auto-sync failed.");
-            return false;
+            result.Success = false;
+            result.Errors.Add($"Fatal error: {ex.Message}");
+            return result;
         }
+    }
+
+    public async Task<bool> SyncSchemaAsync(DbContext dbContext, CancellationToken cancellationToken = default)
+    {
+        var result = await SyncSchemaWithDetailsAsync(dbContext, cancellationToken);
+        return result.Success;
     }
 
     public string GenerateFullSchemaScript(DbContext dbContext)
@@ -124,6 +170,12 @@ public class SchemaAutoSyncService
             sb.AppendLine(createTableSql);
             sb.AppendLine();
 
+            var alterColumns = GenerateAddColumnsStatements(entityType, tableName);
+            if (!string.IsNullOrEmpty(alterColumns))
+            {
+                sb.AppendLine(alterColumns);
+            }
+
             var indexes = GenerateIndexStatements(entityType, tableName);
             if (!string.IsNullOrEmpty(indexes))
             {
@@ -137,6 +189,68 @@ public class SchemaAutoSyncService
         sb.AppendLine("-- =============================================");
 
         return sb.ToString();
+    }
+
+    public async Task<SchemaSyncResult> DetectMissingSchemaAsync(DbContext dbContext, CancellationToken cancellationToken = default)
+    {
+        var result = new SchemaSyncResult();
+        try
+        {
+            var model = dbContext.Model;
+            var connection = dbContext.Database.GetDbConnection();
+            
+            if (connection.State != System.Data.ConnectionState.Open)
+            {
+                await connection.OpenAsync(cancellationToken);
+            }
+
+            var existingTables = await GetExistingTablesAsync(connection, cancellationToken);
+            var existingColumns = await GetExistingColumnsAsync(connection, cancellationToken);
+            var processedTables = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+            foreach (var entityType in model.GetEntityTypes())
+            {
+                var tableName = entityType.GetTableName();
+                if (string.IsNullOrEmpty(tableName)) continue;
+                if (processedTables.Contains(tableName)) continue;
+                processedTables.Add(tableName);
+
+                var tableExists = existingTables.Any(t => string.Equals(t, tableName, StringComparison.OrdinalIgnoreCase));
+
+                if (!tableExists)
+                {
+                    result.DetectedMissing.Add($"TABLE: {tableName}");
+                }
+                else
+                {
+                    var actualTableName = existingTables.First(t => string.Equals(t, tableName, StringComparison.OrdinalIgnoreCase));
+                    var tableColumns = existingColumns
+                        .Where(c => string.Equals(c.TableName, actualTableName, StringComparison.OrdinalIgnoreCase))
+                        .Select(c => c.ColumnName)
+                        .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+                    foreach (var property in entityType.GetProperties())
+                    {
+                        var columnName = property.GetColumnName();
+                        if (string.IsNullOrEmpty(columnName)) continue;
+
+                        if (!tableColumns.Contains(columnName))
+                        {
+                            result.DetectedMissing.Add($"COLUMN: {actualTableName}.{columnName} ({GetPostgresType(property)}, {(property.IsNullable ? "nullable" : "not null")})");
+                        }
+                    }
+                }
+            }
+
+            result.Success = true;
+        }
+        catch (Exception ex)
+        {
+            result.Success = false;
+            result.Errors.Add($"Detection failed: {ex.Message}");
+        }
+
+        return result;
     }
 
     private string GenerateCreateTableStatement(IEntityType entityType, string tableName)
@@ -195,9 +309,15 @@ public class SchemaAutoSyncService
         var columnType = GetPostgresType(property);
         var isNullable = property.IsNullable;
 
+        var defaultValue = GetDefaultValue(property);
+
+        if (!isNullable && string.IsNullOrEmpty(defaultValue))
+        {
+            defaultValue = GetSafeDefault(property);
+        }
+
         var sql = $"ALTER TABLE \"{tableName}\" ADD COLUMN IF NOT EXISTS \"{columnName}\" {columnType}";
 
-        var defaultValue = GetDefaultValue(property);
         if (!string.IsNullOrEmpty(defaultValue))
         {
             sql += $" DEFAULT {defaultValue}";
@@ -210,6 +330,20 @@ public class SchemaAutoSyncService
 
         sql += ";";
         return sql;
+    }
+
+    private string GenerateAddColumnsStatements(IEntityType entityType, string tableName)
+    {
+        var sb = new StringBuilder();
+        foreach (var property in entityType.GetProperties())
+        {
+            var columnName = property.GetColumnName();
+            if (string.IsNullOrEmpty(columnName)) continue;
+            if (property.IsPrimaryKey()) continue;
+
+            sb.AppendLine(GenerateAddColumnStatement(tableName, property));
+        }
+        return sb.ToString();
     }
 
     private string GenerateIndexStatements(IEntityType entityType, string tableName)
@@ -270,6 +404,7 @@ public class SchemaAutoSyncService
         if (underlyingType == typeof(int) || underlyingType == typeof(long) || underlyingType == typeof(short)) return "0";
         if (underlyingType == typeof(decimal) || underlyingType == typeof(double) || underlyingType == typeof(float)) return "0";
         if (underlyingType == typeof(DateTime)) return "CURRENT_TIMESTAMP";
+        if (underlyingType.IsEnum) return "0";
 
         if (property.Name == "IsActive") return "TRUE";
         if (property.Name == "IsDeleted") return "FALSE";
@@ -277,6 +412,21 @@ public class SchemaAutoSyncService
         if (property.Name == "CreatedAt") return "CURRENT_TIMESTAMP";
 
         return null!;
+    }
+
+    private string GetSafeDefault(IProperty property)
+    {
+        var clrType = property.ClrType;
+        var underlyingType = Nullable.GetUnderlyingType(clrType) ?? clrType;
+
+        if (underlyingType == typeof(string)) return "''";
+        if (underlyingType == typeof(bool)) return "FALSE";
+        if (underlyingType == typeof(int) || underlyingType == typeof(long) || underlyingType == typeof(short)) return "0";
+        if (underlyingType == typeof(decimal) || underlyingType == typeof(double) || underlyingType == typeof(float)) return "0";
+        if (underlyingType == typeof(DateTime)) return "CURRENT_TIMESTAMP";
+        if (underlyingType == typeof(byte[])) return "''::bytea";
+        if (underlyingType.IsEnum) return "0";
+        return "''";
     }
 
     private async Task<HashSet<string>> GetExistingTablesAsync(System.Data.Common.DbConnection connection, CancellationToken cancellationToken)
@@ -326,7 +476,6 @@ public class SchemaAutoSyncService
 
             var script = await File.ReadAllTextAsync(scriptPath, cancellationToken);
             
-            // Parse statements more carefully - handle CREATE TABLE blocks correctly
             var statements = ParseSqlStatements(script)
                 .Where(s => s.Contains("CREATE TABLE") || s.Contains("ALTER TABLE") || s.Contains("CREATE INDEX"))
                 .ToList();
@@ -368,22 +517,18 @@ public class SchemaAutoSyncService
         {
             var trimmedLine = line.Trim();
             
-            // Skip pure comment lines and empty lines when not in a statement
             if (currentStatement.Length == 0 && (string.IsNullOrWhiteSpace(trimmedLine) || trimmedLine.StartsWith("--")))
             {
                 continue;
             }
 
-            // Add line to current statement
             currentStatement.AppendLine(line);
 
-            // Track CREATE TABLE blocks
             if (trimmedLine.Contains("CREATE TABLE", StringComparison.OrdinalIgnoreCase))
             {
                 inCreateTable = true;
             }
 
-            // Count parentheses for CREATE TABLE blocks
             if (inCreateTable)
             {
                 foreach (var c in trimmedLine)
@@ -393,18 +538,15 @@ public class SchemaAutoSyncService
                 }
             }
 
-            // Check for statement terminator
             var endsWithSemicolon = trimmedLine.EndsWith(";") || trimmedLine.EndsWith(";--");
             
             if (endsWithSemicolon)
             {
                 if (inCreateTable && parenthesesDepth > 0)
                 {
-                    // Still inside CREATE TABLE block, continue
                     continue;
                 }
 
-                // Statement complete
                 var stmt = currentStatement.ToString().Trim();
                 if (!string.IsNullOrWhiteSpace(stmt))
                 {
@@ -416,11 +558,9 @@ public class SchemaAutoSyncService
             }
         }
 
-        // Handle any remaining content
         var remaining = currentStatement.ToString().Trim();
         if (!string.IsNullOrWhiteSpace(remaining) && !remaining.StartsWith("--"))
         {
-            // Add semicolon if missing
             if (!remaining.EndsWith(";"))
             {
                 remaining += ";";

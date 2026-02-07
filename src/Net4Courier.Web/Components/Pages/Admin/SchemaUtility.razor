@@ -16,11 +16,162 @@
         <MudStack Spacing="4">
             <MudText Typo="Typo.h4">Database Schema Utility</MudText>
             <MudText Typo="Typo.body1" Color="Color.Secondary">
-                Generate schema synchronization scripts from the Entity Framework model.
+                Generate schema synchronization scripts, detect missing schema, and run auto-sync.
             </MudText>
 
             <MudDivider />
 
+            <MudText Typo="Typo.h6">1. Detect Missing Schema</MudText>
+            <MudText Typo="Typo.body2" Color="Color.Secondary">
+                Scan the database to find missing tables and columns without making any changes.
+            </MudText>
+            <MudStack Row="true" Spacing="2">
+                <MudButton Variant="Variant.Filled" Color="Color.Info"
+                           StartIcon="@Icons.Material.Filled.Search"
+                           OnClick="DetectMissing"
+                           Disabled="_detectRunning">
+                    @if (_detectRunning)
+                    {
+                        <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" />
+                    }
+                    Detect Missing Schema
+                </MudButton>
+            </MudStack>
+
+            @if (_detectResult != null)
+            {
+                @if (_detectResult.DetectedMissing.Count == 0)
+                {
+                    <MudAlert Severity="Severity.Success">
+                        No missing tables or columns detected. Database schema matches the application model.
+                    </MudAlert>
+                }
+                else
+                {
+                    <MudAlert Severity="Severity.Warning">
+                        Found @_detectResult.DetectedMissing.Count missing items in database:
+                    </MudAlert>
+                    <MudSimpleTable Dense="true" Bordered="true" Style="max-height: 300px; overflow-y: auto;">
+                        <thead>
+                            <tr>
+                                <th>Type</th>
+                                <th>Details</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var item in _detectResult.DetectedMissing)
+                            {
+                                <tr>
+                                    <td><MudChip T="string" Size="Size.Small" Color="@(item.StartsWith("TABLE") ? Color.Error : Color.Warning)">@(item.StartsWith("TABLE") ? "Table" : "Column")</MudChip></td>
+                                    <td style="font-family: monospace; font-size: 12px;">@item</td>
+                                </tr>
+                            }
+                        </tbody>
+                    </MudSimpleTable>
+                }
+
+                @if (_detectResult.Errors.Count > 0)
+                {
+                    <MudAlert Severity="Severity.Error">
+                        @foreach (var err in _detectResult.Errors)
+                        {
+                            <MudText>@err</MudText>
+                        }
+                    </MudAlert>
+                }
+            }
+
+            <MudDivider Class="my-2" />
+
+            <MudText Typo="Typo.h6">2. Run Schema Auto-Sync</MudText>
+            <MudText Typo="Typo.body2" Color="Color.Secondary">
+                Detect and apply missing tables and columns automatically.
+            </MudText>
+            <MudStack Row="true" Spacing="2" AlignItems="AlignItems.Center">
+                <MudButton Variant="Variant.Filled" Color="Color.Warning"
+                           StartIcon="@Icons.Material.Filled.Sync"
+                           OnClick="RunAutoSync"
+                           Disabled="_syncRunning">
+                    @if (_syncRunning)
+                    {
+                        <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" />
+                    }
+                    Run Schema Auto-Sync Now
+                </MudButton>
+            </MudStack>
+
+            @if (_syncResult != null)
+            {
+                <MudAlert Severity="@(_syncResult.Success ? Severity.Success : Severity.Warning)" Class="mt-2">
+                    <MudText Typo="Typo.body1">
+                        Sync completed. Executed: @_syncResult.StatementsExecuted | 
+                        Failed: @_syncResult.StatementsFailed | 
+                        Tables created: @_syncResult.TablesCreated | 
+                        Columns added: @_syncResult.ColumnsAdded
+                    </MudText>
+                </MudAlert>
+
+                @if (_syncResult.DetectedMissing.Count > 0)
+                {
+                    <MudExpansionPanels>
+                        <MudExpansionPanel Text="@($"Detected {_syncResult.DetectedMissing.Count} missing items")">
+                            <MudList T="string" Dense="true">
+                                @foreach (var item in _syncResult.DetectedMissing)
+                                {
+                                    <MudListItem T="string" Icon="@Icons.Material.Filled.Add" IconColor="Color.Warning">
+                                        <MudText Style="font-family: monospace; font-size: 12px;">@item</MudText>
+                                    </MudListItem>
+                                }
+                            </MudList>
+                        </MudExpansionPanel>
+                    </MudExpansionPanels>
+                }
+
+                @if (_syncResult.Changes.Count > 0)
+                {
+                    <MudExpansionPanels>
+                        <MudExpansionPanel Text="@($"Changes Applied ({_syncResult.Changes.Count})")" IsInitiallyExpanded="true">
+                            <MudList T="string" Dense="true">
+                                @foreach (var change in _syncResult.Changes)
+                                {
+                                    var isOk = change.StartsWith("OK:");
+                                    <MudListItem T="string" Icon="@(isOk ? Icons.Material.Filled.CheckCircle : Icons.Material.Filled.Info)" IconColor="@(isOk ? Color.Success : Color.Info)">
+                                        <MudText Style="font-family: monospace; font-size: 12px;">@change</MudText>
+                                    </MudListItem>
+                                }
+                            </MudList>
+                        </MudExpansionPanel>
+                    </MudExpansionPanels>
+                }
+
+                @if (_syncResult.Errors.Count > 0)
+                {
+                    <MudExpansionPanels>
+                        <MudExpansionPanel Text="@($"Errors ({_syncResult.Errors.Count})")" IsInitiallyExpanded="true">
+                            <MudList T="string" Dense="true">
+                                @foreach (var error in _syncResult.Errors)
+                                {
+                                    <MudListItem T="string" Icon="@Icons.Material.Filled.Error" IconColor="Color.Error">
+                                        <MudText Style="font-family: monospace; font-size: 12px; color: red;">@error</MudText>
+                                    </MudListItem>
+                                }
+                            </MudList>
+                        </MudExpansionPanel>
+                    </MudExpansionPanels>
+                }
+
+                @if (_syncResult.DetectedMissing.Count == 0 && _syncResult.Changes.Count == 0 && _syncResult.Errors.Count == 0)
+                {
+                    <MudAlert Severity="Severity.Success">Schema is already up to date. No changes needed.</MudAlert>
+                }
+            }
+
+            <MudDivider Class="my-2" />
+
+            <MudText Typo="Typo.h6">3. Generate Schema Script</MudText>
+            <MudText Typo="Typo.body2" Color="Color.Secondary">
+                Generate a full SQL script of the expected schema. Can be used for manual database updates.
+            </MudText>
             <MudStack Row="true" Spacing="2">
                 <MudButton Variant="Variant.Filled" Color="Color.Primary"
                            StartIcon="@Icons.Material.Filled.Code"
@@ -67,33 +218,10 @@
 
             <MudDivider Class="my-4" />
 
-            <MudText Typo="Typo.h6">Auto-Sync Status</MudText>
-            <MudStack Row="true" Spacing="2" AlignItems="AlignItems.Center">
-                <MudButton Variant="Variant.Filled" Color="Color.Warning"
-                           StartIcon="@Icons.Material.Filled.Sync"
-                           OnClick="RunAutoSync"
-                           Disabled="_syncRunning">
-                    @if (_syncRunning)
-                    {
-                        <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" />
-                    }
-                    Run Schema Auto-Sync Now
-                </MudButton>
-            </MudStack>
-
-            @if (!string.IsNullOrEmpty(_syncStatus))
-            {
-                <MudAlert Severity="@_syncSeverity" Class="mt-2">
-                    @_syncStatus
-                </MudAlert>
-            }
-
-            <MudDivider Class="my-4" />
-
             <MudText Typo="Typo.subtitle2" Color="Color.Secondary">
                 <b>Note:</b> The auto-sync service automatically runs at application startup.
-                It compares the EF model to the database and creates any missing tables or columns.
-                Use this page to manually trigger a sync or generate a backup script.
+                If it fails, use "Detect Missing Schema" first to see what's missing, then "Run Schema Auto-Sync Now" to apply changes.
+                If auto-sync fails, use "Generate Schema Script" and run it manually against your database.
             </MudText>
         </MudStack>
     </MudPaper>
@@ -103,10 +231,70 @@
     private string _generatedScript = string.Empty;
     private bool _loading;
     private bool _syncRunning;
-    private string _syncStatus = string.Empty;
-    private Severity _syncSeverity = Severity.Info;
+    private bool _detectRunning;
+    private SchemaSyncResult? _syncResult;
+    private SchemaSyncResult? _detectResult;
     private int _lineCount;
     private int _tableCount;
+
+    private async Task DetectMissing()
+    {
+        _detectRunning = true;
+        _detectResult = null;
+        StateHasChanged();
+
+        try
+        {
+            await using var dbContext = await DbFactory.CreateDbContextAsync();
+            _detectResult = await SchemaSync.DetectMissingSchemaAsync(dbContext);
+            
+            if (_detectResult.DetectedMissing.Count == 0)
+                Snackbar.Add("Schema is up to date - nothing missing", Severity.Success);
+            else
+                Snackbar.Add($"Found {_detectResult.DetectedMissing.Count} missing items", Severity.Warning);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _detectRunning = false;
+        }
+    }
+
+    private async Task RunAutoSync()
+    {
+        _syncRunning = true;
+        _syncResult = null;
+        StateHasChanged();
+
+        try
+        {
+            await using var dbContext = await DbFactory.CreateDbContextAsync();
+            _syncResult = await SchemaSync.SyncSchemaWithDetailsAsync(dbContext);
+
+            if (_syncResult.Success && _syncResult.StatementsFailed == 0)
+            {
+                if (_syncResult.StatementsExecuted > 0)
+                    Snackbar.Add($"Schema sync completed! {_syncResult.StatementsExecuted} changes applied.", Severity.Success);
+                else
+                    Snackbar.Add("Schema is already up to date.", Severity.Success);
+            }
+            else if (_syncResult.StatementsFailed > 0)
+            {
+                Snackbar.Add($"Schema sync completed with {_syncResult.StatementsFailed} error(s). See details below.", Severity.Warning);
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error during sync: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _syncRunning = false;
+        }
+    }
 
     private async Task GenerateScript()
     {
@@ -130,40 +318,6 @@
         finally
         {
             _loading = false;
-        }
-    }
-
-    private async Task RunAutoSync()
-    {
-        _syncRunning = true;
-        _syncStatus = "Running schema synchronization...";
-        _syncSeverity = Severity.Info;
-        StateHasChanged();
-
-        try
-        {
-            await using var dbContext = await DbFactory.CreateDbContextAsync();
-            var success = await SchemaSync.SyncSchemaAsync(dbContext);
-
-            if (success)
-            {
-                _syncStatus = "Schema synchronization completed successfully. Database is up to date.";
-                _syncSeverity = Severity.Success;
-            }
-            else
-            {
-                _syncStatus = "Schema synchronization completed with some issues. Check application logs for details.";
-                _syncSeverity = Severity.Warning;
-            }
-        }
-        catch (Exception ex)
-        {
-            _syncStatus = $"Error during sync: {ex.Message}";
-            _syncSeverity = Severity.Error;
-        }
-        finally
-        {
-            _syncRunning = false;
         }
     }
 
