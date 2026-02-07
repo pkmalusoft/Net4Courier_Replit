@@ -124,7 +124,7 @@ public class AWBPrintService
                 row.RelativeItem(1).BorderLeft(1).PaddingLeft(3).Column(rightCol =>
                 {
                     rightCol.Item().Text("Phone Number:").FontSize(6);
-                    rightCol.Item().Text(shipment.ConsignorPhone ?? shipment.ConsignorMobile ?? "").FontSize(8);
+                    rightCol.Item().Text(CombinePhoneNumbers(shipment.ConsignorPhone, shipment.ConsignorMobile)).FontSize(8);
                 });
             });
             
@@ -182,7 +182,7 @@ public class AWBPrintService
                 row.RelativeItem(1).BorderLeft(1).PaddingLeft(3).Column(rightCol =>
                 {
                     rightCol.Item().Text("Phone Number:").FontSize(6);
-                    rightCol.Item().Text(shipment.ConsigneePhone ?? shipment.ConsigneeMobile ?? "").FontSize(8);
+                    rightCol.Item().Text(CombinePhoneNumbers(shipment.ConsigneePhone, shipment.ConsigneeMobile)).FontSize(8);
                 });
             });
             
@@ -892,8 +892,7 @@ public class AWBPrintService
             });
             c.Item().Row(r =>
             {
-                r.RelativeItem().Text(shipment.ConsigneePhone ?? shipment.ConsigneeMobile ?? "").Bold().FontSize(8);
-                r.RelativeItem().Text(shipment.ConsigneePhone ?? "").FontSize(7);
+                r.RelativeItem().Text(CombinePhoneNumbers(shipment.ConsigneePhone, shipment.ConsigneeMobile)).Bold().FontSize(8);
             });
         });
     }
@@ -1064,7 +1063,7 @@ public class AWBPrintService
                 consigneeCol.Item().Row(r =>
                 {
                     r.ConstantItem(80).Text("Tel./Fax No.:").FontSize(9);
-                    r.RelativeItem().Text(shipment.ConsigneePhone ?? shipment.ConsigneeMobile ?? "").FontSize(9);
+                    r.RelativeItem().Text(CombinePhoneNumbers(shipment.ConsigneePhone, shipment.ConsigneeMobile)).FontSize(9);
                 });
             });
         });
