@@ -38,7 +38,7 @@ The application is built on .NET 8 Blazor Server, adopting a modular architectur
 - **Enhanced Rate Card System**: Supports ServiceType and ShipmentMode filtering, zone categories with agent-based movement restrictions, flexible pricing (zone-level pricing, slab rules), tax calculation, and cost tracking for profit analysis. Automatic freight charge calculation.
 - **Regulatory Compliance**: Empost Regulatory Compliance Module for UAE courier licensing.
 - **API Integration**: Configuration and webhook endpoints for third-party booking websites.
-- **Knowledge Base**: Integrated documentation using Markdig.
+- **Knowledge Base**: Integrated documentation using Markdig. Version 2.2 includes Cost Management Guides (setup, MAWB cost entry, actualization, profitability reports), updated Pricing & Billing reference sections, and February 2026 feature highlights.
 - **Cash & Bank Module**: Independent transaction management and bank account management.
 - **Error Handling**: Robust global error handling with `ErrorBoundary`, `PageErrorHandler`, and `MudBlazor Snackbar`.
 - **Demo Data & Setup**: Admin feature to create/delete demo data, initial setup dialog, and a secure initial setup wizard.
