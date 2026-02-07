@@ -425,12 +425,18 @@ app.MapGet("/api/diagnostics", (IWebHostEnvironment env) =>
     });
 });
 
-app.MapGet("/api/report/awb/{id:long}", async (long id, bool? inline, ApplicationDbContext db, AWBPrintService printService, IWebHostEnvironment env, ILogger<Program> logger) =>
+app.MapGet("/api/report/awb/{id:long}", async (long id, bool? inline, ApplicationDbContext db, AWBPrintService printService, BarcodeService barcodeService, IWebHostEnvironment env, ILogger<Program> logger) =>
 {
     try
     {
         var awb = await db.InscanMasters.FindAsync(id);
         if (awb == null) return Results.NotFound("AWB not found");
+        if (awb.BarcodeImage == null && !string.IsNullOrEmpty(awb.AWBNo))
+        {
+            var (h, v) = barcodeService.GenerateBothBarcodes(awb.AWBNo);
+            awb.BarcodeImage = h;
+            awb.BarcodeImageVertical = v;
+        }
         byte[]? logoData = null;
         string? companyName = null;
         if (awb.BranchId.HasValue)
@@ -456,12 +462,18 @@ app.MapGet("/api/report/awb/{id:long}", async (long id, bool? inline, Applicatio
     }
 });
 
-app.MapGet("/api/report/awb-label/{id:long}", async (long id, bool? inline, ApplicationDbContext db, AWBPrintService printService, IWebHostEnvironment env, ILogger<Program> logger) =>
+app.MapGet("/api/report/awb-label/{id:long}", async (long id, bool? inline, ApplicationDbContext db, AWBPrintService printService, BarcodeService barcodeService, IWebHostEnvironment env, ILogger<Program> logger) =>
 {
     try
     {
         var awb = await db.InscanMasters.FindAsync(id);
         if (awb == null) return Results.NotFound("AWB not found");
+        if (awb.BarcodeImage == null && !string.IsNullOrEmpty(awb.AWBNo))
+        {
+            var (h, v) = barcodeService.GenerateBothBarcodes(awb.AWBNo);
+            awb.BarcodeImage = h;
+            awb.BarcodeImageVertical = v;
+        }
         byte[]? logoData = null;
         string? companyName = null;
         if (awb.BranchId.HasValue)
@@ -487,7 +499,7 @@ app.MapGet("/api/report/awb-label/{id:long}", async (long id, bool? inline, Appl
     }
 });
 
-app.MapGet("/api/report/awb-by-awbno/{awbNo}", async (string awbNo, bool? inline, ApplicationDbContext db, AWBPrintService printService, IWebHostEnvironment env, ILogger<Program> logger) =>
+app.MapGet("/api/report/awb-by-awbno/{awbNo}", async (string awbNo, bool? inline, ApplicationDbContext db, AWBPrintService printService, BarcodeService barcodeService, IWebHostEnvironment env, ILogger<Program> logger) =>
 {
     try
     {
@@ -497,6 +509,12 @@ app.MapGet("/api/report/awb-by-awbno/{awbNo}", async (string awbNo, bool? inline
             var importShipment = await db.ImportShipments.FirstOrDefaultAsync(i => i.AWBNo == awbNo && !i.IsDeleted);
             if (importShipment == null) return Results.NotFound("AWB not found");
             awb = MapImportToInscanMaster(importShipment);
+        }
+        if (awb.BarcodeImage == null && !string.IsNullOrEmpty(awb.AWBNo))
+        {
+            var (h, v) = barcodeService.GenerateBothBarcodes(awb.AWBNo);
+            awb.BarcodeImage = h;
+            awb.BarcodeImageVertical = v;
         }
         byte[]? logoData = null;
         string? companyName = null;
@@ -523,7 +541,7 @@ app.MapGet("/api/report/awb-by-awbno/{awbNo}", async (string awbNo, bool? inline
     }
 });
 
-app.MapGet("/api/report/awb-label-by-awbno/{awbNo}", async (string awbNo, bool? inline, ApplicationDbContext db, AWBPrintService printService, IWebHostEnvironment env, ILogger<Program> logger) =>
+app.MapGet("/api/report/awb-label-by-awbno/{awbNo}", async (string awbNo, bool? inline, ApplicationDbContext db, AWBPrintService printService, BarcodeService barcodeService, IWebHostEnvironment env, ILogger<Program> logger) =>
 {
     try
     {
@@ -533,6 +551,12 @@ app.MapGet("/api/report/awb-label-by-awbno/{awbNo}", async (string awbNo, bool? 
             var importShipment = await db.ImportShipments.FirstOrDefaultAsync(i => i.AWBNo == awbNo && !i.IsDeleted);
             if (importShipment == null) return Results.NotFound("AWB not found");
             awb = MapImportToInscanMaster(importShipment);
+        }
+        if (awb.BarcodeImage == null && !string.IsNullOrEmpty(awb.AWBNo))
+        {
+            var (h, v) = barcodeService.GenerateBothBarcodes(awb.AWBNo);
+            awb.BarcodeImage = h;
+            awb.BarcodeImageVertical = v;
         }
         byte[]? logoData = null;
         string? companyName = null;
@@ -714,54 +738,70 @@ app.MapGet("/api/report/domestic-invoice/{id:long}", async (long id, Application
     return Results.File(pdf, "application/pdf", $"DomesticInvoice-{invoice.InvoiceNo}.pdf");
 });
 
-app.MapGet("/api/report/duty-receipt/{id:long}", async (long id, bool? inline, ApplicationDbContext db, ReportingService reportService, IWebHostEnvironment env) =>
+app.MapGet("/api/report/duty-receipt/{id:long}", async (long id, bool? inline, ApplicationDbContext db, ReportingService reportService, IWebHostEnvironment env, ILogger<Program> logger) =>
 {
-    var shipment = await db.InscanMasters.FindAsync(id);
-    if (shipment == null) return Results.NotFound();
-    
-    var branch = await db.Branches.Include(b => b.Currency).FirstOrDefaultAsync(b => b.Id == shipment.BranchId);
-    var company = branch != null ? await db.Companies.Include(c => c.City).Include(c => c.Country).FirstOrDefaultAsync(c => c.Id == branch.CompanyId) : null;
-    if (company == null)
-        company = await db.Companies.Include(c => c.City).Include(c => c.Country).FirstOrDefaultAsync(c => !c.IsDeleted);
-    var currency = branch?.Currency?.Code ?? "AED";
-    
-    byte[]? logoData = ResolveLogoBytes(company?.Logo, env.WebRootPath);
-    
-    var companyAddress = company != null ? $"{company.Address}, {company.City?.Name}, {company.Country?.Name}" : null;
-    var pdf = reportService.GenerateDutyReceiptPdf(shipment, currency, logoData, company?.Name, companyAddress, company?.Phone, company?.Email, company?.TaxNumber, null);
-    var fileName = inline == true ? null : $"DutyReceipt-{shipment.AWBNo}.pdf";
-    return Results.File(pdf, "application/pdf", fileName);
+    try
+    {
+        var shipment = await db.InscanMasters.FindAsync(id);
+        if (shipment == null) return Results.NotFound("Shipment not found");
+        
+        var branch = await db.Branches.Include(b => b.Currency).FirstOrDefaultAsync(b => b.Id == shipment.BranchId);
+        var company = branch != null ? await db.Companies.Include(c => c.City).Include(c => c.Country).FirstOrDefaultAsync(c => c.Id == branch.CompanyId) : null;
+        if (company == null)
+            company = await db.Companies.Include(c => c.City).Include(c => c.Country).FirstOrDefaultAsync(c => !c.IsDeleted);
+        var currency = branch?.Currency?.Code ?? "AED";
+        
+        byte[]? logoData = ResolveLogoBytes(company?.Logo, env.WebRootPath ?? env.ContentRootPath);
+        
+        var companyAddress = company != null ? $"{company.Address}, {company.City?.Name}, {company.Country?.Name}" : null;
+        var pdf = reportService.GenerateDutyReceiptPdf(shipment, currency, logoData, company?.Name, companyAddress, company?.Phone, company?.Email, company?.TaxNumber, null);
+        var fileName = inline == true ? null : $"DutyReceipt-{shipment.AWBNo}.pdf";
+        return Results.File(pdf, "application/pdf", fileName);
+    }
+    catch (Exception ex)
+    {
+        logger.LogError(ex, "Error generating duty receipt for ID {Id}", id);
+        return Results.Problem($"Error generating duty receipt: {ex.Message}");
+    }
 });
 
-app.MapGet("/api/report/duty-receipt-by-awbno/{awbNo}", async (string awbNo, bool? inline, ApplicationDbContext db, ReportingService reportService, IWebHostEnvironment env) =>
+app.MapGet("/api/report/duty-receipt-by-awbno/{awbNo}", async (string awbNo, bool? inline, ApplicationDbContext db, ReportingService reportService, IWebHostEnvironment env, ILogger<Program> logger) =>
 {
-    var shipment = await db.InscanMasters.FirstOrDefaultAsync(i => i.AWBNo == awbNo);
-    if (shipment == null)
+    try
     {
-        var importShipment = await db.ImportShipments
-            .Include(i => i.ImportMaster)
-            .FirstOrDefaultAsync(i => i.AWBNo == awbNo);
-        if (importShipment == null) return Results.NotFound();
-        shipment = MapImportToInscanMaster(importShipment);
-        if (importShipment.ImportMaster != null)
+        var shipment = await db.InscanMasters.FirstOrDefaultAsync(i => i.AWBNo == awbNo);
+        if (shipment == null)
         {
-            shipment.BranchId = importShipment.ImportMaster.BranchId;
-            shipment.CompanyId = importShipment.ImportMaster.CompanyId;
+            var importShipment = await db.ImportShipments
+                .Include(i => i.ImportMaster)
+                .FirstOrDefaultAsync(i => i.AWBNo == awbNo);
+            if (importShipment == null) return Results.NotFound("Shipment not found");
+            shipment = MapImportToInscanMaster(importShipment);
+            if (importShipment.ImportMaster != null)
+            {
+                shipment.BranchId = importShipment.ImportMaster.BranchId;
+                shipment.CompanyId = importShipment.ImportMaster.CompanyId;
+            }
         }
+
+        var branch = await db.Branches.Include(b => b.Currency).FirstOrDefaultAsync(b => b.Id == shipment.BranchId);
+        var company = branch != null ? await db.Companies.Include(c => c.City).Include(c => c.Country).FirstOrDefaultAsync(c => c.Id == branch.CompanyId) : null;
+        if (company == null)
+            company = await db.Companies.Include(c => c.City).Include(c => c.Country).FirstOrDefaultAsync(c => !c.IsDeleted);
+        var currency = branch?.Currency?.Code ?? "AED";
+
+        byte[]? logoData = ResolveLogoBytes(company?.Logo, env.WebRootPath ?? env.ContentRootPath);
+
+        var companyAddress = company != null ? $"{company.Address}, {company.City?.Name}, {company.Country?.Name}" : null;
+        var pdf = reportService.GenerateDutyReceiptPdf(shipment, currency, logoData, company?.Name, companyAddress, company?.Phone, company?.Email, company?.TaxNumber, null);
+        var fileName = inline == true ? null : $"DutyReceipt-{shipment.AWBNo}.pdf";
+        return Results.File(pdf, "application/pdf", fileName);
     }
-
-    var branch = await db.Branches.Include(b => b.Currency).FirstOrDefaultAsync(b => b.Id == shipment.BranchId);
-    var company = branch != null ? await db.Companies.Include(c => c.City).Include(c => c.Country).FirstOrDefaultAsync(c => c.Id == branch.CompanyId) : null;
-    if (company == null)
-        company = await db.Companies.Include(c => c.City).Include(c => c.Country).FirstOrDefaultAsync(c => !c.IsDeleted);
-    var currency = branch?.Currency?.Code ?? "AED";
-
-    byte[]? logoData = ResolveLogoBytes(company?.Logo, env.WebRootPath);
-
-    var companyAddress = company != null ? $"{company.Address}, {company.City?.Name}, {company.Country?.Name}" : null;
-    var pdf = reportService.GenerateDutyReceiptPdf(shipment, currency, logoData, company?.Name, companyAddress, company?.Phone, company?.Email, company?.TaxNumber, null);
-    var fileName = inline == true ? null : $"DutyReceipt-{shipment.AWBNo}.pdf";
-    return Results.File(pdf, "application/pdf", fileName);
+    catch (Exception ex)
+    {
+        logger.LogError(ex, "Error generating duty receipt for AWBNo {AWBNo}", awbNo);
+        return Results.Problem($"Error generating duty receipt: {ex.Message}");
+    }
 });
 
 app.MapGet("/api/report/receipt/{id:long}", async (long id, ApplicationDbContext db, ReportingService reportService, IWebHostEnvironment env) =>

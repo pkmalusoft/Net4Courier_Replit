@@ -20,6 +20,37 @@
 
 <PageTitle>@(Id > 0 ? "Edit AWB" : "New AWB Entry") - Net4Courier</PageTitle>
 
+@if (_notFound)
+{
+    <MudContainer MaxWidth="MaxWidth.Small" Class="d-flex flex-column align-center justify-center" Style="min-height: 40vh;">
+        <MudPaper Elevation="3" Class="pa-8 text-center">
+            <MudIcon Icon="@Icons.Material.Filled.SearchOff" Color="Color.Warning" Size="Size.Large" Class="mb-4" />
+            <MudText Typo="Typo.h5" Class="mb-2">Shipment Not Found</MudText>
+            <MudText Typo="Typo.body1" Color="Color.Secondary" Class="mb-4">The shipment you are looking for could not be found. It may have been deleted or the link may be incorrect.</MudText>
+            <MudStack Row="true" Justify="Justify.Center" Spacing="2">
+                <MudButton Variant="Variant.Filled" Color="Color.Primary" Href="/awb-list" StartIcon="@Icons.Material.Filled.List">Back to Shipment List</MudButton>
+                <MudButton Variant="Variant.Outlined" Color="Color.Default" Href="/awb-entry" StartIcon="@Icons.Material.Filled.Add">Create New AWB</MudButton>
+            </MudStack>
+        </MudPaper>
+    </MudContainer>
+    return;
+}
+
+@if (_initError)
+{
+    <MudContainer MaxWidth="MaxWidth.Small" Class="d-flex flex-column align-center justify-center" Style="min-height: 40vh;">
+        <MudPaper Elevation="3" Class="pa-8 text-center">
+            <MudIcon Icon="@Icons.Material.Filled.Error" Color="Color.Error" Size="Size.Large" Class="mb-4" />
+            <MudText Typo="Typo.h5" Color="Color.Error" Class="mb-2">Error Loading Page</MudText>
+            <MudText Typo="Typo.body1" Color="Color.Secondary" Class="mb-4">@_initErrorMessage</MudText>
+            <MudStack Row="true" Justify="Justify.Center" Spacing="2">
+                <MudButton Variant="Variant.Filled" Color="Color.Primary" Href="/awb-list" StartIcon="@Icons.Material.Filled.List">Back to Shipment List</MudButton>
+            </MudStack>
+        </MudPaper>
+    </MudContainer>
+    return;
+}
+
 @if (Id == 0)
 {
     <MudPaper Class="pa-3 mb-3" Elevation="1" Style="background-color: #e8f5e9;">
@@ -586,6 +617,9 @@
     private bool _isCustomerPortal => Portal == "customer";
     private Party? _loggedInCustomerParty;
     private bool _pickupDialogOpened = false;
+    private bool _notFound = false;
+    private bool _initError = false;
+    private string _initErrorMessage = "";
     private MudForm _form = null!;
     private bool _formIsValid;
     private DateTime? _transactionDate = DateTime.Today;
@@ -922,6 +956,8 @@
 
     protected override async Task OnInitializedAsync()
     {
+        try
+        {
         await LoadCurrentUser();
         
         await using var dbContext = await DbFactory.CreateDbContextAsync();
@@ -930,7 +966,6 @@
         _cities = await dbContext.Cities.Include(c => c.Country).Include(c => c.State).Where(c => c.IsActive).OrderBy(c => c.Name).ToListAsync();
         _shipmentModes = await dbContext.ShipmentModes.Where(s => s.IsActive && !s.IsDeleted).OrderBy(s => s.SortOrder).ToListAsync();
         
-        // Set default Shipment Mode to "Air" for new AWBs
         if (Id == 0 && !_inscan.ShipmentModeId.HasValue)
         {
             var airMode = _shipmentModes.FirstOrDefault(m => m.Name.Equals("Air", StringComparison.OrdinalIgnoreCase));
@@ -956,7 +991,6 @@
             _nextAWBPreview = await AWBNumberService.PreviewNextAWBNumber(_currentBranch.Id);
         }
         
-        // Customer Portal: Load logged-in customer's Party based on user email
         if (_isCustomerPortal)
         {
             var authState = await AuthStateProvider.GetAuthenticationStateAsync();
@@ -981,17 +1015,19 @@
         {
             _autoGenerateAWB = false;
             var existing = await dbContext.InscanMasters.FindAsync(Id);
-            if (existing != null)
+            if (existing == null)
             {
-                _inscan = existing;
-                _transactionDate = _inscan.TransactionDate.ToLocalTime();
-                _bookingTime = _inscan.TransactionDate.ToLocalTime().TimeOfDay;
-                _createdBy = $"{_inscan.CreatedByName ?? "Unknown"} | {_inscan.CreatedAt:dd-MMM}";
-                _modifiedBy = _inscan.ModifiedAt.HasValue ? $"{_inscan.ModifiedByName ?? "Unknown"} | {_inscan.ModifiedAt:dd-MMM}" : "";
-                _selectedForwardingAgent = _forwardingAgents.FirstOrDefault(p => p.Id == _inscan.ForwardingAgentId);
-                await LoadExistingOtherCharges();
-                SyncSelectedCitiesFromInscan();
+                _notFound = true;
+                return;
             }
+            _inscan = existing;
+            _transactionDate = _inscan.TransactionDate.ToLocalTime();
+            _bookingTime = _inscan.TransactionDate.ToLocalTime().TimeOfDay;
+            _createdBy = $"{_inscan.CreatedByName ?? "Unknown"} | {_inscan.CreatedAt:dd-MMM}";
+            _modifiedBy = _inscan.ModifiedAt.HasValue ? $"{_inscan.ModifiedByName ?? "Unknown"} | {_inscan.ModifiedAt:dd-MMM}" : "";
+            _selectedForwardingAgent = _forwardingAgents.FirstOrDefault(p => p.Id == _inscan.ForwardingAgentId);
+            await LoadExistingOtherCharges();
+            SyncSelectedCitiesFromInscan();
         }
         else
         {
@@ -1048,6 +1084,13 @@
         }
         
         await LoadPaymentModeAccount(_inscan.PaymentModeId);
+        }
+        catch (Exception ex)
+        {
+            _initError = true;
+            _initErrorMessage = "An error occurred while loading the shipment page. Please try again or go back to the shipment list.";
+            System.Diagnostics.Debug.WriteLine($"AWBEntry init error: {ex}");
+        }
     }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)

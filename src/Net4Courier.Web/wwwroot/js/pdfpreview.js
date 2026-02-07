@@ -1,4 +1,30 @@
 window.pdfPreviewHelper = {
+    fetchAndDisplayPdf: async function (iframeElement, url, dotNetRef) {
+        try {
+            var response = await fetch(url, {
+                credentials: 'same-origin',
+                headers: { 'Accept': 'application/pdf' }
+            });
+            if (!response.ok) {
+                if (dotNetRef) dotNetRef.invokeMethodAsync('OnLoadError');
+                return null;
+            }
+            var contentType = response.headers.get('content-type') || '';
+            if (contentType.indexOf('text/html') >= 0) {
+                if (dotNetRef) dotNetRef.invokeMethodAsync('OnLoadError');
+                return null;
+            }
+            var blob = await response.blob();
+            var blobUrl = URL.createObjectURL(blob);
+            if (iframeElement) {
+                iframeElement.src = blobUrl;
+            }
+            return blobUrl;
+        } catch (e) {
+            if (dotNetRef) dotNetRef.invokeMethodAsync('OnLoadError');
+            return null;
+        }
+    },
     printPdf: function (iframeElement) {
         try {
             if (iframeElement && iframeElement.contentWindow) {
@@ -9,26 +35,35 @@ window.pdfPreviewHelper = {
             window.open(iframeElement.src, '_blank');
         }
     },
-    downloadPdf: function (url, title) {
-        var a = document.createElement('a');
-        a.href = url;
-        a.download = (title || 'document') + '.pdf';
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-    },
-    setupLoadTimeout: function (iframeElement, dotNetRef, timeoutMs) {
-        setTimeout(function () {
-            try {
-                var doc = iframeElement.contentDocument || iframeElement.contentWindow.document;
-                if (!doc || doc.contentType !== 'application/pdf') {
-                    var bodyText = doc && doc.body ? doc.body.innerText : '';
-                    if (bodyText && bodyText.indexOf('Error') >= 0) {
-                        dotNetRef.invokeMethodAsync('OnLoadError');
-                    }
-                }
-            } catch (e) {
+    downloadPdf: async function (url, title) {
+        try {
+            var response = await fetch(url, {
+                credentials: 'same-origin',
+                headers: { 'Accept': 'application/pdf' }
+            });
+            if (response.ok) {
+                var blob = await response.blob();
+                var blobUrl = URL.createObjectURL(blob);
+                var a = document.createElement('a');
+                a.href = blobUrl;
+                a.download = (title || 'document') + '.pdf';
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(blobUrl);
             }
-        }, timeoutMs || 10000);
+        } catch (e) {
+            var a = document.createElement('a');
+            a.href = url;
+            a.download = (title || 'document') + '.pdf';
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+        }
+    },
+    revokeBlobUrl: function (blobUrl) {
+        if (blobUrl) {
+            try { URL.revokeObjectURL(blobUrl); } catch (e) { }
+        }
     }
 };
