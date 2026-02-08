@@ -1,0 +1,266 @@
+@page "/linkdel"
+@layout Net4Courier.Web.Components.Layout.LinkDelLayout
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.EntityFrameworkCore
+@using Net4Courier.Infrastructure.Data
+@using Net4Courier.Operations.Entities
+@inject AuthenticationStateProvider AuthStateProvider
+@inject IDbContextFactory<ApplicationDbContext> DbFactory
+
+<div class="ld-home">
+    <MudText Typo="Typo.h5" Style="font-weight: 700; color: #1e293b;">Hello, @_courierName</MudText>
+    <MudText Typo="Typo.body2" Style="color: #94a3b8; margin-bottom: 20px;">@DateTime.Today.ToString("dddd, dd MMMM yyyy")</MudText>
+
+    @if (_isLoading)
+    {
+        <div style="display: flex; justify-content: center; padding: 40px 0;">
+            <MudProgressCircular Indeterminate="true" Color="Color.Primary" />
+        </div>
+    }
+    else
+    {
+        <div class="ld-stats-grid">
+            <MudPaper Elevation="0" Class="ld-stat-card" Style="border-left: 4px solid #556ee6;">
+                <MudIcon Icon="@Icons.Material.Filled.LocalShipping" Style="color: #556ee6; font-size: 1.75rem;" />
+                <div>
+                    <MudText Typo="Typo.h4" Style="font-weight: 700; color: #1e293b;">@_pendingPickups</MudText>
+                    <MudText Typo="Typo.caption" Style="color: #94a3b8;">Pending Pickups</MudText>
+                </div>
+            </MudPaper>
+
+            <MudPaper Elevation="0" Class="ld-stat-card" Style="border-left: 4px solid #34c38f;">
+                <MudIcon Icon="@Icons.Material.Filled.DeliveryDining" Style="color: #34c38f; font-size: 1.75rem;" />
+                <div>
+                    <MudText Typo="Typo.h4" Style="font-weight: 700; color: #1e293b;">@_todayDeliveries</MudText>
+                    <MudText Typo="Typo.caption" Style="color: #94a3b8;">Today's Deliveries</MudText>
+                </div>
+            </MudPaper>
+
+            <MudPaper Elevation="0" Class="ld-stat-card" Style="border-left: 4px solid #f59e0b;">
+                <MudIcon Icon="@Icons.Material.Filled.AccountBalanceWallet" Style="color: #f59e0b; font-size: 1.75rem;" />
+                <div>
+                    <MudText Typo="Typo.h4" Style="font-weight: 700; color: #1e293b;">@_codCollected.ToString("N0")</MudText>
+                    <MudText Typo="Typo.caption" Style="color: #94a3b8;">COD Collected</MudText>
+                </div>
+            </MudPaper>
+
+            <MudPaper Elevation="0" Class="ld-stat-card" Style="border-left: 4px solid #ef4444;">
+                <MudIcon Icon="@Icons.Material.Filled.Receipt" Style="color: #ef4444; font-size: 1.75rem;" />
+                <div>
+                    <MudText Typo="Typo.h4" Style="font-weight: 700; color: #1e293b;">@_todayExpenses.ToString("N0")</MudText>
+                    <MudText Typo="Typo.caption" Style="color: #94a3b8;">Expenses Today</MudText>
+                </div>
+            </MudPaper>
+        </div>
+
+        <div class="ld-actions">
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.QrCodeScanner"
+                       Style="flex: 1; height: 48px; border-radius: 12px; font-weight: 600;"
+                       OnClick='() => Navigation.NavigateTo("/linkdel/deliveries")'>
+                Scan AWB
+            </MudButton>
+            <MudButton Variant="Variant.Outlined" Color="Color.Primary" StartIcon="@Icons.Material.Filled.AddCircle"
+                       Style="flex: 1; height: 48px; border-radius: 12px; font-weight: 600;"
+                       OnClick='() => Navigation.NavigateTo("/linkdel/expenses")'>
+                New Expense
+            </MudButton>
+        </div>
+
+        <MudText Typo="Typo.subtitle1" Style="font-weight: 600; color: #1e293b; margin-top: 24px; margin-bottom: 12px;">
+            Recent Activity
+        </MudText>
+
+        @if (_recentActivities.Any())
+        {
+            <MudPaper Elevation="0" Style="border-radius: 12px; overflow: hidden;">
+                @foreach (var activity in _recentActivities)
+                {
+                    <div class="ld-activity-item">
+                        <MudAvatar Size="Size.Small" Style="@($"background: {activity.Color}; color: #fff; font-size: 0.75rem;")">
+                            <MudIcon Icon="@activity.Icon" Size="Size.Small" />
+                        </MudAvatar>
+                        <div style="flex: 1; min-width: 0;">
+                            <MudText Typo="Typo.body2" Style="font-weight: 500; color: #1e293b;">@activity.Title</MudText>
+                            <MudText Typo="Typo.caption" Style="color: #94a3b8;">@activity.Subtitle</MudText>
+                        </div>
+                        <MudText Typo="Typo.caption" Style="color: #94a3b8; white-space: nowrap;">@activity.Time</MudText>
+                    </div>
+                }
+            </MudPaper>
+        }
+        else
+        {
+            <MudPaper Elevation="0" Style="border-radius: 12px; padding: 32px; text-align: center;">
+                <MudIcon Icon="@Icons.Material.Filled.Inbox" Style="font-size: 3rem; color: #cbd5e1;" />
+                <MudText Typo="Typo.body2" Style="color: #94a3b8; margin-top: 8px;">No recent activity today</MudText>
+            </MudPaper>
+        }
+
+        @if (!string.IsNullOrEmpty(_errorMessage))
+        {
+            <MudAlert Severity="Severity.Warning" Dense="true" Class="mt-4">@_errorMessage</MudAlert>
+        }
+    }
+</div>
+
+<style>
+    .ld-home {
+        max-width: 600px;
+        margin: 0 auto;
+    }
+
+    .ld-stats-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 12px;
+        margin-bottom: 20px;
+    }
+
+    .ld-stat-card {
+        padding: 16px;
+        border-radius: 12px;
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+    }
+
+    .ld-actions {
+        display: flex;
+        gap: 12px;
+    }
+
+    .ld-activity-item {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        padding: 12px 16px;
+        border-bottom: 1px solid #f1f5f9;
+    }
+
+    .ld-activity-item:last-child {
+        border-bottom: none;
+    }
+</style>
+
+@code {
+    @inject NavigationManager Navigation
+
+    private string _courierName = "";
+    private long _userId;
+    private bool _isLoading = true;
+    private string _errorMessage = "";
+
+    private int _pendingPickups;
+    private int _todayDeliveries;
+    private decimal _codCollected;
+    private decimal _todayExpenses;
+
+    private List<ActivityItem> _recentActivities = new();
+
+    private class ActivityItem
+    {
+        public string Icon { get; set; } = "";
+        public string Color { get; set; } = "";
+        public string Title { get; set; } = "";
+        public string Subtitle { get; set; } = "";
+        public string Time { get; set; } = "";
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+        var user = authState.User;
+
+        _courierName = user.FindFirst("FullName")?.Value ?? user.Identity?.Name ?? "Courier";
+        var userIdClaim = user.FindFirst("UserId")?.Value;
+        if (long.TryParse(userIdClaim, out var uid))
+            _userId = uid;
+
+        await LoadDashboardData();
+    }
+
+    private async Task LoadDashboardData()
+    {
+        _isLoading = true;
+        try
+        {
+            await using var db = await DbFactory.CreateDbContextAsync();
+            var today = DateTime.UtcNow.Date;
+
+            _pendingPickups = await db.PickupRequests
+                .Where(p => p.CourierId == _userId && !p.IsDeleted &&
+                    (p.Status == PickupStatus.PickupRequest || p.Status == PickupStatus.AssignedForCollection))
+                .CountAsync();
+
+            _todayDeliveries = await db.DRSs
+                .Where(d => d.DeliveryEmployeeId == (int)_userId && d.DRSDate.Date == today && !d.IsDeleted)
+                .SelectMany(d => d.Details)
+                .Where(dd => !dd.IsDeleted)
+                .CountAsync();
+
+            _codCollected = await db.DRSs
+                .Where(d => d.DeliveryEmployeeId == (int)_userId && d.DRSDate.Date == today && !d.IsDeleted)
+                .SelectMany(d => d.Details)
+                .Where(dd => !dd.IsDeleted && dd.CollectedAmount.HasValue)
+                .SumAsync(dd => dd.CollectedAmount ?? 0);
+
+            _todayExpenses = await db.CourierExpenses
+                .Where(e => e.CourierId == (int)_userId && e.ExpenseDate.Date == today && !e.IsDeleted)
+                .SumAsync(e => e.Amount);
+
+            var recentPickups = await db.PickupRequests
+                .Where(p => p.CourierId == _userId && !p.IsDeleted &&
+                    p.Status == PickupStatus.ShipmentCollected && p.CollectedAt.HasValue &&
+                    p.CollectedAt.Value.Date == today)
+                .OrderByDescending(p => p.CollectedAt)
+                .Take(3)
+                .Select(p => new { p.PickupNo, p.CustomerName, p.CollectedAt })
+                .ToListAsync();
+
+            foreach (var p in recentPickups)
+            {
+                _recentActivities.Add(new ActivityItem
+                {
+                    Icon = Icons.Material.Filled.LocalShipping,
+                    Color = "#556ee6",
+                    Title = $"Pickup {p.PickupNo}",
+                    Subtitle = p.CustomerName ?? "Customer",
+                    Time = p.CollectedAt?.ToString("HH:mm") ?? ""
+                });
+            }
+
+            var recentDeliveries = await db.DRSDetails
+                .Include(dd => dd.DRS)
+                .Where(dd => dd.DRS.DeliveryEmployeeId == (int)_userId && !dd.IsDeleted &&
+                    dd.Status == "Delivered" && dd.AttemptedAt.HasValue &&
+                    dd.AttemptedAt.Value.Date == today)
+                .OrderByDescending(dd => dd.AttemptedAt)
+                .Take(3)
+                .Select(dd => new { dd.DRS.DRSNo, dd.AttemptedAt, dd.CollectedAmount })
+                .ToListAsync();
+
+            foreach (var d in recentDeliveries)
+            {
+                _recentActivities.Add(new ActivityItem
+                {
+                    Icon = Icons.Material.Filled.DeliveryDining,
+                    Color = "#34c38f",
+                    Title = $"Delivery {d.DRSNo}",
+                    Subtitle = d.CollectedAmount > 0 ? $"COD: {d.CollectedAmount:N0}" : "No COD",
+                    Time = d.AttemptedAt?.ToString("HH:mm") ?? ""
+                });
+            }
+
+            _recentActivities = _recentActivities.OrderByDescending(a => a.Time).Take(5).ToList();
+        }
+        catch (Exception ex)
+        {
+            _errorMessage = "Could not load dashboard data. Pull down to refresh.";
+            Console.WriteLine($"[LinkDel] Dashboard error: {ex.Message}");
+        }
+        finally
+        {
+            _isLoading = false;
+        }
+    }
+}

@@ -1,0 +1,174 @@
+@inherits LayoutComponentBase
+@using MudBlazor
+@using Microsoft.AspNetCore.Components.Authorization
+@inject NavigationManager Navigation
+@inject AuthenticationStateProvider AuthStateProvider
+@inject IJSRuntime JS
+
+<HeadContent>
+    <link rel="manifest" href="/linkdel/manifest.json" />
+    <meta name="theme-color" content="#556ee6" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+</HeadContent>
+
+<MudThemeProvider Theme="_theme" />
+<MudPopoverProvider />
+<MudDialogProvider />
+<MudSnackbarProvider />
+
+<div class="linkdel-shell">
+    <MudAppBar Elevation="1" Dense="true" Style="background: #556ee6;">
+        <MudIcon Icon="@Icons.Material.Filled.DeliveryDining" Size="Size.Medium" Style="color: #fff; margin-right: 8px;" />
+        <MudText Typo="Typo.h6" Style="color: #fff; font-weight: 700;">LinkDel</MudText>
+        <MudSpacer />
+        <MudIconButton Icon="@Icons.Material.Filled.Notifications" Style="color: #fff;" />
+        <MudAvatar Size="Size.Small" Style="background: #34c38f; color: #fff; font-size: 0.75rem; cursor: pointer;">
+            @_userInitial
+        </MudAvatar>
+    </MudAppBar>
+
+    <div class="linkdel-body">
+        @Body
+    </div>
+
+    <div class="linkdel-bottom-nav">
+        <div class="linkdel-nav-item @(IsActive("/linkdel", true) ? "active" : "")" @onclick='() => Navigate("/linkdel")'>
+            <MudIcon Icon="@Icons.Material.Filled.Home" Size="Size.Medium" />
+            <span>Home</span>
+        </div>
+        <div class="linkdel-nav-item @(IsActive("/linkdel/pickups") ? "active" : "")" @onclick='() => Navigate("/linkdel/pickups")'>
+            <MudIcon Icon="@Icons.Material.Filled.LocalShipping" Size="Size.Medium" />
+            <span>Pickups</span>
+        </div>
+        <div class="linkdel-nav-item @(IsActive("/linkdel/deliveries") ? "active" : "")" @onclick='() => Navigate("/linkdel/deliveries")'>
+            <MudIcon Icon="@Icons.Material.Filled.DeliveryDining" Size="Size.Medium" />
+            <span>Deliveries</span>
+        </div>
+        <div class="linkdel-nav-item @(IsActive("/linkdel/expenses") ? "active" : "")" @onclick='() => Navigate("/linkdel/expenses")'>
+            <MudIcon Icon="@Icons.Material.Filled.Receipt" Size="Size.Medium" />
+            <span>Expenses</span>
+        </div>
+        <div class="linkdel-nav-item @(IsActive("/linkdel/more") ? "active" : "")" @onclick='() => Navigate("/linkdel/more")'>
+            <MudIcon Icon="@Icons.Material.Filled.MoreHoriz" Size="Size.Medium" />
+            <span>More</span>
+        </div>
+    </div>
+</div>
+
+<style>
+    .linkdel-shell {
+        display: flex;
+        flex-direction: column;
+        height: 100vh;
+        width: 100%;
+        background: #f0f2f5;
+        overflow: hidden;
+    }
+
+    .linkdel-body {
+        flex: 1;
+        overflow-y: auto;
+        padding: 16px;
+        padding-bottom: 72px;
+        -webkit-overflow-scrolling: touch;
+    }
+
+    .linkdel-bottom-nav {
+        position: fixed;
+        bottom: 0;
+        left: 0;
+        right: 0;
+        height: 56px;
+        background: #fff;
+        display: flex;
+        justify-content: space-around;
+        align-items: center;
+        box-shadow: 0 -2px 8px rgba(0,0,0,0.08);
+        z-index: 1100;
+    }
+
+    .linkdel-nav-item {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        min-width: 48px;
+        min-height: 48px;
+        padding: 4px 12px;
+        cursor: pointer;
+        color: #94a3b8;
+        font-size: 0.65rem;
+        font-weight: 500;
+        transition: color 0.2s;
+        -webkit-tap-highlight-color: transparent;
+        user-select: none;
+    }
+
+    .linkdel-nav-item.active {
+        color: #556ee6;
+    }
+
+    .linkdel-nav-item span {
+        margin-top: 2px;
+    }
+</style>
+
+@code {
+    private string _userInitial = "";
+    private string _userName = "";
+
+    private MudTheme _theme = new()
+    {
+        PaletteLight = new PaletteLight()
+        {
+            Primary = "#556ee6",
+            Secondary = "#34c38f",
+            Background = "#f0f2f5",
+            Surface = "#ffffff",
+            AppbarBackground = "#556ee6"
+        }
+    };
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            await JS.InvokeVoidAsync("linkdel.registerServiceWorker");
+        }
+        catch { }
+
+        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+        var user = authState.User;
+
+        if (user.Identity?.IsAuthenticated != true)
+        {
+            Navigation.NavigateTo("/linkdel/login");
+            return;
+        }
+
+        var role = user.FindFirst(System.Security.Claims.ClaimTypes.Role)?.Value;
+        if (role != "Courier")
+        {
+            Navigation.NavigateTo("/linkdel/login");
+            return;
+        }
+
+        var fullName = user.FindFirst("FullName")?.Value ?? user.Identity?.Name ?? "";
+        _userName = fullName;
+        _userInitial = string.IsNullOrEmpty(fullName) ? "?" : fullName[..1].ToUpper();
+    }
+
+    private bool IsActive(string path, bool exact = false)
+    {
+        var uri = new Uri(Navigation.Uri);
+        var current = uri.AbsolutePath.TrimEnd('/');
+        var target = path.TrimEnd('/');
+        return exact ? current == target : current.StartsWith(target);
+    }
+
+    private void Navigate(string path)
+    {
+        Navigation.NavigateTo(path);
+    }
+}

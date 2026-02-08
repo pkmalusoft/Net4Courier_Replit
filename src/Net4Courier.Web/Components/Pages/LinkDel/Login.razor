@@ -1,0 +1,263 @@
+@page "/linkdel/login"
+@layout Net4Courier.Web.Components.Layout.EmptyLayout
+@using Net4Courier.Infrastructure.Services
+@using Net4Courier.Web.Services
+@using Net4Courier.Masters.Entities
+@using Microsoft.AspNetCore.Components.Authorization
+@inject AuthService AuthService
+@inject AuthenticationStateProvider AuthStateProvider
+@inject NavigationManager Navigation
+
+<div class="ld-login-page">
+    <div class="ld-login-card">
+        <div class="ld-login-header">
+            <MudIcon Icon="@Icons.Material.Filled.DeliveryDining" Style="font-size: 3rem; color: #556ee6;" />
+            <MudText Typo="Typo.h4" Style="font-weight: 700; color: #556ee6; margin-top: 8px;">LinkDel</MudText>
+            <MudText Typo="Typo.body2" Style="color: #94a3b8; margin-top: 4px;">Courier Operations</MudText>
+        </div>
+
+        @if (_loginStep == LoginStep.Credentials)
+        {
+            @if (!string.IsNullOrEmpty(_errorMessage))
+            {
+                <MudAlert Severity="Severity.Error" Dense="true" Class="mb-4">@_errorMessage</MudAlert>
+            }
+
+            <MudTextField @bind-Value="_username"
+                          Label="Username"
+                          Variant="Variant.Outlined"
+                          Adornment="Adornment.Start"
+                          AdornmentIcon="@Icons.Material.Filled.Person"
+                          Required="true"
+                          Immediate="true"
+                          Class="mb-4"
+                          OnKeyDown="HandleKeyDown" />
+
+            <MudTextField @bind-Value="_password"
+                          Label="Password"
+                          Variant="Variant.Outlined"
+                          InputType="@_passwordInputType"
+                          Adornment="Adornment.End"
+                          AdornmentIcon="@_passwordIcon"
+                          OnAdornmentClick="TogglePasswordVisibility"
+                          Required="true"
+                          Immediate="true"
+                          Class="mb-6"
+                          OnKeyDown="HandleKeyDown" />
+
+            <MudButton Variant="Variant.Filled"
+                       Color="Color.Primary"
+                       FullWidth="true"
+                       Size="Size.Large"
+                       Disabled="@_isLoading"
+                       OnClick="HandleValidateCredentials"
+                       Style="height: 48px; border-radius: 12px; font-weight: 600;">
+                @if (_isLoading)
+                {
+                    <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" />
+                    <span>Validating...</span>
+                }
+                else
+                {
+                    <span>Sign In</span>
+                }
+            </MudButton>
+        }
+        else if (_loginStep == LoginStep.BranchSelection)
+        {
+            <MudText Typo="Typo.subtitle1" Align="Align.Center" Style="color: #64748b;" Class="mb-2">
+                Welcome, @(_validatedUser?.FullName ?? _validatedUser?.Username)
+            </MudText>
+            <MudText Typo="Typo.body2" Align="Align.Center" Style="color: #94a3b8;" Class="mb-6">
+                Select your branch to continue
+            </MudText>
+
+            @if (!string.IsNullOrEmpty(_errorMessage))
+            {
+                <MudAlert Severity="Severity.Error" Dense="true" Class="mb-4">@_errorMessage</MudAlert>
+            }
+
+            <MudSelect T="long?" @bind-Value="_selectedBranchId"
+                       Label="Branch"
+                       Variant="Variant.Outlined"
+                       AnchorOrigin="Origin.BottomCenter"
+                       Required="true"
+                       Class="mb-6">
+                @foreach (var branch in _availableBranches)
+                {
+                    <MudSelectItem T="long?" Value="@branch.Id">
+                        @branch.Company?.Name - @branch.Name
+                    </MudSelectItem>
+                }
+            </MudSelect>
+
+            <MudButton Variant="Variant.Filled"
+                       Color="Color.Primary"
+                       FullWidth="true"
+                       Size="Size.Large"
+                       Disabled="@(_isLoading || !_selectedBranchId.HasValue)"
+                       OnClick="HandleLogin"
+                       Style="height: 48px; border-radius: 12px; font-weight: 600; margin-bottom: 12px;">
+                @if (_isLoading)
+                {
+                    <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" />
+                    <span>Signing in...</span>
+                }
+                else
+                {
+                    <span>Sign In</span>
+                }
+            </MudButton>
+
+            <MudButton Variant="Variant.Text"
+                       Color="Color.Default"
+                       FullWidth="true"
+                       OnClick="GoBackToCredentials">
+                <MudIcon Icon="@Icons.Material.Filled.ArrowBack" Size="Size.Small" Class="mr-1" />
+                Back
+            </MudButton>
+        }
+    </div>
+</div>
+
+<style>
+    .ld-login-page {
+        min-height: 100vh;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
+        padding: 24px;
+    }
+
+    .ld-login-card {
+        width: 100%;
+        max-width: 400px;
+        background: #fff;
+        border-radius: 20px;
+        padding: 32px 24px;
+        box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+    }
+
+    .ld-login-header {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        margin-bottom: 32px;
+    }
+</style>
+
+@code {
+    private enum LoginStep { Credentials, BranchSelection }
+
+    private LoginStep _loginStep = LoginStep.Credentials;
+    private string _username = "";
+    private string _password = "";
+    private string _errorMessage = "";
+    private bool _isLoading;
+    private bool _showPassword;
+    private User? _validatedUser;
+    private List<Branch> _availableBranches = new();
+    private long? _selectedBranchId;
+
+    private InputType _passwordInputType => _showPassword ? InputType.Text : InputType.Password;
+    private string _passwordIcon => _showPassword ? Icons.Material.Filled.Visibility : Icons.Material.Filled.VisibilityOff;
+
+    private void TogglePasswordVisibility() => _showPassword = !_showPassword;
+
+    private async Task HandleKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter") await HandleValidateCredentials();
+    }
+
+    private async Task HandleValidateCredentials()
+    {
+        if (string.IsNullOrWhiteSpace(_username) || string.IsNullOrWhiteSpace(_password))
+        {
+            _errorMessage = "Please enter username and password";
+            return;
+        }
+
+        _isLoading = true;
+        _errorMessage = "";
+
+        try
+        {
+            var user = await AuthService.ValidateUserAsync(_username.Trim(), _password);
+            if (user == null)
+            {
+                _errorMessage = "Invalid username or password";
+                return;
+            }
+
+            if (user.Role?.Name != "Courier")
+            {
+                _errorMessage = "This app is for courier users only";
+                return;
+            }
+
+            _validatedUser = user;
+            var branches = await AuthService.GetUserBranchesAsync(user.Id);
+
+            if (branches.Count > 1)
+            {
+                _availableBranches = branches;
+                _loginStep = LoginStep.BranchSelection;
+            }
+            else
+            {
+                var branch = branches.FirstOrDefault();
+                var authProvider = (AppAuthStateProvider)AuthStateProvider;
+                authProvider.Login(user, branch);
+                Navigation.NavigateTo("/linkdel");
+            }
+        }
+        catch (Exception)
+        {
+            _errorMessage = "Login failed. Please try again.";
+        }
+        finally
+        {
+            _isLoading = false;
+        }
+    }
+
+    private async Task HandleLogin()
+    {
+        if (!_selectedBranchId.HasValue || _validatedUser == null) return;
+
+        _isLoading = true;
+        _errorMessage = "";
+
+        try
+        {
+            var branch = _availableBranches.FirstOrDefault(b => b.Id == _selectedBranchId.Value);
+            if (branch == null)
+            {
+                _errorMessage = "Invalid branch selection";
+                return;
+            }
+
+            var authProvider = (AppAuthStateProvider)AuthStateProvider;
+            authProvider.Login(_validatedUser, branch);
+            Navigation.NavigateTo("/linkdel");
+        }
+        catch (Exception)
+        {
+            _errorMessage = "Login failed. Please try again.";
+        }
+        finally
+        {
+            _isLoading = false;
+        }
+    }
+
+    private void GoBackToCredentials()
+    {
+        _loginStep = LoginStep.Credentials;
+        _errorMessage = "";
+        _validatedUser = null;
+        _availableBranches.Clear();
+        _selectedBranchId = null;
+    }
+}
