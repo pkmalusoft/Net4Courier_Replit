@@ -1242,22 +1242,66 @@ public class DatabaseInitializationService : BackgroundService
 
         try
         {
-            // Step 1: Ensure base tables are created from EF model
-            await dbContext.Database.EnsureCreatedAsync(stoppingToken);
+            var isProductionMode = Environment.GetEnvironmentVariable("PRODUCTION_MODE")?.ToLower() == "true";
+            var schemaAutoApply = Environment.GetEnvironmentVariable("SCHEMA_AUTO_APPLY")?.ToLower() != "false"; // default true for dev
 
-            // Step 2: Auto-sync schema (creates missing tables/columns from EF model)
-            var autoSyncSuccess = await schemaSync.SyncSchemaAsync(dbContext, stoppingToken);
+            // Step 1: Check if database already has tables
+            var connection = dbContext.Database.GetDbConnection();
+            if (connection.State != System.Data.ConnectionState.Open)
+                await connection.OpenAsync(stoppingToken);
             
-            // Step 3: Fallback to manual script if auto-sync had issues
-            if (!autoSyncSuccess)
+            bool databaseHasTables = false;
+            using (var cmd = connection.CreateCommand())
             {
-                _logger.LogWarning("Auto-sync incomplete, attempting fallback to schema_sync_full.sql...");
-                var scriptPath = Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..", "scripts", "schema_sync_full.sql");
-                if (!File.Exists(scriptPath))
+                cmd.CommandText = "SELECT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'Companies')";
+                var result = await cmd.ExecuteScalarAsync(stoppingToken);
+                databaseHasTables = result is bool b && b;
+            }
+
+            if (!databaseHasTables)
+            {
+                _logger.LogInformation("Fresh database detected. Creating initial schema...");
+                await dbContext.Database.EnsureCreatedAsync(stoppingToken);
+            }
+            else
+            {
+                _logger.LogInformation("Existing database detected. Skipping EnsureCreated to protect data.");
+            }
+
+            // Step 2: Auto-sync schema (creates missing tables/columns - never drops anything)
+            if (isProductionMode && !schemaAutoApply)
+            {
+                _logger.LogInformation("PRODUCTION_MODE=true, SCHEMA_AUTO_APPLY=false: Running schema sync in preview-only mode...");
+                var previewResult = await schemaSync.PreviewSchemaChangesAsync(dbContext, stoppingToken);
+                if (previewResult.DetectedMissing.Count > 0)
                 {
-                    scriptPath = Path.Combine(Directory.GetCurrentDirectory(), "..", "..", "scripts", "schema_sync_full.sql");
+                    _logger.LogWarning("=== SCHEMA CHANGES PENDING ({Count} changes) ===", previewResult.DetectedMissing.Count);
+                    foreach (var missing in previewResult.DetectedMissing)
+                    {
+                        _logger.LogWarning("  PENDING: {Change}", missing);
+                    }
+                    _logger.LogWarning("Set SCHEMA_AUTO_APPLY=true environment variable to apply these changes on next restart.");
+                    _logger.LogWarning("=== END SCHEMA PREVIEW ===");
                 }
-                await schemaSync.ExecuteSchemaScriptAsync(dbContext, scriptPath, stoppingToken);
+                else
+                {
+                    _logger.LogInformation("Schema is up to date. No pending changes.");
+                }
+            }
+            else
+            {
+                var autoSyncSuccess = await schemaSync.SyncSchemaAsync(dbContext, stoppingToken);
+                
+                if (!autoSyncSuccess)
+                {
+                    _logger.LogWarning("Auto-sync incomplete, attempting fallback to schema_sync_full.sql...");
+                    var scriptPath = Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..", "scripts", "schema_sync_full.sql");
+                    if (!File.Exists(scriptPath))
+                    {
+                        scriptPath = Path.Combine(Directory.GetCurrentDirectory(), "..", "..", "scripts", "schema_sync_full.sql");
+                    }
+                    await schemaSync.ExecuteSchemaScriptAsync(dbContext, scriptPath, stoppingToken);
+                }
             }
 
             // GL Module Tables - Native long-based IDs
