@@ -60,6 +60,14 @@ The application is built on .NET 8 Blazor Server, adopting a modular architectur
 - **DRS Reconciliation Workflow**: Complete DRS cash reconciliation with per-AWB charge allocation. Accountant issues cash receipt by selecting DRS (Finance > Delivery > Cash Receipt), then reconciles per-AWB with Material Cost/COD/Other Charges breakdown (Finance > Courier Reconciliation > AWB Reconciliation). DRSReconciliationLine entity stores per-AWB allocations with discount tracking and approval workflow. DRSReconciliationStatement entity stores completed statements with per-field totals (TotalMaterialCost, TotalCODAmount, TotalOtherCharges). Printable reconciliation statement available at `/drs-reconciliation-statement/{id}`. Variance calculation: Collected + Expenses - Receipt must equal zero before completing reconciliation.
 - **Schema Auto-Sync System**: Automatic database schema synchronization at startup via `SchemaAutoSyncService`. Compares EF Core model to PostgreSQL database and auto-generates/executes CREATE TABLE and ALTER TABLE statements for missing tables/columns. Falls back to `scripts/schema_sync_full.sql` if auto-sync fails. On-demand schema script generation available via Platform Admin > Schema Utility page (`/admin/schema-utility`). Features: generate full schema script, download as SQL file, copy to clipboard, manual sync trigger. Uses TIMESTAMP WITH TIME ZONE for DateTime fields, proper NOT NULL constraints, and IF NOT EXISTS clauses for safe re-execution. Scope: additive only (new tables/columns); does not modify existing column types or foreign keys.
 
+## Project Structure
+- `src/` - Application source code (Net4Courier.Web, Infrastructure, Kernel, Masters, Operations, Finance)
+- `scripts/` - SQL scripts for schema sync, data fixes, and database setup
+- `documents/` - Project documentation (deployment guides, setup guides, PWA specs)
+- `attached_assets/` - System-managed chat attachments (images, CSVs, text snippets)
+- `NuGet/` - NuGet package cache
+- `data-protection-keys/` - .NET data protection keys
+
 ## External Dependencies
 - **Database**: PostgreSQL
 - **UI Framework**: MudBlazor
