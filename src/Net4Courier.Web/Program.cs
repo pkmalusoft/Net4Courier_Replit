@@ -1078,12 +1078,15 @@ app.MapPost("/api/bookings/webhook/{integrationId}", async (
 app.MapRazorComponents<App>()
     .AddInteractiveServerRenderMode();
 
-Console.WriteLine($"[{DateTime.UtcNow:O}] Starting HTTP server on http://0.0.0.0:5000");
+var listenUrl = args.FirstOrDefault(a => a.StartsWith("--urls"))?.Split('=').LastOrDefault() 
+    ?? Environment.GetEnvironmentVariable("ASPNETCORE_URLS") 
+    ?? "http://0.0.0.0:5000";
+Console.WriteLine($"[{DateTime.UtcNow:O}] Starting HTTP server on {listenUrl}");
 Console.WriteLine($"[{DateTime.UtcNow:O}] All middleware and routes configured successfully");
 
 try
 {
-    app.Run("http://0.0.0.0:5000");
+    app.Run();
 }
 catch (Exception ex)
 {
