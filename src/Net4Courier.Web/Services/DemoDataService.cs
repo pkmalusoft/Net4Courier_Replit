@@ -19,6 +19,7 @@ public interface IDemoDataService
     Task<bool> CreateCRMDataAsync();
     Task<bool> CreateTransactionDataAsync();
     Task<bool> CreateFinanceDataAsync();
+    Task<bool> CreateRateCardDataAsync();
     Task<bool> DeleteAllDemoDataAsync();
     Task<bool> DeleteAllDataAsync();
 }
@@ -89,6 +90,12 @@ public class DemoDataStats
     public int Currencies { get; set; }
     public int TaxCodes { get; set; }
     public int CashBankTransactions { get; set; }
+    public int ServiceTypes { get; set; }
+    public int ShipmentModes { get; set; }
+    public int ZoneCategories { get; set; }
+    public int ZoneMatrices { get; set; }
+    public int RateCards { get; set; }
+    public int RateCardZones { get; set; }
 }
 
 public class DemoDataService : IDemoDataService
@@ -130,6 +137,20 @@ public class DemoDataService : IDemoDataService
         try { currenciesCount = await context.Currencies.CountAsync(c => c.IsDemo); } catch { }
         try { taxCodesCount = await context.GLTaxCodes.CountAsync(t => t.IsDemo); } catch { }
 
+        int serviceTypesCount = 0;
+        int shipmentModesCount = 0;
+        int zoneCategoriesCount = 0;
+        int zoneMatricesCount = 0;
+        int rateCardsCount = 0;
+        int rateCardZonesCount = 0;
+
+        try { serviceTypesCount = await context.ServiceTypes.CountAsync(s => s.IsDemo); } catch { }
+        try { shipmentModesCount = await context.ShipmentModes.CountAsync(s => s.IsDemo); } catch { }
+        try { zoneCategoriesCount = await context.ZoneCategories.CountAsync(z => z.IsDemo); } catch { }
+        try { zoneMatricesCount = await context.ZoneMatrices.CountAsync(z => z.IsDemo); } catch { }
+        try { rateCardsCount = await context.RateCards.CountAsync(r => r.IsDemo); } catch { }
+        try { rateCardZonesCount = await context.RateCardZones.CountAsync(r => r.IsDemo); } catch { }
+
         return new DemoDataStats
         {
             Customers = await context.Parties.CountAsync(p => p.IsDemo && p.PartyType == PartyType.Customer),
@@ -152,7 +173,13 @@ public class DemoDataService : IDemoDataService
             ChartOfAccounts = chartOfAccountsCount,
             Currencies = currenciesCount,
             TaxCodes = taxCodesCount,
-            CashBankTransactions = await context.CashBankTransactions.CountAsync(c => c.IsDemo)
+            CashBankTransactions = await context.CashBankTransactions.CountAsync(c => c.IsDemo),
+            ServiceTypes = serviceTypesCount,
+            ShipmentModes = shipmentModesCount,
+            ZoneCategories = zoneCategoriesCount,
+            ZoneMatrices = zoneMatricesCount,
+            RateCards = rateCardsCount,
+            RateCardZones = rateCardZonesCount
         };
     }
 
@@ -1578,6 +1605,102 @@ public class DemoDataService : IDemoDataService
         return true;
     }
 
+    public async Task<bool> CreateRateCardDataAsync()
+    {
+        try
+        {
+            await using var context = await _dbFactory.CreateDbContextAsync();
+
+            if (await context.ServiceTypes.AnyAsync(s => s.IsDemo)) return true;
+
+            var now = DateTime.UtcNow;
+            var company = await context.Companies.FirstOrDefaultAsync();
+
+            var stdServiceType = new ServiceType { Code = "STD", Name = "Standard", TransitDays = 3, IsExpress = false, IsDefault = true, SortOrder = 1, IsDemo = true, IsActive = true, CreatedAt = now };
+            var expServiceType = new ServiceType { Code = "EXP", Name = "Express", TransitDays = 1, IsExpress = true, IsDefault = false, SortOrder = 2, IsDemo = true, IsActive = true, CreatedAt = now };
+            var samedayServiceType = new ServiceType { Code = "SAMEDAY", Name = "Same Day", TransitDays = 0, IsExpress = true, IsDefault = false, SortOrder = 3, IsDemo = true, IsActive = true, CreatedAt = now };
+            context.ServiceTypes.AddRange(stdServiceType, expServiceType, samedayServiceType);
+            await context.SaveChangesAsync();
+
+            var airShipmentMode = new Net4Courier.Masters.Entities.ShipmentMode { Code = "AIR", Name = "Air Freight", SortOrder = 1, IsDemo = true, IsActive = true, CreatedAt = now };
+            var roadShipmentMode = new Net4Courier.Masters.Entities.ShipmentMode { Code = "ROAD", Name = "Road Transport", SortOrder = 2, IsDemo = true, IsActive = true, CreatedAt = now };
+            var seaShipmentMode = new Net4Courier.Masters.Entities.ShipmentMode { Code = "SEA", Name = "Sea Freight", SortOrder = 3, IsDemo = true, IsActive = true, CreatedAt = now };
+            context.ShipmentModes.AddRange(airShipmentMode, roadShipmentMode, seaShipmentMode);
+            await context.SaveChangesAsync();
+
+            var domesticCategory = new ZoneCategory { Code = "DOM-ZONES", Name = "Domestic Zones", CategoryType = ZoneCategoryType.ForwardingAgent, MovementType = MovementType.Domestic, SortOrder = 1, IsDemo = true, IsActive = true, CreatedAt = now };
+            var intlCategory = new ZoneCategory { Code = "INT-ZONES", Name = "International Zones", CategoryType = ZoneCategoryType.ForwardingAgent, MovementType = MovementType.InternationalExport, SortOrder = 2, IsDemo = true, IsActive = true, CreatedAt = now };
+            context.ZoneCategories.AddRange(domesticCategory, intlCategory);
+            await context.SaveChangesAsync();
+            var domesticCategoryId = domesticCategory.Id;
+            var intlCategoryId = intlCategory.Id;
+
+            var zoneA = new ZoneMatrix { ZoneCategoryId = domesticCategoryId, ZoneCode = "ZONE-A", ZoneName = "Metro - Same City", ZoneType = ZoneType.Domestic, SortOrder = 1, CompanyId = company?.Id, IsDemo = true, IsActive = true, CreatedAt = now };
+            var zoneB = new ZoneMatrix { ZoneCategoryId = domesticCategoryId, ZoneCode = "ZONE-B", ZoneName = "Within State", ZoneType = ZoneType.Domestic, SortOrder = 2, CompanyId = company?.Id, IsDemo = true, IsActive = true, CreatedAt = now };
+            var zoneC = new ZoneMatrix { ZoneCategoryId = domesticCategoryId, ZoneCode = "ZONE-C", ZoneName = "Outstation", ZoneType = ZoneType.Domestic, SortOrder = 3, CompanyId = company?.Id, IsDemo = true, IsActive = true, CreatedAt = now };
+            var zone1 = new ZoneMatrix { ZoneCategoryId = intlCategoryId, ZoneCode = "ZONE-1", ZoneName = "GCC Countries", ZoneType = ZoneType.International, SortOrder = 1, CompanyId = company?.Id, IsDemo = true, IsActive = true, CreatedAt = now };
+            var zone2 = new ZoneMatrix { ZoneCategoryId = intlCategoryId, ZoneCode = "ZONE-2", ZoneName = "Asia & Subcontinent", ZoneType = ZoneType.International, SortOrder = 2, CompanyId = company?.Id, IsDemo = true, IsActive = true, CreatedAt = now };
+            var zone3 = new ZoneMatrix { ZoneCategoryId = intlCategoryId, ZoneCode = "ZONE-3", ZoneName = "Europe & Americas", ZoneType = ZoneType.International, SortOrder = 3, CompanyId = company?.Id, IsDemo = true, IsActive = true, CreatedAt = now };
+            context.ZoneMatrices.AddRange(zoneA, zoneB, zoneC, zone1, zone2, zone3);
+            await context.SaveChangesAsync();
+
+            var domesticStdRateCard = new RateCard { RateCardName = "Domestic Standard Rates", MovementTypeId = MovementType.Domestic, PaymentModeId = PaymentMode.Prepaid, IsDefault = true, RateBasedType = RateBasedType.Weight, ValidFrom = now.Date, Status = RateCardStatus.Active, RateCardType = RateCardType.Both, ZoneCategoryId = domesticCategoryId, ServiceTypeId = stdServiceType.Id, ShipmentModeId = roadShipmentMode.Id, CompanyId = company?.Id, IsDemo = true, IsActive = true, CreatedAt = now };
+            var domesticExpRateCard = new RateCard { RateCardName = "Domestic Express Rates", MovementTypeId = MovementType.Domestic, PaymentModeId = PaymentMode.Prepaid, IsDefault = false, RateBasedType = RateBasedType.Weight, ValidFrom = now.Date, Status = RateCardStatus.Active, RateCardType = RateCardType.Sales, ZoneCategoryId = domesticCategoryId, ServiceTypeId = expServiceType.Id, ShipmentModeId = roadShipmentMode.Id, CompanyId = company?.Id, IsDemo = true, IsActive = true, CreatedAt = now };
+            var intlSalesRateCard = new RateCard { RateCardName = "International Air - Sales", MovementTypeId = MovementType.InternationalExport, PaymentModeId = PaymentMode.Account, IsDefault = true, RateBasedType = RateBasedType.Weight, ValidFrom = now.Date, Status = RateCardStatus.Active, RateCardType = RateCardType.Sales, ZoneCategoryId = intlCategoryId, ServiceTypeId = stdServiceType.Id, ShipmentModeId = airShipmentMode.Id, CompanyId = company?.Id, IsDemo = true, IsActive = true, CreatedAt = now };
+            var intlCostRateCard = new RateCard { RateCardName = "International Air - Cost", MovementTypeId = MovementType.InternationalExport, PaymentModeId = PaymentMode.Account, IsDefault = false, RateBasedType = RateBasedType.Weight, ValidFrom = now.Date, Status = RateCardStatus.Active, RateCardType = RateCardType.Cost, ZoneCategoryId = intlCategoryId, ServiceTypeId = stdServiceType.Id, ShipmentModeId = airShipmentMode.Id, CompanyId = company?.Id, IsDemo = true, IsActive = true, CreatedAt = now };
+            context.RateCards.AddRange(domesticStdRateCard, domesticExpRateCard, intlSalesRateCard, intlCostRateCard);
+            await context.SaveChangesAsync();
+
+            var domStdZoneA = new RateCardZone { RateCardId = domesticStdRateCard.Id, ZoneMatrixId = zoneA.Id, BaseWeight = 0.5m, SalesBaseRate = 25m, SalesPerKg = 10m, CostBaseRate = 15m, CostPerKg = 6m, MinWeight = 0.5m, MaxWeight = 30m, TaxPercent = 5m, TaxMode = TaxMode.Exclusive, AdditionalWeight = 0.5m, AdditionalRate = 5m, IsDemo = true, IsActive = true, CreatedAt = now };
+            var domStdZoneB = new RateCardZone { RateCardId = domesticStdRateCard.Id, ZoneMatrixId = zoneB.Id, BaseWeight = 0.5m, SalesBaseRate = 35m, SalesPerKg = 14m, CostBaseRate = 22m, CostPerKg = 9m, MinWeight = 0.5m, MaxWeight = 30m, TaxPercent = 5m, TaxMode = TaxMode.Exclusive, AdditionalWeight = 0.5m, AdditionalRate = 7m, IsDemo = true, IsActive = true, CreatedAt = now };
+            var domStdZoneC = new RateCardZone { RateCardId = domesticStdRateCard.Id, ZoneMatrixId = zoneC.Id, BaseWeight = 0.5m, SalesBaseRate = 50m, SalesPerKg = 20m, CostBaseRate = 32m, CostPerKg = 13m, MinWeight = 0.5m, MaxWeight = 30m, TaxPercent = 5m, TaxMode = TaxMode.Exclusive, AdditionalWeight = 0.5m, AdditionalRate = 10m, IsDemo = true, IsActive = true, CreatedAt = now };
+
+            var domExpZoneA = new RateCardZone { RateCardId = domesticExpRateCard.Id, ZoneMatrixId = zoneA.Id, BaseWeight = 0.5m, SalesBaseRate = 45m, SalesPerKg = 18m, CostBaseRate = 0m, CostPerKg = 0m, MinWeight = 0.5m, MaxWeight = 30m, TaxPercent = 5m, TaxMode = TaxMode.Exclusive, AdditionalWeight = 0.5m, AdditionalRate = 9m, IsDemo = true, IsActive = true, CreatedAt = now };
+            var domExpZoneB = new RateCardZone { RateCardId = domesticExpRateCard.Id, ZoneMatrixId = zoneB.Id, BaseWeight = 0.5m, SalesBaseRate = 60m, SalesPerKg = 24m, CostBaseRate = 0m, CostPerKg = 0m, MinWeight = 0.5m, MaxWeight = 30m, TaxPercent = 5m, TaxMode = TaxMode.Exclusive, AdditionalWeight = 0.5m, AdditionalRate = 12m, IsDemo = true, IsActive = true, CreatedAt = now };
+            var domExpZoneC = new RateCardZone { RateCardId = domesticExpRateCard.Id, ZoneMatrixId = zoneC.Id, BaseWeight = 0.5m, SalesBaseRate = 85m, SalesPerKg = 34m, CostBaseRate = 0m, CostPerKg = 0m, MinWeight = 0.5m, MaxWeight = 30m, TaxPercent = 5m, TaxMode = TaxMode.Exclusive, AdditionalWeight = 0.5m, AdditionalRate = 17m, IsDemo = true, IsActive = true, CreatedAt = now };
+
+            var intlSalesZone1 = new RateCardZone { RateCardId = intlSalesRateCard.Id, ZoneMatrixId = zone1.Id, BaseWeight = 0.5m, SalesBaseRate = 75m, SalesPerKg = 30m, CostBaseRate = 0m, CostPerKg = 0m, MinWeight = 0.5m, MaxWeight = 50m, TaxPercent = 5m, TaxMode = TaxMode.Exclusive, FuelSurchargePercent = 15m, AdditionalWeight = 0.5m, AdditionalRate = 15m, IsDemo = true, IsActive = true, CreatedAt = now };
+            var intlSalesZone2 = new RateCardZone { RateCardId = intlSalesRateCard.Id, ZoneMatrixId = zone2.Id, BaseWeight = 0.5m, SalesBaseRate = 120m, SalesPerKg = 48m, CostBaseRate = 0m, CostPerKg = 0m, MinWeight = 0.5m, MaxWeight = 50m, TaxPercent = 5m, TaxMode = TaxMode.Exclusive, FuelSurchargePercent = 18m, AdditionalWeight = 0.5m, AdditionalRate = 24m, IsDemo = true, IsActive = true, CreatedAt = now };
+            var intlSalesZone3 = new RateCardZone { RateCardId = intlSalesRateCard.Id, ZoneMatrixId = zone3.Id, BaseWeight = 0.5m, SalesBaseRate = 180m, SalesPerKg = 72m, CostBaseRate = 0m, CostPerKg = 0m, MinWeight = 0.5m, MaxWeight = 50m, TaxPercent = 5m, TaxMode = TaxMode.Exclusive, FuelSurchargePercent = 22m, AdditionalWeight = 0.5m, AdditionalRate = 36m, IsDemo = true, IsActive = true, CreatedAt = now };
+
+            var intlCostZone1 = new RateCardZone { RateCardId = intlCostRateCard.Id, ZoneMatrixId = zone1.Id, BaseWeight = 0.5m, SalesBaseRate = 0m, SalesPerKg = 0m, CostBaseRate = 50m, CostPerKg = 20m, MinWeight = 0.5m, MaxWeight = 50m, TaxPercent = 5m, TaxMode = TaxMode.Exclusive, CostFuelSurchargePercent = 12m, AdditionalWeight = 0.5m, AdditionalRate = 0m, IsDemo = true, IsActive = true, CreatedAt = now };
+            var intlCostZone2 = new RateCardZone { RateCardId = intlCostRateCard.Id, ZoneMatrixId = zone2.Id, BaseWeight = 0.5m, SalesBaseRate = 0m, SalesPerKg = 0m, CostBaseRate = 85m, CostPerKg = 34m, MinWeight = 0.5m, MaxWeight = 50m, TaxPercent = 5m, TaxMode = TaxMode.Exclusive, CostFuelSurchargePercent = 15m, AdditionalWeight = 0.5m, AdditionalRate = 0m, IsDemo = true, IsActive = true, CreatedAt = now };
+            var intlCostZone3 = new RateCardZone { RateCardId = intlCostRateCard.Id, ZoneMatrixId = zone3.Id, BaseWeight = 0.5m, SalesBaseRate = 0m, SalesPerKg = 0m, CostBaseRate = 130m, CostPerKg = 52m, MinWeight = 0.5m, MaxWeight = 50m, TaxPercent = 5m, TaxMode = TaxMode.Exclusive, CostFuelSurchargePercent = 18m, AdditionalWeight = 0.5m, AdditionalRate = 0m, IsDemo = true, IsActive = true, CreatedAt = now };
+
+            context.RateCardZones.AddRange(domStdZoneA, domStdZoneB, domStdZoneC, domExpZoneA, domExpZoneB, domExpZoneC, intlSalesZone1, intlSalesZone2, intlSalesZone3, intlCostZone1, intlCostZone2, intlCostZone3);
+            await context.SaveChangesAsync();
+
+            var slabRules = new List<RateCardSlabRule>();
+            var domStdZones = new[] { (domStdZoneA, 5m, 4m), (domStdZoneB, 7m, 6m), (domStdZoneC, 10m, 8m) };
+            foreach (var (zone, slab1Rate, slab2Rate) in domStdZones)
+            {
+                slabRules.Add(new RateCardSlabRule { RateCardZoneId = zone.Id, FromWeight = 0.5m, ToWeight = 5m, IncrementWeight = 0.5m, IncrementRate = slab1Rate, CalculationMode = SlabCalculationMode.PerKg, SortOrder = 1, IsDemo = true, IsActive = true, CreatedAt = now });
+                slabRules.Add(new RateCardSlabRule { RateCardZoneId = zone.Id, FromWeight = 5m, ToWeight = 30m, IncrementWeight = 1m, IncrementRate = slab2Rate, CalculationMode = SlabCalculationMode.PerKg, SortOrder = 2, IsDemo = true, IsActive = true, CreatedAt = now });
+            }
+            context.RateCardSlabRules.AddRange(slabRules);
+            await context.SaveChangesAsync();
+
+            var demoCustomers = await context.Parties.Where(p => p.IsDemo && p.PartyType == PartyType.Customer).Take(3).ToListAsync();
+            var assignments = new List<CustomerRateAssignment>();
+            foreach (var customer in demoCustomers)
+            {
+                assignments.Add(new CustomerRateAssignment { CustomerId = customer.Id, RateCardId = domesticStdRateCard.Id, EffectiveFrom = now.Date, Priority = 1, CompanyId = company?.Id, IsDemo = true, IsActive = true, CreatedAt = now });
+                assignments.Add(new CustomerRateAssignment { CustomerId = customer.Id, RateCardId = intlSalesRateCard.Id, EffectiveFrom = now.Date, Priority = 1, CompanyId = company?.Id, IsDemo = true, IsActive = true, CreatedAt = now });
+            }
+            context.CustomerRateAssignments.AddRange(assignments);
+            await context.SaveChangesAsync();
+
+            _logger.LogInformation("Rate card demo data created successfully");
+            return true;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error creating rate card demo data");
+            LastError = ex.Message;
+            return false;
+        }
+    }
+
     public async Task<bool> DeleteAllDemoDataAsync()
     {
         await using var context = await _dbFactory.CreateDbContextAsync();
@@ -1854,6 +1977,56 @@ public class DemoDataService : IDemoDataService
         var employees = await context.Employees.Where(e => e.IsDemo).ToListAsync();
         context.Employees.RemoveRange(employees);
         await context.SaveChangesAsync();
+
+        try
+        {
+            var demoRateCardZoneIds = await context.RateCardZones.Where(r => r.IsDemo).Select(r => r.Id).ToListAsync();
+            if (demoRateCardZoneIds.Any())
+            {
+                var slabRules = await context.RateCardSlabRules.Where(s => demoRateCardZoneIds.Contains(s.RateCardZoneId)).ToListAsync();
+                context.RateCardSlabRules.RemoveRange(slabRules);
+                await context.SaveChangesAsync();
+            }
+
+            var demoRateCardIds = await context.RateCards.Where(r => r.IsDemo).Select(r => r.Id).ToListAsync();
+            if (demoRateCardIds.Any())
+            {
+                var customerAssignments = await context.CustomerRateAssignments.Where(a => demoRateCardIds.Contains(a.RateCardId)).ToListAsync();
+                context.CustomerRateAssignments.RemoveRange(customerAssignments);
+
+                var agentAssignments = await context.AgentRateAssignments.Where(a => demoRateCardIds.Contains(a.RateCardId)).ToListAsync();
+                context.AgentRateAssignments.RemoveRange(agentAssignments);
+                await context.SaveChangesAsync();
+            }
+
+            var demoRateCardZones = await context.RateCardZones.Where(r => r.IsDemo).ToListAsync();
+            context.RateCardZones.RemoveRange(demoRateCardZones);
+            await context.SaveChangesAsync();
+
+            var demoRateCards = await context.RateCards.Where(r => r.IsDemo).ToListAsync();
+            context.RateCards.RemoveRange(demoRateCards);
+            await context.SaveChangesAsync();
+
+            var demoZoneMatrices = await context.ZoneMatrices.Where(z => z.IsDemo).ToListAsync();
+            context.ZoneMatrices.RemoveRange(demoZoneMatrices);
+            await context.SaveChangesAsync();
+
+            var demoZoneCategories = await context.ZoneCategories.Where(z => z.IsDemo).ToListAsync();
+            context.ZoneCategories.RemoveRange(demoZoneCategories);
+            await context.SaveChangesAsync();
+
+            var demoServiceTypes = await context.ServiceTypes.Where(s => s.IsDemo).ToListAsync();
+            context.ServiceTypes.RemoveRange(demoServiceTypes);
+            await context.SaveChangesAsync();
+
+            var demoShipmentModes = await context.ShipmentModes.Where(s => s.IsDemo).ToListAsync();
+            context.ShipmentModes.RemoveRange(demoShipmentModes);
+            await context.SaveChangesAsync();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Error deleting rate card demo data");
+        }
 
         var demoPartyIds = await context.Parties
             .Where(p => p.IsDemo)
