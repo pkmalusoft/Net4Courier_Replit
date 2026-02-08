@@ -1,0 +1,624 @@
+@page "/linkdel/pickups/{Id:long}"
+@layout Net4Courier.Web.Components.Layout.LinkDelLayout
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.EntityFrameworkCore
+@using Net4Courier.Infrastructure.Data
+@using Net4Courier.Operations.Entities
+@inject AuthenticationStateProvider AuthStateProvider
+@inject IDbContextFactory<ApplicationDbContext> DbFactory
+@inject NavigationManager Navigation
+@inject IJSRuntime JS
+@inject ISnackbar Snackbar
+
+<div class="ld-detail">
+    @if (_isLoading)
+    {
+        <div style="display: flex; justify-content: center; padding: 40px 0;">
+            <MudProgressCircular Indeterminate="true" Color="Color.Primary" />
+        </div>
+    }
+    else if (_pickup == null)
+    {
+        <div style="text-align: center; padding: 48px 24px;">
+            <MudIcon Icon="@Icons.Material.Filled.ErrorOutline" Style="font-size: 3rem; color: #ef4444;" />
+            <MudText Typo="Typo.body1" Style="color: #64748b; margin-top: 12px;">Pickup not found</MudText>
+            <MudButton Variant="Variant.Text" Color="Color.Primary" OnClick='() => Navigation.NavigateTo("/linkdel/pickups")'>
+                Back to Pickups
+            </MudButton>
+        </div>
+    }
+    else
+    {
+        <div class="ld-detail-back" @onclick='() => Navigation.NavigateTo("/linkdel/pickups")'>
+            <MudIcon Icon="@Icons.Material.Filled.ArrowBack" Size="Size.Small" />
+            <MudText Typo="Typo.body2" Style="font-weight: 500;">Back</MudText>
+        </div>
+
+        <MudPaper Elevation="0" Style="border-radius: 12px; padding: 16px; margin-bottom: 12px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+                <div>
+                    <MudText Typo="Typo.h6" Style="font-weight: 700; color: #1e293b;">@_pickup.PickupNo</MudText>
+                    <MudText Typo="Typo.caption" Style="color: #94a3b8;">@_pickup.RequestDate.ToString("dd MMM yyyy HH:mm")</MudText>
+                </div>
+                <MudChip T="string" Size="Size.Small" Style="@GetStatusStyle(_pickup.Status)">
+                    @GetStatusLabel(_pickup.Status)
+                </MudChip>
+            </div>
+
+            @if (!string.IsNullOrWhiteSpace(_pickup.SpecialInstructions))
+            {
+                <MudAlert Severity="Severity.Info" Dense="true" Class="mb-3" Style="border-radius: 8px;">
+                    @_pickup.SpecialInstructions
+                </MudAlert>
+            }
+        </MudPaper>
+
+        <MudPaper Elevation="0" Style="border-radius: 12px; padding: 16px; margin-bottom: 12px;">
+            <MudText Typo="Typo.subtitle2" Style="font-weight: 700; color: #1e293b; margin-bottom: 10px;">Customer</MudText>
+            <div class="ld-info-grid">
+                <div class="ld-info-row">
+                    <MudIcon Icon="@Icons.Material.Filled.Person" Size="Size.Small" Style="color: #94a3b8;" />
+                    <span>@(_pickup.CustomerName ?? "N/A")</span>
+                </div>
+                @if (!string.IsNullOrWhiteSpace(_pickup.ContactPerson))
+                {
+                    <div class="ld-info-row">
+                        <MudIcon Icon="@Icons.Material.Filled.Badge" Size="Size.Small" Style="color: #94a3b8;" />
+                        <span>@_pickup.ContactPerson</span>
+                    </div>
+                }
+                @if (!string.IsNullOrWhiteSpace(_pickup.Phone) || !string.IsNullOrWhiteSpace(_pickup.Mobile))
+                {
+                    <div class="ld-info-row" style="cursor: pointer;" @onclick="CallCustomer">
+                        <MudIcon Icon="@Icons.Material.Filled.Phone" Size="Size.Small" Style="color: #556ee6;" />
+                        <span style="color: #556ee6; font-weight: 500;">@(_pickup.Mobile ?? _pickup.Phone)</span>
+                    </div>
+                }
+            </div>
+        </MudPaper>
+
+        <MudPaper Elevation="0" Style="border-radius: 12px; padding: 16px; margin-bottom: 12px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                <MudText Typo="Typo.subtitle2" Style="font-weight: 700; color: #1e293b;">Pickup Address</MudText>
+                <MudIconButton Icon="@Icons.Material.Filled.Navigation" Size="Size.Small"
+                               Style="color: #556ee6;" OnClick="NavigateToAddress" />
+            </div>
+            <MudText Typo="Typo.body2" Style="color: #475569; line-height: 1.5;">
+                @(_pickup.PickupAddress ?? "")
+                @if (!string.IsNullOrWhiteSpace(_pickup.Landmark))
+                {
+                    <br /><text>Landmark: @_pickup.Landmark</text>
+                }
+                @if (!string.IsNullOrWhiteSpace(_pickup.City) || !string.IsNullOrWhiteSpace(_pickup.State))
+                {
+                    <br />@(string.Join(", ", new[] { _pickup.City, _pickup.State, _pickup.PostalCode }.Where(x => !string.IsNullOrWhiteSpace(x))))
+                }
+            </MudText>
+        </MudPaper>
+
+        @if (_pickup.ScheduledDate.HasValue || _pickup.EstimatedPieces.HasValue)
+        {
+            <MudPaper Elevation="0" Style="border-radius: 12px; padding: 16px; margin-bottom: 12px;">
+                <MudText Typo="Typo.subtitle2" Style="font-weight: 700; color: #1e293b; margin-bottom: 10px;">Schedule & Packages</MudText>
+                <div class="ld-info-grid">
+                    @if (_pickup.ScheduledDate.HasValue)
+                    {
+                        <div class="ld-info-row">
+                            <MudIcon Icon="@Icons.Material.Filled.CalendarToday" Size="Size.Small" Style="color: #94a3b8;" />
+                            <span>
+                                @_pickup.ScheduledDate.Value.ToString("dd MMM yyyy")
+                                @if (_pickup.ScheduledTimeFrom.HasValue)
+                                {
+                                    <text> @_pickup.ScheduledTimeFrom.Value.ToString("HH:mm")</text>
+                                }
+                                @if (_pickup.ScheduledTimeTo.HasValue)
+                                {
+                                    <text> - @_pickup.ScheduledTimeTo.Value.ToString("HH:mm")</text>
+                                }
+                            </span>
+                        </div>
+                    }
+                    @if (_pickup.EstimatedPieces.HasValue)
+                    {
+                        <div class="ld-info-row">
+                            <MudIcon Icon="@Icons.Material.Filled.Inventory2" Size="Size.Small" Style="color: #94a3b8;" />
+                            <span>@_pickup.EstimatedPieces pcs / @(_pickup.EstimatedWeight?.ToString("N1") ?? "0") kg (estimated)</span>
+                        </div>
+                    }
+                    @if (!string.IsNullOrWhiteSpace(_pickup.PackageDescription))
+                    {
+                        <div class="ld-info-row">
+                            <MudIcon Icon="@Icons.Material.Filled.Description" Size="Size.Small" Style="color: #94a3b8;" />
+                            <span>@_pickup.PackageDescription</span>
+                        </div>
+                    }
+                    @if (_pickup.BookingVehicle.HasValue)
+                    {
+                        <div class="ld-info-row">
+                            <MudIcon Icon="@Icons.Material.Filled.DirectionsCar" Size="Size.Small" Style="color: #94a3b8;" />
+                            <span>@_pickup.BookingVehicle</span>
+                        </div>
+                    }
+                </div>
+            </MudPaper>
+        }
+
+        @if (_shipments.Any())
+        {
+            <MudPaper Elevation="0" Style="border-radius: 12px; padding: 16px; margin-bottom: 12px;">
+                <MudText Typo="Typo.subtitle2" Style="font-weight: 700; color: #1e293b; margin-bottom: 10px;">
+                    Shipments (@_shipments.Count)
+                </MudText>
+                @foreach (var s in _shipments)
+                {
+                    <div style="padding: 8px 0; border-bottom: 1px solid #f1f5f9;">
+                        <div style="display: flex; justify-content: space-between;">
+                            <MudText Typo="Typo.body2" Style="font-weight: 600; color: #1e293b;">
+                                @(string.IsNullOrEmpty(s.AWBNo) ? $"Line {s.LineNo}" : s.AWBNo)
+                            </MudText>
+                            <MudText Typo="Typo.caption" Style="color: #94a3b8;">@(s.Pieces ?? 0) pcs / @((s.Weight ?? 0).ToString("N1")) kg</MudText>
+                        </div>
+                        @if (!string.IsNullOrWhiteSpace(s.Consignee))
+                        {
+                            <MudText Typo="Typo.caption" Style="color: #64748b;">To: @s.Consignee @(!string.IsNullOrWhiteSpace(s.ConsigneeCity) ? $", {s.ConsigneeCity}" : "")</MudText>
+                        }
+                    </div>
+                }
+            </MudPaper>
+        }
+
+        @if (_showCollectForm)
+        {
+            <MudPaper Elevation="0" Style="border-radius: 12px; padding: 16px; margin-bottom: 12px; border: 2px solid #34c38f;">
+                <MudText Typo="Typo.subtitle2" Style="font-weight: 700; color: #1e293b; margin-bottom: 12px;">
+                    Collection Details
+                </MudText>
+                <div style="display: flex; gap: 12px; margin-bottom: 12px;">
+                    <MudTextField T="int?" Label="Actual Pieces" @bind-Value="_collectPieces"
+                                  Variant="Variant.Outlined" Style="flex: 1;" />
+                    <MudTextField T="decimal?" Label="Actual Weight (kg)" @bind-Value="_collectWeight"
+                                  Variant="Variant.Outlined" Style="flex: 1;" />
+                </div>
+                <MudTextField T="string" Label="Collection Remarks" @bind-Value="_collectRemarks"
+                              Variant="Variant.Outlined" Lines="2" Class="mb-3" />
+
+                @if (_gpsLocation != null)
+                {
+                    <MudAlert Severity="Severity.Success" Dense="true" Class="mb-3" Style="border-radius: 8px;">
+                        GPS captured: @_gpsLocation
+                    </MudAlert>
+                }
+                else
+                {
+                    <MudButton Variant="Variant.Outlined" Color="Color.Primary" Size="Size.Small"
+                               StartIcon="@Icons.Material.Filled.MyLocation"
+                               Style="border-radius: 8px; margin-bottom: 12px;"
+                               OnClick="CaptureGPS">
+                        Capture GPS Location
+                    </MudButton>
+                }
+
+                <div style="display: flex; gap: 8px;">
+                    <MudButton Variant="Variant.Filled" Color="Color.Success"
+                               Style="flex: 1; border-radius: 8px; font-weight: 600; height: 44px;"
+                               StartIcon="@Icons.Material.Filled.CheckCircle"
+                               Disabled="_isSaving"
+                               OnClick="ConfirmCollection">
+                        @(_isSaving ? "Saving..." : "Confirm Collection")
+                    </MudButton>
+                    <MudButton Variant="Variant.Outlined" Color="Color.Default"
+                               Style="border-radius: 8px;"
+                               OnClick="() => _showCollectForm = false">
+                        Cancel
+                    </MudButton>
+                </div>
+            </MudPaper>
+        }
+
+        @if (_showAttemptForm)
+        {
+            <MudPaper Elevation="0" Style="border-radius: 12px; padding: 16px; margin-bottom: 12px; border: 2px solid #f59e0b;">
+                <MudText Typo="Typo.subtitle2" Style="font-weight: 700; color: #1e293b; margin-bottom: 12px;">
+                    Record Attempt
+                </MudText>
+                <MudTextField T="string" Label="Reason / Remarks" @bind-Value="_attemptRemarks"
+                              Variant="Variant.Outlined" Lines="3" Class="mb-3"
+                              Placeholder="e.g. Customer not available, address incorrect..." />
+
+                @if (_gpsLocation != null)
+                {
+                    <MudAlert Severity="Severity.Success" Dense="true" Class="mb-3" Style="border-radius: 8px;">
+                        GPS captured: @_gpsLocation
+                    </MudAlert>
+                }
+                else
+                {
+                    <MudButton Variant="Variant.Outlined" Color="Color.Primary" Size="Size.Small"
+                               StartIcon="@Icons.Material.Filled.MyLocation"
+                               Style="border-radius: 8px; margin-bottom: 12px;"
+                               OnClick="CaptureGPS">
+                        Capture GPS Location
+                    </MudButton>
+                }
+
+                <div style="display: flex; gap: 8px;">
+                    <MudButton Variant="Variant.Filled" Color="Color.Warning"
+                               Style="flex: 1; border-radius: 8px; font-weight: 600; height: 44px;"
+                               StartIcon="@Icons.Material.Filled.ReportProblem"
+                               Disabled="_isSaving"
+                               OnClick="ConfirmAttempt">
+                        @(_isSaving ? "Saving..." : "Record Attempt")
+                    </MudButton>
+                    <MudButton Variant="Variant.Outlined" Color="Color.Default"
+                               Style="border-radius: 8px;"
+                               OnClick="() => _showAttemptForm = false">
+                        Cancel
+                    </MudButton>
+                </div>
+            </MudPaper>
+        }
+
+        @if (!_showCollectForm && !_showAttemptForm)
+        {
+            <div class="ld-detail-actions">
+                @if (_pickup.Status == PickupStatus.PickupRequest)
+                {
+                    <MudButton Variant="Variant.Filled" Color="Color.Primary"
+                               Style="flex: 1; border-radius: 12px; font-weight: 600; height: 48px;"
+                               OnClick="@(async () => await AcceptAndStart())">
+                        Accept Pickup
+                    </MudButton>
+                }
+                else if (_pickup.Status == PickupStatus.AssignedForCollection)
+                {
+                    <MudButton Variant="Variant.Filled" Color="Color.Success"
+                               StartIcon="@Icons.Material.Filled.CheckCircle"
+                               Style="flex: 1; border-radius: 12px; font-weight: 600; height: 48px;"
+                               OnClick="ShowCollectForm">
+                        Collect
+                    </MudButton>
+                    <MudButton Variant="Variant.Outlined" Color="Color.Warning"
+                               StartIcon="@Icons.Material.Filled.ReportProblem"
+                               Style="border-radius: 12px; font-weight: 600; height: 48px;"
+                               OnClick="ShowAttemptForm">
+                        Attempt
+                    </MudButton>
+                }
+            </div>
+        }
+    }
+</div>
+
+<style>
+    .ld-detail {
+        max-width: 600px;
+        margin: 0 auto;
+    }
+
+    .ld-detail-back {
+        display: flex;
+        align-items: center;
+        gap: 4px;
+        color: #556ee6;
+        cursor: pointer;
+        margin-bottom: 12px;
+        padding: 4px 0;
+        -webkit-tap-highlight-color: transparent;
+    }
+
+    .ld-info-grid {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+    }
+
+    .ld-info-row {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        font-size: 0.875rem;
+        color: #475569;
+    }
+
+    .ld-detail-actions {
+        display: flex;
+        gap: 8px;
+        position: sticky;
+        bottom: 72px;
+        padding: 12px 0;
+    }
+</style>
+
+@code {
+    [Parameter] public long Id { get; set; }
+
+    private PickupRequest? _pickup;
+    private List<PickupRequestShipment> _shipments = new();
+    private bool _isLoading = true;
+    private bool _isSaving;
+    private long _userId;
+    private string? _userName;
+
+    private bool _showCollectForm;
+    private bool _showAttemptForm;
+    private int? _collectPieces;
+    private decimal? _collectWeight;
+    private string? _collectRemarks;
+    private string? _attemptRemarks;
+    private string? _gpsLocation;
+    private decimal? _latitude;
+    private decimal? _longitude;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+        var user = authState.User;
+        var userIdClaim = user.FindFirst("UserId")?.Value;
+        if (long.TryParse(userIdClaim, out var uid))
+            _userId = uid;
+        _userName = user.FindFirst("FullName")?.Value ?? user.Identity?.Name;
+
+        await LoadPickup();
+    }
+
+    private async Task LoadPickup()
+    {
+        _isLoading = true;
+        try
+        {
+            await using var db = await DbFactory.CreateDbContextAsync();
+            _pickup = await db.PickupRequests
+                .FirstOrDefaultAsync(p => p.Id == Id && p.CourierId == _userId && !p.IsDeleted);
+
+            if (_pickup != null)
+            {
+                _shipments = await db.PickupRequestShipments
+                    .Where(s => s.PickupRequestId == Id && !s.IsDeleted)
+                    .OrderBy(s => s.LineNo)
+                    .ToListAsync();
+
+                _collectPieces = _pickup.EstimatedPieces;
+                _collectWeight = _pickup.EstimatedWeight;
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[LinkDel] Load pickup detail error: {ex.Message}");
+        }
+        finally
+        {
+            _isLoading = false;
+        }
+    }
+
+    private void ShowCollectForm()
+    {
+        _showCollectForm = true;
+        _showAttemptForm = false;
+        _gpsLocation = null;
+    }
+
+    private void ShowAttemptForm()
+    {
+        _showAttemptForm = true;
+        _showCollectForm = false;
+        _gpsLocation = null;
+    }
+
+    private async Task AcceptAndStart()
+    {
+        try
+        {
+            await using var db = await DbFactory.CreateDbContextAsync();
+            var pickup = await db.PickupRequests.FindAsync(Id);
+            if (pickup != null && pickup.CourierId == _userId && pickup.Status == PickupStatus.PickupRequest)
+            {
+                pickup.Status = PickupStatus.AssignedForCollection;
+                pickup.AssignedAt = DateTime.UtcNow;
+                pickup.ModifiedAt = DateTime.UtcNow;
+                await db.SaveChangesAsync();
+                Snackbar.Add("Pickup accepted!", Severity.Success);
+                await LoadPickup();
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add("Failed to accept pickup", Severity.Error);
+            Console.WriteLine($"[LinkDel] Accept error: {ex.Message}");
+        }
+    }
+
+    private async Task ConfirmCollection()
+    {
+        if (_isSaving) return;
+        _isSaving = true;
+        try
+        {
+            await using var db = await DbFactory.CreateDbContextAsync();
+            var pickup = await db.PickupRequests.FindAsync(Id);
+            if (pickup != null && pickup.CourierId == _userId)
+            {
+                pickup.Status = PickupStatus.ShipmentCollected;
+                pickup.CollectedAt = DateTime.UtcNow;
+                pickup.ActualPieces = _collectPieces;
+                pickup.ActualWeight = _collectWeight;
+                pickup.CollectionRemarks = _collectRemarks;
+                pickup.ModifiedAt = DateTime.UtcNow;
+                if (_latitude.HasValue)
+                {
+                    pickup.Latitude = _latitude;
+                    pickup.Longitude = _longitude;
+                }
+
+                db.Set<PickupStatusHistory>().Add(new PickupStatusHistory
+                {
+                    PickupRequestId = pickup.Id,
+                    StatusId = pickup.StatusId ?? 0,
+                    StatusGroupId = pickup.StatusGroupId ?? 0,
+                    EventType = "Collection",
+                    UserId = _userId,
+                    UserName = _userName,
+                    Remarks = _collectRemarks ?? "Shipment collected via LinkDel",
+                    ChangedAt = DateTime.UtcNow,
+                    IsAutomatic = false,
+                    DeviceInfo = "LinkDel PWA",
+                    Latitude = _latitude,
+                    Longitude = _longitude
+                });
+
+                await db.SaveChangesAsync();
+                try { await JS.InvokeVoidAsync("linkdel.vibrate", new object[] { new[] { 100, 50, 100 } }); } catch { }
+                Snackbar.Add("Pickup collected successfully!", Severity.Success);
+                _showCollectForm = false;
+                await LoadPickup();
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add("Failed to save collection", Severity.Error);
+            Console.WriteLine($"[LinkDel] Collection error: {ex.Message}");
+        }
+        finally
+        {
+            _isSaving = false;
+        }
+    }
+
+    private async Task ConfirmAttempt()
+    {
+        if (_isSaving) return;
+        if (string.IsNullOrWhiteSpace(_attemptRemarks))
+        {
+            Snackbar.Add("Please enter a reason for the attempt", Severity.Warning);
+            return;
+        }
+        _isSaving = true;
+        try
+        {
+            await using var db = await DbFactory.CreateDbContextAsync();
+            var pickup = await db.PickupRequests.FindAsync(Id);
+            if (pickup != null && pickup.CourierId == _userId)
+            {
+                pickup.Status = PickupStatus.Attempted;
+                pickup.AttemptedAt = DateTime.UtcNow;
+                pickup.AttemptedByUserId = _userId;
+                pickup.AttemptedByUserName = _userName;
+                pickup.AttemptRemarks = _attemptRemarks;
+                pickup.ModifiedAt = DateTime.UtcNow;
+                if (_latitude.HasValue)
+                {
+                    pickup.Latitude = _latitude;
+                    pickup.Longitude = _longitude;
+                }
+
+                db.Set<PickupStatusHistory>().Add(new PickupStatusHistory
+                {
+                    PickupRequestId = pickup.Id,
+                    StatusId = pickup.StatusId ?? 0,
+                    StatusGroupId = pickup.StatusGroupId ?? 0,
+                    EventType = "Attempt",
+                    UserId = _userId,
+                    UserName = _userName,
+                    Remarks = _attemptRemarks,
+                    ChangedAt = DateTime.UtcNow,
+                    IsAutomatic = false,
+                    DeviceInfo = "LinkDel PWA",
+                    Latitude = _latitude,
+                    Longitude = _longitude
+                });
+
+                await db.SaveChangesAsync();
+                Snackbar.Add("Attempt recorded", Severity.Warning);
+                _showAttemptForm = false;
+                await LoadPickup();
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add("Failed to save attempt", Severity.Error);
+            Console.WriteLine($"[LinkDel] Attempt error: {ex.Message}");
+        }
+        finally
+        {
+            _isSaving = false;
+        }
+    }
+
+    private async Task CaptureGPS()
+    {
+        try
+        {
+            var result = await JS.InvokeAsync<GpsResult>("linkdel.getCurrentPosition");
+            if (result != null)
+            {
+                _latitude = (decimal)result.Lat;
+                _longitude = (decimal)result.Lng;
+                _gpsLocation = $"{result.Lat:F6}, {result.Lng:F6}";
+                StateHasChanged();
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add("Could not capture GPS location", Severity.Warning);
+            Console.WriteLine($"[LinkDel] GPS error: {ex.Message}");
+        }
+    }
+
+    private async Task NavigateToAddress()
+    {
+        try
+        {
+            var lat = _pickup?.Latitude;
+            var lng = _pickup?.Longitude;
+            var address = string.Join(", ", new[] { _pickup?.PickupAddress, _pickup?.City, _pickup?.State }
+                .Where(x => !string.IsNullOrWhiteSpace(x)));
+            await JS.InvokeVoidAsync("linkdel.openNavigation",
+                lat.HasValue ? (double)lat.Value : (double?)null,
+                lng.HasValue ? (double)lng.Value : (double?)null,
+                address);
+        }
+        catch { }
+    }
+
+    private async Task CallCustomer()
+    {
+        var phone = _pickup?.Mobile ?? _pickup?.Phone;
+        if (!string.IsNullOrWhiteSpace(phone))
+        {
+            try
+            {
+                await JS.InvokeVoidAsync("open", $"tel:{phone}");
+            }
+            catch { }
+        }
+    }
+
+    private string GetStatusLabel(PickupStatus status) => status switch
+    {
+        PickupStatus.PickupRequest => "New",
+        PickupStatus.AssignedForCollection => "Accepted",
+        PickupStatus.Attempted => "Attempted",
+        PickupStatus.ShipmentCollected => "Collected",
+        PickupStatus.Inscanned => "Inscanned",
+        PickupStatus.Cancelled => "Cancelled",
+        _ => status.ToString()
+    };
+
+    private string GetStatusStyle(PickupStatus status) => status switch
+    {
+        PickupStatus.PickupRequest => "background: #dbeafe; color: #1d4ed8;",
+        PickupStatus.AssignedForCollection => "background: #fef3c7; color: #92400e;",
+        PickupStatus.ShipmentCollected => "background: #d1fae5; color: #065f46;",
+        PickupStatus.Inscanned => "background: #e0e7ff; color: #3730a3;",
+        PickupStatus.Attempted => "background: #fee2e2; color: #991b1b;",
+        PickupStatus.Cancelled => "background: #f1f5f9; color: #64748b;",
+        _ => "background: #f1f5f9; color: #64748b;"
+    };
+
+    private class GpsResult
+    {
+        public double Lat { get; set; }
+        public double Lng { get; set; }
+        public double Accuracy { get; set; }
+    }
+}

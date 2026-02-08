@@ -1,8 +1,358 @@
 @page "/linkdel/pickups"
 @layout Net4Courier.Web.Components.Layout.LinkDelLayout
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.EntityFrameworkCore
+@using Net4Courier.Infrastructure.Data
+@using Net4Courier.Operations.Entities
+@inject AuthenticationStateProvider AuthStateProvider
+@inject IDbContextFactory<ApplicationDbContext> DbFactory
+@inject NavigationManager Navigation
 
-<div style="display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 60vh; text-align: center; padding: 24px;">
-    <MudIcon Icon="@Icons.Material.Filled.LocalShipping" Style="font-size: 5rem; color: #cbd5e1; margin-bottom: 16px;" />
-    <MudText Typo="Typo.h5" Style="font-weight: 600; color: #64748b;">Pickups</MudText>
-    <MudText Typo="Typo.body2" Style="color: #94a3b8; margin-top: 8px;">Coming soon — manage your pickup assignments here.</MudText>
+<div class="ld-pickups">
+    <div class="ld-tab-bar">
+        <div class="ld-tab @(_activeTab == 0 ? "active" : "")" @onclick="() => SetTab(0)">
+            Pending
+            @if (_pendingCount > 0)
+            {
+                <span class="ld-badge">@_pendingCount</span>
+            }
+        </div>
+        <div class="ld-tab @(_activeTab == 1 ? "active" : "")" @onclick="() => SetTab(1)">Completed</div>
+        <div class="ld-tab @(_activeTab == 2 ? "active" : "")" @onclick="() => SetTab(2)">All</div>
+    </div>
+
+    @if (_isLoading)
+    {
+        <div style="display: flex; justify-content: center; padding: 40px 0;">
+            <MudProgressCircular Indeterminate="true" Color="Color.Primary" />
+        </div>
+    }
+    else
+    {
+        var displayList = GetDisplayList();
+        @if (!displayList.Any())
+        {
+            <div style="text-align: center; padding: 48px 24px;">
+                <MudIcon Icon="@Icons.Material.Filled.Inbox" Style="font-size: 3.5rem; color: #cbd5e1;" />
+                <MudText Typo="Typo.body1" Style="color: #94a3b8; margin-top: 12px; font-weight: 500;">
+                    @(_activeTab == 0 ? "No pending pickups" : _activeTab == 1 ? "No completed pickups today" : "No pickups found")
+                </MudText>
+            </div>
+        }
+        else
+        {
+            @foreach (var p in displayList)
+            {
+                <MudPaper Elevation="0" Class="ld-pickup-card" @onclick="() => OpenDetail(p.Id)">
+                    <div class="ld-pickup-header">
+                        <div>
+                            <MudText Typo="Typo.subtitle2" Style="font-weight: 700; color: #1e293b;">@p.PickupNo</MudText>
+                            <MudText Typo="Typo.caption" Style="color: #94a3b8;">@p.CustomerName</MudText>
+                        </div>
+                        <MudChip T="string" Size="Size.Small" Style="@GetStatusStyle(p.Status)">
+                            @GetStatusLabel(p.Status)
+                        </MudChip>
+                    </div>
+
+                    <div class="ld-pickup-info">
+                        <div class="ld-pickup-info-row">
+                            <MudIcon Icon="@Icons.Material.Filled.LocationOn" Size="Size.Small" Style="color: #94a3b8;" />
+                            <MudText Typo="Typo.caption" Style="color: #64748b;">@(TruncateAddress(p.PickupAddress, p.City))</MudText>
+                        </div>
+                        @if (p.ScheduledDate.HasValue)
+                        {
+                            <div class="ld-pickup-info-row">
+                                <MudIcon Icon="@Icons.Material.Filled.Schedule" Size="Size.Small" Style="color: #94a3b8;" />
+                                <MudText Typo="Typo.caption" Style="color: #64748b;">
+                                    @p.ScheduledDate.Value.ToString("dd MMM")
+                                    @if (p.ScheduledTimeFrom.HasValue)
+                                    {
+                                        <text> @p.ScheduledTimeFrom.Value.ToString("HH:mm")</text>
+                                    }
+                                    @if (p.ScheduledTimeTo.HasValue)
+                                    {
+                                        <text> - @p.ScheduledTimeTo.Value.ToString("HH:mm")</text>
+                                    }
+                                </MudText>
+                            </div>
+                        }
+                        @if (p.EstimatedPieces.HasValue || p.EstimatedWeight.HasValue)
+                        {
+                            <div class="ld-pickup-info-row">
+                                <MudIcon Icon="@Icons.Material.Filled.Inventory2" Size="Size.Small" Style="color: #94a3b8;" />
+                                <MudText Typo="Typo.caption" Style="color: #64748b;">
+                                    @(p.EstimatedPieces?.ToString() ?? "-") pcs / @(p.EstimatedWeight?.ToString("N1") ?? "-") kg
+                                </MudText>
+                            </div>
+                        }
+                    </div>
+
+                    @if (p.Status == PickupStatus.PickupRequest)
+                    {
+                        <div class="ld-pickup-actions">
+                            <MudButton Size="Size.Small" Variant="Variant.Filled" Color="Color.Primary"
+                                       Style="border-radius: 8px; flex: 1; font-weight: 600;"
+                                       OnClick="@(async () => await AcceptPickup(p.Id))" OnClickStopPropagation="true">
+                                Accept
+                            </MudButton>
+                            <MudButton Size="Size.Small" Variant="Variant.Outlined" Color="Color.Error"
+                                       Style="border-radius: 8px; font-weight: 600;"
+                                       OnClick="@(async () => await RejectPickup(p.Id))" OnClickStopPropagation="true">
+                                Reject
+                            </MudButton>
+                        </div>
+                    }
+                    else if (p.Status == PickupStatus.AssignedForCollection)
+                    {
+                        <div class="ld-pickup-actions">
+                            <MudButton Size="Size.Small" Variant="Variant.Filled" Color="Color.Success"
+                                       Style="border-radius: 8px; flex: 1; font-weight: 600;"
+                                       OnClick="() => OpenDetail(p.Id)" OnClickStopPropagation="true">
+                                Start Pickup
+                            </MudButton>
+                        </div>
+                    }
+                </MudPaper>
+            }
+        }
+    }
 </div>
+
+<style>
+    .ld-pickups {
+        max-width: 600px;
+        margin: 0 auto;
+    }
+
+    .ld-tab-bar {
+        display: flex;
+        gap: 0;
+        background: #fff;
+        border-radius: 12px;
+        padding: 4px;
+        margin-bottom: 16px;
+    }
+
+    .ld-tab {
+        flex: 1;
+        text-align: center;
+        padding: 10px 8px;
+        font-size: 0.85rem;
+        font-weight: 600;
+        color: #94a3b8;
+        border-radius: 8px;
+        cursor: pointer;
+        transition: all 0.2s;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 6px;
+        user-select: none;
+        -webkit-tap-highlight-color: transparent;
+    }
+
+    .ld-tab.active {
+        background: #556ee6;
+        color: #fff;
+    }
+
+    .ld-badge {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        min-width: 20px;
+        height: 20px;
+        border-radius: 10px;
+        font-size: 0.7rem;
+        font-weight: 700;
+        padding: 0 6px;
+    }
+
+    .ld-tab.active .ld-badge {
+        background: rgba(255,255,255,0.3);
+        color: #fff;
+    }
+
+    .ld-tab:not(.active) .ld-badge {
+        background: #ef4444;
+        color: #fff;
+    }
+
+    .ld-pickup-card {
+        padding: 16px;
+        border-radius: 12px;
+        margin-bottom: 12px;
+        cursor: pointer;
+        transition: transform 0.1s;
+        -webkit-tap-highlight-color: transparent;
+    }
+
+    .ld-pickup-card:active {
+        transform: scale(0.98);
+    }
+
+    .ld-pickup-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+        margin-bottom: 10px;
+    }
+
+    .ld-pickup-info {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+    }
+
+    .ld-pickup-info-row {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+    }
+
+    .ld-pickup-actions {
+        display: flex;
+        gap: 8px;
+        margin-top: 12px;
+        padding-top: 12px;
+        border-top: 1px solid #f1f5f9;
+    }
+</style>
+
+@code {
+    private int _activeTab = 0;
+    private bool _isLoading = true;
+    private long _userId;
+    private int _pendingCount;
+    private List<PickupRequest> _pickups = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+        var userIdClaim = authState.User.FindFirst("UserId")?.Value;
+        if (long.TryParse(userIdClaim, out var uid))
+            _userId = uid;
+
+        await LoadPickups();
+    }
+
+    private async Task LoadPickups()
+    {
+        _isLoading = true;
+        try
+        {
+            await using var db = await DbFactory.CreateDbContextAsync();
+            _pickups = await db.PickupRequests
+                .Where(p => p.CourierId == _userId && !p.IsDeleted)
+                .OrderByDescending(p => p.RequestDate)
+                .Take(100)
+                .ToListAsync();
+
+            _pendingCount = _pickups.Count(p =>
+                p.Status == PickupStatus.PickupRequest || p.Status == PickupStatus.AssignedForCollection);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[LinkDel] Load pickups error: {ex.Message}");
+        }
+        finally
+        {
+            _isLoading = false;
+        }
+    }
+
+    private List<PickupRequest> GetDisplayList()
+    {
+        return _activeTab switch
+        {
+            0 => _pickups.Where(p => p.Status == PickupStatus.PickupRequest || p.Status == PickupStatus.AssignedForCollection).ToList(),
+            1 => _pickups.Where(p => p.Status == PickupStatus.ShipmentCollected || p.Status == PickupStatus.Inscanned).ToList(),
+            _ => _pickups.ToList()
+        };
+    }
+
+    private void SetTab(int tab)
+    {
+        _activeTab = tab;
+    }
+
+    private void OpenDetail(long id)
+    {
+        Navigation.NavigateTo($"/linkdel/pickups/{id}");
+    }
+
+    private async Task AcceptPickup(long id)
+    {
+        try
+        {
+            await using var db = await DbFactory.CreateDbContextAsync();
+            var pickup = await db.PickupRequests.FindAsync(id);
+            if (pickup != null && pickup.Status == PickupStatus.PickupRequest)
+            {
+                pickup.Status = PickupStatus.AssignedForCollection;
+                pickup.AssignedAt = DateTime.UtcNow;
+                pickup.ModifiedAt = DateTime.UtcNow;
+                await db.SaveChangesAsync();
+                await LoadPickups();
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[LinkDel] Accept pickup error: {ex.Message}");
+        }
+    }
+
+    private async Task RejectPickup(long id)
+    {
+        try
+        {
+            await using var db = await DbFactory.CreateDbContextAsync();
+            var pickup = await db.PickupRequests.FindAsync(id);
+            if (pickup != null && pickup.Status == PickupStatus.PickupRequest)
+            {
+                pickup.CourierId = null;
+                pickup.CourierName = null;
+                pickup.CourierPhone = null;
+                pickup.Status = PickupStatus.PickupRequest;
+                pickup.Remarks = (pickup.Remarks ?? "") + " [Rejected by courier]";
+                pickup.ModifiedAt = DateTime.UtcNow;
+                await db.SaveChangesAsync();
+                await LoadPickups();
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[LinkDel] Reject pickup error: {ex.Message}");
+        }
+    }
+
+    private string TruncateAddress(string? address, string? city)
+    {
+        var parts = new List<string>();
+        if (!string.IsNullOrWhiteSpace(address)) parts.Add(address.Length > 40 ? address[..40] + "..." : address);
+        if (!string.IsNullOrWhiteSpace(city)) parts.Add(city);
+        return parts.Any() ? string.Join(", ", parts) : "No address";
+    }
+
+    private string GetStatusLabel(PickupStatus status) => status switch
+    {
+        PickupStatus.PickupRequest => "New",
+        PickupStatus.AssignedForCollection => "Accepted",
+        PickupStatus.Attempted => "Attempted",
+        PickupStatus.ShipmentCollected => "Collected",
+        PickupStatus.Inscanned => "Inscanned",
+        PickupStatus.Cancelled => "Cancelled",
+        _ => status.ToString()
+    };
+
+    private string GetStatusStyle(PickupStatus status) => status switch
+    {
+        PickupStatus.PickupRequest => "background: #dbeafe; color: #1d4ed8;",
+        PickupStatus.AssignedForCollection => "background: #fef3c7; color: #92400e;",
+        PickupStatus.ShipmentCollected => "background: #d1fae5; color: #065f46;",
+        PickupStatus.Inscanned => "background: #e0e7ff; color: #3730a3;",
+        PickupStatus.Attempted => "background: #fee2e2; color: #991b1b;",
+        PickupStatus.Cancelled => "background: #f1f5f9; color: #64748b;",
+        _ => "background: #f1f5f9; color: #64748b;"
+    };
+}

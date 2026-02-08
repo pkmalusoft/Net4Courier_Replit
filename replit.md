@@ -56,7 +56,7 @@ The application is built on .NET 8 Blazor Server, adopting a modular architectur
 - **DRS Reconciliation Workflow**: Complete DRS cash reconciliation with per-AWB charge allocation, variance calculation, and a printable statement.
 - **Schema Auto-Sync System**: Automatic database schema synchronization at startup, generating/executing CREATE TABLE and ALTER TABLE statements for missing tables/columns. Provides on-demand schema script generation via Platform Admin.
 - **Cost Update Module**: Implemented Cost Management with `AgentRateAssignment`, `RateCardType` enum, cost-specific fields on `RateCardZone`, and cost tracking fields on `InscanMaster`. Includes a `CalculateCost()` method in `RatingEngineService` and dedicated pages for Cost Rate Card Management, MAWB cost entry, cost actualization, and profitability reporting.
-- **LinkDel PWA (Courier Mobile App)**: PWA for courier roles with mobile-first layout, courier-specific login, home dashboard, and JavaScript interop for device features.
+- **LinkDel PWA (Courier Mobile App)**: PWA for courier roles with mobile-first layout, courier-specific login, home dashboard, JavaScript interop for device features (GPS, camera, barcode, navigation), and Phase 2 pickup workflow with list/detail pages, accept/reject, collect with GPS/actual pieces/weight, attempt recording with status history tracking, and courier-scoped authorization.
 
 ## External Dependencies
 - **Database**: PostgreSQL
