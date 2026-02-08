@@ -46,10 +46,36 @@ var isProduction = Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT") 
 
 Console.WriteLine($"[{DateTime.UtcNow:O}] IsProduction: {isProduction}");
 
+var appDir = AppContext.BaseDirectory;
+var projectDir = Path.GetFullPath(Path.Combine(appDir, "..", "..", "..", ".."));
+var webRootDir = Path.Combine(projectDir, "wwwroot");
+
+if (!Directory.Exists(webRootDir))
+{
+    projectDir = Directory.GetCurrentDirectory();
+    webRootDir = Path.Combine(projectDir, "wwwroot");
+}
+
+if (!Directory.Exists(webRootDir))
+{
+    var candidate = Path.Combine(Directory.GetCurrentDirectory(), "src", "Net4Courier.Web", "wwwroot");
+    if (Directory.Exists(candidate))
+    {
+        projectDir = Path.Combine(Directory.GetCurrentDirectory(), "src", "Net4Courier.Web");
+        webRootDir = candidate;
+    }
+}
+
+Console.WriteLine($"[{DateTime.UtcNow:O}] Resolved ContentRoot: {projectDir}");
+Console.WriteLine($"[{DateTime.UtcNow:O}] Resolved WebRoot: {webRootDir}");
+Console.WriteLine($"[{DateTime.UtcNow:O}] WebRoot exists: {Directory.Exists(webRootDir)}");
+
 var options = new WebApplicationOptions
 {
     Args = args,
-    EnvironmentName = isProduction ? "Production" : null
+    EnvironmentName = isProduction ? "Production" : null,
+    ContentRootPath = projectDir,
+    WebRootPath = webRootDir
 };
 
 var builder = WebApplication.CreateBuilder(options);
