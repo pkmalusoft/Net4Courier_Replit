@@ -20,6 +20,7 @@ public interface IDemoDataService
     Task<bool> CreateTransactionDataAsync();
     Task<bool> CreateFinanceDataAsync();
     Task<bool> CreateRateCardDataAsync();
+    Task<bool> UpdateCompanyAsync(long companyId, string companyName, long countryId, long currencyId);
     Task<bool> DeleteAllDemoDataAsync();
     Task<bool> DeleteAllDataAsync();
 }
@@ -335,6 +336,38 @@ public class DemoDataService : IDemoDataService
         }
     }
 
+    public async Task<bool> UpdateCompanyAsync(long companyId, string companyName, long countryId, long currencyId)
+    {
+        await using var context = await _dbFactory.CreateDbContextAsync();
+        LastError = null;
+        
+        try
+        {
+            var company = await context.Companies.FirstOrDefaultAsync(c => c.Id == companyId && !c.IsDeleted);
+            if (company == null)
+            {
+                LastError = "Company not found";
+                return false;
+            }
+            
+            company.Name = companyName;
+            company.CountryId = countryId;
+            company.CurrencyId = currencyId;
+            company.ModifiedAt = DateTime.UtcNow;
+            
+            await context.SaveChangesAsync();
+            _logger.LogInformation("Company {CompanyId} updated: Name={Name}, CountryId={CountryId}, CurrencyId={CurrencyId}", 
+                companyId, companyName, countryId, currencyId);
+            return true;
+        }
+        catch (Exception ex)
+        {
+            LastError = ex.Message;
+            _logger.LogError(ex, "Error updating company {CompanyId}", companyId);
+            return false;
+        }
+    }
+    
     public async Task<bool> CreateMasterDataAsync(DemoDataSetupInput? setupInput = null)
     {
         await using var context = await _dbFactory.CreateDbContextAsync();
@@ -1611,21 +1644,37 @@ public class DemoDataService : IDemoDataService
         {
             await using var context = await _dbFactory.CreateDbContextAsync();
 
-            if (await context.ServiceTypes.AnyAsync(s => s.IsDemo)) return true;
+            if (await context.ZoneCategories.AnyAsync(s => s.IsDemo)) return true;
 
             var now = DateTime.UtcNow;
             var company = await context.Companies.FirstOrDefaultAsync();
 
-            var stdServiceType = new ServiceType { Code = "STD", Name = "Standard", TransitDays = 3, IsExpress = false, IsDefault = true, SortOrder = 1, IsDemo = true, IsActive = true, CreatedAt = now };
-            var expServiceType = new ServiceType { Code = "EXP", Name = "Express", TransitDays = 1, IsExpress = true, IsDefault = false, SortOrder = 2, IsDemo = true, IsActive = true, CreatedAt = now };
-            var samedayServiceType = new ServiceType { Code = "SAMEDAY", Name = "Same Day", TransitDays = 0, IsExpress = true, IsDefault = false, SortOrder = 3, IsDemo = true, IsActive = true, CreatedAt = now };
-            context.ServiceTypes.AddRange(stdServiceType, expServiceType, samedayServiceType);
+            var stdServiceType = await context.ServiceTypes.FirstOrDefaultAsync(s => s.Code == "STD");
+            if (stdServiceType == null)
+            {
+                stdServiceType = new ServiceType { Code = "STD", Name = "Standard", TransitDays = 3, IsExpress = false, IsDefault = true, SortOrder = 1, IsDemo = true, IsActive = true, CreatedAt = now };
+                context.ServiceTypes.Add(stdServiceType);
+            }
+            var expServiceType = await context.ServiceTypes.FirstOrDefaultAsync(s => s.Code == "EXP");
+            if (expServiceType == null)
+            {
+                expServiceType = new ServiceType { Code = "EXP", Name = "Express", TransitDays = 1, IsExpress = true, IsDefault = false, SortOrder = 2, IsDemo = true, IsActive = true, CreatedAt = now };
+                context.ServiceTypes.Add(expServiceType);
+            }
             await context.SaveChangesAsync();
 
-            var airShipmentMode = new Net4Courier.Masters.Entities.ShipmentMode { Code = "AIR", Name = "Air Freight", SortOrder = 1, IsDemo = true, IsActive = true, CreatedAt = now };
-            var roadShipmentMode = new Net4Courier.Masters.Entities.ShipmentMode { Code = "ROAD", Name = "Road Transport", SortOrder = 2, IsDemo = true, IsActive = true, CreatedAt = now };
-            var seaShipmentMode = new Net4Courier.Masters.Entities.ShipmentMode { Code = "SEA", Name = "Sea Freight", SortOrder = 3, IsDemo = true, IsActive = true, CreatedAt = now };
-            context.ShipmentModes.AddRange(airShipmentMode, roadShipmentMode, seaShipmentMode);
+            var airShipmentMode = await context.ShipmentModes.FirstOrDefaultAsync(s => s.Code == "AIR");
+            if (airShipmentMode == null)
+            {
+                airShipmentMode = new Net4Courier.Masters.Entities.ShipmentMode { Code = "AIR", Name = "Air Freight", SortOrder = 1, IsDemo = true, IsActive = true, CreatedAt = now };
+                context.ShipmentModes.Add(airShipmentMode);
+            }
+            var roadShipmentMode = await context.ShipmentModes.FirstOrDefaultAsync(s => s.Code == "ROAD");
+            if (roadShipmentMode == null)
+            {
+                roadShipmentMode = new Net4Courier.Masters.Entities.ShipmentMode { Code = "ROAD", Name = "Road Transport", SortOrder = 2, IsDemo = true, IsActive = true, CreatedAt = now };
+                context.ShipmentModes.Add(roadShipmentMode);
+            }
             await context.SaveChangesAsync();
 
             var domesticCategory = new ZoneCategory { Code = "DOM-ZONES", Name = "Domestic Zones", CategoryType = ZoneCategoryType.ForwardingAgent, MovementType = MovementType.Domestic, SortOrder = 1, IsDemo = true, IsActive = true, CreatedAt = now };

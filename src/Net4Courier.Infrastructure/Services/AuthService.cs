@@ -161,13 +161,16 @@ public class AuthService
             }
             
             var setupKey = Environment.GetEnvironmentVariable("SETUP_KEY");
+            var platformAdminPassword = Environment.GetEnvironmentVariable("PLATFORMADMIN_PASSWORD");
+            var effectivePassword = !string.IsNullOrEmpty(platformAdminPassword) ? platformAdminPassword : setupKey;
+            
             var platformAdminUser = await _context.Users.FirstOrDefaultAsync(u => u.Username == "platformadmin");
             
             if (platformAdminUser == null)
             {
                 var defaultBranch = await _context.Branches.FirstOrDefaultAsync(b => b.IsActive);
                 
-                var initialPassword = !string.IsNullOrEmpty(setupKey) ? setupKey : Guid.NewGuid().ToString("N")[..12];
+                var initialPassword = !string.IsNullOrEmpty(effectivePassword) ? effectivePassword : "Admin@123";
                 
                 platformAdminUser = new User
                 {
@@ -183,7 +186,7 @@ public class AuthService
                 };
                 _context.Users.Add(platformAdminUser);
                 await _context.SaveChangesAsync();
-                Console.WriteLine($"Platform admin user created (username: platformadmin, password: {(string.IsNullOrEmpty(setupKey) ? "check SETUP_KEY or use generated password" : "uses SETUP_KEY")})");
+                Console.WriteLine($"Platform admin user created (username: platformadmin, password source: {(!string.IsNullOrEmpty(platformAdminPassword) ? "PLATFORMADMIN_PASSWORD" : !string.IsNullOrEmpty(setupKey) ? "SETUP_KEY" : "default")})");
                 
                 if (defaultBranch != null)
                 {
@@ -197,17 +200,16 @@ public class AuthService
                     await _context.SaveChangesAsync();
                 }
             }
-            else if (!string.IsNullOrEmpty(setupKey))
+            else if (!string.IsNullOrEmpty(effectivePassword))
             {
-                var newHash = BCrypt.Net.BCrypt.HashPassword(setupKey);
-                if (!BCrypt.Net.BCrypt.Verify(setupKey, platformAdminUser.PasswordHash))
+                if (!BCrypt.Net.BCrypt.Verify(effectivePassword, platformAdminUser.PasswordHash))
                 {
-                    platformAdminUser.PasswordHash = newHash;
+                    platformAdminUser.PasswordHash = BCrypt.Net.BCrypt.HashPassword(effectivePassword);
                     platformAdminUser.IsActive = true;
                     platformAdminUser.RoleId = platformAdminRole.Id;
                     platformAdminUser.ModifiedAt = DateTime.UtcNow;
                     await _context.SaveChangesAsync();
-                    Console.WriteLine("Platform admin password reset to SETUP_KEY value");
+                    Console.WriteLine($"Platform admin password synced from {(!string.IsNullOrEmpty(platformAdminPassword) ? "PLATFORMADMIN_PASSWORD" : "SETUP_KEY")}");
                 }
             }
         }

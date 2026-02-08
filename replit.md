@@ -39,7 +39,7 @@ The application is built on .NET 8 Blazor Server, adopting a modular architectur
 - **Regulatory Compliance**: Empost Regulatory Compliance Module for UAE courier licensing.
 - **Error Handling**: Robust global error handling with `ErrorBoundary`, `PageErrorHandler`, and `MudBlazor Snackbar`.
 - **Demo Data & Setup**: Admin feature to create/delete demo data, initial setup dialog, and a secure initial setup wizard.
-- **Platform Administration**: Dedicated admin section with Tenant Settings, Subscription Management, user management features, and Branch Data Reassignment tool.
+- **Platform Administration**: Dedicated admin section with Tenant Settings, Subscription Management, user management features, Branch Data Reassignment tool, and System Suspension (block all user logins with reason tracking, PlatformAdmin exempt).
 - **Utility Features**: CLI password reset, AWB barcode generation, tracking/shipment invoice PDF generation, customer CRM, and "Delete All Business Data" feature.
 - **Audit Log System**: Comprehensive audit logging for all entity changes with dashboard access and Excel export.
 - **Customer Zones**: Geographic zone management for customer and courier assignments.
