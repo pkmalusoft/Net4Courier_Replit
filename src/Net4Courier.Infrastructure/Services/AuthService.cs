@@ -160,14 +160,13 @@ public class AuthService
                 Console.WriteLine("PlatformAdmin role created");
             }
             
+            var setupKey = Environment.GetEnvironmentVariable("SETUP_KEY");
             var platformAdminUser = await _context.Users.FirstOrDefaultAsync(u => u.Username == "platformadmin");
             
             if (platformAdminUser == null)
             {
                 var defaultBranch = await _context.Branches.FirstOrDefaultAsync(b => b.IsActive);
                 
-                // Use SETUP_KEY environment variable for initial password, fallback to a generated secure password
-                var setupKey = Environment.GetEnvironmentVariable("SETUP_KEY");
                 var initialPassword = !string.IsNullOrEmpty(setupKey) ? setupKey : Guid.NewGuid().ToString("N")[..12];
                 
                 platformAdminUser = new User
@@ -196,6 +195,19 @@ public class AuthService
                     };
                     _context.UserBranches.Add(userBranch);
                     await _context.SaveChangesAsync();
+                }
+            }
+            else if (!string.IsNullOrEmpty(setupKey))
+            {
+                var newHash = BCrypt.Net.BCrypt.HashPassword(setupKey);
+                if (!BCrypt.Net.BCrypt.Verify(setupKey, platformAdminUser.PasswordHash))
+                {
+                    platformAdminUser.PasswordHash = newHash;
+                    platformAdminUser.IsActive = true;
+                    platformAdminUser.RoleId = platformAdminRole.Id;
+                    platformAdminUser.ModifiedAt = DateTime.UtcNow;
+                    await _context.SaveChangesAsync();
+                    Console.WriteLine("Platform admin password reset to SETUP_KEY value");
                 }
             }
         }
