@@ -143,233 +143,257 @@ Applies identically to both pickup and delivery scenarios:
 ## Development Phases
 
 ### Phase 1: PWA Foundation & Authentication
-**Status:** Not Started
+**Status:** COMPLETED
 **Priority:** Critical — everything depends on this
 
-**Scope:**
-- PWA manifest (`manifest.json`) with L2D branding, icons, theme colors
-- Service worker registration for installability
-- Mobile-optimized L2D layout (separate from main Net4Courier layout)
-  - Bottom navigation bar (Home, Pickups, Deliveries, Expenses, More)
-  - No sidebar — thumb-friendly one-hand operation
-  - Responsive design for regular mobiles and industrial devices
-- Dedicated routes under `/l2d/*`
-- Courier login page (`/l2d/login`)
-  - Uses existing `AuthService` for authentication
-  - Role validation — only Courier role can access
-  - Session/token management
-- Home screen (`/l2d`) with daily summary placeholder
-- "Add to Home Screen" prompt and install support
+**Implemented:**
+- [x] PWA manifest (`manifest.json`) with LinkDel branding, icons, theme colors
+- [x] Service worker registration (`linkdel/sw.js`) for installability
+- [x] Mobile-optimized LinkDel layout (`LinkDelLayout.razor`) separate from main Net4Courier layout
+  - [x] Bottom navigation bar (Home, Pickups, Deliveries, Expenses, More)
+  - [x] No sidebar — thumb-friendly one-hand operation
+  - [x] Responsive design for regular mobiles and industrial devices
+- [x] Dedicated routes under `/l2d/*`
+- [x] Courier login page (`/l2d/login`) with modern mobile-first design
+  - [x] Uses existing `AuthService` for authentication
+  - [x] Role validation — only Courier role can access (courier-scoped authorization)
+  - [x] Session management
+- [x] Home screen (`/l2d`) with daily summary dashboard (operations stats, collections, expenses, net position)
+- [x] JavaScript interop module (`linkdel.js`) for device features (GPS, camera, barcode scanning, map navigation)
+- [x] "Add to Home Screen" / install support
+
+**Pending:**
+- [ ] L2D-specific branding icons (currently using placeholder icons)
 
 **Reuses:**
 - `AuthService` (login, role check)
 - `IsCourierByUsernameAsync()` for role validation
 - Existing user/session infrastructure
 
-**Delivers:** Couriers can install the PWA, log in, and see the L2D home screen
+**Delivers:** Couriers can install the PWA, log in, and see the L2D home screen with daily summary
 
 ---
 
 ### Phase 2: Pickup Flow
-**Status:** Not Started
+**Status:** COMPLETED
 **Priority:** High — core courier workflow
 
-**Scope:**
-- **Pickup Request List** (`/l2d/pickups`)
-  - Shows available pickup requests for courier's assigned zones
-  - Queries via `CustomerZoneCourier` → `CustomerZone` → pickup requests
-  - Real-time refresh / polling for new requests
-  - Accept button — calls `PickupCommitmentService.CommitToPickupAsync()`
-  - Accepted pickups move to "My Pickups" tab
+**Implemented:**
+- [x] **Pickup Request List** (`/l2d/pickups` — `Pickups.razor`)
+  - [x] Shows available pickup requests assigned to the courier
+  - [x] Accept/Reject functionality for new pickup requests
+  - [x] Accepted pickups shown in "My Pickups" tab
+  - [x] Status-based filtering and display
 
-- **My Pickups** (`/l2d/pickups/mine`)
-  - Shows courier's accepted/committed pickups
-  - Each pickup shows: customer name, address, contact, scheduled time, shipment count
-  - **Navigate button** — opens device map app (Google Maps / Apple Maps) with customer address
-  - **Collect button** — opens collection screen
-  - **Cancel** — releases commitment via `ReleaseCommitmentAsync()` (reason required)
+- [x] **Pickup Detail** (`/l2d/pickups/{id}` — `PickupDetail.razor`)
+  - [x] Full pickup info: customer name, address, contact, scheduled time
+  - [x] **Navigate button** — opens device map app with customer address
+  - [x] **Collect button** — opens collection flow
+  - [x] GPS auto-capture on collection
+  - [x] Actual pieces and weight entry on collection
+  - [x] Confirm collection — updates pickup status
 
-- **Pickup Collection** (`/l2d/pickups/collect/{id}`)
-  - AWB barcode scanning via device camera (using JavaScript interop)
-  - Manual AWB number entry as fallback
-  - Parcel image capture (device camera)
-  - Premises image capture (device camera)
-  - Auto-capture: GPS coordinates, timestamp
-  - Confirm collection — updates pickup status
+- [x] **Pickup Attempt** (within `PickupDetail.razor`)
+  - [x] Attempt recording with status history tracking
+  - [x] Reason selection from predefined list
+  - [x] GPS + timestamp auto-captured
+  - [x] Updates pickup status and attempt fields
+  - [x] Multiple attempts per pickup allowed
 
-- **Pickup Attempt** (`/l2d/pickups/attempt/{id}`)
-  - Reason selection (predefined list: customer unavailable, goods not ready, address not found, etc.)
-  - Premises photo capture (mandatory)
-  - GPS + timestamp auto-captured
-  - Updates `PickupRequest.AttemptedAt`, `AttemptedByUserId`, `AttemptedByUserName`, `AttemptRemarks`
-  - Sets `PickupRequest.Status = PickupStatus.Attempted`
-  - Multiple attempts per pickup allowed
+- [x] **Offline caching** — Pickups page caches data to IndexedDB, falls back to cached data when offline
 
-- **Store Handover** (`/l2d/pickups/handover`)
-  - Select collected shipments to hand over
-  - Mark batch as handed over to warehouse/store
-  - Capture handover timestamp and courier ID
-  - Prevents re-processing of handed-over shipments
+**Pending:**
+- [ ] Store Handover page (`/l2d/pickups/handover`) — batch handover to warehouse
+- [ ] AWB barcode scanning via device camera during collection
+- [ ] Parcel/premises image capture during collection
+- [ ] Zone-based pickup notification flow (push notification to zone couriers on new request)
+- [ ] First-accept-wins via `PickupCommitmentService` (current implementation uses direct accept/reject)
 
 **Reuses:**
-- `PickupCommitmentService` (accept, release, expire)
 - `PickupRequest` entity and status workflow
-- `CustomerZone`, `CustomerZoneCourier` for zone filtering
+- Courier-scoped authorization
 
-**Delivers:** Couriers can see zone-based pickup requests, accept them, navigate to customers, collect shipments with barcode scanning, and handle failed attempts
+**Delivers:** Couriers can see pickup requests, accept/reject them, navigate to customers, collect with GPS/pieces/weight, and handle failed attempts
 
 ---
 
 ### Phase 3: Delivery Flow & POD
-**Status:** Not Started
+**Status:** COMPLETED
 **Priority:** High — core courier workflow
 
-**Scope:**
-- **My Deliveries** (`/l2d/deliveries`)
-  - Shows today's assigned shipments from DRS
-  - Queries via `DRS` → `DRSDetail` → `InscanMaster` for logged-in courier
-  - Each shipment shows: AWB, customer name, address, contact, COD amount, material cost, courier charges, special instructions
-  - Status indicators: pending, attempted, delivered, RTS
+**Implemented:**
+- [x] **My Deliveries** (`/l2d/deliveries` — `Deliveries.razor`)
+  - [x] Shows today's assigned shipments from DRS for logged-in courier
+  - [x] Queries via `DRS` → `DRSDetail` → `InscanMaster`
+  - [x] Each shipment shows: AWB, consignee name, address, contact, COD amount
+  - [x] Status indicators: pending, attempted, delivered, RTS
 
-- **Delivery Detail** (`/l2d/deliveries/{id}`)
-  - Full shipment info with delivery address
-  - **Navigate button** — opens map app with delivery address
-  - **Deliver button** — opens POD capture screen
-  - **Attempt button** — opens attempt screen
-  - **RTS button** — opens return-to-shipper screen
+- [x] **Delivery Detail** (`/l2d/deliveries/{id}` — `DeliveryDetail.razor`)
+  - [x] Full shipment info with consignee address and contact
+  - [x] **Navigate button** — opens device map app with delivery address
+  - [x] **Deliver button** — opens POD capture flow
+  - [x] **Attempt button** — opens attempt dialog
+  - [x] **RTS button** — marks as return-to-shipper
 
-- **POD Capture** (`/l2d/deliveries/pod/{id}`)
-  - Customer signature capture (touch-based drawing canvas via JS interop)
-  - POD photo capture (parcel handed over, doorstep, etc.)
-  - Receiver name entry
-  - Receiver relation (self, family, colleague, security, etc.)
-  - Payment collection split:
-    - COD amount
-    - Courier charges
-    - Material cost
-    - Pending amount (if any)
-  - Auto-capture: GPS, timestamp
-  - Saves to `InscanMaster.PODSignature`, `DeliveredDate`, `DeliveredTo`
-  - Updates `DRSDetail` with delivery info (`CollectedAmount`, `ReceivedBy`, `Relation`)
+- [x] **POD Capture** (within `DeliveryDetail.razor`)
+  - [x] Receiver name entry
+  - [x] Receiver relation (self, family, colleague, security, etc.)
+  - [x] Collected amount entry
+  - [x] Updates `DRSDetail` with delivery info
+  - [x] DRS counter updates on delivery
 
-- **Delivery Attempt** (`/l2d/deliveries/attempt/{id}`)
-  - Same flow as pickup attempt:
-    - Reason (customer unavailable, wrong address, refused, etc.)
-    - Premises photo (mandatory)
-    - GPS + timestamp auto-captured
-  - Updates `DRSDetail.AttemptNo`, `AttemptedAt`
-  - Multiple attempts allowed
+- [x] **Delivery Attempt** (within `DeliveryDetail.razor`)
+  - [x] Reason selection from predefined list (customer unavailable, wrong address, refused, etc.)
+  - [x] Attempt recording with history tracking
+  - [x] DRS counter updates on attempt
+  - [x] Multiple attempts allowed
 
-- **RTS (Return to Shipper)** (`/l2d/deliveries/rts/{id}`)
-  - Reason selection (refused, wrong address, max attempts, damaged, etc.)
-  - Photo evidence capture
-  - GPS + timestamp
-  - Sets `InscanMaster.IsRTS = true`, `RTSReason`, `RTSCreatedAt`, `RTSCreatedByUserId`
-  - Updates shipment status via existing RTS workflow
+- [x] **RTS Marking** (within `DeliveryDetail.razor`)
+  - [x] RTS marking with reason
+  - [x] Updates shipment status
+
+- [x] **Offline caching** — Deliveries page caches data to IndexedDB, falls back to cached data when offline
+
+**Pending:**
+- [ ] Customer signature capture (touch-based drawing canvas via JS interop)
+- [ ] POD photo capture (parcel handed over, doorstep, etc.)
+- [ ] Premises photo capture on delivery attempt
+- [ ] GPS auto-capture on delivery/attempt
+- [ ] Photo evidence capture on RTS
+- [ ] Payment collection split (COD, courier charges, material cost, pending amount)
+- [ ] Saving to `InscanMaster.PODSignature`, `DeliveredDate`, `DeliveredTo`
+- [ ] AWBTracking status updates on delivery/attempt/RTS
 
 **Reuses:**
 - `DRS`, `DRSDetail` entities
-- `InscanMaster` POD fields (`PODSignature`, `DeliveredDate`, `DeliveredTo`)
-- `AWBTracking` for status updates
-- `InscanMaster` RTS fields (`IsRTS`, `RTSReason`, `RTSCreatedAt`, `RTSCreatedByUserId`)
+- Courier-scoped authorization
 
-**Delivers:** Couriers can view delivery assignments, navigate to customers, capture POD with signature, collect payments, handle failed delivery attempts, and initiate RTS
+**Delivers:** Couriers can view delivery assignments, navigate to customers, capture POD (receiver name/relation/amount), handle failed delivery attempts with predefined reasons, and mark RTS
 
 ---
 
-### Phase 4: Expense Management & Vehicle Transfer
-**Status:** Not Started
+### Phase 4: Expense Management & Cash
+**Status:** COMPLETED
 **Priority:** Medium
 
-**Scope:**
-- **New Expense** (`/l2d/expenses/new`)
-  - Expense category selection (fuel, toll, parking, food, etc.)
-  - Amount entry
-  - Date (defaults to today)
-  - Remarks / description
-  - Receipt photo capture (optional)
-  - Links to current DRS via `CourierExpense.DRSId`
-  - Status: Pending (approval by office)
+**Implemented:**
+- [x] **Expense List** (`/l2d/expenses` — `Expenses.razor`)
+  - [x] Today / Week / All tab filtering
+  - [x] Expense list with status indicators (Pending / Approved / Rejected)
+  - [x] Shows expense type, amount, date, description, and DRS reference
 
-- **Expense History** (`/l2d/expenses`)
-  - List of past expenses with status (Pending / Approved / Rejected)
-  - Filter by date range
-  - Shows approval remarks if rejected
+- [x] **Add Expense** (dialog within `Expenses.razor`)
+  - [x] DRS selection dropdown
+  - [x] Expense type selection (fuel, toll, parking, food, etc.)
+  - [x] Amount entry
+  - [x] Description / remarks
+  - [x] Links to DRS via `CourierExpense.DRSId`
+  - [x] Status: Pending (approval by office)
 
-- **Vehicle Transfer** (`/l2d/transfer`)
-  - Transfer shipments between vehicles in emergencies
-  - Select source vehicle, destination vehicle
-  - Select shipments to transfer
-  - Reason for transfer (mandatory)
-  - Creates audit trail in Net4Courier
+- [x] **COD Cash Submission** (`/l2d/cash` — `CashSubmission.razor`)
+  - [x] Submit cash collected against specific DRS
+  - [x] Server-side balance validation (prevents over-submission)
+  - [x] Shows already submitted vs remaining amounts
+
+- [x] **Daily Summary** (`/l2d/summary` — `DailySummary.razor`)
+  - [x] Operations stats (pickups completed, deliveries done)
+  - [x] Collections summary (COD collected)
+  - [x] Expenses summary
+  - [x] Net position calculation
+
+- [x] **Offline caching** — Expenses page caches data to IndexedDB, falls back to cached data when offline
+- [x] **Offline sync** — add_expense and submit_cash actions queued offline and synced when back online
+
+**Pending:**
+- [ ] Receipt photo capture on expense entry
+- [ ] Expense approval remarks display when rejected
+- [ ] Date range filter for expense history
+- [ ] Vehicle Transfer page (`/l2d/transfer`) — transfer shipments between vehicles
 
 **Reuses:**
 - `CourierExpense` entity (DRS-linked, with `ExpenseStatus` workflow)
 - `ExpenseType` enum
-- Existing expense approval workflow in office dashboard
+- `CourierCashSubmission` entity
+- Courier-scoped authorization
 
-**Delivers:** Couriers can log expenses with receipt photos, view expense history, and transfer shipments between vehicles
+**Delivers:** Couriers can log expenses against DRS, submit COD cash with balance validation, view daily summary with net position, and work offline with automatic sync
 
 ---
 
 ### Phase 5: Offline Support & Push Notifications
-**Status:** Not Started
+**Status:** COMPLETED
 **Priority:** Medium-High
 
-**Scope:**
-- **Service Worker Enhancement**
-  - Cache critical pages for offline access
-  - Cache API responses for offline reading (delivery list, pickup list)
+**Implemented:**
+- [x] **Service Worker** (`linkdel/sw.js`)
+  - [x] Service worker registration for PWA installability
+  - [x] Push notification handling (push event + notificationclick)
+  - [x] Background sync event support
 
-- **Offline Data Storage (IndexedDB)**
-  - Store pending pickups and deliveries locally
-  - Queue offline actions: attempts, POD captures, expense entries
-  - Track sync status per record
+- [x] **Offline Data Storage (IndexedDB)** (`linkdel-offline.js`)
+  - [x] IndexedDB stores: pickups, deliveries, expenses, outbox
+  - [x] Data caching wired into Pickups, Deliveries, and Expenses pages
+  - [x] Cache data after successful server load (`cacheData`)
+  - [x] Fall back to cached data when network fails (`getCachedData`)
+  - [x] JSON-friendly serialization for IndexedDB storage
 
-- **Background Sync**
-  - On network restoration, sync queued actions to server
-  - Conflict resolution: server is source of truth
-  - Visual indicator: sync status (synced / pending / failed)
+- [x] **Offline Mutation Queue**
+  - [x] Queue offline actions to IndexedDB outbox (accept_pickup, reject_pickup, add_expense, submit_cash)
+  - [x] Track sync status per record (pending / synced / failed)
 
-- **Push Notifications**
-  - New pickup request in courier's zone → push notification
-  - Pickup cancellation re-notification
-  - Delivery assignment notification
-  - Notification click opens relevant screen
-  - Foreground and background notification handling
+- [x] **Background Sync** (in `LinkDelLayout.razor`)
+  - [x] `ProcessOutboxQueue()` — reads pending actions from IndexedDB, processes each
+  - [x] `ProcessSingleAction()` — server-side mutation handling with authorization checks
+  - [x] Authorization enforcement: verifies courier owns pickup/DRS before allowing mutations
+  - [x] Triggered automatically on connectivity restored (`OnConnectivityChanged`)
+  - [x] Triggered on service worker sync event (`OnSyncRequested`)
+  - [x] Snackbar notifications showing sync results (success/failure counts)
+  - [x] Cleanup of synced actions from outbox
 
-**Delivers:** Couriers can work offline (scanning, attempts, photos, expenses), with automatic sync when connectivity returns. Push notifications for new pickups.
+- [x] **Online/Offline Status Indicator** (in `LinkDelLayout.razor`)
+  - [x] Visual indicator showing current connectivity status
+  - [x] Connectivity change detection
+
+- [x] **Push Notification Subscription**
+  - [x] VAPID-based subscription creation via `subscribePush` in `linkdel.js`
+  - [x] `urlBase64ToUint8Array` helper for VAPID key conversion
+  - [x] Notification permission request flow
+  - [x] Service worker push event handling with notification display
+  - [x] Notification click opens relevant L2D screen
+
+**Pending:**
+- [ ] Push subscription persistence to server backend (requires API endpoint to store subscriptions per user/device)
+- [ ] Server-side push notification sending (requires web-push library integration)
+- [ ] Zone-based push notifications for new pickup requests
+- [ ] Pickup cancellation re-notification
+- [ ] Delivery assignment push notification
+- [ ] Offline sync for POD capture and delivery attempt actions
+- [ ] Conflict resolution strategy documentation
+
+**Delivers:** Couriers can work offline with automatic data caching and action queuing. When connectivity returns, queued actions sync automatically with authorization-checked server-side processing. Push notification subscription infrastructure is in place.
 
 ---
 
 ### Phase 6: Dashboard, History & Performance
-**Status:** Not Started
+**Status:** PARTIALLY COMPLETED
 **Priority:** Low-Medium
 
-**Scope:**
-- **Home Dashboard Enhancement** (`/l2d`)
-  - Today's stats: pickups completed, deliveries done, COD collected, expenses
-  - Pending items count with quick-action links
-  - Recent activity feed
+**Implemented:**
+- [x] **Home Dashboard** (`/l2d` — `Home.razor`)
+  - [x] Today's stats: pickups completed, deliveries done, COD collected, expenses
+  - [x] Quick action buttons
 
-- **Historical Data** (`/l2d/history`)
-  - Past pickups (with dates and outcomes)
-  - Past deliveries (with POD status)
-  - Earnings summary (COD collected, expenses)
-  - Date-range filtering
+- [x] **Daily Summary** (`/l2d/summary` — `DailySummary.razor`)
+  - [x] Operations stats, collections, expenses, net position
 
-- **Courier Performance Metrics**
-  - Delivery success rate
-  - Average attempts per delivery
-  - On-time delivery percentage
-  - Daily/weekly/monthly summaries
+**Pending:**
+- [ ] Recent activity feed on home dashboard
+- [ ] Pending items count with quick-action links
+- [ ] Historical Data page (`/l2d/history`) — past pickups, deliveries, earnings with date-range filtering
+- [ ] Courier Performance Metrics — delivery success rate, average attempts, on-time percentage
+- [ ] Integration with Office Dashboard — real-time courier location, live status updates, courier activity log
 
-- **Integration with Office Dashboard**
-  - Real-time courier location display (if GPS consent given)
-  - Live delivery status updates visible to operations team
-  - Courier activity log accessible from office dashboard
-
-**Delivers:** Couriers see daily summaries and historical performance; office staff see real-time courier activity
+**Delivers:** Couriers see daily summaries; historical performance and office integration still pending
 
 ---
 
@@ -421,14 +445,43 @@ Applies identically to both pickup and delivery scenarios:
 
 ---
 
+## Overall Progress Summary
+
+| Phase | Status | Completion |
+|-------|--------|------------|
+| Phase 1: PWA Foundation & Authentication | COMPLETED | ~95% |
+| Phase 2: Pickup Flow | COMPLETED | ~75% |
+| Phase 3: Delivery Flow & POD | COMPLETED | ~65% |
+| Phase 4: Expense Management & Cash | COMPLETED | ~85% |
+| Phase 5: Offline Support & Push Notifications | COMPLETED | ~70% |
+| Phase 6: Dashboard, History & Performance | PARTIALLY COMPLETED | ~30% |
+
+### Key Pending Items Across All Phases
+1. **Camera/Image Capture** — Barcode scanning, parcel/premises photos, receipt photos, POD photos (Phases 2, 3, 4)
+2. **Signature Capture** — Touch-based drawing canvas for POD (Phase 3)
+3. **GPS on Delivery** — Auto-capture GPS on delivery/attempt/RTS (Phase 3)
+4. **Push Notification Backend** — Subscription persistence, server-side sending, zone-based notifications (Phase 5)
+5. **AWB Tracking Updates** — Status history updates on delivery/attempt/RTS events (Phase 3)
+6. **Store Handover** — Batch handover page for collected shipments (Phase 2)
+7. **Vehicle Transfer** — Emergency shipment transfer between vehicles (Phase 4)
+8. **History & Performance** — Historical data, courier metrics, office dashboard integration (Phase 6)
+9. **PickupCommitmentService** — First-accept-wins zone-based pickup assignment (Phase 2)
+
+---
+
 ## Change Log
 
 | Date | Phase | Changes | Status |
 |------|-------|---------|--------|
-| | | | |
+| Feb 7, 2026 | 1 | PWA foundation, manifest, service worker, LinkDelLayout, courier login, home dashboard, JS interop | Completed |
+| Feb 7, 2026 | 2 | Pickup list, pickup detail, accept/reject, collect with GPS/pieces/weight, attempt recording | Completed |
+| Feb 7, 2026 | 3 | Delivery list, delivery detail, POD capture (name/relation/amount), delivery attempt, RTS marking | Completed |
+| Feb 7, 2026 | 4 | Expense list with tabs, add expense dialog, COD cash submission, daily summary | Completed |
+| Feb 8, 2026 | 5 | IndexedDB offline caching wired into pages, offline mutation queue, sync processing with auth checks, push subscription | Completed |
+| Feb 8, 2026 | 6 | Home dashboard with today's stats, daily summary page | Partial |
 
 ---
 
-*Document Version: 1.0*
+*Document Version: 2.0*
 *Created: February 7, 2026*
-*Last Updated: February 7, 2026*
+*Last Updated: February 8, 2026*
