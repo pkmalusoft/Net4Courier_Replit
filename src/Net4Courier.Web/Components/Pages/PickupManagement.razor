@@ -66,6 +66,30 @@
             </MudButton>
         </MudItem>
     </MudGrid>
+    <MudGrid Class="mt-2">
+        <MudItem xs="12" sm="6" md="2">
+            <MudButton Variant="Variant.Outlined" Color="Color.Info" StartIcon="@Icons.Material.Filled.Description" 
+                       OnClick="DownloadTemplate" FullWidth="true">Download Template</MudButton>
+        </MudItem>
+        <MudItem xs="12" sm="6" md="2">
+            <MudFileUpload T="IBrowserFile" Accept=".xlsx,.xls" FilesChanged="OnExcelFileSelected" Class="ma-0">
+                <ActivatorContent>
+                    <MudButton Variant="Variant.Filled" Color="Color.Tertiary" StartIcon="@Icons.Material.Filled.CloudUpload" 
+                               FullWidth="true" Disabled="@_isUploading">
+                        @if (_isUploading)
+                        {
+                            <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" />
+                            @:Uploading...
+                        }
+                        else
+                        {
+                            @:Upload Excel
+                        }
+                    </MudButton>
+                </ActivatorContent>
+            </MudFileUpload>
+        </MudItem>
+    </MudGrid>
 </MudPaper>
 
 <MudGrid Class="mb-4">
@@ -398,6 +422,7 @@ else
     private CommitmentFilterType _showCommitmentFilter = CommitmentFilterType.None;
     private System.Timers.Timer? _refreshTimer;
     private Dictionary<string, bool> _expansionStates = new();
+    private bool _isUploading = false;
 
     protected override async Task OnInitializedAsync()
     {
@@ -926,6 +951,342 @@ else
         workbook.SaveAs(stream);
         var fileName = $"PickupDashboard_{DateTime.Now:yyyyMMdd_HHmmss}.xlsx";
         await JSRuntime.InvokeVoidAsync("downloadFileFromStream", fileName, Convert.ToBase64String(stream.ToArray()));
+    }
+
+    private async Task DownloadTemplate()
+    {
+        using var workbook = new XLWorkbook();
+
+        var ws1 = workbook.Worksheets.Add("PickupRequests");
+        var pickupHeaders = new[] { "CustomerCode", "ContactPerson", "Phone", "Mobile", "Email", "PickupAddress", "City", "State", "Country", "PostalCode", "ScheduledDate", "EstimatedPieces", "EstimatedWeight", "SpecialInstructions", "ReferenceNo" };
+        for (int i = 0; i < pickupHeaders.Length; i++)
+        {
+            ws1.Cell(1, i + 1).Value = pickupHeaders[i];
+            ws1.Cell(1, i + 1).Style.Font.Bold = true;
+            ws1.Cell(1, i + 1).Style.Fill.BackgroundColor = XLColor.LightBlue;
+        }
+        ws1.Cell(2, 1).Value = "CUST001";
+        ws1.Cell(2, 4).Value = "+971501234567";
+        ws1.Cell(2, 6).Value = "123 Main Street";
+        ws1.Cell(2, 7).Value = "Dubai";
+        ws1.Cell(2, 9).Value = "UAE";
+        ws1.Cell(2, 11).Value = DateTime.Today.AddDays(1).ToString("dd/MM/yyyy");
+        ws1.Cell(2, 12).Value = 5;
+        ws1.Cell(2, 13).Value = 10.5;
+        ws1.Columns().AdjustToContents();
+
+        var ws2 = workbook.Worksheets.Add("ShipmentLines");
+        var shipmentHeaders = new[] { "PickupRowNo", "Consignee", "ConsigneeContact", "ConsigneePhone", "ConsigneeMobile", "ConsigneeAddress1", "ConsigneeAddress2", "ConsigneeCity", "ConsigneeState", "ConsigneeCountry", "ConsigneePostalCode", "Pieces", "Weight", "Length", "Width", "Height", "CargoDescription", "ReferenceNo", "PaymentMode", "DocumentType", "DeclaredValue", "Currency" };
+        for (int i = 0; i < shipmentHeaders.Length; i++)
+        {
+            ws2.Cell(1, i + 1).Value = shipmentHeaders[i];
+            ws2.Cell(1, i + 1).Style.Font.Bold = true;
+            ws2.Cell(1, i + 1).Style.Fill.BackgroundColor = XLColor.LightGreen;
+        }
+        ws2.Cell(2, 1).Value = 1;
+        ws2.Cell(2, 2).Value = "John Doe";
+        ws2.Cell(2, 6).Value = "456 Delivery Road";
+        ws2.Cell(2, 8).Value = "Abu Dhabi";
+        ws2.Cell(2, 10).Value = "UAE";
+        ws2.Cell(2, 12).Value = 2;
+        ws2.Cell(2, 13).Value = 5.0;
+        ws2.Cell(2, 19).Value = "Prepaid";
+        ws2.Cell(2, 20).Value = "Document";
+        ws2.Columns().AdjustToContents();
+
+        var ws3 = workbook.Worksheets.Add("Instructions");
+        ws3.Cell(1, 1).Value = "Pickup Request Excel Upload Instructions";
+        ws3.Cell(1, 1).Style.Font.Bold = true;
+        ws3.Cell(1, 1).Style.Font.FontSize = 14;
+        ws3.Cell(3, 1).Value = "Sheet 1 - PickupRequests:";
+        ws3.Cell(3, 1).Style.Font.Bold = true;
+        ws3.Cell(4, 1).Value = "- Each row creates one pickup request";
+        ws3.Cell(5, 1).Value = "- CustomerCode: Must match an existing customer code in the system";
+        ws3.Cell(6, 1).Value = "- Mobile is required";
+        ws3.Cell(7, 1).Value = "- ScheduledDate format: dd/MM/yyyy";
+        ws3.Cell(9, 1).Value = "Sheet 2 - ShipmentLines:";
+        ws3.Cell(9, 1).Style.Font.Bold = true;
+        ws3.Cell(10, 1).Value = "- PickupRowNo: Row number from PickupRequests sheet (starting from 1 for first data row)";
+        ws3.Cell(11, 1).Value = "- Multiple shipment lines can reference the same PickupRowNo";
+        ws3.Cell(12, 1).Value = "- Consignee and ConsigneeCity are required";
+        ws3.Cell(13, 1).Value = "- PaymentMode: Prepaid, COD, Account, PickupCash (default: Prepaid)";
+        ws3.Cell(14, 1).Value = "- DocumentType: Letter, Document, Parcel, Parcel Above 30Kg (default: Document)";
+        ws3.Cell(16, 1).Value = "Note: Row 2 in each sheet contains sample data. Replace or delete it before uploading.";
+        ws3.Cell(16, 1).Style.Font.Italic = true;
+        ws3.Column(1).Width = 80;
+
+        using var stream = new MemoryStream();
+        workbook.SaveAs(stream);
+        var fileName = "PickupRequest_Template.xlsx";
+        await JSRuntime.InvokeVoidAsync("downloadFileFromStream", fileName, Convert.ToBase64String(stream.ToArray()));
+        Snackbar.Add("Template downloaded successfully", Severity.Success);
+    }
+
+    private async Task OnExcelFileSelected(IBrowserFile file)
+    {
+        if (file == null) return;
+
+        _isUploading = true;
+        StateHasChanged();
+
+        try
+        {
+            using var stream = new MemoryStream();
+            await file.OpenReadStream(10 * 1024 * 1024).CopyToAsync(stream);
+            stream.Position = 0;
+
+            using var workbook = new XLWorkbook(stream);
+
+            var pickupSheet = workbook.Worksheets.FirstOrDefault(w => w.Name == "PickupRequests");
+            if (pickupSheet == null)
+            {
+                Snackbar.Add("Sheet 'PickupRequests' not found. Please use the correct template.", Severity.Error);
+                return;
+            }
+
+            var customers = await DbContext.Parties
+                .Where(p => p.PartyType == PartyType.Customer && !p.IsDeleted && p.IsActive && p.Code != null)
+                .ToDictionaryAsync(p => p.Code!.ToUpper(), p => p);
+
+            var pickupRows = new Dictionary<int, PickupRequest>();
+            var shipmentLinesToPickupRow = new List<(int PickupRowNo, PickupRequestShipment Shipment)>();
+            int successCount = 0;
+            int errorCount = 0;
+            var errors = new List<string>();
+            bool hasValidationErrors = false;
+
+            var today = DateTime.UtcNow.Date;
+            var baseCount = await DbContext.PickupRequests.Where(p => p.RequestDate >= today).CountAsync();
+
+            var lastRow = pickupSheet.LastRowUsed()?.RowNumber() ?? 1;
+            for (int row = 2; row <= lastRow; row++)
+            {
+                var customerCode = pickupSheet.Cell(row, 1).GetString().Trim();
+                var mobile = pickupSheet.Cell(row, 4).GetString().Trim();
+
+                if (string.IsNullOrWhiteSpace(customerCode) && string.IsNullOrWhiteSpace(mobile))
+                    continue;
+
+                if (string.IsNullOrWhiteSpace(mobile))
+                {
+                    errors.Add($"Row {row}: Mobile is required");
+                    errorCount++;
+                    hasValidationErrors = true;
+                    continue;
+                }
+
+                Party? customer = null;
+                if (!string.IsNullOrWhiteSpace(customerCode))
+                {
+                    customers.TryGetValue(customerCode.ToUpper(), out customer);
+                    if (customer == null)
+                    {
+                        errors.Add($"Row {row}: Customer code '{customerCode}' not found");
+                        errorCount++;
+                        hasValidationErrors = true;
+                        continue;
+                    }
+                }
+
+                var scheduledDateStr = pickupSheet.Cell(row, 11).GetString().Trim();
+                DateTime? scheduledDate = null;
+                if (!string.IsNullOrWhiteSpace(scheduledDateStr))
+                {
+                    if (DateTime.TryParseExact(scheduledDateStr, new[] { "dd/MM/yyyy", "yyyy-MM-dd", "MM/dd/yyyy" }, null, System.Globalization.DateTimeStyles.None, out var dt))
+                        scheduledDate = DateTime.SpecifyKind(dt, DateTimeKind.Utc);
+                    else if (pickupSheet.Cell(row, 11).TryGetValue<DateTime>(out var xlDt))
+                        scheduledDate = DateTime.SpecifyKind(xlDt.Date, DateTimeKind.Utc);
+                }
+
+                int.TryParse(pickupSheet.Cell(row, 12).GetString().Trim(), out var estPieces);
+                decimal.TryParse(pickupSheet.Cell(row, 13).GetString().Trim(), out var estWeight);
+
+                var pickupNo = $"PU{DateTime.UtcNow:yyyyMMdd}{(baseCount + successCount + 1):D4}";
+
+                var pickup = new PickupRequest
+                {
+                    PickupNo = pickupNo,
+                    RequestDate = DateTime.UtcNow,
+                    ScheduledDate = scheduledDate,
+                    CustomerId = customer?.Id,
+                    CustomerName = customer?.Name ?? pickupSheet.Cell(row, 2).GetString().Trim(),
+                    ContactPerson = pickupSheet.Cell(row, 2).GetString().Trim(),
+                    Phone = pickupSheet.Cell(row, 3).GetString().Trim(),
+                    Mobile = mobile,
+                    Email = pickupSheet.Cell(row, 5).GetString().Trim(),
+                    PickupAddress = pickupSheet.Cell(row, 6).GetString().Trim(),
+                    City = pickupSheet.Cell(row, 7).GetString().Trim(),
+                    State = pickupSheet.Cell(row, 8).GetString().Trim(),
+                    Country = pickupSheet.Cell(row, 9).GetString().Trim(),
+                    PostalCode = pickupSheet.Cell(row, 10).GetString().Trim(),
+                    EstimatedPieces = estPieces > 0 ? estPieces : null,
+                    EstimatedWeight = estWeight > 0 ? estWeight : null,
+                    SpecialInstructions = pickupSheet.Cell(row, 14).GetString().Trim(),
+                    ReferenceNo = pickupSheet.Cell(row, 15).GetString().Trim(),
+                    Status = PickupStatus.PickupRequest
+                };
+
+                pickupRows[row - 1] = pickup;
+                successCount++;
+            }
+
+            var shipmentSheet = workbook.Worksheets.FirstOrDefault(w => w.Name == "ShipmentLines");
+            int shipmentCount = 0;
+            if (shipmentSheet != null)
+            {
+                var lineCountByPickup = new Dictionary<int, int>();
+                var lastShipmentRow = shipmentSheet.LastRowUsed()?.RowNumber() ?? 1;
+                for (int row = 2; row <= lastShipmentRow; row++)
+                {
+                    var rowNoStr = shipmentSheet.Cell(row, 1).GetString().Trim();
+                    if (string.IsNullOrWhiteSpace(rowNoStr)) continue;
+
+                    if (!int.TryParse(rowNoStr, out var pickupRowNo) || !pickupRows.ContainsKey(pickupRowNo))
+                    {
+                        errors.Add($"ShipmentLines Row {row}: Invalid PickupRowNo '{rowNoStr}'");
+                        hasValidationErrors = true;
+                        continue;
+                    }
+
+                    var consignee = shipmentSheet.Cell(row, 2).GetString().Trim();
+                    if (string.IsNullOrWhiteSpace(consignee))
+                    {
+                        errors.Add($"ShipmentLines Row {row}: Consignee is required");
+                        hasValidationErrors = true;
+                        continue;
+                    }
+
+                    var consigneeCity = shipmentSheet.Cell(row, 8).GetString().Trim();
+                    if (string.IsNullOrWhiteSpace(consigneeCity))
+                    {
+                        errors.Add($"ShipmentLines Row {row}: ConsigneeCity is required");
+                        hasValidationErrors = true;
+                        continue;
+                    }
+
+                    int.TryParse(shipmentSheet.Cell(row, 12).GetString().Trim(), out var pieces);
+                    decimal.TryParse(shipmentSheet.Cell(row, 13).GetString().Trim(), out var weight);
+                    decimal.TryParse(shipmentSheet.Cell(row, 14).GetString().Trim(), out var length);
+                    decimal.TryParse(shipmentSheet.Cell(row, 15).GetString().Trim(), out var width);
+                    decimal.TryParse(shipmentSheet.Cell(row, 16).GetString().Trim(), out var height);
+                    decimal.TryParse(shipmentSheet.Cell(row, 21).GetString().Trim(), out var declaredValue);
+
+                    var paymentModeStr = shipmentSheet.Cell(row, 19).GetString().Trim();
+                    var paymentMode = paymentModeStr.ToLower() switch
+                    {
+                        "cod" => Net4Courier.Kernel.Enums.PaymentMode.COD,
+                        "account" or "credit" => Net4Courier.Kernel.Enums.PaymentMode.Account,
+                        "pickupcash" or "pickup cash" or "cash" => Net4Courier.Kernel.Enums.PaymentMode.PickupCash,
+                        _ => Net4Courier.Kernel.Enums.PaymentMode.Prepaid
+                    };
+
+                    var docTypeStr = shipmentSheet.Cell(row, 20).GetString().Trim();
+                    var docType = docTypeStr.ToLower() switch
+                    {
+                        "letter" => Net4Courier.Kernel.Enums.DocumentType.Letter,
+                        "parcel" or "parcel upto 30kg" => Net4Courier.Kernel.Enums.DocumentType.ParcelUpto30Kg,
+                        "parcel above 30kg" or "heavy parcel" => Net4Courier.Kernel.Enums.DocumentType.ParcelAbove30Kg,
+                        _ => Net4Courier.Kernel.Enums.DocumentType.Document
+                    };
+
+                    if (!lineCountByPickup.ContainsKey(pickupRowNo))
+                        lineCountByPickup[pickupRowNo] = 0;
+                    lineCountByPickup[pickupRowNo]++;
+
+                    shipmentLinesToPickupRow.Add((pickupRowNo, new PickupRequestShipment
+                    {
+                        LineNo = lineCountByPickup[pickupRowNo],
+                        Consignee = consignee,
+                        ConsigneeContact = shipmentSheet.Cell(row, 3).GetString().Trim(),
+                        ConsigneePhone = shipmentSheet.Cell(row, 4).GetString().Trim(),
+                        ConsigneeMobile = shipmentSheet.Cell(row, 5).GetString().Trim(),
+                        ConsigneeAddress1 = shipmentSheet.Cell(row, 6).GetString().Trim(),
+                        ConsigneeAddress2 = shipmentSheet.Cell(row, 7).GetString().Trim(),
+                        ConsigneeCity = consigneeCity,
+                        ConsigneeState = shipmentSheet.Cell(row, 9).GetString().Trim(),
+                        ConsigneeCountry = shipmentSheet.Cell(row, 10).GetString().Trim(),
+                        ConsigneePostalCode = shipmentSheet.Cell(row, 11).GetString().Trim(),
+                        Pieces = pieces > 0 ? pieces : null,
+                        Weight = weight > 0 ? weight : null,
+                        Length = length > 0 ? length : null,
+                        Width = width > 0 ? width : null,
+                        Height = height > 0 ? height : null,
+                        CargoDescription = shipmentSheet.Cell(row, 17).GetString().Trim(),
+                        ReferenceNo = shipmentSheet.Cell(row, 18).GetString().Trim(),
+                        PaymentModeId = paymentMode,
+                        DocumentTypeId = docType,
+                        DeclaredValue = declaredValue > 0 ? declaredValue : null,
+                        Currency = shipmentSheet.Cell(row, 22).GetString().Trim(),
+                        Status = ShipmentLineStatus.Pending
+                    }));
+                    shipmentCount++;
+                }
+            }
+
+            if (successCount == 0)
+            {
+                var errorDetails = string.Join("\n", errors.Take(10));
+                if (errors.Count > 10) errorDetails += $"\n...and {errors.Count - 10} more errors";
+                Snackbar.Add("No valid pickup requests found. Please check the data and try again.", Severity.Error);
+                if (errors.Any()) Snackbar.Add(errorDetails, Severity.Error);
+                return;
+            }
+
+            var invalidShipmentPickupRows = shipmentLinesToPickupRow
+                .Select(s => s.PickupRowNo)
+                .Distinct()
+                .Where(r => !pickupRows.ContainsKey(r))
+                .ToList();
+            shipmentLinesToPickupRow.RemoveAll(s => !pickupRows.ContainsKey(s.PickupRowNo));
+
+            using var transaction = await DbContext.Database.BeginTransactionAsync();
+            try
+            {
+                foreach (var kvp in pickupRows)
+                {
+                    DbContext.PickupRequests.Add(kvp.Value);
+                }
+                await DbContext.SaveChangesAsync();
+
+                foreach (var (pickupRowNo, shipment) in shipmentLinesToPickupRow)
+                {
+                    shipment.PickupRequestId = pickupRows[pickupRowNo].Id;
+                    DbContext.PickupRequestShipments.Add(shipment);
+                }
+
+                await DbContext.SaveChangesAsync();
+                await transaction.CommitAsync();
+            }
+            catch
+            {
+                await transaction.RollbackAsync();
+                throw;
+            }
+
+            var message = $"Upload complete: {successCount} pickup request(s) created";
+            if (shipmentCount > 0) message += $", {shipmentCount} shipment line(s) added";
+            if (errorCount > 0) message += $", {errorCount} row(s) skipped due to errors";
+            Snackbar.Add(message, errorCount > 0 ? Severity.Warning : Severity.Success);
+
+            if (errors.Any())
+            {
+                var errorDetails = string.Join("\n", errors.Take(10));
+                if (errors.Count > 10) errorDetails += $"\n...and {errors.Count - 10} more errors";
+                Snackbar.Add(errorDetails, Severity.Error);
+            }
+
+            await Search();
+            await LoadStatusCounts();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Upload failed: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _isUploading = false;
+            StateHasChanged();
+        }
     }
 
     private enum CommitmentFilterType { None, Committed, ExpiringSoon, Available }
