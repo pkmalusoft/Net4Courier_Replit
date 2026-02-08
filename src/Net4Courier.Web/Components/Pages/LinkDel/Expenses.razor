@@ -8,6 +8,7 @@
 @inject AuthenticationStateProvider AuthStateProvider
 @inject IDbContextFactory<ApplicationDbContext> DbFactory
 @inject ISnackbar Snackbar
+@inject IJSRuntime JS
 
 <div class="ld-expenses">
     <div class="ld-tab-bar">
@@ -259,14 +260,65 @@
             _allExpenses = expenses;
             _todayCount = expenses.Count(e => e.ExpenseDate.Date == DateTime.UtcNow.Date);
             ApplyFilter();
+
+            try
+            {
+                var cacheItems = expenses.Select(e => new
+                {
+                    id = e.Id,
+                    expenseDate = e.ExpenseDate.ToString("o"),
+                    expenseType = (int)e.ExpenseType,
+                    amount = e.Amount,
+                    description = e.Description,
+                    status = (int)e.Status,
+                    drsNo = e.DRSNo,
+                    drsId = e.DRSId
+                }).ToArray();
+                await JS.InvokeVoidAsync("linkdelOffline.cacheData", "expenses", cacheItems);
+            }
+            catch { }
         }
         catch (Exception ex)
         {
             Console.WriteLine($"[LinkDel] Load expenses error: {ex.Message}");
+            await LoadExpensesFromCache();
         }
         finally
         {
             _isLoading = false;
+        }
+    }
+
+    private async Task LoadExpensesFromCache()
+    {
+        try
+        {
+            var cached = await JS.InvokeAsync<System.Text.Json.JsonElement[]>("linkdelOffline.getCachedData", "expenses");
+            if (cached != null && cached.Length > 0)
+            {
+                _allExpenses = cached.Select(c =>
+                {
+                    var item = new ExpenseItem
+                    {
+                        Id = c.GetProperty("id").GetInt64(),
+                        ExpenseDate = c.TryGetProperty("expenseDate", out var ed) && ed.ValueKind == System.Text.Json.JsonValueKind.String ? DateTime.Parse(ed.GetString()!) : DateTime.UtcNow,
+                        ExpenseType = c.TryGetProperty("expenseType", out var et) ? (ExpenseType)et.GetInt32() : ExpenseType.Other,
+                        Amount = c.TryGetProperty("amount", out var am) ? am.GetDecimal() : 0,
+                        Description = c.TryGetProperty("description", out var ds) && ds.ValueKind != System.Text.Json.JsonValueKind.Null ? ds.GetString() : null,
+                        Status = c.TryGetProperty("status", out var st) ? (ExpenseStatus)st.GetInt32() : ExpenseStatus.Pending,
+                        DRSNo = c.TryGetProperty("drsNo", out var dn) ? dn.GetString() ?? "" : "",
+                        DRSId = c.TryGetProperty("drsId", out var di) ? di.GetInt64() : 0
+                    };
+                    return item;
+                }).ToList();
+
+                _todayCount = _allExpenses.Count(e => e.ExpenseDate.Date == DateTime.UtcNow.Date);
+                ApplyFilter();
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[LinkDel] Load expenses from cache error: {ex.Message}");
         }
     }
 

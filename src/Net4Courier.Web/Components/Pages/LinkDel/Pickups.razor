@@ -7,6 +7,7 @@
 @inject AuthenticationStateProvider AuthStateProvider
 @inject IDbContextFactory<ApplicationDbContext> DbFactory
 @inject NavigationManager Navigation
+@inject IJSRuntime JS
 
 <div class="ld-pickups">
     <div class="ld-tab-bar">
@@ -250,14 +251,75 @@
 
             _pendingCount = _pickups.Count(p =>
                 p.Status == PickupStatus.PickupRequest || p.Status == PickupStatus.AssignedForCollection);
+
+            try
+            {
+                var cacheItems = _pickups.Select(p => new
+                {
+                    id = p.Id,
+                    pickupNo = p.PickupNo,
+                    customerName = p.CustomerName,
+                    pickupAddress = p.PickupAddress,
+                    city = p.City,
+                    status = (int)p.Status,
+                    scheduledDate = p.ScheduledDate?.ToString("o"),
+                    scheduledTimeFrom = p.ScheduledTimeFrom?.ToString("o"),
+                    scheduledTimeTo = p.ScheduledTimeTo?.ToString("o"),
+                    estimatedPieces = p.EstimatedPieces,
+                    estimatedWeight = p.EstimatedWeight,
+                    requestDate = p.RequestDate.ToString("o")
+                }).ToArray();
+                await JS.InvokeVoidAsync("linkdelOffline.cacheData", "pickups", cacheItems);
+            }
+            catch { }
         }
         catch (Exception ex)
         {
             Console.WriteLine($"[LinkDel] Load pickups error: {ex.Message}");
+            await LoadPickupsFromCache();
         }
         finally
         {
             _isLoading = false;
+        }
+    }
+
+    private async Task LoadPickupsFromCache()
+    {
+        try
+        {
+            var cached = await JS.InvokeAsync<System.Text.Json.JsonElement[]>("linkdelOffline.getCachedData", "pickups");
+            if (cached != null && cached.Length > 0)
+            {
+                _pickups = cached.Select(c =>
+                {
+                    var p = new PickupRequest
+                    {
+                        Id = c.GetProperty("id").GetInt64(),
+                        PickupNo = c.TryGetProperty("pickupNo", out var pn) ? pn.GetString() ?? "" : "",
+                        CustomerName = c.TryGetProperty("customerName", out var cn) ? cn.GetString() : null,
+                        PickupAddress = c.TryGetProperty("pickupAddress", out var pa) ? pa.GetString() : null,
+                        City = c.TryGetProperty("city", out var ci) ? ci.GetString() : null,
+                        Status = c.TryGetProperty("status", out var st) ? (PickupStatus)st.GetInt32() : PickupStatus.PickupRequest,
+                        EstimatedPieces = c.TryGetProperty("estimatedPieces", out var ep) && ep.ValueKind != System.Text.Json.JsonValueKind.Null ? ep.GetInt32() : null,
+                        EstimatedWeight = c.TryGetProperty("estimatedWeight", out var ew) && ew.ValueKind != System.Text.Json.JsonValueKind.Null ? ew.GetDecimal() : null
+                    };
+                    if (c.TryGetProperty("scheduledDate", out var sd) && sd.ValueKind == System.Text.Json.JsonValueKind.String)
+                        p.ScheduledDate = DateTime.Parse(sd.GetString()!);
+                    if (c.TryGetProperty("scheduledTimeFrom", out var stf) && stf.ValueKind == System.Text.Json.JsonValueKind.String)
+                        p.ScheduledTimeFrom = DateTime.Parse(stf.GetString()!);
+                    if (c.TryGetProperty("scheduledTimeTo", out var stt) && stt.ValueKind == System.Text.Json.JsonValueKind.String)
+                        p.ScheduledTimeTo = DateTime.Parse(stt.GetString()!);
+                    return p;
+                }).ToList();
+
+                _pendingCount = _pickups.Count(p =>
+                    p.Status == PickupStatus.PickupRequest || p.Status == PickupStatus.AssignedForCollection);
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[LinkDel] Load pickups from cache error: {ex.Message}");
         }
     }
 

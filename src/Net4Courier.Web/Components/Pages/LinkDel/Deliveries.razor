@@ -7,6 +7,7 @@
 @inject AuthenticationStateProvider AuthStateProvider
 @inject IDbContextFactory<ApplicationDbContext> DbFactory
 @inject NavigationManager Navigation
+@inject IJSRuntime JS
 
 <div class="ld-deliveries">
     <div class="ld-tab-bar">
@@ -276,14 +277,83 @@
             }).ToList();
 
             _pendingCount = _items.Count(i => string.IsNullOrEmpty(i.Status) || i.Status == "Pending" || i.Status == "Out for Delivery");
+
+            try
+            {
+                var cacheItems = _items.Select(i => new
+                {
+                    id = i.DetailId,
+                    detailId = i.DetailId,
+                    drsId = i.DRSId,
+                    drsNo = i.DRSNo,
+                    inscanId = i.InscanId,
+                    awbNo = i.AWBNo,
+                    consignee = i.Consignee,
+                    consigneePhone = i.ConsigneePhone,
+                    address = i.Address,
+                    city = i.City,
+                    pieces = i.Pieces,
+                    weight = i.Weight,
+                    isCOD = i.IsCOD,
+                    codAmount = i.CODAmount,
+                    status = i.Status,
+                    attemptNo = i.AttemptNo,
+                    collectedAmount = i.CollectedAmount,
+                    receivedBy = i.ReceivedBy
+                }).ToArray();
+                await JS.InvokeVoidAsync("linkdelOffline.cacheData", "deliveries", cacheItems);
+            }
+            catch { }
         }
         catch (Exception ex)
         {
             Console.WriteLine($"[LinkDel] Load deliveries error: {ex.Message}");
+            await LoadDeliveriesFromCache();
         }
         finally
         {
             _isLoading = false;
+        }
+    }
+
+    private async Task LoadDeliveriesFromCache()
+    {
+        try
+        {
+            var cached = await JS.InvokeAsync<System.Text.Json.JsonElement[]>("linkdelOffline.getCachedData", "deliveries");
+            if (cached != null && cached.Length > 0)
+            {
+                _items = cached.Select(c =>
+                {
+                    var item = new DeliveryItem
+                    {
+                        DetailId = c.GetProperty("detailId").GetInt64(),
+                        DRSId = c.TryGetProperty("drsId", out var di) ? di.GetInt64() : 0,
+                        DRSNo = c.TryGetProperty("drsNo", out var dn) ? dn.GetString() ?? "" : "",
+                        InscanId = c.TryGetProperty("inscanId", out var ii) ? ii.GetInt64() : 0,
+                        AWBNo = c.TryGetProperty("awbNo", out var an) ? an.GetString() ?? "" : "",
+                        Consignee = c.TryGetProperty("consignee", out var co) ? co.GetString() ?? "" : "",
+                        ConsigneePhone = c.TryGetProperty("consigneePhone", out var cp) && cp.ValueKind != System.Text.Json.JsonValueKind.Null ? cp.GetString() : null,
+                        Address = c.TryGetProperty("address", out var ad) ? ad.GetString() : null,
+                        City = c.TryGetProperty("city", out var ct) && ct.ValueKind != System.Text.Json.JsonValueKind.Null ? ct.GetString() : null,
+                        Pieces = c.TryGetProperty("pieces", out var pc) && pc.ValueKind != System.Text.Json.JsonValueKind.Null ? pc.GetInt32() : null,
+                        Weight = c.TryGetProperty("weight", out var wt) && wt.ValueKind != System.Text.Json.JsonValueKind.Null ? wt.GetDecimal() : null,
+                        IsCOD = c.TryGetProperty("isCOD", out var ic) && ic.GetBoolean(),
+                        CODAmount = c.TryGetProperty("codAmount", out var ca) ? ca.GetDecimal() : 0,
+                        Status = c.TryGetProperty("status", out var st) && st.ValueKind != System.Text.Json.JsonValueKind.Null ? st.GetString() : null,
+                        AttemptNo = c.TryGetProperty("attemptNo", out var at) && at.ValueKind != System.Text.Json.JsonValueKind.Null ? at.GetInt32() : null,
+                        CollectedAmount = c.TryGetProperty("collectedAmount", out var cl) && cl.ValueKind != System.Text.Json.JsonValueKind.Null ? cl.GetDecimal() : null,
+                        ReceivedBy = c.TryGetProperty("receivedBy", out var rb) && rb.ValueKind != System.Text.Json.JsonValueKind.Null ? rb.GetString() : null
+                    };
+                    return item;
+                }).ToList();
+
+                _pendingCount = _items.Count(i => string.IsNullOrEmpty(i.Status) || i.Status == "Pending" || i.Status == "Out for Delivery");
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[LinkDel] Load deliveries from cache error: {ex.Message}");
         }
     }
 

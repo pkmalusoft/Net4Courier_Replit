@@ -2,10 +2,16 @@
 @implements IDisposable
 @using MudBlazor
 @using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.EntityFrameworkCore
+@using Net4Courier.Infrastructure.Data
+@using Net4Courier.Operations.Entities
+@using Net4Courier.Kernel.Enums
 @inject NavigationManager Navigation
 @inject AuthenticationStateProvider AuthStateProvider
 @inject IJSRuntime JS
 @inject ISnackbar Snackbar
+@inject IDbContextFactory<ApplicationDbContext> DbFactory
+@inject IConfiguration Configuration
 
 <HeadContent>
     <link rel="manifest" href="/linkdel/manifest.json" />
@@ -221,8 +227,8 @@
         _isOnline = isOnline;
         if (isOnline)
         {
-            Snackbar.Add("Back online", Severity.Success);
-            _pendingSync = await JS.InvokeAsync<int>("linkdelOffline.getOutboxCount");
+            Snackbar.Add("Back online - syncing...", Severity.Success);
+            await ProcessOutboxQueue();
         }
         else
         {
@@ -234,16 +240,203 @@
     [JSInvokable]
     public async Task OnSyncRequested()
     {
-        _pendingSync = await JS.InvokeAsync<int>("linkdelOffline.getOutboxCount");
+        await ProcessOutboxQueue();
         await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task ProcessOutboxQueue()
+    {
+        try
+        {
+            var pendingJson = await JS.InvokeAsync<System.Text.Json.JsonElement[]>("linkdelOffline.getPendingActions");
+            if (pendingJson == null || pendingJson.Length == 0)
+            {
+                _pendingSync = 0;
+                return;
+            }
+
+            var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+            var userIdClaim = authState.User.FindFirst("UserId")?.Value;
+            if (!long.TryParse(userIdClaim, out var userId)) return;
+            var courierName = authState.User.FindFirst("FullName")?.Value;
+
+            int synced = 0;
+            int failed = 0;
+
+            foreach (var action in pendingJson)
+            {
+                var id = action.GetProperty("id").GetInt32();
+                var actionType = action.TryGetProperty("actionType", out var at) ? at.GetString() ?? "" : "";
+                var payload = action.TryGetProperty("payload", out var pl) ? pl : default;
+
+                try
+                {
+                    var success = await ProcessSingleAction(actionType, payload, userId, courierName);
+                    if (success)
+                    {
+                        await JS.InvokeVoidAsync("linkdelOffline.markActionSynced", id);
+                        synced++;
+                    }
+                    else
+                    {
+                        await JS.InvokeVoidAsync("linkdelOffline.markActionFailed", id);
+                        failed++;
+                    }
+                }
+                catch
+                {
+                    await JS.InvokeVoidAsync("linkdelOffline.markActionFailed", id);
+                    failed++;
+                }
+            }
+
+            await JS.InvokeVoidAsync("linkdelOffline.clearSyncedActions");
+            _pendingSync = await JS.InvokeAsync<int>("linkdelOffline.getOutboxCount");
+
+            if (synced > 0)
+                Snackbar.Add($"Synced {synced} offline action{(synced > 1 ? "s" : "")}", Severity.Success);
+            if (failed > 0)
+                Snackbar.Add($"{failed} action{(failed > 1 ? "s" : "")} failed to sync", Severity.Warning);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[LinkDel] Process outbox error: {ex.Message}");
+            _pendingSync = await JS.InvokeAsync<int>("linkdelOffline.getOutboxCount");
+        }
+    }
+
+    private async Task<bool> ProcessSingleAction(string actionType, System.Text.Json.JsonElement payload, long userId, string? courierName)
+    {
+        await using var db = await DbFactory.CreateDbContextAsync();
+
+        switch (actionType)
+        {
+            case "accept_pickup":
+            {
+                var pickupId = payload.GetProperty("pickupId").GetInt64();
+                var pickup = await db.PickupRequests.FindAsync(pickupId);
+                if (pickup == null || pickup.CourierId != userId)
+                    return false;
+                if (pickup.Status != PickupStatus.PickupRequest)
+                    return false;
+
+                pickup.Status = PickupStatus.AssignedForCollection;
+                pickup.AssignedAt = DateTime.UtcNow;
+                pickup.ModifiedAt = DateTime.UtcNow;
+                await db.SaveChangesAsync();
+                return true;
+            }
+            case "reject_pickup":
+            {
+                var pickupId = payload.GetProperty("pickupId").GetInt64();
+                var pickup = await db.PickupRequests.FindAsync(pickupId);
+                if (pickup == null || pickup.CourierId != userId)
+                    return false;
+                if (pickup.Status != PickupStatus.PickupRequest)
+                    return false;
+
+                pickup.CourierId = null;
+                pickup.CourierName = null;
+                pickup.CourierPhone = null;
+                pickup.Remarks = (pickup.Remarks ?? "") + " [Rejected by courier]";
+                pickup.ModifiedAt = DateTime.UtcNow;
+                await db.SaveChangesAsync();
+                return true;
+            }
+            case "add_expense":
+            {
+                var drsId = payload.GetProperty("drsId").GetInt64();
+                var drs = await db.DRSs.FirstOrDefaultAsync(d => d.Id == drsId && d.DeliveryEmployeeId == (int)userId && !d.IsDeleted);
+                if (drs == null)
+                    return false;
+
+                var expense = new CourierExpense
+                {
+                    DRSId = drsId,
+                    CourierId = (int)userId,
+                    CourierName = courierName,
+                    ExpenseDate = DateTime.UtcNow,
+                    ExpenseType = (ExpenseType)payload.GetProperty("expenseType").GetInt32(),
+                    Amount = payload.GetProperty("amount").GetDecimal(),
+                    Description = payload.TryGetProperty("description", out var desc) && desc.ValueKind != System.Text.Json.JsonValueKind.Null ? desc.GetString() : null,
+                    Status = ExpenseStatus.Pending,
+                    CreatedAt = DateTime.UtcNow,
+                    IsDeleted = false
+                };
+                db.CourierExpenses.Add(expense);
+                await db.SaveChangesAsync();
+                return true;
+            }
+            case "submit_cash":
+            {
+                var drsId = payload.GetProperty("drsId").GetInt64();
+                var amount = payload.GetProperty("amount").GetDecimal();
+
+                var dbDrs = await db.DRSs.FirstOrDefaultAsync(d => d.Id == drsId && d.DeliveryEmployeeId == (int)userId && !d.IsDeleted);
+                if (dbDrs == null) return false;
+
+                var alreadySubmitted = await db.CourierCashSubmissions
+                    .Where(s => s.DRSId == drsId && !s.IsDeleted)
+                    .SumAsync(s => s.CashSubmittedAmount);
+
+                var remaining = (dbDrs.CollectedCOD ?? 0) - alreadySubmitted;
+                if (amount > remaining) return false;
+
+                var submission = new CourierCashSubmission
+                {
+                    DRSId = drsId,
+                    CourierId = (int)userId,
+                    CourierName = courierName,
+                    CashSubmittedAmount = amount,
+                    SubmissionDate = DateTime.UtcNow,
+                    SubmissionTime = DateTime.UtcNow,
+                    Remarks = payload.TryGetProperty("remarks", out var rm) && rm.ValueKind != System.Text.Json.JsonValueKind.Null ? rm.GetString() : null,
+                    CreatedAt = DateTime.UtcNow,
+                    IsDeleted = false
+                };
+                db.CourierCashSubmissions.Add(submission);
+                await db.SaveChangesAsync();
+                return true;
+            }
+            default:
+                Console.WriteLine($"[LinkDel] Unknown sync action type: {actionType}");
+                return false;
+        }
     }
 
     private async Task RequestNotificationPermission()
     {
         try
         {
-            await JS.InvokeVoidAsync("linkdel.requestNotificationPermission");
-            Snackbar.Add("Notification permission requested", Severity.Info);
+            var result = await JS.InvokeAsync<string>("linkdel.requestNotificationPermission");
+            if (result == "granted")
+            {
+                var vapidKey = Configuration["Vapid:PublicKey"];
+                if (!string.IsNullOrEmpty(vapidKey))
+                {
+                    var subscription = await JS.InvokeAsync<string?>("linkdel.subscribePush", vapidKey);
+                    if (subscription != null)
+                    {
+                        Snackbar.Add("Notifications enabled", Severity.Success);
+                    }
+                    else
+                    {
+                        Snackbar.Add("Notification permission granted", Severity.Info);
+                    }
+                }
+                else
+                {
+                    Snackbar.Add("Notification permission granted", Severity.Info);
+                }
+            }
+            else if (result == "denied")
+            {
+                Snackbar.Add("Notification permission denied", Severity.Warning);
+            }
+            else
+            {
+                Snackbar.Add("Notification permission requested", Severity.Info);
+            }
         }
         catch
         {
