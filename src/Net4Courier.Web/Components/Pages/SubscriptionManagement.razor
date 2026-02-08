@@ -90,26 +90,6 @@ else
                             </td>
                         </tr>
                         <tr>
-                            <td><strong>System Status</strong></td>
-                            <td>
-                                @if (_company.IsSuspended)
-                                {
-                                    <MudChip T="string" Color="Color.Error" Size="Size.Small">Suspended</MudChip>
-                                }
-                                else
-                                {
-                                    <MudChip T="string" Color="Color.Success" Size="Size.Small">Active</MudChip>
-                                }
-                            </td>
-                        </tr>
-                        @if (_company.IsSuspended && !string.IsNullOrEmpty(_company.SuspensionReason))
-                        {
-                            <tr>
-                                <td><strong>Suspension Reason</strong></td>
-                                <td style="color: #d32f2f;">@_company.SuspensionReason</td>
-                            </tr>
-                        }
-                        <tr>
                             <td><strong>Active Users</strong></td>
                             <td>@_activeUserCount</td>
                         </tr>
@@ -119,41 +99,6 @@ else
                         </tr>
                     </tbody>
                 </MudSimpleTable>
-            </MudPaper>
-            
-            <MudPaper Class="pa-4 mt-4" Elevation="2" Style="@(_company.IsSuspended ? "border: 2px solid #d32f2f;" : "")">
-                <MudText Typo="Typo.h6" Class="mb-4">
-                    <MudIcon Icon="@Icons.Material.Filled.Block" Class="mr-2" />System Suspension
-                </MudText>
-                
-                @if (_company.IsSuspended)
-                {
-                    <MudAlert Severity="Severity.Error" Class="mb-4" Dense="true">
-                        This system is currently SUSPENDED. All users are blocked from logging in.
-                    </MudAlert>
-                    
-                    <MudButton Variant="Variant.Filled" Color="Color.Success" StartIcon="@Icons.Material.Filled.PlayArrow" 
-                               OnClick="ActivateSystem" Disabled="_saving" FullWidth="true">
-                        @if (_saving && _savingAction == "activate") { <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" /> }
-                        Activate System
-                    </MudButton>
-                }
-                else
-                {
-                    <MudText Typo="Typo.body2" Class="mb-3" Color="Color.Secondary">
-                        Suspending the system will block all users from logging in. Only Platform Admin can reactivate.
-                    </MudText>
-                    
-                    <MudTextField @bind-Value="_suspensionReason" Label="Reason for Suspension (optional)" 
-                                  Variant="Variant.Outlined" Class="mb-4" 
-                                  Placeholder="e.g., Subscription overdue, Maintenance, etc." />
-                    
-                    <MudButton Variant="Variant.Filled" Color="Color.Error" StartIcon="@Icons.Material.Filled.Block" 
-                               OnClick="SuspendSystem" Disabled="_saving" FullWidth="true">
-                        @if (_saving && _savingAction == "suspend") { <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" /> }
-                        Suspend System
-                    </MudButton>
-                }
             </MudPaper>
         </MudItem>
         
@@ -222,8 +167,6 @@ else
     private bool _loading = true;
     private bool _isPlatformAdmin = false;
     private bool _saving = false;
-    private string _savingAction = "";
-    private string _suspensionReason = "";
     private Company? _company;
     private int _extensionMonths = 12;
     private DateTime? _subscriptionStart;
@@ -391,89 +334,6 @@ else
         finally
         {
             _saving = false;
-        }
-    }
-
-    private async Task SuspendSystem()
-    {
-        if (_company == null) return;
-        
-        var confirm = await DialogService.ShowMessageBox(
-            "Confirm System Suspension",
-            "Are you sure you want to SUSPEND the system? All users will be blocked from logging in until you reactivate.",
-            yesText: "Yes, Suspend", cancelText: "Cancel");
-        
-        if (confirm != true) return;
-        
-        _saving = true;
-        _savingAction = "suspend";
-        try
-        {
-            await using var context = await DbFactory.CreateDbContextAsync();
-            var company = await context.Companies.FindAsync(_company.Id);
-            
-            if (company != null)
-            {
-                company.IsSuspended = true;
-                company.SuspensionReason = string.IsNullOrWhiteSpace(_suspensionReason) ? "Suspended by Platform Admin" : _suspensionReason;
-                company.ModifiedAt = DateTime.UtcNow;
-                await context.SaveChangesAsync();
-                
-                Snackbar.Add("System has been SUSPENDED. All users are now blocked from logging in.", Severity.Warning);
-            }
-            
-            await LoadSubscriptionData();
-            _suspensionReason = "";
-        }
-        catch (Exception ex)
-        {
-            Snackbar.Add($"Error suspending system: {ex.Message}", Severity.Error);
-        }
-        finally
-        {
-            _saving = false;
-            _savingAction = "";
-        }
-    }
-
-    private async Task ActivateSystem()
-    {
-        if (_company == null) return;
-        
-        var confirm = await DialogService.ShowMessageBox(
-            "Confirm System Activation",
-            "Are you sure you want to reactivate the system? Users will be able to log in again.",
-            yesText: "Yes, Activate", cancelText: "Cancel");
-        
-        if (confirm != true) return;
-        
-        _saving = true;
-        _savingAction = "activate";
-        try
-        {
-            await using var context = await DbFactory.CreateDbContextAsync();
-            var company = await context.Companies.FindAsync(_company.Id);
-            
-            if (company != null)
-            {
-                company.IsSuspended = false;
-                company.SuspensionReason = null;
-                company.ModifiedAt = DateTime.UtcNow;
-                await context.SaveChangesAsync();
-                
-                Snackbar.Add("System has been ACTIVATED. Users can now log in.", Severity.Success);
-            }
-            
-            await LoadSubscriptionData();
-        }
-        catch (Exception ex)
-        {
-            Snackbar.Add($"Error activating system: {ex.Message}", Severity.Error);
-        }
-        finally
-        {
-            _saving = false;
-            _savingAction = "";
         }
     }
 }

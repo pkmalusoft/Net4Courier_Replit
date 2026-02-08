@@ -22,8 +22,6 @@ public class Company : BaseEntity
     public DateTime? SubscriptionStartDate { get; set; }
     public DateTime? SubscriptionEndDate { get; set; }
     public string? SubscriptionPlan { get; set; }
-    public bool IsSuspended { get; set; } = false;
-    public string? SuspensionReason { get; set; }
     
     public long? CountryId { get; set; }
     public virtual Country? Country { get; set; }
