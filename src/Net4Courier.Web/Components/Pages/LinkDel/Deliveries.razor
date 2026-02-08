@@ -1,8 +1,351 @@
 @page "/linkdel/deliveries"
 @layout Net4Courier.Web.Components.Layout.LinkDelLayout
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.EntityFrameworkCore
+@using Net4Courier.Infrastructure.Data
+@using Net4Courier.Operations.Entities
+@inject AuthenticationStateProvider AuthStateProvider
+@inject IDbContextFactory<ApplicationDbContext> DbFactory
+@inject NavigationManager Navigation
 
-<div style="display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 60vh; text-align: center; padding: 24px;">
-    <MudIcon Icon="@Icons.Material.Filled.DeliveryDining" Style="font-size: 5rem; color: #cbd5e1; margin-bottom: 16px;" />
-    <MudText Typo="Typo.h5" Style="font-weight: 600; color: #64748b;">Deliveries</MudText>
-    <MudText Typo="Typo.body2" Style="color: #94a3b8; margin-top: 8px;">Coming soon — manage your delivery run sheet here.</MudText>
+<div class="ld-deliveries">
+    <div class="ld-tab-bar">
+        <div class="ld-tab @(_activeTab == 0 ? "active" : "")" @onclick="() => SetTab(0)">
+            Pending
+            @if (_pendingCount > 0)
+            {
+                <span class="ld-badge">@_pendingCount</span>
+            }
+        </div>
+        <div class="ld-tab @(_activeTab == 1 ? "active" : "")" @onclick="() => SetTab(1)">Delivered</div>
+        <div class="ld-tab @(_activeTab == 2 ? "active" : "")" @onclick="() => SetTab(2)">All</div>
+    </div>
+
+    @if (!string.IsNullOrEmpty(_activeDrsNo))
+    {
+        <MudPaper Elevation="0" Style="border-radius: 10px; padding: 10px 14px; margin-bottom: 12px; display: flex; align-items: center; gap: 8px; background: #eef2ff;">
+            <MudIcon Icon="@Icons.Material.Filled.Route" Size="Size.Small" Style="color: #556ee6;" />
+            <MudText Typo="Typo.body2" Style="font-weight: 600; color: #556ee6;">DRS: @_activeDrsNo</MudText>
+            <MudSpacer />
+            <MudText Typo="Typo.caption" Style="color: #94a3b8;">@_activeDrsDate</MudText>
+        </MudPaper>
+    }
+
+    @if (_isLoading)
+    {
+        <div style="display: flex; justify-content: center; padding: 40px 0;">
+            <MudProgressCircular Indeterminate="true" Color="Color.Primary" />
+        </div>
+    }
+    else
+    {
+        var displayList = GetDisplayList();
+        @if (!displayList.Any())
+        {
+            <div style="text-align: center; padding: 48px 24px;">
+                <MudIcon Icon="@Icons.Material.Filled.Inbox" Style="font-size: 3.5rem; color: #cbd5e1;" />
+                <MudText Typo="Typo.body1" Style="color: #94a3b8; margin-top: 12px; font-weight: 500;">
+                    @(_activeTab == 0 ? "No pending deliveries" : _activeTab == 1 ? "No completed deliveries today" : "No deliveries found")
+                </MudText>
+            </div>
+        }
+        else
+        {
+            @foreach (var item in displayList)
+            {
+                <MudPaper Elevation="0" Class="ld-delivery-card" @onclick="() => OpenDetail(item.DetailId)">
+                    <div class="ld-delivery-header">
+                        <div style="flex: 1; min-width: 0;">
+                            <MudText Typo="Typo.subtitle2" Style="font-weight: 700; color: #1e293b;">@item.AWBNo</MudText>
+                            <MudText Typo="Typo.caption" Style="color: #94a3b8;">@item.Consignee</MudText>
+                        </div>
+                        <MudChip T="string" Size="Size.Small" Style="@GetDeliveryStatusStyle(item.Status)">
+                            @(item.Status ?? "Pending")
+                        </MudChip>
+                    </div>
+
+                    <div class="ld-delivery-info">
+                        <div class="ld-delivery-info-row">
+                            <MudIcon Icon="@Icons.Material.Filled.LocationOn" Size="Size.Small" Style="color: #94a3b8;" />
+                            <MudText Typo="Typo.caption" Style="color: #64748b;">@TruncateText(item.Address, 50)</MudText>
+                        </div>
+                        @if (item.IsCOD)
+                        {
+                            <div class="ld-delivery-info-row">
+                                <MudIcon Icon="@Icons.Material.Filled.Payments" Size="Size.Small" Style="color: #f59e0b;" />
+                                <MudText Typo="Typo.caption" Style="color: #92400e; font-weight: 600;">
+                                    COD: @item.CODAmount.ToString("N2")
+                                </MudText>
+                            </div>
+                        }
+                        <div class="ld-delivery-info-row">
+                            <MudIcon Icon="@Icons.Material.Filled.Inventory2" Size="Size.Small" Style="color: #94a3b8;" />
+                            <MudText Typo="Typo.caption" Style="color: #64748b;">
+                                @(item.Pieces ?? 0) pcs / @((item.Weight ?? 0).ToString("N1")) kg
+                            </MudText>
+                        </div>
+                    </div>
+
+                    @if (string.IsNullOrEmpty(item.Status) || item.Status == "Pending" || item.Status == "Out for Delivery")
+                    {
+                        <div class="ld-delivery-actions">
+                            <MudButton Size="Size.Small" Variant="Variant.Filled" Color="Color.Success"
+                                       Style="border-radius: 8px; flex: 1; font-weight: 600;"
+                                       OnClick="() => OpenDetail(item.DetailId)" OnClickStopPropagation="true">
+                                Deliver
+                            </MudButton>
+                        </div>
+                    }
+                </MudPaper>
+            }
+        }
+    }
 </div>
+
+<style>
+    .ld-deliveries {
+        max-width: 600px;
+        margin: 0 auto;
+    }
+
+    .ld-tab-bar {
+        display: flex;
+        gap: 0;
+        background: #fff;
+        border-radius: 12px;
+        padding: 4px;
+        margin-bottom: 16px;
+    }
+
+    .ld-tab {
+        flex: 1;
+        text-align: center;
+        padding: 10px 8px;
+        font-size: 0.85rem;
+        font-weight: 600;
+        color: #94a3b8;
+        border-radius: 8px;
+        cursor: pointer;
+        transition: all 0.2s;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 6px;
+        user-select: none;
+        -webkit-tap-highlight-color: transparent;
+    }
+
+    .ld-tab.active {
+        background: #556ee6;
+        color: #fff;
+    }
+
+    .ld-badge {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        min-width: 20px;
+        height: 20px;
+        border-radius: 10px;
+        font-size: 0.7rem;
+        font-weight: 700;
+        padding: 0 6px;
+    }
+
+    .ld-tab.active .ld-badge {
+        background: rgba(255,255,255,0.3);
+        color: #fff;
+    }
+
+    .ld-tab:not(.active) .ld-badge {
+        background: #ef4444;
+        color: #fff;
+    }
+
+    .ld-delivery-card {
+        padding: 16px;
+        border-radius: 12px;
+        margin-bottom: 12px;
+        cursor: pointer;
+        transition: transform 0.1s;
+        -webkit-tap-highlight-color: transparent;
+    }
+
+    .ld-delivery-card:active {
+        transform: scale(0.98);
+    }
+
+    .ld-delivery-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+        margin-bottom: 10px;
+    }
+
+    .ld-delivery-info {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+    }
+
+    .ld-delivery-info-row {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+    }
+
+    .ld-delivery-actions {
+        display: flex;
+        gap: 8px;
+        margin-top: 12px;
+        padding-top: 12px;
+        border-top: 1px solid #f1f5f9;
+    }
+</style>
+
+@code {
+    private int _activeTab = 0;
+    private bool _isLoading = true;
+    private long _userId;
+    private int _pendingCount;
+    private string? _activeDrsNo;
+    private string? _activeDrsDate;
+    private List<DeliveryItem> _items = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+        var userIdClaim = authState.User.FindFirst("UserId")?.Value;
+        if (long.TryParse(userIdClaim, out var uid))
+            _userId = uid;
+
+        await LoadDeliveries();
+    }
+
+    private async Task LoadDeliveries()
+    {
+        _isLoading = true;
+        try
+        {
+            await using var db = await DbFactory.CreateDbContextAsync();
+            var today = DateTime.UtcNow.Date;
+
+            var drsList = await db.DRSs
+                .Where(d => d.DeliveryEmployeeId == (int)_userId && !d.IsDeleted
+                    && d.Status != DRSStatus.Closed
+                    && d.DRSDate.Date >= today.AddDays(-7))
+                .OrderByDescending(d => d.DRSDate)
+                .Take(10)
+                .ToListAsync();
+
+            if (drsList.Any())
+            {
+                var latestDrs = drsList.First();
+                _activeDrsNo = latestDrs.DRSNo;
+                _activeDrsDate = latestDrs.DRSDate.ToString("dd MMM yyyy");
+            }
+
+            var drsIds = drsList.Select(d => d.Id).ToList();
+
+            var details = await db.DRSDetails
+                .Include(dd => dd.Inscan)
+                .Include(dd => dd.DRS)
+                .Where(dd => drsIds.Contains(dd.DRSId) && !dd.IsDeleted)
+                .OrderBy(dd => dd.Sequence)
+                .ToListAsync();
+
+            _items = details.Select(dd => new DeliveryItem
+            {
+                DetailId = dd.Id,
+                DRSId = dd.DRSId,
+                DRSNo = dd.DRS?.DRSNo ?? "",
+                InscanId = dd.InscanId,
+                AWBNo = dd.Inscan?.AWBNo ?? $"AWB-{dd.InscanId}",
+                Consignee = dd.Inscan?.Consignee ?? "N/A",
+                ConsigneePhone = dd.Inscan?.ConsigneePhone ?? dd.Inscan?.ConsigneeMobile,
+                Address = BuildAddress(dd.Inscan),
+                City = dd.Inscan?.ConsigneeCity,
+                Pieces = dd.Inscan?.Pieces,
+                Weight = dd.Inscan?.Weight,
+                IsCOD = dd.Inscan?.IsCOD ?? false,
+                CODAmount = dd.CODAmount ?? dd.Inscan?.CODAmount ?? 0,
+                Status = dd.Status,
+                AttemptNo = dd.AttemptNo,
+                CollectedAmount = dd.CollectedAmount,
+                ReceivedBy = dd.ReceivedBy
+            }).ToList();
+
+            _pendingCount = _items.Count(i => string.IsNullOrEmpty(i.Status) || i.Status == "Pending" || i.Status == "Out for Delivery");
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[LinkDel] Load deliveries error: {ex.Message}");
+        }
+        finally
+        {
+            _isLoading = false;
+        }
+    }
+
+    private List<DeliveryItem> GetDisplayList()
+    {
+        return _activeTab switch
+        {
+            0 => _items.Where(i => string.IsNullOrEmpty(i.Status) || i.Status == "Pending" || i.Status == "Out for Delivery").ToList(),
+            1 => _items.Where(i => i.Status == "Delivered").ToList(),
+            _ => _items.ToList()
+        };
+    }
+
+    private void SetTab(int tab) { _activeTab = tab; }
+
+    private void OpenDetail(long detailId)
+    {
+        Navigation.NavigateTo($"/linkdel/deliveries/{detailId}");
+    }
+
+    private string BuildAddress(InscanMaster? inscan)
+    {
+        if (inscan == null) return "No address";
+        var parts = new List<string>();
+        if (!string.IsNullOrWhiteSpace(inscan.ConsigneeAddress1)) parts.Add(inscan.ConsigneeAddress1);
+        if (!string.IsNullOrWhiteSpace(inscan.ConsigneeAddress2)) parts.Add(inscan.ConsigneeAddress2);
+        if (!string.IsNullOrWhiteSpace(inscan.ConsigneeCity)) parts.Add(inscan.ConsigneeCity);
+        return parts.Any() ? string.Join(", ", parts) : "No address";
+    }
+
+    private string TruncateText(string? text, int max)
+    {
+        if (string.IsNullOrWhiteSpace(text)) return "No address";
+        return text.Length > max ? text[..max] + "..." : text;
+    }
+
+    private string GetDeliveryStatusStyle(string? status) => (status ?? "") switch
+    {
+        "Delivered" => "background: #d1fae5; color: #065f46;",
+        "Attempted" or "Failed" => "background: #fee2e2; color: #991b1b;",
+        "RTS" or "Returned" => "background: #fef3c7; color: #92400e;",
+        _ => "background: #dbeafe; color: #1d4ed8;"
+    };
+
+    private class DeliveryItem
+    {
+        public long DetailId { get; set; }
+        public long DRSId { get; set; }
+        public string DRSNo { get; set; } = "";
+        public long InscanId { get; set; }
+        public string AWBNo { get; set; } = "";
+        public string Consignee { get; set; } = "";
+        public string? ConsigneePhone { get; set; }
+        public string? Address { get; set; }
+        public string? City { get; set; }
+        public int? Pieces { get; set; }
+        public decimal? Weight { get; set; }
+        public bool IsCOD { get; set; }
+        public decimal CODAmount { get; set; }
+        public string? Status { get; set; }
+        public int? AttemptNo { get; set; }
+        public decimal? CollectedAmount { get; set; }
+        public string? ReceivedBy { get; set; }
+    }
+}

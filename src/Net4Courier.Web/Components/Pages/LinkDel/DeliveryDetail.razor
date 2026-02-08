@@ -1,0 +1,623 @@
+@page "/linkdel/deliveries/{Id:long}"
+@layout Net4Courier.Web.Components.Layout.LinkDelLayout
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.EntityFrameworkCore
+@using Net4Courier.Infrastructure.Data
+@using Net4Courier.Operations.Entities
+@using Net4Courier.Kernel.Enums
+@inject AuthenticationStateProvider AuthStateProvider
+@inject IDbContextFactory<ApplicationDbContext> DbFactory
+@inject NavigationManager Navigation
+@inject IJSRuntime JS
+@inject ISnackbar Snackbar
+
+<div class="ld-detail">
+    @if (_isLoading)
+    {
+        <div style="display: flex; justify-content: center; padding: 40px 0;">
+            <MudProgressCircular Indeterminate="true" Color="Color.Primary" />
+        </div>
+    }
+    else if (_detail == null)
+    {
+        <div style="text-align: center; padding: 48px 24px;">
+            <MudIcon Icon="@Icons.Material.Filled.ErrorOutline" Style="font-size: 3rem; color: #ef4444;" />
+            <MudText Typo="Typo.body1" Style="color: #64748b; margin-top: 12px;">Delivery not found</MudText>
+            <MudButton Variant="Variant.Text" Color="Color.Primary" OnClick='() => Navigation.NavigateTo("/linkdel/deliveries")'>
+                Back to Deliveries
+            </MudButton>
+        </div>
+    }
+    else
+    {
+        <div class="ld-detail-back" @onclick='() => Navigation.NavigateTo("/linkdel/deliveries")'>
+            <MudIcon Icon="@Icons.Material.Filled.ArrowBack" Size="Size.Small" />
+            <MudText Typo="Typo.body2" Style="font-weight: 500;">Back</MudText>
+        </div>
+
+        <MudPaper Elevation="0" Style="border-radius: 12px; padding: 16px; margin-bottom: 12px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                <div>
+                    <MudText Typo="Typo.h6" Style="font-weight: 700; color: #1e293b;">@_awbNo</MudText>
+                    <MudText Typo="Typo.caption" Style="color: #94a3b8;">DRS: @_drsNo</MudText>
+                </div>
+                <MudChip T="string" Size="Size.Small" Style="@GetStatusStyle(_detail.Status)">
+                    @(_detail.Status ?? "Pending")
+                </MudChip>
+            </div>
+
+            @if (_isCOD)
+            {
+                <MudAlert Severity="Severity.Warning" Dense="true" Style="border-radius: 8px;">
+                    <div style="display: flex; align-items: center; gap: 8px;">
+                        <MudIcon Icon="@Icons.Material.Filled.Payments" Size="Size.Small" />
+                        <span style="font-weight: 700;">COD: @_codAmount.ToString("N2")</span>
+                    </div>
+                </MudAlert>
+            }
+        </MudPaper>
+
+        <MudPaper Elevation="0" Style="border-radius: 12px; padding: 16px; margin-bottom: 12px;">
+            <MudText Typo="Typo.subtitle2" Style="font-weight: 700; color: #1e293b; margin-bottom: 10px;">Consignee</MudText>
+            <div class="ld-info-grid">
+                <div class="ld-info-row">
+                    <MudIcon Icon="@Icons.Material.Filled.Person" Size="Size.Small" Style="color: #94a3b8;" />
+                    <span>@(_consigneeName ?? "N/A")</span>
+                </div>
+                @if (!string.IsNullOrWhiteSpace(_consigneeContact))
+                {
+                    <div class="ld-info-row">
+                        <MudIcon Icon="@Icons.Material.Filled.Badge" Size="Size.Small" Style="color: #94a3b8;" />
+                        <span>@_consigneeContact</span>
+                    </div>
+                }
+                @if (!string.IsNullOrWhiteSpace(_consigneePhone))
+                {
+                    <div class="ld-info-row" style="cursor: pointer;" @onclick="CallConsignee">
+                        <MudIcon Icon="@Icons.Material.Filled.Phone" Size="Size.Small" Style="color: #556ee6;" />
+                        <span style="color: #556ee6; font-weight: 500;">@_consigneePhone</span>
+                    </div>
+                }
+            </div>
+        </MudPaper>
+
+        <MudPaper Elevation="0" Style="border-radius: 12px; padding: 16px; margin-bottom: 12px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                <MudText Typo="Typo.subtitle2" Style="font-weight: 700; color: #1e293b;">Delivery Address</MudText>
+                <MudIconButton Icon="@Icons.Material.Filled.Navigation" Size="Size.Small"
+                               Style="color: #556ee6;" OnClick="NavigateToAddress" />
+            </div>
+            <MudText Typo="Typo.body2" Style="color: #475569; line-height: 1.5;">
+                @_fullAddress
+            </MudText>
+        </MudPaper>
+
+        <MudPaper Elevation="0" Style="border-radius: 12px; padding: 16px; margin-bottom: 12px;">
+            <MudText Typo="Typo.subtitle2" Style="font-weight: 700; color: #1e293b; margin-bottom: 10px;">Shipment Details</MudText>
+            <div class="ld-info-grid">
+                <div class="ld-info-row">
+                    <MudIcon Icon="@Icons.Material.Filled.Inventory2" Size="Size.Small" Style="color: #94a3b8;" />
+                    <span>@(_pieces ?? 0) pieces / @((_weight ?? 0).ToString("N1")) kg</span>
+                </div>
+                @if (!string.IsNullOrWhiteSpace(_consignorName))
+                {
+                    <div class="ld-info-row">
+                        <MudIcon Icon="@Icons.Material.Filled.Business" Size="Size.Small" Style="color: #94a3b8;" />
+                        <span>From: @_consignorName</span>
+                    </div>
+                }
+                @if (_detail.AttemptNo > 0)
+                {
+                    <div class="ld-info-row">
+                        <MudIcon Icon="@Icons.Material.Filled.Refresh" Size="Size.Small" Style="color: #f59e0b;" />
+                        <span style="color: #92400e;">Attempt #@_detail.AttemptNo</span>
+                    </div>
+                }
+            </div>
+        </MudPaper>
+
+        @if (_detail.Status == "Delivered" && !string.IsNullOrWhiteSpace(_detail.ReceivedBy))
+        {
+            <MudPaper Elevation="0" Style="border-radius: 12px; padding: 16px; margin-bottom: 12px; border: 2px solid #34c38f;">
+                <MudText Typo="Typo.subtitle2" Style="font-weight: 700; color: #065f46; margin-bottom: 10px;">
+                    Delivery Confirmed
+                </MudText>
+                <div class="ld-info-grid">
+                    <div class="ld-info-row">
+                        <MudIcon Icon="@Icons.Material.Filled.PersonPin" Size="Size.Small" Style="color: #34c38f;" />
+                        <span>Received by: @_detail.ReceivedBy @(!string.IsNullOrWhiteSpace(_detail.Relation) ? $"({_detail.Relation})" : "")</span>
+                    </div>
+                    @if (_detail.CollectedAmount > 0)
+                    {
+                        <div class="ld-info-row">
+                            <MudIcon Icon="@Icons.Material.Filled.Payments" Size="Size.Small" Style="color: #34c38f;" />
+                            <span>Collected: @_detail.CollectedAmount?.ToString("N2")</span>
+                        </div>
+                    }
+                    @if (_detail.AttemptedAt.HasValue)
+                    {
+                        <div class="ld-info-row">
+                            <MudIcon Icon="@Icons.Material.Filled.AccessTime" Size="Size.Small" Style="color: #94a3b8;" />
+                            <span>@_detail.AttemptedAt.Value.ToString("dd MMM yyyy HH:mm")</span>
+                        </div>
+                    }
+                </div>
+            </MudPaper>
+        }
+
+        @if (_showDeliverForm)
+        {
+            <MudPaper Elevation="0" Style="border-radius: 12px; padding: 16px; margin-bottom: 12px; border: 2px solid #34c38f;">
+                <MudText Typo="Typo.subtitle2" Style="font-weight: 700; color: #1e293b; margin-bottom: 12px;">
+                    Proof of Delivery
+                </MudText>
+
+                <MudTextField T="string" Label="Received By *" @bind-Value="_receivedBy"
+                              Variant="Variant.Outlined" Class="mb-3"
+                              Placeholder="Name of person receiving" />
+
+                <MudTextField T="string" Label="Relation" @bind-Value="_relation"
+                              Variant="Variant.Outlined" Class="mb-3"
+                              Placeholder="e.g. Self, Security, Reception" />
+
+                @if (_isCOD)
+                {
+                    <MudTextField T="decimal?" Label="Amount Collected *" @bind-Value="_collectedAmount"
+                                  Variant="Variant.Outlined" Class="mb-3"
+                                  Adornment="Adornment.Start" AdornmentText="$" />
+                }
+
+                <MudTextField T="string" Label="Remarks" @bind-Value="_deliverRemarks"
+                              Variant="Variant.Outlined" Lines="2" Class="mb-3" />
+
+                @if (_gpsLocation != null)
+                {
+                    <MudAlert Severity="Severity.Success" Dense="true" Class="mb-3" Style="border-radius: 8px;">
+                        GPS captured: @_gpsLocation
+                    </MudAlert>
+                }
+                else
+                {
+                    <MudButton Variant="Variant.Outlined" Color="Color.Primary" Size="Size.Small"
+                               StartIcon="@Icons.Material.Filled.MyLocation"
+                               Style="border-radius: 8px; margin-bottom: 12px;"
+                               OnClick="CaptureGPS">
+                        Capture GPS
+                    </MudButton>
+                }
+
+                <div style="display: flex; gap: 8px;">
+                    <MudButton Variant="Variant.Filled" Color="Color.Success"
+                               Style="flex: 1; border-radius: 8px; font-weight: 600; height: 44px;"
+                               StartIcon="@Icons.Material.Filled.CheckCircle"
+                               Disabled="_isSaving"
+                               OnClick="ConfirmDelivery">
+                        @(_isSaving ? "Saving..." : "Confirm Delivery")
+                    </MudButton>
+                    <MudButton Variant="Variant.Outlined" Color="Color.Default"
+                               Style="border-radius: 8px;"
+                               OnClick="() => _showDeliverForm = false">
+                        Cancel
+                    </MudButton>
+                </div>
+            </MudPaper>
+        }
+
+        @if (_showAttemptForm)
+        {
+            <MudPaper Elevation="0" Style="border-radius: 12px; padding: 16px; margin-bottom: 12px; border: 2px solid #f59e0b;">
+                <MudText Typo="Typo.subtitle2" Style="font-weight: 700; color: #1e293b; margin-bottom: 12px;">
+                    Failed Delivery Attempt
+                </MudText>
+
+                <MudSelect T="string" Label="Reason *" @bind-Value="_attemptReason"
+                           Variant="Variant.Outlined" Class="mb-3">
+                    <MudSelectItem Value="@("Consignee not available")">Consignee not available</MudSelectItem>
+                    <MudSelectItem Value="@("Address incorrect/incomplete")">Address incorrect/incomplete</MudSelectItem>
+                    <MudSelectItem Value="@("Refused by consignee")">Refused by consignee</MudSelectItem>
+                    <MudSelectItem Value="@("Payment not ready (COD)")">Payment not ready (COD)</MudSelectItem>
+                    <MudSelectItem Value="@("Premises closed")">Premises closed</MudSelectItem>
+                    <MudSelectItem Value="@("Access restricted")">Access restricted</MudSelectItem>
+                    <MudSelectItem Value="@("Other")">Other</MudSelectItem>
+                </MudSelect>
+
+                <MudTextField T="string" Label="Additional Remarks" @bind-Value="_attemptRemarks"
+                              Variant="Variant.Outlined" Lines="2" Class="mb-3" />
+
+                <MudCheckBox T="bool" @bind-Value="_markRTS" Color="Color.Warning" Dense="true" Class="mb-3">
+                    <MudText Typo="Typo.body2">Mark as RTS (Return to Sender)</MudText>
+                </MudCheckBox>
+
+                @if (_gpsLocation != null)
+                {
+                    <MudAlert Severity="Severity.Success" Dense="true" Class="mb-3" Style="border-radius: 8px;">
+                        GPS captured: @_gpsLocation
+                    </MudAlert>
+                }
+                else
+                {
+                    <MudButton Variant="Variant.Outlined" Color="Color.Primary" Size="Size.Small"
+                               StartIcon="@Icons.Material.Filled.MyLocation"
+                               Style="border-radius: 8px; margin-bottom: 12px;"
+                               OnClick="CaptureGPS">
+                        Capture GPS
+                    </MudButton>
+                }
+
+                <div style="display: flex; gap: 8px;">
+                    <MudButton Variant="Variant.Filled" Color="Color.Warning"
+                               Style="flex: 1; border-radius: 8px; font-weight: 600; height: 44px;"
+                               StartIcon="@Icons.Material.Filled.ReportProblem"
+                               Disabled="_isSaving"
+                               OnClick="ConfirmAttempt">
+                        @(_isSaving ? "Saving..." : "Record Attempt")
+                    </MudButton>
+                    <MudButton Variant="Variant.Outlined" Color="Color.Default"
+                               Style="border-radius: 8px;"
+                               OnClick="() => _showAttemptForm = false">
+                        Cancel
+                    </MudButton>
+                </div>
+            </MudPaper>
+        }
+
+        @if (!_showDeliverForm && !_showAttemptForm && IsDeliverable())
+        {
+            <div class="ld-detail-actions">
+                <MudButton Variant="Variant.Filled" Color="Color.Success"
+                           StartIcon="@Icons.Material.Filled.CheckCircle"
+                           Style="flex: 1; border-radius: 12px; font-weight: 600; height: 48px;"
+                           OnClick="ShowDeliverForm">
+                    Deliver
+                </MudButton>
+                <MudButton Variant="Variant.Outlined" Color="Color.Warning"
+                           StartIcon="@Icons.Material.Filled.ReportProblem"
+                           Style="border-radius: 12px; font-weight: 600; height: 48px;"
+                           OnClick="ShowAttemptForm">
+                    Attempt
+                </MudButton>
+            </div>
+        }
+    }
+</div>
+
+<style>
+    .ld-detail {
+        max-width: 600px;
+        margin: 0 auto;
+    }
+
+    .ld-detail-back {
+        display: flex;
+        align-items: center;
+        gap: 4px;
+        color: #556ee6;
+        cursor: pointer;
+        margin-bottom: 12px;
+        padding: 4px 0;
+        -webkit-tap-highlight-color: transparent;
+    }
+
+    .ld-info-grid {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+    }
+
+    .ld-info-row {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        font-size: 0.875rem;
+        color: #475569;
+    }
+
+    .ld-detail-actions {
+        display: flex;
+        gap: 8px;
+        position: sticky;
+        bottom: 72px;
+        padding: 12px 0;
+    }
+</style>
+
+@code {
+    [Parameter] public long Id { get; set; }
+
+    private DRSDetail? _detail;
+    private bool _isLoading = true;
+    private bool _isSaving;
+    private long _userId;
+
+    private string? _awbNo;
+    private string? _drsNo;
+    private string? _consigneeName;
+    private string? _consigneeContact;
+    private string? _consigneePhone;
+    private string? _consignorName;
+    private string? _fullAddress;
+    private int? _pieces;
+    private decimal? _weight;
+    private bool _isCOD;
+    private decimal _codAmount;
+
+    private bool _showDeliverForm;
+    private bool _showAttemptForm;
+    private string? _receivedBy;
+    private string? _relation;
+    private decimal? _collectedAmount;
+    private string? _deliverRemarks;
+    private string? _attemptReason;
+    private string? _attemptRemarks;
+    private bool _markRTS;
+    private string? _gpsLocation;
+    private decimal? _latitude;
+    private decimal? _longitude;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+        var userIdClaim = authState.User.FindFirst("UserId")?.Value;
+        if (long.TryParse(userIdClaim, out var uid))
+            _userId = uid;
+
+        await LoadDetail();
+    }
+
+    private async Task LoadDetail()
+    {
+        _isLoading = true;
+        try
+        {
+            await using var db = await DbFactory.CreateDbContextAsync();
+            _detail = await db.DRSDetails
+                .Include(dd => dd.DRS)
+                .Include(dd => dd.Inscan)
+                .FirstOrDefaultAsync(dd => dd.Id == Id && !dd.IsDeleted
+                    && dd.DRS.DeliveryEmployeeId == (int)_userId);
+
+            if (_detail != null)
+            {
+                var inscan = _detail.Inscan;
+                _awbNo = inscan?.AWBNo ?? $"AWB-{_detail.InscanId}";
+                _drsNo = _detail.DRS?.DRSNo ?? "";
+                _consigneeName = inscan?.Consignee;
+                _consigneeContact = inscan?.ConsigneeContact;
+                _consigneePhone = inscan?.ConsigneeMobile ?? inscan?.ConsigneePhone;
+                _consignorName = inscan?.Consignor;
+                _pieces = inscan?.Pieces;
+                _weight = inscan?.Weight;
+                _isCOD = inscan?.IsCOD ?? false;
+                _codAmount = _detail.CODAmount ?? inscan?.CODAmount ?? 0;
+                _collectedAmount = _codAmount > 0 ? _codAmount : null;
+
+                var addressParts = new List<string>();
+                if (!string.IsNullOrWhiteSpace(inscan?.ConsigneeAddress1)) addressParts.Add(inscan.ConsigneeAddress1);
+                if (!string.IsNullOrWhiteSpace(inscan?.ConsigneeAddress2)) addressParts.Add(inscan.ConsigneeAddress2);
+                if (!string.IsNullOrWhiteSpace(inscan?.ConsigneeCity)) addressParts.Add(inscan.ConsigneeCity);
+                if (!string.IsNullOrWhiteSpace(inscan?.ConsigneeState)) addressParts.Add(inscan.ConsigneeState);
+                if (!string.IsNullOrWhiteSpace(inscan?.ConsigneePostalCode)) addressParts.Add(inscan.ConsigneePostalCode);
+                _fullAddress = addressParts.Any() ? string.Join(", ", addressParts) : "No address available";
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[LinkDel] Load delivery detail error: {ex.Message}");
+        }
+        finally
+        {
+            _isLoading = false;
+        }
+    }
+
+    private bool IsDeliverable()
+    {
+        var status = _detail?.Status ?? "";
+        return string.IsNullOrEmpty(status) || status == "Pending" || status == "Out for Delivery";
+    }
+
+    private void ShowDeliverForm()
+    {
+        _showDeliverForm = true;
+        _showAttemptForm = false;
+        _gpsLocation = null;
+    }
+
+    private void ShowAttemptForm()
+    {
+        _showAttemptForm = true;
+        _showDeliverForm = false;
+        _gpsLocation = null;
+    }
+
+    private async Task ConfirmDelivery()
+    {
+        if (_isSaving) return;
+        if (string.IsNullOrWhiteSpace(_receivedBy))
+        {
+            Snackbar.Add("Please enter the receiver's name", Severity.Warning);
+            return;
+        }
+        if (_isCOD && (_collectedAmount == null || _collectedAmount <= 0))
+        {
+            Snackbar.Add("Please enter the collected COD amount", Severity.Warning);
+            return;
+        }
+
+        _isSaving = true;
+        try
+        {
+            await using var db = await DbFactory.CreateDbContextAsync();
+            var detail = await db.DRSDetails
+                .Include(dd => dd.DRS)
+                .FirstOrDefaultAsync(dd => dd.Id == Id && !dd.IsDeleted
+                    && dd.DRS.DeliveryEmployeeId == (int)_userId);
+
+            if (detail != null)
+            {
+                var prevStatus = detail.Status;
+                var wasPending = string.IsNullOrEmpty(prevStatus) || prevStatus == "Pending" || prevStatus == "Out for Delivery" || prevStatus == "Attempted";
+
+                if (!wasPending)
+                {
+                    Snackbar.Add("This delivery has already been processed", Severity.Info);
+                    _isSaving = false;
+                    return;
+                }
+
+                var prevCollected = detail.CollectedAmount ?? 0;
+                detail.Status = "Delivered";
+                detail.AttemptedAt = DateTime.UtcNow;
+                detail.ReceivedBy = _receivedBy;
+                detail.Relation = _relation;
+                detail.CollectedAmount = _collectedAmount ?? 0;
+                detail.Remarks = _deliverRemarks;
+                detail.AttemptNo = (detail.AttemptNo ?? 0) + 1;
+                detail.ModifiedAt = DateTime.UtcNow;
+
+                var drs = detail.DRS;
+                if (drs != null && (drs.Status == DRSStatus.Open || drs.Status == DRSStatus.Submitted))
+                {
+                    drs.DeliveredCount = (drs.DeliveredCount ?? 0) + 1;
+                    if (prevStatus != "RTS" && prevStatus != "Attempted")
+                        drs.PendingCount = Math.Max(0, (drs.PendingCount ?? 0) - 1);
+                    drs.CollectedCOD = (drs.CollectedCOD ?? 0) + (_collectedAmount ?? 0) - prevCollected;
+                    drs.ModifiedAt = DateTime.UtcNow;
+                }
+
+                await db.SaveChangesAsync();
+                try { await JS.InvokeVoidAsync("linkdel.vibrate", new object[] { new[] { 100, 50, 100 } }); } catch { }
+                Snackbar.Add("Delivery confirmed!", Severity.Success);
+                _showDeliverForm = false;
+                await LoadDetail();
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add("Failed to save delivery", Severity.Error);
+            Console.WriteLine($"[LinkDel] Delivery error: {ex.Message}");
+        }
+        finally
+        {
+            _isSaving = false;
+        }
+    }
+
+    private async Task ConfirmAttempt()
+    {
+        if (_isSaving) return;
+        if (string.IsNullOrWhiteSpace(_attemptReason))
+        {
+            Snackbar.Add("Please select a reason", Severity.Warning);
+            return;
+        }
+
+        _isSaving = true;
+        try
+        {
+            await using var db = await DbFactory.CreateDbContextAsync();
+            var detail = await db.DRSDetails
+                .Include(dd => dd.DRS)
+                .FirstOrDefaultAsync(dd => dd.Id == Id && !dd.IsDeleted
+                    && dd.DRS.DeliveryEmployeeId == (int)_userId);
+
+            if (detail != null)
+            {
+                var prevStatus = detail.Status;
+                var canAttempt = string.IsNullOrEmpty(prevStatus) || prevStatus == "Pending" || prevStatus == "Out for Delivery" || prevStatus == "Attempted";
+
+                if (!canAttempt)
+                {
+                    Snackbar.Add("This delivery has already been processed", Severity.Info);
+                    _isSaving = false;
+                    return;
+                }
+
+                var remarks = _attemptReason;
+                if (!string.IsNullOrWhiteSpace(_attemptRemarks))
+                    remarks += $" - {_attemptRemarks}";
+
+                detail.Status = _markRTS ? "RTS" : "Attempted";
+                detail.AttemptedAt = DateTime.UtcNow;
+                detail.Remarks = remarks;
+                detail.AttemptNo = (detail.AttemptNo ?? 0) + 1;
+                detail.ModifiedAt = DateTime.UtcNow;
+
+                var drs = detail.DRS;
+                if (drs != null && (drs.Status == DRSStatus.Open || drs.Status == DRSStatus.Submitted))
+                {
+                    if (_markRTS)
+                        drs.ReturnedCount = (drs.ReturnedCount ?? 0) + 1;
+                    if (prevStatus != "Attempted")
+                        drs.PendingCount = Math.Max(0, (drs.PendingCount ?? 0) - 1);
+                    drs.ModifiedAt = DateTime.UtcNow;
+                }
+
+                await db.SaveChangesAsync();
+                Snackbar.Add(_markRTS ? "Marked for return to sender" : "Attempt recorded", Severity.Warning);
+                _showAttemptForm = false;
+                await LoadDetail();
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add("Failed to save attempt", Severity.Error);
+            Console.WriteLine($"[LinkDel] Attempt error: {ex.Message}");
+        }
+        finally
+        {
+            _isSaving = false;
+        }
+    }
+
+    private async Task CaptureGPS()
+    {
+        try
+        {
+            var result = await JS.InvokeAsync<GpsResult>("linkdel.getCurrentPosition");
+            if (result != null)
+            {
+                _latitude = (decimal)result.Lat;
+                _longitude = (decimal)result.Lng;
+                _gpsLocation = $"{result.Lat:F6}, {result.Lng:F6}";
+                StateHasChanged();
+            }
+        }
+        catch
+        {
+            Snackbar.Add("Could not capture GPS location", Severity.Warning);
+        }
+    }
+
+    private async Task NavigateToAddress()
+    {
+        try
+        {
+            await JS.InvokeVoidAsync("linkdel.openNavigation", null, null, _fullAddress ?? "");
+        }
+        catch { }
+    }
+
+    private async Task CallConsignee()
+    {
+        if (!string.IsNullOrWhiteSpace(_consigneePhone))
+        {
+            try { await JS.InvokeVoidAsync("open", $"tel:{_consigneePhone}"); } catch { }
+        }
+    }
+
+    private string GetStatusStyle(string? status) => (status ?? "") switch
+    {
+        "Delivered" => "background: #d1fae5; color: #065f46;",
+        "Attempted" or "Failed" => "background: #fee2e2; color: #991b1b;",
+        "RTS" or "Returned" => "background: #fef3c7; color: #92400e;",
+        _ => "background: #dbeafe; color: #1d4ed8;"
+    };
+
+    private class GpsResult
+    {
+        public double Lat { get; set; }
+        public double Lng { get; set; }
+        public double Accuracy { get; set; }
+    }
+}
