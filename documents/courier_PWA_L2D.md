@@ -163,7 +163,7 @@ Applies identically to both pickup and delivery scenarios:
 - [x] "Add to Home Screen" / install support
 
 **Pending:**
-- [ ] L2D-specific branding icons (currently using placeholder icons)
+- None — Phase 1 fully complete
 
 **Reuses:**
 - `AuthService` (login, role check)
@@ -449,7 +449,7 @@ Applies identically to both pickup and delivery scenarios:
 
 | Phase | Status | Completion |
 |-------|--------|------------|
-| Phase 1: PWA Foundation & Authentication | COMPLETED | ~95% |
+| Phase 1: PWA Foundation & Authentication | COMPLETED | 100% |
 | Phase 2: Pickup Flow | COMPLETED | ~75% |
 | Phase 3: Delivery Flow & POD | COMPLETED | ~65% |
 | Phase 4: Expense Management & Cash | COMPLETED | ~85% |
