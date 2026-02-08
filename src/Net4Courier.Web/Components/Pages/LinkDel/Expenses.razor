@@ -1,8 +1,400 @@
 @page "/linkdel/expenses"
 @layout Net4Courier.Web.Components.Layout.LinkDelLayout
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.EntityFrameworkCore
+@using Net4Courier.Infrastructure.Data
+@using Net4Courier.Operations.Entities
+@using Net4Courier.Kernel.Enums
+@inject AuthenticationStateProvider AuthStateProvider
+@inject IDbContextFactory<ApplicationDbContext> DbFactory
+@inject ISnackbar Snackbar
 
-<div style="display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 60vh; text-align: center; padding: 24px;">
-    <MudIcon Icon="@Icons.Material.Filled.Receipt" Style="font-size: 5rem; color: #cbd5e1; margin-bottom: 16px;" />
-    <MudText Typo="Typo.h5" Style="font-weight: 600; color: #64748b;">Expenses</MudText>
-    <MudText Typo="Typo.body2" Style="color: #94a3b8; margin-top: 8px;">Coming soon — submit and track your expenses here.</MudText>
+<div class="ld-expenses">
+    <div class="ld-tab-bar">
+        <div class="ld-tab @(_activeTab == 0 ? "active" : "")" @onclick="() => SetTab(0)">
+            Today
+            @if (_todayCount > 0)
+            {
+                <span class="ld-badge">@_todayCount</span>
+            }
+        </div>
+        <div class="ld-tab @(_activeTab == 1 ? "active" : "")" @onclick="() => SetTab(1)">This Week</div>
+        <div class="ld-tab @(_activeTab == 2 ? "active" : "")" @onclick="() => SetTab(2)">All</div>
+    </div>
+
+    @if (_isLoading)
+    {
+        <div style="display: flex; justify-content: center; padding: 40px 0;">
+            <MudProgressCircular Indeterminate="true" Color="Color.Primary" />
+        </div>
+    }
+    else
+    {
+        @if (!_filteredExpenses.Any())
+        {
+            <div style="text-align: center; padding: 60px 16px;">
+                <MudIcon Icon="@Icons.Material.Filled.Receipt" Style="font-size: 4rem; color: #cbd5e1;" />
+                <MudText Typo="Typo.body1" Style="color: #94a3b8; margin-top: 12px;">No expenses found</MudText>
+                <MudText Typo="Typo.body2" Style="color: #cbd5e1;">Tap + to add an expense</MudText>
+            </div>
+        }
+        else
+        {
+            <div style="margin-bottom: 12px;">
+                <MudPaper Elevation="0" Style="border-radius: 12px; padding: 12px 16px; display: flex; justify-content: space-between; align-items: center;">
+                    <div>
+                        <MudText Typo="Typo.caption" Style="color: #94a3b8;">Total</MudText>
+                        <MudText Typo="Typo.h6" Style="font-weight: 700; color: #1e293b;">@_filteredExpenses.Sum(e => e.Amount).ToString("N2")</MudText>
+                    </div>
+                    <div style="display: flex; gap: 16px;">
+                        <div style="text-align: center;">
+                            <MudText Typo="Typo.caption" Style="color: #f59e0b;">Pending</MudText>
+                            <MudText Typo="Typo.body2" Style="font-weight: 600;">@_filteredExpenses.Count(e => e.Status == ExpenseStatus.Pending)</MudText>
+                        </div>
+                        <div style="text-align: center;">
+                            <MudText Typo="Typo.caption" Style="color: #34c38f;">Approved</MudText>
+                            <MudText Typo="Typo.body2" Style="font-weight: 600;">@_filteredExpenses.Count(e => e.Status == ExpenseStatus.Approved)</MudText>
+                        </div>
+                    </div>
+                </MudPaper>
+            </div>
+
+            @foreach (var expense in _filteredExpenses)
+            {
+                <MudPaper Elevation="0" Style="border-radius: 12px; padding: 14px 16px; margin-bottom: 10px;">
+                    <div style="display: flex; justify-content: space-between; align-items: flex-start;">
+                        <div style="display: flex; gap: 12px; align-items: center; flex: 1; min-width: 0;">
+                            <MudAvatar Size="Size.Medium" Style="@GetExpenseTypeStyle(expense.ExpenseType)">
+                                <MudIcon Icon="@GetExpenseTypeIcon(expense.ExpenseType)" Size="Size.Small" />
+                            </MudAvatar>
+                            <div style="min-width: 0; flex: 1;">
+                                <MudText Typo="Typo.body2" Style="font-weight: 600; color: #1e293b;">@expense.ExpenseType.ToString()</MudText>
+                                @if (!string.IsNullOrWhiteSpace(expense.Description))
+                                {
+                                    <MudText Typo="Typo.caption" Style="color: #94a3b8; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">@expense.Description</MudText>
+                                }
+                                <MudText Typo="Typo.caption" Style="color: #cbd5e1;">@expense.ExpenseDate.ToString("dd MMM") · DRS: @expense.DRSNo</MudText>
+                            </div>
+                        </div>
+                        <div style="text-align: right;">
+                            <MudText Typo="Typo.body2" Style="font-weight: 700; color: #1e293b;">@expense.Amount.ToString("N2")</MudText>
+                            <MudChip T="string" Size="Size.Small" Style="@GetStatusStyle(expense.Status)" Class="mt-1">
+                                @expense.Status.ToString()
+                            </MudChip>
+                        </div>
+                    </div>
+                </MudPaper>
+            }
+        }
+    }
+
+    <MudFab Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add"
+            Style="position: fixed; bottom: 72px; right: 16px; z-index: 1200;"
+            Size="Size.Large" OnClick="OpenAddExpense" />
+
+    <MudDialog @bind-Visible="_showAddDialog" Options="@(new DialogOptions { FullWidth = true, MaxWidth = MaxWidth.Small })">
+        <TitleContent>
+            <MudText Typo="Typo.h6" Style="font-weight: 700;">Add Expense</MudText>
+        </TitleContent>
+        <DialogContent>
+            <MudSelect T="long?" Label="DRS" @bind-Value="_selectedDRSId" Required="true" Variant="Variant.Outlined" Dense="true" Margin="Margin.Dense">
+                @foreach (var drs in _availableDRS)
+                {
+                    <MudSelectItem T="long?" Value="@drs.Id">@drs.DRSNo — @drs.DRSDate.ToString("dd MMM")</MudSelectItem>
+                }
+            </MudSelect>
+
+            <MudSelect T="ExpenseType" Label="Expense Type" @bind-Value="_expenseType" Required="true" Variant="Variant.Outlined" Dense="true" Margin="Margin.Dense" Class="mt-3">
+                <MudSelectItem T="ExpenseType" Value="ExpenseType.Fuel">Fuel</MudSelectItem>
+                <MudSelectItem T="ExpenseType" Value="ExpenseType.Toll">Toll</MudSelectItem>
+                <MudSelectItem T="ExpenseType" Value="ExpenseType.Parking">Parking</MudSelectItem>
+                <MudSelectItem T="ExpenseType" Value="ExpenseType.Repair">Repair</MudSelectItem>
+                <MudSelectItem T="ExpenseType" Value="ExpenseType.Food">Food</MudSelectItem>
+                <MudSelectItem T="ExpenseType" Value="ExpenseType.Other">Other</MudSelectItem>
+            </MudSelect>
+
+            <MudNumericField T="decimal" Label="Amount" @bind-Value="_expenseAmount" Required="true" Variant="Variant.Outlined" Dense="true" Margin="Margin.Dense" Min="0.01M" Class="mt-3" />
+
+            <MudTextField T="string" Label="Description" @bind-Value="_expenseDescription" Variant="Variant.Outlined" Dense="true" Margin="Margin.Dense" Lines="2" Class="mt-3" />
+        </DialogContent>
+        <DialogActions>
+            <MudButton OnClick="CloseAddExpense" Variant="Variant.Text">Cancel</MudButton>
+            <MudButton OnClick="SaveExpense" Variant="Variant.Filled" Color="Color.Primary" Disabled="_isSaving">
+                @if (_isSaving)
+                {
+                    <MudProgressCircular Indeterminate="true" Size="Size.Small" Class="mr-2" />
+                }
+                Save
+            </MudButton>
+        </DialogActions>
+    </MudDialog>
 </div>
+
+<style>
+    .ld-expenses {
+        max-width: 600px;
+        margin: 0 auto;
+    }
+
+    .ld-tab-bar {
+        display: flex;
+        background: #fff;
+        border-radius: 12px;
+        padding: 4px;
+        margin-bottom: 16px;
+        gap: 4px;
+    }
+
+    .ld-tab {
+        flex: 1;
+        text-align: center;
+        padding: 8px 4px;
+        border-radius: 8px;
+        font-size: 0.85rem;
+        font-weight: 500;
+        color: #64748b;
+        cursor: pointer;
+        transition: all 0.2s;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 6px;
+        user-select: none;
+        -webkit-tap-highlight-color: transparent;
+    }
+
+    .ld-tab.active {
+        background: #556ee6;
+        color: #fff;
+        font-weight: 600;
+    }
+
+    .ld-badge {
+        background: #ef4444;
+        color: #fff;
+        font-size: 0.65rem;
+        font-weight: 700;
+        padding: 1px 6px;
+        border-radius: 10px;
+        min-width: 18px;
+        text-align: center;
+    }
+
+    .ld-tab.active .ld-badge {
+        background: rgba(255,255,255,0.3);
+    }
+</style>
+
+@code {
+    private long _userId;
+    private bool _isLoading = true;
+    private int _activeTab;
+    private int _todayCount;
+
+    private List<ExpenseItem> _allExpenses = new();
+    private List<ExpenseItem> _filteredExpenses = new();
+
+    private bool _showAddDialog;
+    private bool _isSaving;
+    private long? _selectedDRSId;
+    private ExpenseType _expenseType = ExpenseType.Fuel;
+    private decimal _expenseAmount;
+    private string? _expenseDescription;
+    private List<DRSOption> _availableDRS = new();
+
+    private class ExpenseItem
+    {
+        public long Id { get; set; }
+        public DateTime ExpenseDate { get; set; }
+        public ExpenseType ExpenseType { get; set; }
+        public decimal Amount { get; set; }
+        public string? Description { get; set; }
+        public ExpenseStatus Status { get; set; }
+        public string DRSNo { get; set; } = "";
+        public long DRSId { get; set; }
+    }
+
+    private class DRSOption
+    {
+        public long Id { get; set; }
+        public string DRSNo { get; set; } = "";
+        public DateTime DRSDate { get; set; }
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+        var userIdClaim = authState.User.FindFirst("UserId")?.Value;
+        if (long.TryParse(userIdClaim, out var uid))
+            _userId = uid;
+
+        await LoadExpenses();
+    }
+
+    private async Task LoadExpenses()
+    {
+        _isLoading = true;
+        try
+        {
+            await using var db = await DbFactory.CreateDbContextAsync();
+            var expenses = await db.CourierExpenses
+                .Include(e => e.DRS)
+                .Where(e => e.CourierId == (int)_userId && !e.IsDeleted)
+                .OrderByDescending(e => e.ExpenseDate)
+                .ThenByDescending(e => e.CreatedAt)
+                .Take(200)
+                .Select(e => new ExpenseItem
+                {
+                    Id = e.Id,
+                    ExpenseDate = e.ExpenseDate,
+                    ExpenseType = e.ExpenseType,
+                    Amount = e.Amount,
+                    Description = e.Description,
+                    Status = e.Status,
+                    DRSNo = e.DRS.DRSNo,
+                    DRSId = e.DRSId
+                })
+                .ToListAsync();
+
+            _allExpenses = expenses;
+            _todayCount = expenses.Count(e => e.ExpenseDate.Date == DateTime.UtcNow.Date);
+            ApplyFilter();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[LinkDel] Load expenses error: {ex.Message}");
+        }
+        finally
+        {
+            _isLoading = false;
+        }
+    }
+
+    private void SetTab(int tab)
+    {
+        _activeTab = tab;
+        ApplyFilter();
+    }
+
+    private void ApplyFilter()
+    {
+        var today = DateTime.UtcNow.Date;
+        _filteredExpenses = _activeTab switch
+        {
+            0 => _allExpenses.Where(e => e.ExpenseDate.Date == today).ToList(),
+            1 => _allExpenses.Where(e => e.ExpenseDate.Date >= today.AddDays(-7)).ToList(),
+            _ => _allExpenses
+        };
+    }
+
+    private async Task OpenAddExpense()
+    {
+        _selectedDRSId = null;
+        _expenseType = ExpenseType.Fuel;
+        _expenseAmount = 0;
+        _expenseDescription = null;
+
+        try
+        {
+            await using var db = await DbFactory.CreateDbContextAsync();
+            _availableDRS = await db.DRSs
+                .Where(d => d.DeliveryEmployeeId == (int)_userId && !d.IsDeleted
+                    && (d.Status == DRSStatus.Open || d.Status == DRSStatus.Submitted))
+                .OrderByDescending(d => d.DRSDate)
+                .Take(20)
+                .Select(d => new DRSOption { Id = d.Id, DRSNo = d.DRSNo, DRSDate = d.DRSDate })
+                .ToListAsync();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[LinkDel] Load DRS error: {ex.Message}");
+        }
+
+        _showAddDialog = true;
+    }
+
+    private void CloseAddExpense()
+    {
+        _showAddDialog = false;
+    }
+
+    private async Task SaveExpense()
+    {
+        if (_selectedDRSId == null)
+        {
+            Snackbar.Add("Please select a DRS", Severity.Warning);
+            return;
+        }
+        if (_expenseAmount <= 0)
+        {
+            Snackbar.Add("Please enter a valid amount", Severity.Warning);
+            return;
+        }
+
+        _isSaving = true;
+        try
+        {
+            await using var db = await DbFactory.CreateDbContextAsync();
+            var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+            var courierName = authState.User.FindFirst("FullName")?.Value;
+
+            var expense = new CourierExpense
+            {
+                DRSId = _selectedDRSId.Value,
+                CourierId = (int)_userId,
+                CourierName = courierName,
+                ExpenseDate = DateTime.UtcNow,
+                ExpenseType = _expenseType,
+                Amount = _expenseAmount,
+                Description = _expenseDescription,
+                Status = ExpenseStatus.Pending,
+                CreatedAt = DateTime.UtcNow,
+                IsDeleted = false
+            };
+
+            db.CourierExpenses.Add(expense);
+            await db.SaveChangesAsync();
+
+            Snackbar.Add("Expense saved", Severity.Success);
+            _showAddDialog = false;
+            await LoadExpenses();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add("Failed to save expense", Severity.Error);
+            Console.WriteLine($"[LinkDel] Save expense error: {ex.Message}");
+        }
+        finally
+        {
+            _isSaving = false;
+        }
+    }
+
+    private string GetExpenseTypeIcon(ExpenseType type) => type switch
+    {
+        ExpenseType.Fuel => Icons.Material.Filled.LocalGasStation,
+        ExpenseType.Toll => Icons.Material.Filled.Toll,
+        ExpenseType.Parking => Icons.Material.Filled.LocalParking,
+        ExpenseType.Repair => Icons.Material.Filled.Build,
+        ExpenseType.Food => Icons.Material.Filled.Restaurant,
+        _ => Icons.Material.Filled.ReceiptLong
+    };
+
+    private string GetExpenseTypeStyle(ExpenseType type) => type switch
+    {
+        ExpenseType.Fuel => "background: #dbeafe; color: #2563eb;",
+        ExpenseType.Toll => "background: #fef3c7; color: #d97706;",
+        ExpenseType.Parking => "background: #e0e7ff; color: #4f46e5;",
+        ExpenseType.Repair => "background: #fee2e2; color: #dc2626;",
+        ExpenseType.Food => "background: #dcfce7; color: #16a34a;",
+        _ => "background: #f1f5f9; color: #64748b;"
+    };
+
+    private string GetStatusStyle(ExpenseStatus status) => status switch
+    {
+        ExpenseStatus.Pending => "background: #fef3c7; color: #92400e; font-size: 0.65rem;",
+        ExpenseStatus.Approved => "background: #dcfce7; color: #166534; font-size: 0.65rem;",
+        ExpenseStatus.Rejected => "background: #fee2e2; color: #991b1b; font-size: 0.65rem;",
+        _ => "font-size: 0.65rem;"
+    };
+}

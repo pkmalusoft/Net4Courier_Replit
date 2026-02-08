@@ -1,0 +1,317 @@
+@page "/linkdel/cash"
+@layout Net4Courier.Web.Components.Layout.LinkDelLayout
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.EntityFrameworkCore
+@using Net4Courier.Infrastructure.Data
+@using Net4Courier.Operations.Entities
+@using Net4Courier.Kernel.Enums
+@inject AuthenticationStateProvider AuthStateProvider
+@inject IDbContextFactory<ApplicationDbContext> DbFactory
+@inject NavigationManager Navigation
+@inject ISnackbar Snackbar
+
+<div class="ld-cash">
+    <MudText Typo="Typo.h5" Style="font-weight: 700; color: #1e293b; margin-bottom: 16px;">Cash Submission</MudText>
+
+    @if (_isLoading)
+    {
+        <div style="display: flex; justify-content: center; padding: 40px 0;">
+            <MudProgressCircular Indeterminate="true" Color="Color.Primary" />
+        </div>
+    }
+    else
+    {
+        @if (!_drsList.Any())
+        {
+            <div style="text-align: center; padding: 60px 16px;">
+                <MudIcon Icon="@Icons.Material.Filled.AccountBalanceWallet" Style="font-size: 4rem; color: #cbd5e1;" />
+                <MudText Typo="Typo.body1" Style="color: #94a3b8; margin-top: 12px;">No active DRS found</MudText>
+                <MudText Typo="Typo.body2" Style="color: #cbd5e1;">You don't have any DRS with pending cash</MudText>
+            </div>
+        }
+        else
+        {
+            @foreach (var drs in _drsList)
+            {
+                <MudPaper Elevation="0" Style="border-radius: 12px; padding: 16px; margin-bottom: 12px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+                        <div>
+                            <MudText Typo="Typo.body1" Style="font-weight: 700; color: #1e293b;">@drs.DRSNo</MudText>
+                            <MudText Typo="Typo.caption" Style="color: #94a3b8;">@drs.DRSDate.ToString("dd MMM yyyy")</MudText>
+                        </div>
+                        <MudChip T="string" Size="Size.Small" Style="@GetDRSStatusStyle(drs.Status)">@drs.Status.ToString()</MudChip>
+                    </div>
+
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 12px;">
+                        <div style="background: #f0fdf4; border-radius: 8px; padding: 8px 12px;">
+                            <MudText Typo="Typo.caption" Style="color: #16a34a;">COD Collected</MudText>
+                            <MudText Typo="Typo.body1" Style="font-weight: 700; color: #166534;">@(drs.CollectedCOD?.ToString("N2") ?? "0.00")</MudText>
+                        </div>
+                        <div style="background: #eff6ff; border-radius: 8px; padding: 8px 12px;">
+                            <MudText Typo="Typo.caption" Style="color: #2563eb;">Already Submitted</MudText>
+                            <MudText Typo="Typo.body1" Style="font-weight: 700; color: #1d4ed8;">@drs.TotalSubmitted.ToString("N2")</MudText>
+                        </div>
+                    </div>
+
+                    @{
+                        var remaining = (drs.CollectedCOD ?? 0) - drs.TotalSubmitted;
+                    }
+                    @if (remaining > 0)
+                    {
+                        <div style="background: #fef3c7; border-radius: 8px; padding: 8px 12px; margin-bottom: 12px;">
+                            <MudText Typo="Typo.caption" Style="color: #92400e;">Remaining to Submit</MudText>
+                            <MudText Typo="Typo.body1" Style="font-weight: 700; color: #78350f;">@remaining.ToString("N2")</MudText>
+                        </div>
+
+                        @if (_submitDRSId == drs.Id)
+                        {
+                            <MudNumericField T="decimal" Label="Cash Amount" @bind-Value="_submitAmount"
+                                             Variant="Variant.Outlined" Dense="true" Margin="Margin.Dense"
+                                             Min="0.01M" Max="remaining" Class="mb-3" />
+                            <MudTextField T="string" Label="Remarks (optional)" @bind-Value="_submitRemarks"
+                                          Variant="Variant.Outlined" Dense="true" Margin="Margin.Dense" Class="mb-3" />
+                            <div style="display: flex; gap: 8px;">
+                                <MudButton Variant="Variant.Text" OnClick="() => _submitDRSId = null" Style="flex: 1;">Cancel</MudButton>
+                                <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="() => SubmitCash(drs)" Disabled="_isSaving" Style="flex: 1;">
+                                    @if (_isSaving)
+                                    {
+                                        <MudProgressCircular Indeterminate="true" Size="Size.Small" Class="mr-2" />
+                                    }
+                                    Submit
+                                </MudButton>
+                            </div>
+                        }
+                        else
+                        {
+                            <MudButton Variant="Variant.Outlined" Color="Color.Primary" FullWidth="true"
+                                       StartIcon="@Icons.Material.Filled.AccountBalanceWallet"
+                                       Style="height: 40px; border-radius: 8px; font-weight: 600;"
+                                       OnClick="() => StartSubmit(drs.Id, remaining)">
+                                Submit Cash
+                            </MudButton>
+                        }
+                    }
+                    else
+                    {
+                        <div style="text-align: center; padding: 4px;">
+                            <MudIcon Icon="@Icons.Material.Filled.CheckCircle" Style="color: #34c38f;" Size="Size.Small" />
+                            <MudText Typo="Typo.caption" Style="color: #34c38f; font-weight: 600;">All cash submitted</MudText>
+                        </div>
+                    }
+
+                    @if (drs.Submissions.Any())
+                    {
+                        <MudDivider Class="my-3" />
+                        <MudText Typo="Typo.caption" Style="color: #94a3b8; font-weight: 600; margin-bottom: 8px;">Submission History</MudText>
+                        @foreach (var sub in drs.Submissions)
+                        {
+                            <div style="display: flex; justify-content: space-between; align-items: center; padding: 6px 0; border-bottom: 1px solid #f1f5f9;">
+                                <div>
+                                    <MudText Typo="Typo.body2" Style="font-weight: 600;">@sub.CashSubmittedAmount.ToString("N2")</MudText>
+                                    <MudText Typo="Typo.caption" Style="color: #94a3b8;">@sub.SubmissionDate.ToString("dd MMM HH:mm")</MudText>
+                                </div>
+                                @if (sub.IsAcknowledged)
+                                {
+                                    <MudIcon Icon="@Icons.Material.Filled.CheckCircle" Style="color: #34c38f;" Size="Size.Small" />
+                                }
+                                else
+                                {
+                                    <MudChip T="string" Size="Size.Small" Style="background: #fef3c7; color: #92400e; font-size: 0.6rem;">Pending</MudChip>
+                                }
+                            </div>
+                        }
+                    }
+                </MudPaper>
+            }
+        }
+    }
+</div>
+
+<style>
+    .ld-cash {
+        max-width: 600px;
+        margin: 0 auto;
+    }
+</style>
+
+@code {
+    private long _userId;
+    private bool _isLoading = true;
+    private bool _isSaving;
+    private List<DRSCashInfo> _drsList = new();
+    private long? _submitDRSId;
+    private decimal _submitAmount;
+    private string? _submitRemarks;
+
+    private class DRSCashInfo
+    {
+        public long Id { get; set; }
+        public string DRSNo { get; set; } = "";
+        public DateTime DRSDate { get; set; }
+        public DRSStatus Status { get; set; }
+        public decimal? CollectedCOD { get; set; }
+        public decimal TotalSubmitted { get; set; }
+        public List<SubmissionInfo> Submissions { get; set; } = new();
+    }
+
+    private class SubmissionInfo
+    {
+        public decimal CashSubmittedAmount { get; set; }
+        public DateTime SubmissionDate { get; set; }
+        public bool IsAcknowledged { get; set; }
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+        var userIdClaim = authState.User.FindFirst("UserId")?.Value;
+        if (long.TryParse(userIdClaim, out var uid))
+            _userId = uid;
+
+        await LoadData();
+    }
+
+    private async Task LoadData()
+    {
+        _isLoading = true;
+        try
+        {
+            await using var db = await DbFactory.CreateDbContextAsync();
+            var sevenDaysAgo = DateTime.UtcNow.Date.AddDays(-7);
+
+            var drsList = await db.DRSs
+                .Where(d => d.DeliveryEmployeeId == (int)_userId && !d.IsDeleted
+                    && d.DRSDate >= sevenDaysAgo
+                    && d.Status != DRSStatus.Closed)
+                .OrderByDescending(d => d.DRSDate)
+                .ToListAsync();
+
+            var drsIds = drsList.Select(d => d.Id).ToList();
+
+            var submissions = await db.CourierCashSubmissions
+                .Where(s => drsIds.Contains(s.DRSId) && !s.IsDeleted)
+                .OrderByDescending(s => s.SubmissionDate)
+                .ToListAsync();
+
+            _drsList = drsList.Select(d => new DRSCashInfo
+            {
+                Id = d.Id,
+                DRSNo = d.DRSNo,
+                DRSDate = d.DRSDate,
+                Status = d.Status,
+                CollectedCOD = d.CollectedCOD,
+                TotalSubmitted = submissions.Where(s => s.DRSId == d.Id).Sum(s => s.CashSubmittedAmount),
+                Submissions = submissions.Where(s => s.DRSId == d.Id).Select(s => new SubmissionInfo
+                {
+                    CashSubmittedAmount = s.CashSubmittedAmount,
+                    SubmissionDate = s.SubmissionDate,
+                    IsAcknowledged = s.IsAcknowledged
+                }).ToList()
+            })
+            .Where(d => (d.CollectedCOD ?? 0) > 0 || d.Submissions.Any())
+            .ToList();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[LinkDel] Load cash data error: {ex.Message}");
+        }
+        finally
+        {
+            _isLoading = false;
+        }
+    }
+
+    private void StartSubmit(long drsId, decimal remaining)
+    {
+        _submitDRSId = drsId;
+        _submitAmount = remaining;
+        _submitRemarks = null;
+    }
+
+    private async Task SubmitCash(DRSCashInfo drs)
+    {
+        if (_submitAmount <= 0)
+        {
+            Snackbar.Add("Please enter a valid amount", Severity.Warning);
+            return;
+        }
+
+        var remaining = (drs.CollectedCOD ?? 0) - drs.TotalSubmitted;
+        if (_submitAmount > remaining)
+        {
+            Snackbar.Add($"Amount cannot exceed remaining balance of {remaining:N2}", Severity.Warning);
+            return;
+        }
+
+        _isSaving = true;
+        try
+        {
+            await using var db = await DbFactory.CreateDbContextAsync();
+
+            var dbDrs = await db.DRSs
+                .Where(d => d.Id == drs.Id && d.DeliveryEmployeeId == (int)_userId && !d.IsDeleted)
+                .FirstOrDefaultAsync();
+
+            if (dbDrs == null)
+            {
+                Snackbar.Add("DRS not found or access denied", Severity.Error);
+                _isSaving = false;
+                return;
+            }
+
+            var dbSubmitted = await db.CourierCashSubmissions
+                .Where(s => s.DRSId == drs.Id && !s.IsDeleted)
+                .SumAsync(s => s.CashSubmittedAmount);
+
+            var dbRemaining = (dbDrs.CollectedCOD ?? 0) - dbSubmitted;
+            if (_submitAmount > dbRemaining)
+            {
+                Snackbar.Add($"Amount exceeds remaining balance of {dbRemaining:N2}", Severity.Warning);
+                _isSaving = false;
+                return;
+            }
+
+            var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+            var courierName = authState.User.FindFirst("FullName")?.Value;
+
+            var submission = new CourierCashSubmission
+            {
+                DRSId = drs.Id,
+                CourierId = (int)_userId,
+                CourierName = courierName,
+                SubmissionDate = DateTime.UtcNow,
+                CashSubmittedAmount = _submitAmount,
+                SubmissionTime = DateTime.UtcNow,
+                Remarks = _submitRemarks,
+                IsAcknowledged = false,
+                CreatedAt = DateTime.UtcNow,
+                IsDeleted = false
+            };
+
+            db.CourierCashSubmissions.Add(submission);
+            await db.SaveChangesAsync();
+
+            Snackbar.Add("Cash submission recorded", Severity.Success);
+            _submitDRSId = null;
+            await LoadData();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add("Failed to submit cash", Severity.Error);
+            Console.WriteLine($"[LinkDel] Cash submit error: {ex.Message}");
+        }
+        finally
+        {
+            _isSaving = false;
+        }
+    }
+
+    private string GetDRSStatusStyle(DRSStatus status) => status switch
+    {
+        DRSStatus.Open => "background: #dbeafe; color: #1d4ed8; font-size: 0.65rem;",
+        DRSStatus.Submitted => "background: #fef3c7; color: #92400e; font-size: 0.65rem;",
+        DRSStatus.PartiallyReconciled => "background: #e0e7ff; color: #4338ca; font-size: 0.65rem;",
+        DRSStatus.Reconciled => "background: #dcfce7; color: #166534; font-size: 0.65rem;",
+        _ => "font-size: 0.65rem;"
+    };
+}

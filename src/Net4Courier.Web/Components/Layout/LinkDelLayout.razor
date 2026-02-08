@@ -1,15 +1,18 @@
 @inherits LayoutComponentBase
+@implements IDisposable
 @using MudBlazor
 @using Microsoft.AspNetCore.Components.Authorization
 @inject NavigationManager Navigation
 @inject AuthenticationStateProvider AuthStateProvider
 @inject IJSRuntime JS
+@inject ISnackbar Snackbar
 
 <HeadContent>
     <link rel="manifest" href="/linkdel/manifest.json" />
     <meta name="theme-color" content="#556ee6" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <script src="/js/linkdel-offline.js"></script>
 </HeadContent>
 
 <MudThemeProvider Theme="_theme" />
@@ -21,12 +24,32 @@
     <MudAppBar Elevation="1" Dense="true" Style="background: #556ee6;">
         <MudIcon Icon="@Icons.Material.Filled.DeliveryDining" Size="Size.Medium" Style="color: #fff; margin-right: 8px;" />
         <MudText Typo="Typo.h6" Style="color: #fff; font-weight: 700;">LinkDel</MudText>
+        @if (!_isOnline)
+        {
+            <MudChip T="string" Size="Size.Small" Style="background: rgba(239,68,68,0.9); color: #fff; font-size: 0.6rem; margin-left: 8px;" Icon="@Icons.Material.Filled.CloudOff">
+                Offline
+            </MudChip>
+        }
+        @if (_pendingSync > 0)
+        {
+            <MudChip T="string" Size="Size.Small" Style="background: rgba(245,158,11,0.9); color: #fff; font-size: 0.6rem; margin-left: 4px;">
+                @_pendingSync pending
+            </MudChip>
+        }
         <MudSpacer />
-        <MudIconButton Icon="@Icons.Material.Filled.Notifications" Style="color: #fff;" />
+        <MudIconButton Icon="@Icons.Material.Filled.Notifications" Style="color: #fff;" OnClick="RequestNotificationPermission" />
         <MudAvatar Size="Size.Small" Style="background: #34c38f; color: #fff; font-size: 0.75rem; cursor: pointer;">
             @_userInitial
         </MudAvatar>
     </MudAppBar>
+
+    @if (!_isOnline)
+    {
+        <div class="linkdel-offline-banner">
+            <MudIcon Icon="@Icons.Material.Filled.WifiOff" Size="Size.Small" Style="color: #fff;" />
+            <span>You're offline. Some features may be limited.</span>
+        </div>
+    }
 
     <div class="linkdel-body">
         @Body
@@ -112,11 +135,26 @@
     .linkdel-nav-item span {
         margin-top: 2px;
     }
+
+    .linkdel-offline-banner {
+        background: #ef4444;
+        color: #fff;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+        padding: 6px 16px;
+        font-size: 0.75rem;
+        font-weight: 500;
+    }
 </style>
 
 @code {
     private string _userInitial = "";
     private string _userName = "";
+    private bool _isOnline = true;
+    private int _pendingSync;
+    private DotNetObjectReference<LinkDelLayout>? _selfRef;
 
     private MudTheme _theme = new()
     {
@@ -159,6 +197,60 @@
         _userInitial = string.IsNullOrEmpty(fullName) ? "?" : fullName[..1].ToUpper();
     }
 
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            try
+            {
+                _isOnline = await JS.InvokeAsync<bool>("linkdelOffline.isOnline");
+
+                _selfRef = DotNetObjectReference.Create(this);
+                await JS.InvokeVoidAsync("linkdelOffline.registerConnectivityListeners", _selfRef);
+
+                _pendingSync = await JS.InvokeAsync<int>("linkdelOffline.getOutboxCount");
+                StateHasChanged();
+            }
+            catch { }
+        }
+    }
+
+    [JSInvokable]
+    public async Task OnConnectivityChanged(bool isOnline)
+    {
+        _isOnline = isOnline;
+        if (isOnline)
+        {
+            Snackbar.Add("Back online", Severity.Success);
+            _pendingSync = await JS.InvokeAsync<int>("linkdelOffline.getOutboxCount");
+        }
+        else
+        {
+            Snackbar.Add("You're offline. Changes will sync when connected.", Severity.Warning);
+        }
+        await InvokeAsync(StateHasChanged);
+    }
+
+    [JSInvokable]
+    public async Task OnSyncRequested()
+    {
+        _pendingSync = await JS.InvokeAsync<int>("linkdelOffline.getOutboxCount");
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task RequestNotificationPermission()
+    {
+        try
+        {
+            await JS.InvokeVoidAsync("linkdel.requestNotificationPermission");
+            Snackbar.Add("Notification permission requested", Severity.Info);
+        }
+        catch
+        {
+            Snackbar.Add("Notifications not supported on this device", Severity.Warning);
+        }
+    }
+
     private bool IsActive(string path, bool exact = false)
     {
         var uri = new Uri(Navigation.Uri);
@@ -170,5 +262,15 @@
     private void Navigate(string path)
     {
         Navigation.NavigateTo(path);
+    }
+
+    public void Dispose()
+    {
+        try
+        {
+            _ = JS.InvokeVoidAsync("linkdelOffline.removeConnectivityListeners");
+        }
+        catch { }
+        _selfRef?.Dispose();
     }
 }

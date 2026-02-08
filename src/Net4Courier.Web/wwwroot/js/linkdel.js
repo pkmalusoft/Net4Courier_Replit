@@ -82,5 +82,38 @@ window.linkdel = {
     if (Notification.permission === 'granted') {
       new Notification(title, { body: body, icon: '/linkdel/icon-192.png' });
     }
+  },
+
+  requestNotificationPermission: async function () {
+    if (!('Notification' in window)) {
+      console.warn('[LinkDel] Notifications not supported');
+      return 'unsupported';
+    }
+    if (Notification.permission === 'granted') {
+      return 'granted';
+    }
+    const result = await Notification.requestPermission();
+    return result;
+  },
+
+  getNotificationPermission: function () {
+    if (!('Notification' in window)) return 'unsupported';
+    return Notification.permission;
+  },
+
+  subscribePush: async function () {
+    if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
+      return null;
+    }
+    try {
+      const reg = await navigator.serviceWorker.ready;
+      const sub = await reg.pushManager.getSubscription();
+      if (sub) return JSON.stringify(sub.toJSON());
+
+      return null;
+    } catch (e) {
+      console.warn('[LinkDel] Push subscribe error:', e);
+      return null;
+    }
   }
 };

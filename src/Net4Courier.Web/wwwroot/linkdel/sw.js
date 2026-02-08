@@ -1,4 +1,4 @@
-const CACHE_VERSION = 'linkdel-v1';
+const CACHE_VERSION = 'linkdel-v2';
 const CACHE_ASSETS = [
   '/linkdel/manifest.json',
   '/linkdel/icon-192.png',
@@ -60,3 +60,60 @@ self.addEventListener('fetch', (event) => {
       })
   );
 });
+
+self.addEventListener('push', (event) => {
+  let data = { title: 'LinkDel', body: 'You have a new notification' };
+  try {
+    if (event.data) {
+      data = event.data.json();
+    }
+  } catch (e) {
+    if (event.data) {
+      data.body = event.data.text();
+    }
+  }
+
+  event.waitUntil(
+    self.registration.showNotification(data.title || 'LinkDel', {
+      body: data.body || '',
+      icon: '/linkdel/icon-192.png',
+      badge: '/linkdel/icon-192.png',
+      data: data.url || '/linkdel',
+      vibrate: [200, 100, 200]
+    })
+  );
+});
+
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close();
+  const url = event.notification.data || '/linkdel';
+  event.waitUntil(
+    clients.matchAll({ type: 'window' }).then((windowClients) => {
+      for (const client of windowClients) {
+        if (client.url.includes('/linkdel') && 'focus' in client) {
+          return client.focus();
+        }
+      }
+      if (clients.openWindow) {
+        return clients.openWindow(url);
+      }
+    })
+  );
+});
+
+self.addEventListener('sync', (event) => {
+  if (event.tag === 'linkdel-sync') {
+    event.waitUntil(syncOfflineQueue());
+  }
+});
+
+async function syncOfflineQueue() {
+  try {
+    const allClients = await clients.matchAll({ type: 'window' });
+    for (const client of allClients) {
+      client.postMessage({ type: 'SYNC_REQUESTED' });
+    }
+  } catch (e) {
+    console.warn('[LinkDel SW] Sync error:', e);
+  }
+}
