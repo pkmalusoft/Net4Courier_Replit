@@ -20,6 +20,7 @@ public interface IDemoDataService
     Task<bool> CreateTransactionDataAsync();
     Task<bool> CreateFinanceDataAsync();
     Task<bool> CreateRateCardDataAsync();
+    Task<bool> UpdateCompanyAsync(long companyId, string companyName, long countryId, long currencyId);
     Task<bool> DeleteAllDemoDataAsync();
     Task<bool> DeleteAllDataAsync();
 }
@@ -335,6 +336,38 @@ public class DemoDataService : IDemoDataService
         }
     }
 
+    public async Task<bool> UpdateCompanyAsync(long companyId, string companyName, long countryId, long currencyId)
+    {
+        await using var context = await _dbFactory.CreateDbContextAsync();
+        LastError = null;
+        
+        try
+        {
+            var company = await context.Companies.FirstOrDefaultAsync(c => c.Id == companyId && !c.IsDeleted);
+            if (company == null)
+            {
+                LastError = "Company not found";
+                return false;
+            }
+            
+            company.Name = companyName;
+            company.CountryId = countryId;
+            company.CurrencyId = currencyId;
+            company.ModifiedAt = DateTime.UtcNow;
+            
+            await context.SaveChangesAsync();
+            _logger.LogInformation("Company {CompanyId} updated: Name={Name}, CountryId={CountryId}, CurrencyId={CurrencyId}", 
+                companyId, companyName, countryId, currencyId);
+            return true;
+        }
+        catch (Exception ex)
+        {
+            LastError = ex.Message;
+            _logger.LogError(ex, "Error updating company {CompanyId}", companyId);
+            return false;
+        }
+    }
+    
     public async Task<bool> CreateMasterDataAsync(DemoDataSetupInput? setupInput = null)
     {
         await using var context = await _dbFactory.CreateDbContextAsync();

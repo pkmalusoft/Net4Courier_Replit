@@ -187,10 +187,8 @@ builder.Services.AddScoped<ISLAPdfService, SLAPdfService>();
 builder.Services.AddScoped<RateCardImportService>();
 builder.Services.AddScoped<AWBStockService>();
 builder.Services.AddScoped<PrepaidService>();
-builder.Services.AddScoped<ISetupService, SetupService>();
 builder.Services.AddHttpClient();
 builder.Services.AddScoped<IGmailEmailService, GmailEmailService>();
-builder.Services.AddScoped<IAdminEmailNotifier, AdminEmailNotifier>();
 
 // TrueBooks GL Module Services
 builder.Services.AddScoped<Truebooks.Platform.Core.MultiTenancy.ITenantContext, Net4Courier.Web.Services.SingleTenantContext>();
@@ -312,33 +310,6 @@ app.UseStaticFiles();
 app.UseAuthentication();
 app.UseAuthorization();
 app.UseAntiforgery();
-
-app.Use(async (context, next) =>
-{
-    var path = context.Request.Path.Value?.ToLower() ?? "";
-    
-    if (!path.StartsWith("/setup") && !path.StartsWith("/_") && !path.StartsWith("/health") && 
-        !path.Contains(".") && !path.StartsWith("/api"))
-    {
-        using var scope = context.RequestServices.CreateScope();
-        var setupService = scope.ServiceProvider.GetRequiredService<ISetupService>();
-        
-        try
-        {
-            var setupRequired = await setupService.IsSetupRequiredAsync();
-            if (setupRequired)
-            {
-                context.Response.Redirect("/setup");
-                return;
-            }
-        }
-        catch
-        {
-        }
-    }
-    
-    await next();
-});
 
 app.MapGet("/health", () => Results.Ok("Healthy"));
 
