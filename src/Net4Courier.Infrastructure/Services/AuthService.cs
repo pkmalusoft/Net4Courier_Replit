@@ -145,77 +145,92 @@ public class AuthService
     {
         try
         {
-            var platformAdminRole = await _context.Roles.FirstOrDefaultAsync(r => r.Name == "PlatformAdmin");
-            
-            if (platformAdminRole == null)
-            {
-                platformAdminRole = new Role
-                {
-                    Name = "PlatformAdmin",
-                    Description = "Platform administrator with access to tenant management and demo data",
-                    IsActive = true
-                };
-                _context.Roles.Add(platformAdminRole);
-                await _context.SaveChangesAsync();
-                Console.WriteLine("PlatformAdmin role created");
-            }
+            Console.WriteLine("SeedPlatformAdminAsync: Starting platform admin seeding...");
             
             var setupKey = Environment.GetEnvironmentVariable("SETUP_KEY");
             var platformAdminPassword = Environment.GetEnvironmentVariable("PLATFORMADMIN_PASSWORD");
             var effectivePassword = !string.IsNullOrEmpty(platformAdminPassword) ? platformAdminPassword : setupKey;
+            var initialPassword = !string.IsNullOrEmpty(effectivePassword) ? effectivePassword : "Admin@123";
+            var passwordHash = BCrypt.Net.BCrypt.HashPassword(initialPassword);
             
-            var platformAdminUser = await _context.Users.FirstOrDefaultAsync(u => u.Username == "platformadmin");
+            var conn = _context.Database.GetDbConnection();
+            if (conn.State != System.Data.ConnectionState.Open)
+                await conn.OpenAsync();
             
-            if (platformAdminUser == null)
+            using var checkRoleCmd = conn.CreateCommand();
+            checkRoleCmd.CommandText = "SELECT \"Id\" FROM \"Roles\" WHERE \"Name\" = 'PlatformAdmin' LIMIT 1";
+            var roleIdObj = await checkRoleCmd.ExecuteScalarAsync();
+            long roleId;
+            
+            if (roleIdObj == null)
             {
-                var defaultBranch = await _context.Branches.FirstOrDefaultAsync(b => b.IsActive);
-                
-                var initialPassword = !string.IsNullOrEmpty(effectivePassword) ? effectivePassword : "Admin@123";
-                
-                platformAdminUser = new User
+                using var createRoleCmd = conn.CreateCommand();
+                createRoleCmd.CommandText = @"INSERT INTO ""Roles"" (""Name"", ""Description"", ""IsActive"", ""CreatedAt"", ""IsDeleted"", ""IsDemo"") 
+                    VALUES ('PlatformAdmin', 'Platform administrator with access to tenant management and demo data', TRUE, NOW(), FALSE, FALSE) 
+                    RETURNING ""Id""";
+                roleId = Convert.ToInt64(await createRoleCmd.ExecuteScalarAsync());
+                Console.WriteLine($"SeedPlatformAdminAsync: PlatformAdmin role created with Id={roleId}");
+            }
+            else
+            {
+                roleId = Convert.ToInt64(roleIdObj);
+                Console.WriteLine($"SeedPlatformAdminAsync: PlatformAdmin role already exists with Id={roleId}");
+            }
+            
+            using var checkUserCmd = conn.CreateCommand();
+            checkUserCmd.CommandText = "SELECT \"Id\" FROM \"Users\" WHERE \"Username\" = 'platformadmin' LIMIT 1";
+            var userIdObj = await checkUserCmd.ExecuteScalarAsync();
+            
+            if (userIdObj == null)
+            {
+                using var createUserCmd = conn.CreateCommand();
+                createUserCmd.CommandText = @"INSERT INTO ""Users"" (""Username"", ""PasswordHash"", ""Email"", ""FullName"", ""Phone"", ""RoleId"", ""IsActive"", ""CreatedAt"", ""IsDeleted"", ""IsDemo"") 
+                    VALUES ('platformadmin', @hash, 'platformadmin@net4courier.com', 'Platform Administrator', '+971-000-0000', @roleId, TRUE, NOW(), FALSE, FALSE) 
+                    RETURNING ""Id""";
+                var hashParam = createUserCmd.CreateParameter();
+                hashParam.ParameterName = "@hash";
+                hashParam.Value = passwordHash;
+                createUserCmd.Parameters.Add(hashParam);
+                var roleParam = createUserCmd.CreateParameter();
+                roleParam.ParameterName = "@roleId";
+                roleParam.Value = roleId;
+                createUserCmd.Parameters.Add(roleParam);
+                var userId = Convert.ToInt64(await createUserCmd.ExecuteScalarAsync());
+                Console.WriteLine($"SeedPlatformAdminAsync: platformadmin user created with Id={userId}, password source: {(!string.IsNullOrEmpty(platformAdminPassword) ? "PLATFORMADMIN_PASSWORD" : !string.IsNullOrEmpty(setupKey) ? "SETUP_KEY" : "default")}");
+            }
+            else
+            {
+                var userId = Convert.ToInt64(userIdObj);
+                Console.WriteLine($"SeedPlatformAdminAsync: platformadmin user already exists with Id={userId}");
+                if (!string.IsNullOrEmpty(effectivePassword))
                 {
-                    Username = "platformadmin",
-                    PasswordHash = BCrypt.Net.BCrypt.HashPassword(initialPassword),
-                    Email = "platformadmin@net4courier.com",
-                    FullName = "Platform Administrator",
-                    Phone = "+971-000-0000",
-                    RoleId = platformAdminRole.Id,
-                    BranchId = defaultBranch?.Id,
-                    IsActive = true,
-                    CreatedAt = DateTime.UtcNow
-                };
-                _context.Users.Add(platformAdminUser);
-                await _context.SaveChangesAsync();
-                Console.WriteLine($"Platform admin user created (username: platformadmin, password source: {(!string.IsNullOrEmpty(platformAdminPassword) ? "PLATFORMADMIN_PASSWORD" : !string.IsNullOrEmpty(setupKey) ? "SETUP_KEY" : "default")})");
-                
-                if (defaultBranch != null)
-                {
-                    var userBranch = new UserBranch
-                    {
-                        UserId = platformAdminUser.Id,
-                        BranchId = defaultBranch.Id,
-                        IsDefault = true
-                    };
-                    _context.UserBranches.Add(userBranch);
-                    await _context.SaveChangesAsync();
+                    using var updateCmd = conn.CreateCommand();
+                    updateCmd.CommandText = @"UPDATE ""Users"" SET ""PasswordHash"" = @hash, ""IsActive"" = TRUE, ""RoleId"" = @roleId, ""ModifiedAt"" = NOW() WHERE ""Id"" = @userId";
+                    var hashParam = updateCmd.CreateParameter();
+                    hashParam.ParameterName = "@hash";
+                    hashParam.Value = passwordHash;
+                    updateCmd.Parameters.Add(hashParam);
+                    var roleParam = updateCmd.CreateParameter();
+                    roleParam.ParameterName = "@roleId";
+                    roleParam.Value = roleId;
+                    updateCmd.Parameters.Add(roleParam);
+                    var userIdParam = updateCmd.CreateParameter();
+                    userIdParam.ParameterName = "@userId";
+                    userIdParam.Value = userId;
+                    updateCmd.Parameters.Add(userIdParam);
+                    await updateCmd.ExecuteNonQueryAsync();
+                    Console.WriteLine($"SeedPlatformAdminAsync: platformadmin password synced from {(!string.IsNullOrEmpty(platformAdminPassword) ? "PLATFORMADMIN_PASSWORD" : "SETUP_KEY")}");
                 }
             }
-            else if (!string.IsNullOrEmpty(effectivePassword))
-            {
-                if (!BCrypt.Net.BCrypt.Verify(effectivePassword, platformAdminUser.PasswordHash))
-                {
-                    platformAdminUser.PasswordHash = BCrypt.Net.BCrypt.HashPassword(effectivePassword);
-                    platformAdminUser.IsActive = true;
-                    platformAdminUser.RoleId = platformAdminRole.Id;
-                    platformAdminUser.ModifiedAt = DateTime.UtcNow;
-                    await _context.SaveChangesAsync();
-                    Console.WriteLine($"Platform admin password synced from {(!string.IsNullOrEmpty(platformAdminPassword) ? "PLATFORMADMIN_PASSWORD" : "SETUP_KEY")}");
-                }
-            }
+            
+            Console.WriteLine("SeedPlatformAdminAsync: Completed successfully");
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"Warning: Could not seed platform admin: {ex.Message}");
+            Console.WriteLine($"ERROR SeedPlatformAdminAsync: {ex.GetType().Name}: {ex.Message}");
+            Console.WriteLine($"ERROR SeedPlatformAdminAsync StackTrace: {ex.StackTrace}");
+            if (ex.InnerException != null)
+                Console.WriteLine($"ERROR SeedPlatformAdminAsync Inner: {ex.InnerException.Message}");
         }
     }
     
