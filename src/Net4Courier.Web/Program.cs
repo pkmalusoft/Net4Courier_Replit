@@ -451,6 +451,7 @@ app.MapGet("/api/report/awb/{id:long}", async (long id, bool? inline, Applicatio
             companyName ??= company?.Name;
             website ??= company?.Website;
         }
+        await ResolveLocationCodes(awb, db);
         var pdf = printService.GenerateA5AWB(awb, companyName, logoData, website);
         var fileName = inline == true ? null : $"AWB-{awb.AWBNo}.pdf";
         return Results.File(pdf, "application/pdf", fileName);
@@ -488,6 +489,7 @@ app.MapGet("/api/report/awb-label/{id:long}", async (long id, bool? inline, Appl
             logoData = ResolveLogoBytes(company?.Logo, env.WebRootPath);
             companyName ??= company?.Name;
         }
+        await ResolveLocationCodes(awb, db);
         var pdf = printService.GenerateLabel(awb, companyName, logoData);
         var fileName = inline == true ? null : $"Label-{awb.AWBNo}.pdf";
         return Results.File(pdf, "application/pdf", fileName);
@@ -533,6 +535,7 @@ app.MapGet("/api/report/awb-by-awbno/{awbNo}", async (string awbNo, bool? inline
             companyName ??= company?.Name;
             website ??= company?.Website;
         }
+        await ResolveLocationCodes(awb, db);
         var pdf = printService.GenerateA5AWB(awb, companyName, logoData, website);
         var fileName = inline == true ? null : $"AWB-{awb.AWBNo}.pdf";
         return Results.File(pdf, "application/pdf", fileName);
@@ -575,6 +578,7 @@ app.MapGet("/api/report/awb-label-by-awbno/{awbNo}", async (string awbNo, bool? 
             logoData = ResolveLogoBytes(company?.Logo, env.WebRootPath);
             companyName ??= company?.Name;
         }
+        await ResolveLocationCodes(awb, db);
         var pdf = printService.GenerateLabel(awb, companyName, logoData);
         var fileName = inline == true ? null : $"Label-{awb.AWBNo}.pdf";
         return Results.File(pdf, "application/pdf", fileName);
@@ -623,6 +627,7 @@ app.MapGet("/api/report/awb-bulk/{ids}", async (string ids, bool? inline, Applic
             }
         }
 
+        await ResolveLocationCodesBulk(awbs, db);
         var combinedPdf = printService.GenerateBulkA5AWB(awbs, companyName, logoData, website);
         var fileName = inline == true ? null : $"BulkAWB-{DateTime.Now:yyyyMMdd_HHmmss}.pdf";
         return Results.File(combinedPdf, "application/pdf", fileName);
@@ -684,6 +689,7 @@ app.MapGet("/api/report/awb-bulk-by-awbno/{awbNos}", async (string awbNos, bool?
             }
         }
 
+        await ResolveLocationCodesBulk(awbs, db);
         var combinedPdf = printService.GenerateBulkA5AWB(awbs, companyName, logoData, website);
         var fileName = inline == true ? null : $"BulkAWB-{DateTime.Now:yyyyMMdd_HHmmss}.pdf";
         return Results.File(combinedPdf, "application/pdf", fileName);
@@ -729,6 +735,7 @@ app.MapGet("/api/report/label-bulk/{ids}", async (string ids, bool? inline, Appl
             }
         }
 
+        await ResolveLocationCodesBulk(awbs, db);
         var combinedPdf = printService.GenerateBulkLabel(awbs, companyName, logoData);
         var fileName = inline == true ? null : $"BulkLabels-{DateTime.Now:yyyyMMdd_HHmmss}.pdf";
         return Results.File(combinedPdf, "application/pdf", fileName);
@@ -787,6 +794,7 @@ app.MapGet("/api/report/label-bulk-by-awbno/{awbNos}", async (string awbNos, boo
             }
         }
 
+        await ResolveLocationCodesBulk(awbs, db);
         var combinedPdf = printService.GenerateBulkLabel(awbs, companyName, logoData);
         var fileName = inline == true ? null : $"BulkLabels-{DateTime.Now:yyyyMMdd_HHmmss}.pdf";
         return Results.File(combinedPdf, "application/pdf", fileName);
@@ -817,6 +825,7 @@ app.MapGet("/api/report/shipment-invoice/{id:long}", async (long id, bool? inlin
             logoData = ResolveLogoBytes(company?.Logo, env.WebRootPath);
         }
         
+        await ResolveLocationCodes(awb, db);
         var pdf = printService.GenerateShipmentInvoice(awb, logoData, $"INV-{awb.AWBNo}");
         var fileName = inline == true ? null : $"ShipmentInvoice-{awb.AWBNo}.pdf";
         return Results.File(pdf, "application/pdf", fileName);
@@ -862,6 +871,7 @@ app.MapGet("/api/report/tracking/{awbNo}", async (string awbNo, bool? inline, Ap
                 logoData = ResolveLogoBytes(company?.Logo, env.WebRootPath);
             }
             
+            await ResolveLocationCodes(awb, db);
             var pdf = printService.GenerateTrackingReport(awb, timeline, serviceTypeName, logoData);
             var fileName = inline == true ? null : $"Tracking-{awb.AWBNo}.pdf";
             return Results.File(pdf, "application/pdf", fileName);
@@ -1354,6 +1364,86 @@ static byte[]? ResolveLogoBytes(string? logo, string webRootPath)
     }
     var filePath = Path.Combine(webRootPath, logo.TrimStart('/'));
     return File.Exists(filePath) ? File.ReadAllBytes(filePath) : null;
+}
+
+static async Task ResolveLocationCodes(InscanMaster awb, ApplicationDbContext db)
+{
+    db.Entry(awb).State = Microsoft.EntityFrameworkCore.EntityState.Detached;
+
+    var cityNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+    var countryNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+    if (!string.IsNullOrWhiteSpace(awb.ConsignorCity)) cityNames.Add(awb.ConsignorCity);
+    if (!string.IsNullOrWhiteSpace(awb.ConsigneeCity)) cityNames.Add(awb.ConsigneeCity);
+    if (!string.IsNullOrWhiteSpace(awb.ConsignorCountry)) countryNames.Add(awb.ConsignorCountry);
+    if (!string.IsNullOrWhiteSpace(awb.ConsigneeCountry)) countryNames.Add(awb.ConsigneeCountry);
+
+    if (cityNames.Count > 0)
+    {
+        var cities = await db.Cities.AsNoTracking().Where(c => c.Code != null && cityNames.Contains(c.Name)).ToListAsync();
+        var cityCodeMap = cities.GroupBy(c => c.Name, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(g => g.Key, g => g.First().Code!, StringComparer.OrdinalIgnoreCase);
+        if (!string.IsNullOrWhiteSpace(awb.ConsignorCity) && cityCodeMap.TryGetValue(awb.ConsignorCity, out var cc1))
+            awb.ConsignorCity = cc1;
+        if (!string.IsNullOrWhiteSpace(awb.ConsigneeCity) && cityCodeMap.TryGetValue(awb.ConsigneeCity, out var cc2))
+            awb.ConsigneeCity = cc2;
+    }
+
+    if (countryNames.Count > 0)
+    {
+        var countries = await db.Countries.AsNoTracking().Where(c => c.Code != null && countryNames.Contains(c.Name)).ToListAsync();
+        var countryCodeMap = countries.GroupBy(c => c.Name, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(g => g.Key, g => g.First().Code!, StringComparer.OrdinalIgnoreCase);
+        if (!string.IsNullOrWhiteSpace(awb.ConsignorCountry) && countryCodeMap.TryGetValue(awb.ConsignorCountry, out var co1))
+            awb.ConsignorCountry = co1;
+        if (!string.IsNullOrWhiteSpace(awb.ConsigneeCountry) && countryCodeMap.TryGetValue(awb.ConsigneeCountry, out var co2))
+            awb.ConsigneeCountry = co2;
+    }
+}
+
+static async Task ResolveLocationCodesBulk(List<InscanMaster> awbs, ApplicationDbContext db)
+{
+    foreach (var awb in awbs)
+    {
+        try { db.Entry(awb).State = Microsoft.EntityFrameworkCore.EntityState.Detached; } catch { }
+    }
+
+    var cityNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+    var countryNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+    foreach (var awb in awbs)
+    {
+        if (!string.IsNullOrWhiteSpace(awb.ConsignorCity)) cityNames.Add(awb.ConsignorCity);
+        if (!string.IsNullOrWhiteSpace(awb.ConsigneeCity)) cityNames.Add(awb.ConsigneeCity);
+        if (!string.IsNullOrWhiteSpace(awb.ConsignorCountry)) countryNames.Add(awb.ConsignorCountry);
+        if (!string.IsNullOrWhiteSpace(awb.ConsigneeCountry)) countryNames.Add(awb.ConsigneeCountry);
+    }
+
+    Dictionary<string, string> cityCodeMap = new(StringComparer.OrdinalIgnoreCase);
+    Dictionary<string, string> countryCodeMap = new(StringComparer.OrdinalIgnoreCase);
+
+    if (cityNames.Count > 0)
+    {
+        var cities = await db.Cities.AsNoTracking().Where(c => c.Code != null && cityNames.Contains(c.Name)).ToListAsync();
+        cityCodeMap = cities.GroupBy(c => c.Name, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(g => g.Key, g => g.First().Code!, StringComparer.OrdinalIgnoreCase);
+    }
+    if (countryNames.Count > 0)
+    {
+        var countries = await db.Countries.AsNoTracking().Where(c => c.Code != null && countryNames.Contains(c.Name)).ToListAsync();
+        countryCodeMap = countries.GroupBy(c => c.Name, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(g => g.Key, g => g.First().Code!, StringComparer.OrdinalIgnoreCase);
+    }
+
+    foreach (var awb in awbs)
+    {
+        if (!string.IsNullOrWhiteSpace(awb.ConsignorCity) && cityCodeMap.TryGetValue(awb.ConsignorCity, out var cc1))
+            awb.ConsignorCity = cc1;
+        if (!string.IsNullOrWhiteSpace(awb.ConsigneeCity) && cityCodeMap.TryGetValue(awb.ConsigneeCity, out var cc2))
+            awb.ConsigneeCity = cc2;
+        if (!string.IsNullOrWhiteSpace(awb.ConsignorCountry) && countryCodeMap.TryGetValue(awb.ConsignorCountry, out var co1))
+            awb.ConsignorCountry = co1;
+        if (!string.IsNullOrWhiteSpace(awb.ConsigneeCountry) && countryCodeMap.TryGetValue(awb.ConsigneeCountry, out var co2))
+            awb.ConsigneeCountry = co2;
+    }
 }
 
 static InscanMaster MapImportToInscanMaster(ImportShipment import)
