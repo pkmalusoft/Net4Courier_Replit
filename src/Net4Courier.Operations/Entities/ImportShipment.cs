@@ -44,10 +44,14 @@ public class ImportShipment : AuditableEntity
     
     public string? IncoTerms { get; set; }
     
+    public decimal? CustomsValue { get; set; }
     public decimal? DutyAmount { get; set; }
+    public decimal? DutyVatAmount { get; set; }
     public decimal? VATAmount { get; set; }
     public decimal? OtherCharges { get; set; }
     public decimal? TotalCustomsCharges { get; set; }
+    public decimal? CalculatedImportVAT { get; set; }
+    public decimal? NetTotal { get; set; }
     
     public bool IsCOD { get; set; }
     public decimal? CODAmount { get; set; }
