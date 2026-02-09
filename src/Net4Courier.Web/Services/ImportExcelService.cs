@@ -65,6 +65,7 @@ public class ImportShipmentDto
     public decimal? CodCollectionAmount { get; set; }
     public string? PaymentMode { get; set; }
     public string? SpecialInstructions { get; set; }
+    public string? IncoTerms { get; set; }
 }
 
 public class ImportValidationError
@@ -121,6 +122,9 @@ public class ImportExcelService
             var portSheet = workbook.Worksheets.Add("Ports");
             CreatePortSheet(portSheet, ports, mode);
         }
+        
+        var incoTermsSheet = workbook.Worksheets.Add("Inco Terms");
+        CreateIncoTermsSheet(incoTermsSheet);
         
         using var stream = new MemoryStream();
         workbook.SaveAs(stream);
@@ -251,6 +255,7 @@ public class ImportExcelService
             ("Duty/VAT Amount", false),
             ("COD/Collection Amount", false),
             ("Payment Mode", false),
+            ("Inco Terms", false),
             ("Special Instructions", false)
         };
 
@@ -376,6 +381,49 @@ public class ImportExcelService
         }
         
         sheet.Columns().AdjustToContents();
+    }
+
+    private void CreateIncoTermsSheet(IXLWorksheet sheet)
+    {
+        sheet.Cell(1, 1).Value = "Inco Terms - Reference Data";
+        sheet.Cell(1, 1).Style.Font.Bold = true;
+        sheet.Cell(1, 1).Style.Font.FontSize = 14;
+        sheet.Range(1, 1, 1, 3).Merge();
+
+        int row = 3;
+        sheet.Cell(row, 1).Value = "Code";
+        sheet.Cell(row, 2).Value = "Full Name";
+        sheet.Cell(row, 3).Value = "Description";
+        sheet.Range(row, 1, row, 3).Style.Font.Bold = true;
+        sheet.Range(row, 1, row, 3).Style.Fill.BackgroundColor = XLColor.LightGray;
+        row++;
+
+        var incoTerms = new[]
+        {
+            ("EXW", "Ex Works", "Seller makes goods available at their premises"),
+            ("FCA", "Free Carrier", "Seller delivers goods to carrier nominated by buyer"),
+            ("CPT", "Carriage Paid To", "Seller pays freight to named destination"),
+            ("CIP", "Carriage and Insurance Paid To", "Seller pays freight and insurance to named destination"),
+            ("DAP", "Delivered at Place", "Seller delivers goods at named place of destination"),
+            ("DPU", "Delivered at Place Unloaded", "Seller delivers and unloads goods at named place"),
+            ("DDP", "Delivered Duty Paid", "Seller bears all costs and duties to destination"),
+            ("DDU", "Delivered Duty Unpaid", "Seller delivers goods but buyer pays duties and taxes"),
+            ("FAS", "Free Alongside Ship", "Seller delivers goods alongside the vessel (sea only)"),
+            ("FOB", "Free on Board", "Seller delivers goods on board the vessel (sea only)"),
+            ("CFR", "Cost and Freight", "Seller pays costs and freight to destination port (sea only)"),
+            ("CIF", "Cost, Insurance and Freight", "Seller pays costs, insurance and freight to destination port (sea only)")
+        };
+
+        foreach (var (code, fullName, description) in incoTerms)
+        {
+            sheet.Cell(row, 1).Value = code;
+            sheet.Cell(row, 2).Value = fullName;
+            sheet.Cell(row, 3).Value = description;
+            row++;
+        }
+
+        sheet.Columns().AdjustToContents();
+        sheet.Column(3).Width = 55;
     }
 
     public ImportExcelParseResult ParseExcel(Stream stream, bool autoGenerateAwb = false)
@@ -694,6 +742,7 @@ public class ImportExcelService
         int colDutyVat = GetCol("Duty/VAT Amount", "Duty VAT Amount");
         int colCodColl = GetCol("COD/Collection Amount", "COD Collection Amount");
         int colPaymentMode = GetCol("Payment Mode");
+        int colIncoTerms = GetCol("Inco Terms", "IncoTerms", "Incoterms");
         int colSpecialInstr = GetCol("Special Instructions");
         
         int row = headerRow + 1; // Data starts after header row
@@ -734,6 +783,7 @@ public class ImportExcelService
                 HSCode = colHsCode > 0 ? sheet.Cell(row, colHsCode).GetString()?.Trim() : null,
                 Currency = colCurrency > 0 ? sheet.Cell(row, colCurrency).GetString()?.Trim() : null,
                 PaymentMode = colPaymentMode > 0 ? sheet.Cell(row, colPaymentMode).GetString()?.Trim() : null,
+                IncoTerms = colIncoTerms > 0 ? sheet.Cell(row, colIncoTerms).GetString()?.Trim() : null,
                 SpecialInstructions = colSpecialInstr > 0 ? sheet.Cell(row, colSpecialInstr).GetString()?.Trim() : null
             };
             
@@ -972,6 +1022,7 @@ public class ImportExcelService
             CODAmount = dto.CodCollectionAmount,
             IsCOD = dto.CodCollectionAmount.HasValue && dto.CodCollectionAmount > 0,
             SpecialInstructions = dto.SpecialInstructions,
+            IncoTerms = dto.IncoTerms,
             PaymentMode = ParsePaymentMode(dto.PaymentMode),
             Status = ImportShipmentStatus.Expected,
             CreatedAt = DateTime.UtcNow

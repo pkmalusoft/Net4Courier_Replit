@@ -42,6 +42,8 @@ public class ImportShipment : AuditableEntity
     public string? Currency { get; set; }
     public string? HSCode { get; set; }
     
+    public string? IncoTerms { get; set; }
+    
     public decimal? DutyAmount { get; set; }
     public decimal? VATAmount { get; set; }
     public decimal? OtherCharges { get; set; }
