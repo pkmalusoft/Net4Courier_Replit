@@ -436,19 +436,22 @@ app.MapGet("/api/report/awb/{id:long}", async (long id, bool? inline, Applicatio
         }
         byte[]? logoData = null;
         string? companyName = null;
+        string? website = null;
         if (awb.BranchId.HasValue)
         {
             var branch = await db.Branches.Include(b => b.Company).FirstOrDefaultAsync(b => b.Id == awb.BranchId);
             logoData = ResolveLogoBytes(branch?.Company?.Logo, env.WebRootPath);
             companyName = branch?.Company?.Name;
+            website = branch?.Company?.Website;
         }
         if (logoData == null)
         {
             var company = await db.Companies.FirstOrDefaultAsync(c => !c.IsDeleted);
             logoData = ResolveLogoBytes(company?.Logo, env.WebRootPath);
             companyName ??= company?.Name;
+            website ??= company?.Website;
         }
-        var pdf = printService.GenerateA5AWB(awb, companyName, logoData);
+        var pdf = printService.GenerateA5AWB(awb, companyName, logoData, website);
         var fileName = inline == true ? null : $"AWB-{awb.AWBNo}.pdf";
         return Results.File(pdf, "application/pdf", fileName);
     }
@@ -515,19 +518,22 @@ app.MapGet("/api/report/awb-by-awbno/{awbNo}", async (string awbNo, bool? inline
         }
         byte[]? logoData = null;
         string? companyName = null;
+        string? website = null;
         if (awb.BranchId.HasValue)
         {
             var branch = await db.Branches.Include(b => b.Company).FirstOrDefaultAsync(b => b.Id == awb.BranchId);
             logoData = ResolveLogoBytes(branch?.Company?.Logo, env.WebRootPath);
             companyName = branch?.Company?.Name;
+            website = branch?.Company?.Website;
         }
         if (logoData == null)
         {
             var company = await db.Companies.FirstOrDefaultAsync(c => !c.IsDeleted);
             logoData = ResolveLogoBytes(company?.Logo, env.WebRootPath);
             companyName ??= company?.Name;
+            website ??= company?.Website;
         }
-        var pdf = printService.GenerateA5AWB(awb, companyName, logoData);
+        var pdf = printService.GenerateA5AWB(awb, companyName, logoData, website);
         var fileName = inline == true ? null : $"AWB-{awb.AWBNo}.pdf";
         return Results.File(pdf, "application/pdf", fileName);
     }
@@ -590,18 +596,21 @@ app.MapGet("/api/report/awb-bulk/{ids}", async (string ids, bool? inline, Applic
 
         byte[]? logoData = null;
         string? companyName = null;
+        string? website = null;
         var firstAwb = awbs.First();
         if (firstAwb.BranchId.HasValue)
         {
             var branch = await db.Branches.Include(b => b.Company).FirstOrDefaultAsync(b => b.Id == firstAwb.BranchId);
             logoData = ResolveLogoBytes(branch?.Company?.Logo, env.WebRootPath);
             companyName = branch?.Company?.Name;
+            website = branch?.Company?.Website;
         }
         if (logoData == null)
         {
             var company = await db.Companies.FirstOrDefaultAsync(c => !c.IsDeleted);
             logoData = ResolveLogoBytes(company?.Logo, env.WebRootPath);
             companyName ??= company?.Name;
+            website ??= company?.Website;
         }
 
         foreach (var awb in awbs)
@@ -614,7 +623,7 @@ app.MapGet("/api/report/awb-bulk/{ids}", async (string ids, bool? inline, Applic
             }
         }
 
-        var combinedPdf = printService.GenerateBulkA5AWB(awbs, companyName, logoData);
+        var combinedPdf = printService.GenerateBulkA5AWB(awbs, companyName, logoData, website);
         var fileName = inline == true ? null : $"BulkAWB-{DateTime.Now:yyyyMMdd_HHmmss}.pdf";
         return Results.File(combinedPdf, "application/pdf", fileName);
     }
@@ -648,18 +657,21 @@ app.MapGet("/api/report/awb-bulk-by-awbno/{awbNos}", async (string awbNos, bool?
 
         byte[]? logoData = null;
         string? companyName = null;
+        string? website = null;
         var firstAwb = awbs.First();
         if (firstAwb.BranchId.HasValue)
         {
             var branch = await db.Branches.Include(b => b.Company).FirstOrDefaultAsync(b => b.Id == firstAwb.BranchId);
             logoData = ResolveLogoBytes(branch?.Company?.Logo, env.WebRootPath);
             companyName = branch?.Company?.Name;
+            website = branch?.Company?.Website;
         }
         if (logoData == null)
         {
             var company = await db.Companies.FirstOrDefaultAsync(c => !c.IsDeleted);
             logoData = ResolveLogoBytes(company?.Logo, env.WebRootPath);
             companyName ??= company?.Name;
+            website ??= company?.Website;
         }
 
         foreach (var awb in awbs)
@@ -672,7 +684,7 @@ app.MapGet("/api/report/awb-bulk-by-awbno/{awbNos}", async (string awbNos, bool?
             }
         }
 
-        var combinedPdf = printService.GenerateBulkA5AWB(awbs, companyName, logoData);
+        var combinedPdf = printService.GenerateBulkA5AWB(awbs, companyName, logoData, website);
         var fileName = inline == true ? null : $"BulkAWB-{DateTime.Now:yyyyMMdd_HHmmss}.pdf";
         return Results.File(combinedPdf, "application/pdf", fileName);
     }
