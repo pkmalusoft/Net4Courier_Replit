@@ -193,31 +193,64 @@
 
     private string GetUserFriendlyMessage(Exception ex)
     {
-        Logger.LogError(ex, "ErrorBoundary caught exception: {Message}", ex.Message);
-        var message = ex.Message.ToLowerInvariant();
+        var innerEx = ex;
+        while (innerEx.InnerException != null) innerEx = innerEx.InnerException;
+        var fullMessage = innerEx.Message;
+        var allMessages = ex.Message;
+        if (ex.InnerException != null) allMessages += " | " + ex.InnerException.Message;
+        if (ex.InnerException?.InnerException != null) allMessages += " | " + ex.InnerException.InnerException.Message;
+        Logger.LogError(ex, "ErrorBoundary caught exception: {AllMessages}\nInnermost: {Inner}\nStack: {Stack}", 
+            allMessages, innerEx.Message, innerEx.StackTrace);
+        var message = fullMessage.ToLowerInvariant();
         
         if (message.Contains("42703") || (message.Contains("column") && message.Contains("does not exist")))
-            return $"Database configuration issue: {ex.Message}";
+        {
+            var columnName = ExtractColumnName(fullMessage);
+            var tableName = ExtractTableName(allMessages);
+            if (!string.IsNullOrEmpty(columnName) && !string.IsNullOrEmpty(tableName))
+                return $"Database schema out of sync — column \"{columnName}\" missing on \"{tableName}\". Fix: ALTER TABLE \"{tableName}\" ADD COLUMN IF NOT EXISTS \"{columnName}\" TEXT;";
+            if (!string.IsNullOrEmpty(columnName))
+                return $"Database schema out of sync — column \"{columnName}\" does not exist. Run Schema Sync from Platform Admin or add the column manually.";
+            return $"Database schema out of sync: {fullMessage}. Run Schema Sync from Platform Admin to fix.";
+        }
         
         if (message.Contains("42p01") || (message.Contains("relation") && message.Contains("does not exist")))
-            return $"Database table missing: {ex.Message}";
+            return $"Database table missing: {fullMessage}";
         
         if (message.Contains("23502") || message.Contains("violates not-null constraint"))
-            return $"Database constraint error: {ex.Message}";
+            return $"Database constraint error: {fullMessage}";
         
         if (message.Contains("connection") || message.Contains("timeout"))
-            return $"Connection error: {ex.Message}";
+            return $"Connection error: {fullMessage}";
         
         if (message.Contains("unauthorized") || message.Contains("permission"))
-            return $"Permission denied: {ex.Message}";
+            return $"Permission denied: {fullMessage}";
         
         if (ex is InvalidOperationException && message.Contains("sequence"))
-            return $"Data loading error: {ex.Message}";
+            return $"Data loading error: {fullMessage}";
 
         if (ex is ArgumentNullException or ArgumentException)
-            return $"Invalid input: {ex.Message}";
+            return $"Invalid input: {fullMessage}";
 
-        return $"Error: {ex.Message}";
+        return $"Error: {fullMessage}";
+    }
+
+    private static string ExtractColumnName(string errorMessage)
+    {
+        var match = System.Text.RegularExpressions.Regex.Match(errorMessage, @"column\s+""?[^""]*""?\s*\.\s*""?([^""\s]+)""?\s+does not exist", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+        if (match.Success) return match.Groups[1].Value;
+        match = System.Text.RegularExpressions.Regex.Match(errorMessage, @"column\s+""?([^""\s]+)""?\s+does not exist", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+        if (match.Success) return match.Groups[1].Value;
+        return "";
+    }
+
+    private static string ExtractTableName(string errorMessage)
+    {
+        var match = System.Text.RegularExpressions.Regex.Match(errorMessage, @"FROM\s+(?:""[^""]*""\s*\.\s*)?""([^""]+)""", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+        if (match.Success) return match.Groups[1].Value;
+        match = System.Text.RegularExpressions.Regex.Match(errorMessage, @"""([A-Z][a-zA-Z]+)""\s+AS\s+""?[a-z]""?", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+        if (match.Success) return match.Groups[1].Value;
+        return "";
     }
 
     private MudTheme _theme = new()
