@@ -90,10 +90,84 @@ var builder = WebApplication.CreateBuilder(options);
 try
 {
     builder.WebHost.UseStaticWebAssets();
+    Console.WriteLine($"[{DateTime.UtcNow:O}] Static web assets configured successfully");
 }
 catch (Exception ex)
 {
-    Console.WriteLine($"[{DateTime.UtcNow:O}] Static web assets not available: {ex.Message}");
+    Console.WriteLine($"[{DateTime.UtcNow:O}] Static web assets not available (will use wwwroot copy): {ex.Message}");
+}
+
+try
+{
+    var targetContentDir = Path.Combine(webRootDir, "_content", "MudBlazor");
+    var mudCssTarget = Path.Combine(targetContentDir, "MudBlazor.min.css");
+    if (!File.Exists(mudCssTarget))
+    {
+        Console.WriteLine($"[{DateTime.UtcNow:O}] MudBlazor static files not found in wwwroot, searching NuGet packages...");
+        var nugetBase = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".nuget", "packages", "mudblazor");
+        if (!Directory.Exists(nugetBase))
+        {
+            var altPath = Environment.GetEnvironmentVariable("NUGET_PACKAGES");
+            if (!string.IsNullOrEmpty(altPath))
+                nugetBase = Path.Combine(altPath, "mudblazor");
+        }
+        
+        if (Directory.Exists(nugetBase))
+        {
+            var versionDirs = Directory.GetDirectories(nugetBase).OrderByDescending(d => d).ToArray();
+            foreach (var versionDir in versionDirs)
+            {
+                var staticWebAssetDir = Path.Combine(versionDir, "staticwebassets");
+                if (Directory.Exists(staticWebAssetDir))
+                {
+                    Console.WriteLine($"[{DateTime.UtcNow:O}] Found MudBlazor assets at: {staticWebAssetDir}");
+                    Directory.CreateDirectory(targetContentDir);
+                    foreach (var file in Directory.GetFiles(staticWebAssetDir, "*.*", SearchOption.AllDirectories))
+                    {
+                        var relativePath = Path.GetRelativePath(staticWebAssetDir, file);
+                        var destFile = Path.Combine(targetContentDir, relativePath);
+                        var destDir = Path.GetDirectoryName(destFile);
+                        if (destDir != null) Directory.CreateDirectory(destDir);
+                        File.Copy(file, destFile, true);
+                    }
+                    Console.WriteLine($"[{DateTime.UtcNow:O}] MudBlazor static files copied to wwwroot/_content/MudBlazor/");
+                    break;
+                }
+            }
+        }
+        
+        if (!File.Exists(mudCssTarget))
+        {
+            var binContentDir = Path.Combine(appDir, "wwwroot", "_content", "MudBlazor");
+            if (Directory.Exists(binContentDir))
+            {
+                Console.WriteLine($"[{DateTime.UtcNow:O}] Found MudBlazor assets in bin output: {binContentDir}");
+                Directory.CreateDirectory(targetContentDir);
+                foreach (var file in Directory.GetFiles(binContentDir, "*.*", SearchOption.AllDirectories))
+                {
+                    var relativePath = Path.GetRelativePath(binContentDir, file);
+                    var destFile = Path.Combine(targetContentDir, relativePath);
+                    var destDir = Path.GetDirectoryName(destFile);
+                    if (destDir != null) Directory.CreateDirectory(destDir);
+                    File.Copy(file, destFile, true);
+                }
+                Console.WriteLine($"[{DateTime.UtcNow:O}] MudBlazor static files copied from bin output");
+            }
+        }
+        
+        if (!File.Exists(mudCssTarget))
+        {
+            Console.WriteLine($"[{DateTime.UtcNow:O}] WARNING: MudBlazor static files could not be found. CDN fallback will be used.");
+        }
+    }
+    else
+    {
+        Console.WriteLine($"[{DateTime.UtcNow:O}] MudBlazor static files found in wwwroot");
+    }
+}
+catch (Exception ex)
+{
+    Console.WriteLine($"[{DateTime.UtcNow:O}] Error checking MudBlazor static files: {ex.Message}");
 }
 
 builder.Services.Configure<ForwardedHeadersOptions>(options =>
@@ -336,6 +410,18 @@ if (!app.Environment.IsDevelopment())
 
 app.UseCookiePolicy();
 app.UseStaticFiles();
+
+var binContentPath = Path.Combine(AppContext.BaseDirectory, "wwwroot");
+if (Directory.Exists(binContentPath) && binContentPath != app.Environment.WebRootPath)
+{
+    app.UseStaticFiles(new StaticFileOptions
+    {
+        FileProvider = new Microsoft.Extensions.FileProviders.PhysicalFileProvider(binContentPath),
+        RequestPath = ""
+    });
+    Console.WriteLine($"[{DateTime.UtcNow:O}] Additional static files provider: {binContentPath}");
+}
+
 app.UseAuthentication();
 app.UseAuthorization();
 app.UseAntiforgery();
