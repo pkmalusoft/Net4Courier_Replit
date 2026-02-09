@@ -46,7 +46,7 @@ public class EmpostFeeReportService
                 FuelSurcharge = g.Sum(x => x.FuelSurcharge ?? 0),
                 NetTotal = g.Sum(x => x.NetTotal ?? 0),
                 TaxAmount = g.Sum(x => ((x.CourierCharge ?? 0) + (x.FuelSurcharge ?? 0) + (x.OtherCharge ?? 0)) * (x.TaxPercent ?? 0) / 100),
-                VatPercent = g.Average(x => x.TaxPercent ?? 0)
+                VatPercent = g.Where(x => (x.TaxPercent ?? 0) > 0).Select(x => x.TaxPercent ?? 0).FirstOrDefault()
             })
             .ToListAsync();
 
