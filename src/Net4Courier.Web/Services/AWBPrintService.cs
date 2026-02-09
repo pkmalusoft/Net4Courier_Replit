@@ -477,23 +477,19 @@ public class AWBPrintService
                 container.Page(page =>
                 {
                     page.Size(100, 150, Unit.Millimetre);
-                    page.Margin(2);
+                    page.Margin(0);
                     page.DefaultTextStyle(x => x.FontSize(7).FontFamily("Arial"));
 
-                    page.Content().Border(1).Column(column =>
+                    page.Content().Border(2).Column(column =>
                     {
                         column.Spacing(0);
 
-                        LabelHeader(column, shipment, companyName ?? "Net4Courier", effectiveLogo);
-                        LabelDestination(column, shipment);
-                        LabelServiceCodes(column, shipment);
-                        LabelWeightCharges(column, shipment);
-                        LabelServiceAccount(column, shipment);
+                        LabelHeader(column, shipment);
+                        LabelBarcode(column, shipment);
                         LabelShipper(column, shipment);
-                        LabelConsignee(column, shipment);
-                        LabelRemarks(column, shipment);
-                        LabelDescription(column, shipment);
-                        LabelReferences(column, shipment);
+                        LabelReceiver(column, shipment);
+                        LabelMetrics(column, shipment);
+                        LabelFooter(column, shipment);
                     });
                 });
             }
@@ -510,23 +506,19 @@ public class AWBPrintService
             container.Page(page =>
             {
                 page.Size(100, 150, Unit.Millimetre);
-                page.Margin(2);
+                page.Margin(0);
                 page.DefaultTextStyle(x => x.FontSize(7).FontFamily("Arial"));
 
-                page.Content().Border(1).Column(column =>
+                page.Content().Border(2).Column(column =>
                 {
                     column.Spacing(0);
 
-                    LabelHeader(column, shipment, companyName ?? "Net4Courier", effectiveLogo);
-                    LabelDestination(column, shipment);
-                    LabelServiceCodes(column, shipment);
-                    LabelWeightCharges(column, shipment);
-                    LabelServiceAccount(column, shipment);
+                    LabelHeader(column, shipment);
+                    LabelBarcode(column, shipment);
                     LabelShipper(column, shipment);
-                    LabelConsignee(column, shipment);
-                    LabelRemarks(column, shipment);
-                    LabelDescription(column, shipment);
-                    LabelReferences(column, shipment);
+                    LabelReceiver(column, shipment);
+                    LabelMetrics(column, shipment);
+                    LabelFooter(column, shipment);
                 });
             });
         });
@@ -568,95 +560,124 @@ public class AWBPrintService
         return text.Length <= maxLength ? text : text.Substring(0, maxLength) + "..";
     }
 
-    private void LabelHeader(ColumnDescriptor column, InscanMaster shipment, string companyName, byte[]? logoData)
+    private void LabelHeader(ColumnDescriptor column, InscanMaster shipment)
     {
-        var effectiveLogo = logoData ?? _logoData;
-        column.Item().Row(row =>
+        var isExport = shipment.MovementTypeId == MovementType.InternationalExport || shipment.MovementTypeId == MovementType.InternationalImport;
+        var movementLabel = isExport ? "INTERNATIONAL" : "DOMESTIC";
+
+        column.Item().BorderBottom(2).PaddingHorizontal(8).PaddingVertical(6).Row(row =>
         {
-            row.RelativeItem(2).BorderRight(1).Padding(2).Column(c =>
+            row.RelativeItem().Column(c =>
             {
-                if (effectiveLogo != null)
-                {
-                    c.Item().MaxHeight(20).Image(effectiveLogo).FitArea();
-                }
-                else
-                {
-                    c.Item().Text(companyName).Bold().FontSize(10);
-                }
+                c.Item().Text(movementLabel).Bold().FontSize(14);
+                c.Item().Text(shipment.CargoDescription ?? "E-COMMERCE DELIVERY").Bold().FontSize(7);
             });
-
-            row.RelativeItem(2).BorderRight(1).Padding(2).Column(c =>
+            row.ConstantItem(60).AlignRight().Column(c =>
             {
-                c.Item().Text("Origin").Bold().FontSize(6);
-                c.Item().Text(GetPortCode(shipment.OriginPortCode, shipment.ConsignorCity)).Bold().FontSize(16);
-            });
-
-            row.RelativeItem(3).Padding(2).Column(c =>
-            {
-                if (shipment.BarcodeImage != null)
-                {
-                    c.Item().AlignCenter().MaxHeight(18).Image(shipment.BarcodeImage).FitArea();
-                }
-                c.Item().AlignCenter().Text(shipment.AWBNo).Bold().FontSize(8);
+                c.Item().AlignRight().Text("DATE").Bold().FontSize(7);
+                c.Item().AlignRight().Text(shipment.TransactionDate.ToString("dd/MM/yyyy")).Bold().FontSize(9);
             });
         });
     }
 
-    private void LabelDestination(ColumnDescriptor column, InscanMaster shipment)
+    private void LabelBarcode(ColumnDescriptor column, InscanMaster shipment)
+    {
+        column.Item().BorderBottom(2).PaddingVertical(4).AlignCenter().Column(c =>
+        {
+            if (shipment.BarcodeImage != null)
+            {
+                c.Item().AlignCenter().MaxHeight(50).MaxWidth(250).Image(shipment.BarcodeImage).FitArea();
+            }
+            c.Item().AlignCenter().Text(shipment.AWBNo).Bold().FontSize(14).LetterSpacing(0.15f);
+        });
+    }
+
+    private void LabelShipper(ColumnDescriptor column, InscanMaster shipment)
+    {
+        column.Item().BorderBottom(1).Background("#f9fafb").PaddingHorizontal(6).PaddingVertical(4).Column(c =>
+        {
+            c.Item().Text("SHIPPER").Bold().FontSize(7);
+            c.Item().Height(2);
+            c.Item().Row(row =>
+            {
+                row.RelativeItem().Column(sc =>
+                {
+                    sc.Item().Text(Truncate(shipment.Consignor, 40)).Bold().FontSize(8);
+                    var shipperAddr = $"{shipment.ConsignorAddress1} {shipment.ConsignorAddress2}".Trim();
+                    if (!string.IsNullOrWhiteSpace(shipperAddr))
+                        sc.Item().Text(Truncate(shipperAddr, 50)).FontSize(7);
+                });
+                row.ConstantItem(80).AlignRight().Text(CombinePhoneNumbers(shipment.ConsignorPhone, shipment.ConsignorMobile)).Bold().FontSize(7);
+            });
+        });
+    }
+
+    private void LabelReceiver(ColumnDescriptor column, InscanMaster shipment)
+    {
+        column.Item().BorderBottom(2).PaddingHorizontal(8).PaddingVertical(6).Column(c =>
+        {
+            c.Item().Background(Colors.Black).PaddingHorizontal(6).PaddingVertical(2)
+                .Text("Deliver To").FontColor(Colors.White).Bold().FontSize(8);
+            c.Item().Height(4);
+            c.Item().Text(Truncate(shipment.Consignee, 40)).Bold().FontSize(14);
+
+            var fullAddr = $"{shipment.ConsigneeAddress1} {shipment.ConsigneeAddress2}".Trim();
+            if (!string.IsNullOrWhiteSpace(fullAddr))
+                c.Item().Text(Truncate(fullAddr, 80)).FontSize(9);
+            if (!string.IsNullOrWhiteSpace(shipment.ConsigneeLocation))
+                c.Item().Text(shipment.ConsigneeLocation).FontSize(9);
+
+            c.Item().Height(4);
+            c.Item().Row(row =>
+            {
+                row.RelativeItem().Column(lc =>
+                {
+                    lc.Item().Text(shipment.ConsigneeCity ?? "").Bold().FontSize(20);
+                    lc.Item().Height(2);
+                    var phone = CombinePhoneNumbers(shipment.ConsigneePhone, shipment.ConsigneeMobile);
+                    if (!string.IsNullOrWhiteSpace(phone))
+                        lc.Item().Text($"Tel: {phone}").Bold().FontSize(10);
+                });
+                row.ConstantItem(50).AlignRight().Column(rc =>
+                {
+                    rc.Item().AlignRight().Text("ORIGIN").Bold().FontSize(7);
+                    rc.Item().AlignRight().Text(GetPortCode(shipment.OriginPortCode, shipment.ConsignorCity)).Bold().FontSize(16);
+                });
+            });
+        });
+    }
+
+    private void LabelMetrics(ColumnDescriptor column, InscanMaster shipment)
     {
         var hasDuty = (shipment.DutyVatAmount ?? 0) > 0;
         var paymentMode = hasDuty ? "DDP" : "DDU";
 
-        column.Item().BorderTop(1).Row(row =>
+        column.Item().BorderBottom(2).Background("#f9fafb").Height(42).Row(row =>
         {
-            row.RelativeItem(2).BorderRight(1).Padding(2).Column(c =>
+            row.RelativeItem().BorderRight(1).PaddingVertical(4).AlignCenter().AlignMiddle().Column(c =>
             {
-                c.Item().Text("Destination").Bold().FontSize(6);
-                c.Item().Text(GetPortCode(shipment.DestinationPortCode, shipment.ConsigneeCity)).Bold().FontSize(16);
+                c.Item().AlignCenter().Text("WEIGHT").Bold().FontSize(6);
+                c.Item().AlignCenter().Text($"{shipment.Weight?.ToString("F1") ?? "0.0"} KG").Bold().FontSize(10);
             });
-
-            row.RelativeItem(3).BorderRight(1).Padding(2).Column(c =>
+            row.RelativeItem().BorderRight(1).PaddingVertical(4).AlignCenter().AlignMiddle().Column(c =>
             {
-                c.Item().Text(text =>
-                {
-                    text.Span("Date : ").Bold().FontSize(6);
-                    text.Span(shipment.TransactionDate.ToString("d MMM yyyy")).FontSize(6);
-                });
-                c.Item().Text(text =>
-                {
-                    text.Span("Foreign Ref: ").Bold().FontSize(6);
-                    text.Span(shipment.ReferenceNo ?? "-").FontSize(6);
-                });
-                c.Item().Text(text =>
-                {
-                    text.Span("Ref: ").Bold().FontSize(6);
-                    text.Span(shipment.AWBNo ?? "").FontSize(6);
-                });
+                c.Item().AlignCenter().Text("PIECES").Bold().FontSize(6);
+                c.Item().AlignCenter().Text($"{shipment.Pieces ?? 1} of {shipment.Pieces ?? 1}").Bold().FontSize(10);
             });
-
-            row.RelativeItem(2).Padding(2).AlignCenter().Column(c =>
+            row.RelativeItem().BorderRight(1).PaddingVertical(4).AlignCenter().AlignMiddle().Column(c =>
             {
-                c.Item().Text("Payment Mode").Bold().FontSize(6);
-                c.Item().Text(paymentMode).Bold().FontSize(12);
+                c.Item().AlignCenter().Text("INCO TERMS").Bold().FontSize(6);
+                c.Item().AlignCenter().Text(paymentMode).Bold().FontSize(10).FontColor("#1565c0");
+            });
+            row.RelativeItem().PaddingVertical(4).PaddingHorizontal(2).AlignCenter().AlignMiddle().Column(c =>
+            {
+                c.Item().AlignCenter().Text("REFERENCE").Bold().FontSize(6);
+                c.Item().AlignCenter().Text(Truncate(shipment.ReferenceNo ?? shipment.AWBNo ?? "", 12)).Bold().FontSize(7);
             });
         });
     }
 
-    private void LabelServiceCodes(ColumnDescriptor column, InscanMaster shipment)
-    {
-        var isExport = shipment.MovementTypeId == MovementType.InternationalExport || shipment.MovementTypeId == MovementType.InternationalImport;
-
-        column.Item().BorderTop(1).Row(row =>
-        {
-            row.ConstantItem(25).BorderRight(1).Padding(1).AlignCenter().AlignMiddle().Text(isExport ? "EXP" : "DOM").Bold().FontSize(9);
-            row.ConstantItem(25).BorderRight(1).Padding(1).AlignCenter().AlignMiddle().Text("PPX").Bold().FontSize(9);
-            row.ConstantItem(15).BorderRight(1).Padding(1).AlignCenter().AlignMiddle().Text(shipment.PaymentModeId == PaymentMode.Prepaid ? "P" : "C").Bold().FontSize(9);
-            row.ConstantItem(15).BorderRight(1).Padding(1).AlignCenter().AlignMiddle().Text((shipment.Pieces ?? 1).ToString()).Bold().FontSize(9);
-            row.RelativeItem().Padding(1).Text("").FontSize(6);
-        });
-    }
-
-    private void LabelWeightCharges(ColumnDescriptor column, InscanMaster shipment)
+    private void LabelFooter(ColumnDescriptor column, InscanMaster shipment)
     {
         var currency = shipment.Currency ?? "AED";
         var codAmount = shipment.IsCOD ? (shipment.CODAmount ?? 0) : 0;
@@ -664,117 +685,37 @@ public class AWBPrintService
         var dutyAmount = shipment.DutyVatAmount ?? 0;
         var totalAmount = codAmount + vatAmount + dutyAmount;
 
-        column.Item().BorderTop(1).Row(row =>
+        column.Item().Background(Colors.Black).PaddingHorizontal(8).PaddingVertical(6).Column(c =>
         {
-            row.RelativeItem(3).Padding(2).Column(c =>
+            c.Item().Row(row =>
             {
-                c.Item().Text(text =>
+                row.RelativeItem().AlignMiddle().Text("Collect Payment").FontColor(Colors.White).Bold().FontSize(9);
+                row.ConstantItem(100).Column(bd =>
                 {
-                    text.Span("Weight: ").Bold().FontSize(7);
-                    text.Span($"{shipment.Weight?.ToString("F1") ?? "0.0"} kg").FontSize(7);
-                });
-                c.Item().Height(2);
-                c.Item().Text(text =>
-                {
-                    text.Span("Chargeable Wt: ").Bold().FontSize(7);
-                    text.Span($"{shipment.ChargeableWeight?.ToString("F1") ?? "0.0"} kg").FontSize(7);
+                    bd.Item().BorderBottom(0.5f).BorderColor("#4b5563").PaddingBottom(2).Row(r =>
+                    {
+                        r.RelativeItem().Text("COD Amount:").FontColor(Colors.White).Bold().FontSize(7);
+                        r.ConstantItem(40).AlignRight().Text(codAmount > 0 ? codAmount.ToString("N2") : "0.00").FontColor(Colors.White).FontSize(7);
+                    });
+                    bd.Item().PaddingTop(2).Row(r =>
+                    {
+                        r.RelativeItem().Text("Duty Amount:").FontColor(Colors.White).Bold().FontSize(7);
+                        r.ConstantItem(40).AlignRight().Text(dutyAmount > 0 ? dutyAmount.ToString("N2") : "0.00").FontColor(Colors.White).FontSize(7);
+                    });
                 });
             });
-
-            row.RelativeItem(2).BorderLeft(1).Padding(1).Column(c =>
+            c.Item().Height(4);
+            c.Item().BorderTop(0.5f).BorderColor("#4b5563").PaddingTop(4).Row(row =>
             {
-                c.Item().BorderBottom(0.5f).Padding(1).Row(r =>
+                var hasDuty = dutyAmount > 0;
+                var incoLabel = hasDuty ? "DDP: Delivered Duty Paid" : "DDU: Delivered Duty Unpaid";
+                row.RelativeItem().AlignBottom().Text(incoLabel).FontColor("#9ca3af").Bold().FontSize(6);
+                row.ConstantItem(100).AlignRight().Column(tc =>
                 {
-                    r.RelativeItem().Text("COD").Bold().FontSize(7);
-                    r.RelativeItem().AlignRight().Text(codAmount > 0 ? codAmount.ToString("N2") : "").FontSize(7);
-                });
-                c.Item().BorderBottom(0.5f).Padding(1).Row(r =>
-                {
-                    r.RelativeItem().Text("VAT").Bold().FontSize(7);
-                    r.RelativeItem().AlignRight().Text(vatAmount > 0 ? vatAmount.ToString("N2") : "").FontSize(7);
-                });
-                c.Item().BorderBottom(0.5f).Padding(1).Row(r =>
-                {
-                    r.RelativeItem().Text("DUTY").Bold().FontSize(7);
-                    r.RelativeItem().AlignRight().Text(dutyAmount > 0 ? dutyAmount.ToString("N2") : "").FontSize(7);
-                });
-                c.Item().Padding(1).Row(r =>
-                {
-                    r.RelativeItem().Text($"TOTAL ({currency})").Bold().FontSize(7);
-                    r.RelativeItem().AlignRight().Text(totalAmount > 0 ? totalAmount.ToString("N2") : "").Bold().FontSize(7);
+                    tc.Item().AlignRight().Text($"TOTAL AMOUNT ({currency})").FontColor(Colors.White).Bold().FontSize(7);
+                    tc.Item().AlignRight().Text(totalAmount > 0 ? totalAmount.ToString("N2") : "0.00").FontColor(Colors.White).Bold().FontSize(22);
                 });
             });
-        });
-    }
-
-    private void LabelServiceAccount(ColumnDescriptor column, InscanMaster shipment)
-    {
-        column.Item().BorderTop(1).Padding(2).Column(c =>
-        {
-            c.Item().Text(text =>
-            {
-                text.Span("Service Type:  ").Bold().FontSize(7);
-                text.Span("Standard Express").FontSize(7);
-            });
-            c.Item().Text(text =>
-            {
-                text.Span("Account:").Bold().FontSize(7);
-            });
-        });
-    }
-
-    private void LabelShipper(ColumnDescriptor column, InscanMaster shipment)
-    {
-        column.Item().BorderTop(1).Padding(2).Column(c =>
-        {
-            c.Item().Text(Truncate(shipment.Consignor, 50)).Bold().FontSize(8);
-        });
-    }
-
-    private void LabelConsignee(ColumnDescriptor column, InscanMaster shipment)
-    {
-        column.Item().BorderTop(1).Padding(2).Column(c =>
-        {
-            c.Item().Text(shipment.ConsigneeCountry ?? "").FontSize(7);
-            c.Item().Text(Truncate(shipment.Consignee, 50)).Bold().FontSize(8);
-
-            if (!string.IsNullOrWhiteSpace(shipment.ConsigneeAddress1))
-                c.Item().Text($"FL: {shipment.ConsigneeAddress1}").FontSize(7);
-            if (!string.IsNullOrWhiteSpace(shipment.ConsigneeAddress2))
-                c.Item().Text(shipment.ConsigneeAddress2).FontSize(7);
-            if (!string.IsNullOrWhiteSpace(shipment.ConsigneeLocation))
-                c.Item().Text(shipment.ConsigneeLocation).FontSize(7);
-
-            var phone = CombinePhoneNumbers(shipment.ConsigneePhone, shipment.ConsigneeMobile);
-            if (!string.IsNullOrWhiteSpace(phone))
-                c.Item().Text(phone).FontSize(7);
-        });
-    }
-
-    private void LabelRemarks(ColumnDescriptor column, InscanMaster shipment)
-    {
-        column.Item().BorderTop(1).Padding(2).Row(row =>
-        {
-            row.ConstantItem(45).Text("Remarks:").Bold().FontSize(7);
-            row.RelativeItem().Text(Truncate(shipment.Remarks, 60)).FontSize(7);
-        });
-    }
-
-    private void LabelDescription(ColumnDescriptor column, InscanMaster shipment)
-    {
-        column.Item().BorderTop(1).Padding(2).Row(row =>
-        {
-            row.ConstantItem(45).Text("Description").Bold().FontSize(7);
-            row.RelativeItem().Text(shipment.CargoDescription ?? "Documents").FontSize(7);
-        });
-    }
-
-    private void LabelReferences(ColumnDescriptor column, InscanMaster shipment)
-    {
-        column.Item().BorderTop(1).Padding(2).Row(row =>
-        {
-            row.RelativeItem().Text("Shipper Ref").Bold().FontSize(6);
-            row.RelativeItem().BorderLeft(1).PaddingLeft(4).Text("Consignee Ref:").Bold().FontSize(6);
         });
     }
 
