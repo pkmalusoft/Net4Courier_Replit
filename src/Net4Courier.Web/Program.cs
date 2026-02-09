@@ -337,6 +337,29 @@ if (!app.Environment.IsDevelopment())
 
 app.UseCookiePolicy();
 app.UseStaticFiles();
+
+var binWwwroot = Path.Combine(AppContext.BaseDirectory, "wwwroot");
+if (Directory.Exists(binWwwroot) && binWwwroot != app.Environment.WebRootPath)
+{
+    app.UseStaticFiles(new StaticFileOptions
+    {
+        FileProvider = new Microsoft.Extensions.FileProviders.PhysicalFileProvider(binWwwroot),
+        RequestPath = ""
+    });
+    startupLogger.LogInformation("Additional static files from: {Path}", binWwwroot);
+}
+
+var publishWwwroot = Path.Combine(Directory.GetCurrentDirectory(), "wwwroot");
+if (Directory.Exists(publishWwwroot) && publishWwwroot != app.Environment.WebRootPath && publishWwwroot != binWwwroot)
+{
+    app.UseStaticFiles(new StaticFileOptions
+    {
+        FileProvider = new Microsoft.Extensions.FileProviders.PhysicalFileProvider(publishWwwroot),
+        RequestPath = ""
+    });
+    startupLogger.LogInformation("Additional static files from: {Path}", publishWwwroot);
+}
+
 app.UseAuthentication();
 app.UseAuthorization();
 app.UseAntiforgery();
