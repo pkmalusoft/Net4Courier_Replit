@@ -87,17 +87,13 @@ var options = new WebApplicationOptions
 
 var builder = WebApplication.CreateBuilder(options);
 
-// Only enable static web assets in development - they're not available in production
-if (!isProduction)
+try
 {
-    try
-    {
-        builder.WebHost.UseStaticWebAssets();
-    }
-    catch (Exception ex)
-    {
-        Console.WriteLine($"[{DateTime.UtcNow:O}] Static web assets not available: {ex.Message}");
-    }
+    builder.WebHost.UseStaticWebAssets();
+}
+catch (Exception ex)
+{
+    Console.WriteLine($"[{DateTime.UtcNow:O}] Static web assets not available: {ex.Message}");
 }
 
 builder.Services.Configure<ForwardedHeadersOptions>(options =>
