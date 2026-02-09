@@ -16,6 +16,17 @@
 <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center" Class="mb-4">
     <MudText Typo="Typo.h4">Shipments</MudText>
     <MudStack Row="true" Spacing="2">
+        @if (_selectedShipments.Any())
+        {
+            <MudButton Variant="Variant.Filled" Color="Color.Info" StartIcon="@Icons.Material.Filled.Print" 
+                       OnClick="BulkPrintAWBs">
+                Print @_selectedShipments.Count AWBs
+            </MudButton>
+            <MudButton Variant="Variant.Outlined" Color="Color.Info" StartIcon="@Icons.Material.Filled.Label" 
+                       OnClick="BulkPrintLabels">
+                Print @_selectedShipments.Count Labels
+            </MudButton>
+        }
         <MudButton Variant="Variant.Filled" Color="Color.Success" OnClick="DownloadExcel" StartIcon="@Icons.Material.Filled.Download" Disabled="@(_shipments.Count == 0)">Download Excel</MudButton>
         <MudButton Variant="Variant.Outlined" Color="Color.Secondary" Size="Size.Large" StartIcon="@Icons.Material.Filled.Transform" Href="/awb-entry?convertPickup=true">
             Convert from Pickup
@@ -65,7 +76,7 @@
 </MudPaper>
 
 <MudPaper Elevation="2">
-    <MudTable Items="@_shipments" Hover="true" Striped="true" Loading="@_loading" LoadingProgressColor="Color.Primary">
+    <MudTable Items="@_shipments" Hover="true" Striped="true" Loading="@_loading" LoadingProgressColor="Color.Primary" MultiSelection="true" @bind-SelectedItems="_selectedShipments">
         <HeaderContent>
             <MudTh Style="width: 120px;">Actions</MudTh>
             <MudTh><MudTableSortLabel SortBy="new Func<ShipmentListItem, object>(x => x.AWBNo)">AWB No</MudTableSortLabel></MudTh>
@@ -151,6 +162,7 @@
 
 @code {
     private List<ShipmentListItem> _shipments = new();
+    private HashSet<ShipmentListItem> _selectedShipments = new();
     private Dictionary<long, string> _pickupNoLookup = new();
     private bool _loading = true;
     private string _searchString = "";
@@ -443,6 +455,44 @@
         MovementType.Transhipment => "Transhipment",
         _ => "Unknown"
     };
+
+    private async Task BulkPrintAWBs()
+    {
+        if (!_selectedShipments.Any()) return;
+        
+        var importAwbs = _selectedShipments.Where(s => s.IsImport).Select(s => s.AWBNo).ToList();
+        var domesticIds = _selectedShipments.Where(s => !s.IsImport).Select(s => s.Id).ToList();
+        
+        if (domesticIds.Any())
+        {
+            var ids = string.Join(",", domesticIds);
+            await OpenPdfPreview($"/api/report/awb-bulk/{ids}", "Bulk AWB Print");
+        }
+        if (importAwbs.Any())
+        {
+            var awbNos = string.Join(",", importAwbs);
+            await OpenPdfPreview($"/api/report/awb-bulk-by-awbno/{awbNos}", "Bulk Import AWB Print");
+        }
+    }
+
+    private async Task BulkPrintLabels()
+    {
+        if (!_selectedShipments.Any()) return;
+        
+        var importAwbs = _selectedShipments.Where(s => s.IsImport).Select(s => s.AWBNo).ToList();
+        var domesticIds = _selectedShipments.Where(s => !s.IsImport).Select(s => s.Id).ToList();
+        
+        if (domesticIds.Any())
+        {
+            var ids = string.Join(",", domesticIds);
+            await OpenPdfPreview($"/api/report/label-bulk/{ids}", "Bulk Label Print");
+        }
+        if (importAwbs.Any())
+        {
+            var awbNos = string.Join(",", importAwbs);
+            await OpenPdfPreview($"/api/report/label-bulk-by-awbno/{awbNos}", "Bulk Import Label Print");
+        }
+    }
 
     private async Task DownloadExcel()
     {

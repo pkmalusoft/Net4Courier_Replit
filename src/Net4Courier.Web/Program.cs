@@ -580,6 +580,212 @@ app.MapGet("/api/report/awb-label-by-awbno/{awbNo}", async (string awbNo, bool? 
     }
 });
 
+app.MapGet("/api/report/awb-bulk/{ids}", async (string ids, bool? inline, ApplicationDbContext db, AWBPrintService printService, BarcodeService barcodeService, IWebHostEnvironment env, ILogger<Program> logger) =>
+{
+    try
+    {
+        var idList = ids.Split(',').Select(long.Parse).ToList();
+        var awbs = await db.InscanMasters.Where(i => idList.Contains(i.Id)).ToListAsync();
+        if (!awbs.Any()) return Results.NotFound("No AWBs found");
+
+        byte[]? logoData = null;
+        string? companyName = null;
+        var firstAwb = awbs.First();
+        if (firstAwb.BranchId.HasValue)
+        {
+            var branch = await db.Branches.Include(b => b.Company).FirstOrDefaultAsync(b => b.Id == firstAwb.BranchId);
+            logoData = ResolveLogoBytes(branch?.Company?.Logo, env.WebRootPath);
+            companyName = branch?.Company?.Name;
+        }
+        if (logoData == null)
+        {
+            var company = await db.Companies.FirstOrDefaultAsync(c => !c.IsDeleted);
+            logoData = ResolveLogoBytes(company?.Logo, env.WebRootPath);
+            companyName ??= company?.Name;
+        }
+
+        foreach (var awb in awbs)
+        {
+            if (awb.BarcodeImage == null && !string.IsNullOrEmpty(awb.AWBNo))
+            {
+                var (h, v) = barcodeService.GenerateBothBarcodes(awb.AWBNo);
+                awb.BarcodeImage = h;
+                awb.BarcodeImageVertical = v;
+            }
+        }
+
+        var combinedPdf = printService.GenerateBulkA5AWB(awbs, companyName, logoData);
+        var fileName = inline == true ? null : $"BulkAWB-{DateTime.Now:yyyyMMdd_HHmmss}.pdf";
+        return Results.File(combinedPdf, "application/pdf", fileName);
+    }
+    catch (Exception ex)
+    {
+        logger.LogError(ex, "Error generating bulk AWB print");
+        return Results.Problem($"Error generating bulk AWB print: {ex.Message}");
+    }
+});
+
+app.MapGet("/api/report/awb-bulk-by-awbno/{awbNos}", async (string awbNos, bool? inline, ApplicationDbContext db, AWBPrintService printService, BarcodeService barcodeService, IWebHostEnvironment env, ILogger<Program> logger) =>
+{
+    try
+    {
+        var awbNoList = awbNos.Split(',').ToList();
+        var awbs = new List<InscanMaster>();
+        
+        foreach (var awbNo in awbNoList)
+        {
+            var awb = await db.InscanMasters.FirstOrDefaultAsync(i => i.AWBNo == awbNo);
+            if (awb == null)
+            {
+                var importShipment = await db.ImportShipments.FirstOrDefaultAsync(i => i.AWBNo == awbNo && !i.IsDeleted);
+                if (importShipment != null)
+                    awb = MapImportToInscanMaster(importShipment);
+            }
+            if (awb != null) awbs.Add(awb);
+        }
+        
+        if (!awbs.Any()) return Results.NotFound("No AWBs found");
+
+        byte[]? logoData = null;
+        string? companyName = null;
+        var firstAwb = awbs.First();
+        if (firstAwb.BranchId.HasValue)
+        {
+            var branch = await db.Branches.Include(b => b.Company).FirstOrDefaultAsync(b => b.Id == firstAwb.BranchId);
+            logoData = ResolveLogoBytes(branch?.Company?.Logo, env.WebRootPath);
+            companyName = branch?.Company?.Name;
+        }
+        if (logoData == null)
+        {
+            var company = await db.Companies.FirstOrDefaultAsync(c => !c.IsDeleted);
+            logoData = ResolveLogoBytes(company?.Logo, env.WebRootPath);
+            companyName ??= company?.Name;
+        }
+
+        foreach (var awb in awbs)
+        {
+            if (awb.BarcodeImage == null && !string.IsNullOrEmpty(awb.AWBNo))
+            {
+                var (h, v) = barcodeService.GenerateBothBarcodes(awb.AWBNo);
+                awb.BarcodeImage = h;
+                awb.BarcodeImageVertical = v;
+            }
+        }
+
+        var combinedPdf = printService.GenerateBulkA5AWB(awbs, companyName, logoData);
+        var fileName = inline == true ? null : $"BulkAWB-{DateTime.Now:yyyyMMdd_HHmmss}.pdf";
+        return Results.File(combinedPdf, "application/pdf", fileName);
+    }
+    catch (Exception ex)
+    {
+        logger.LogError(ex, "Error generating bulk AWB print by AWB numbers");
+        return Results.Problem($"Error generating bulk AWB print: {ex.Message}");
+    }
+});
+
+app.MapGet("/api/report/label-bulk/{ids}", async (string ids, bool? inline, ApplicationDbContext db, AWBPrintService printService, BarcodeService barcodeService, IWebHostEnvironment env, ILogger<Program> logger) =>
+{
+    try
+    {
+        var idList = ids.Split(',').Select(long.Parse).ToList();
+        var awbs = await db.InscanMasters.Where(i => idList.Contains(i.Id)).ToListAsync();
+        if (!awbs.Any()) return Results.NotFound("No AWBs found");
+
+        byte[]? logoData = null;
+        string? companyName = null;
+        var firstAwb = awbs.First();
+        if (firstAwb.BranchId.HasValue)
+        {
+            var branch = await db.Branches.Include(b => b.Company).FirstOrDefaultAsync(b => b.Id == firstAwb.BranchId);
+            logoData = ResolveLogoBytes(branch?.Company?.Logo, env.WebRootPath);
+            companyName = branch?.Company?.Name;
+        }
+        if (logoData == null)
+        {
+            var company = await db.Companies.FirstOrDefaultAsync(c => !c.IsDeleted);
+            logoData = ResolveLogoBytes(company?.Logo, env.WebRootPath);
+            companyName ??= company?.Name;
+        }
+
+        foreach (var awb in awbs)
+        {
+            if (awb.BarcodeImage == null && !string.IsNullOrEmpty(awb.AWBNo))
+            {
+                var (h, v) = barcodeService.GenerateBothBarcodes(awb.AWBNo);
+                awb.BarcodeImage = h;
+                awb.BarcodeImageVertical = v;
+            }
+        }
+
+        var combinedPdf = printService.GenerateBulkLabel(awbs, companyName, logoData);
+        var fileName = inline == true ? null : $"BulkLabels-{DateTime.Now:yyyyMMdd_HHmmss}.pdf";
+        return Results.File(combinedPdf, "application/pdf", fileName);
+    }
+    catch (Exception ex)
+    {
+        logger.LogError(ex, "Error generating bulk label print");
+        return Results.Problem($"Error generating bulk label print: {ex.Message}");
+    }
+});
+
+app.MapGet("/api/report/label-bulk-by-awbno/{awbNos}", async (string awbNos, bool? inline, ApplicationDbContext db, AWBPrintService printService, BarcodeService barcodeService, IWebHostEnvironment env, ILogger<Program> logger) =>
+{
+    try
+    {
+        var awbNoList = awbNos.Split(',').ToList();
+        var awbs = new List<InscanMaster>();
+        
+        foreach (var awbNo in awbNoList)
+        {
+            var awb = await db.InscanMasters.FirstOrDefaultAsync(i => i.AWBNo == awbNo);
+            if (awb == null)
+            {
+                var importShipment = await db.ImportShipments.FirstOrDefaultAsync(i => i.AWBNo == awbNo && !i.IsDeleted);
+                if (importShipment != null)
+                    awb = MapImportToInscanMaster(importShipment);
+            }
+            if (awb != null) awbs.Add(awb);
+        }
+        
+        if (!awbs.Any()) return Results.NotFound("No AWBs found");
+
+        byte[]? logoData = null;
+        string? companyName = null;
+        var firstAwb = awbs.First();
+        if (firstAwb.BranchId.HasValue)
+        {
+            var branch = await db.Branches.Include(b => b.Company).FirstOrDefaultAsync(b => b.Id == firstAwb.BranchId);
+            logoData = ResolveLogoBytes(branch?.Company?.Logo, env.WebRootPath);
+            companyName = branch?.Company?.Name;
+        }
+        if (logoData == null)
+        {
+            var company = await db.Companies.FirstOrDefaultAsync(c => !c.IsDeleted);
+            logoData = ResolveLogoBytes(company?.Logo, env.WebRootPath);
+            companyName ??= company?.Name;
+        }
+
+        foreach (var awb in awbs)
+        {
+            if (awb.BarcodeImage == null && !string.IsNullOrEmpty(awb.AWBNo))
+            {
+                var (h, v) = barcodeService.GenerateBothBarcodes(awb.AWBNo);
+                awb.BarcodeImage = h;
+                awb.BarcodeImageVertical = v;
+            }
+        }
+
+        var combinedPdf = printService.GenerateBulkLabel(awbs, companyName, logoData);
+        var fileName = inline == true ? null : $"BulkLabels-{DateTime.Now:yyyyMMdd_HHmmss}.pdf";
+        return Results.File(combinedPdf, "application/pdf", fileName);
+    }
+    catch (Exception ex)
+    {
+        logger.LogError(ex, "Error generating bulk label print by AWB numbers");
+        return Results.Problem($"Error generating bulk label print: {ex.Message}");
+    }
+});
+
 app.MapGet("/api/report/shipment-invoice/{id:long}", async (long id, bool? inline, ApplicationDbContext db, AWBPrintService printService, IWebHostEnvironment env, ILogger<Program> logger) =>
 {
     try

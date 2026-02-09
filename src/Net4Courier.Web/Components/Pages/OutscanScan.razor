@@ -227,6 +227,17 @@ else
             
             if (awb == null)
             {
+                Logger.LogInformation("[OUTSCAN] AWB not found in InscanMasters, checking ImportShipments");
+                var importShipment = await DbContext.ImportShipments
+                    .FirstOrDefaultAsync(s => s.AWBNo == awbNo && !s.IsDeleted);
+                
+                if (importShipment != null)
+                {
+                    Logger.LogInformation("[OUTSCAN] Found import shipment: Id={Id}, Status={Status}", importShipment.Id, importShipment.Status);
+                    await ProcessImportShipmentOutscan(importShipment, awbNo);
+                    return;
+                }
+                
                 _scanMessage = $"AWB {awbNo} not found";
                 _scanSeverity = Severity.Error;
                 _scanInput = string.Empty;
@@ -393,6 +404,163 @@ else
         _drs.CollectedCOD = _drsDetails.Where(d => d.Status == "Delivered").Sum(d => d.CollectedAmount ?? 0);
         
         await DbContext.SaveChangesAsync();
+    }
+
+    private async Task ProcessImportShipmentOutscan(ImportShipment importShipment, string awbNo)
+    {
+        try
+        {
+            var existingInDrs = _drsDetails.Any(d => d.Inscan?.AWBNo == awbNo);
+            if (existingInDrs)
+            {
+                _scanMessage = $"AWB {awbNo} is already in this DRS";
+                _scanSeverity = Severity.Warning;
+                _scanInput = string.Empty;
+                return;
+            }
+
+            var allowedImportStatuses = new[] { 
+                ImportShipmentStatus.Inscanned, 
+                ImportShipmentStatus.ReceivedAtWarehouse, 
+                ImportShipmentStatus.Cleared, 
+                ImportShipmentStatus.Released 
+            };
+            if (!allowedImportStatuses.Contains(importShipment.Status))
+            {
+                _scanMessage = $"Import AWB {awbNo} is not available for outscan. Current status: {importShipment.Status}";
+                _scanSeverity = Severity.Warning;
+                _scanInput = string.Empty;
+                return;
+            }
+
+            InscanMaster linkedAwb;
+            if (importShipment.LinkedInscanMasterId.HasValue)
+            {
+                linkedAwb = await DbContext.InscanMasters.FindAsync(importShipment.LinkedInscanMasterId.Value);
+                if (linkedAwb == null)
+                {
+                    linkedAwb = CreateInscanMasterFromImport(importShipment);
+                    DbContext.InscanMasters.Add(linkedAwb);
+                    await DbContext.SaveChangesAsync();
+                    importShipment.LinkedInscanMasterId = linkedAwb.Id;
+                }
+            }
+            else
+            {
+                linkedAwb = CreateInscanMasterFromImport(importShipment);
+                DbContext.InscanMasters.Add(linkedAwb);
+                await DbContext.SaveChangesAsync();
+                importShipment.LinkedInscanMasterId = linkedAwb.Id;
+            }
+
+            var alreadyInOtherDrs = await DbContext.Set<DRSDetail>()
+                .Include(d => d.DRS)
+                .AnyAsync(d => d.InscanId == linkedAwb.Id && d.DRS.Status != DRSStatus.Closed);
+            if (alreadyInOtherDrs)
+            {
+                _scanMessage = $"Import AWB {awbNo} is already assigned to another open DRS";
+                _scanSeverity = Severity.Warning;
+                _scanInput = string.Empty;
+                return;
+            }
+
+            var nextSequence = _drsDetails.Count + 1;
+            var codAmount = importShipment.IsCOD ? (importShipment.CODAmount ?? 0) : 0;
+
+            var detail = new DRSDetail
+            {
+                DRSId = DrsId,
+                InscanId = linkedAwb.Id,
+                Sequence = nextSequence,
+                AttemptNo = 1,
+                Status = "Pending",
+                CODAmount = codAmount,
+                CreatedAt = DateTime.UtcNow,
+                IsActive = true
+            };
+            DbContext.Set<DRSDetail>().Add(detail);
+
+            linkedAwb.CourierStatusId = CourierStatus.OutForDelivery;
+            linkedAwb.ModifiedAt = DateTime.UtcNow;
+
+            importShipment.Status = ImportShipmentStatus.HandedOver;
+            importShipment.HandedOverAt = DateTime.UtcNow;
+            importShipment.ModifiedAt = DateTime.UtcNow;
+
+            var tracking = new AWBTracking
+            {
+                InscanId = linkedAwb.Id,
+                EventDateTime = DateTime.UtcNow,
+                StatusId = CourierStatus.OutForDelivery,
+                Remarks = $"Import shipment out for delivery - Added to DRS {_drs!.DRSNo}",
+                CreatedAt = DateTime.UtcNow,
+                IsPublic = true,
+                IsDeleted = false
+            };
+            DbContext.AWBTrackings.Add(tracking);
+
+            await DbContext.SaveChangesAsync();
+
+            await ShipmentStatusService.SetStatus(
+                linkedAwb.Id, "OUT_FOR_DELIVERY", "Outscan", _drs!.Id, "DRS",
+                null, importShipment.ConsigneeCity, null, null,
+                $"Import shipment assigned to DRS {_drs.DRSNo} - {_drs.DeliveryEmployeeName}", isAutomatic: true);
+
+            _scanMessage = $"Import AWB {awbNo} added successfully";
+            _scanSeverity = Severity.Success;
+            _scanInput = string.Empty;
+
+            await LoadData();
+            Logger.LogInformation("[OUTSCAN] Import shipment outscan completed successfully");
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "[OUTSCAN] ERROR processing import shipment: {Message}", ex.Message);
+            _scanMessage = $"Error adding import AWB: {ex.Message}";
+            _scanSeverity = Severity.Error;
+            Snackbar.Add($"Error: {ex.Message}", Severity.Error);
+        }
+    }
+
+    private InscanMaster CreateInscanMasterFromImport(ImportShipment importShipment)
+    {
+        return new InscanMaster
+        {
+            AWBNo = importShipment.AWBNo,
+            TransactionDate = DateTime.UtcNow,
+            Consignor = importShipment.ShipperName,
+            ConsignorPhone = importShipment.ShipperPhone,
+            ConsignorAddress1 = importShipment.ShipperAddress,
+            ConsignorCity = importShipment.ShipperCity,
+            ConsignorCountry = importShipment.ShipperCountry,
+            Consignee = importShipment.ConsigneeName,
+            ConsigneePhone = importShipment.ConsigneePhone,
+            ConsigneeMobile = importShipment.ConsigneeMobile,
+            ConsigneeAddress1 = importShipment.ConsigneeAddress,
+            ConsigneeCity = importShipment.ConsigneeCity,
+            ConsigneeState = importShipment.ConsigneeState,
+            ConsigneeCountry = importShipment.ConsigneeCountry,
+            ConsigneePostalCode = importShipment.ConsigneePostalCode,
+            Pieces = importShipment.Pieces,
+            Weight = importShipment.Weight,
+            VolumetricWeight = importShipment.VolumetricWeight,
+            ChargeableWeight = importShipment.ChargeableWeight,
+            CargoDescription = importShipment.ContentsDescription,
+            SpecialInstructions = importShipment.SpecialInstructions,
+            CourierStatusId = CourierStatus.InscanAtOrigin,
+            PaymentModeId = importShipment.IsCOD ? PaymentMode.COD : PaymentMode.Prepaid,
+            MovementTypeId = MovementType.InternationalImport,
+            IsCOD = importShipment.IsCOD,
+            CODAmount = importShipment.CODAmount,
+            CustomsValue = importShipment.DeclaredValue,
+            Currency = importShipment.Currency,
+            DutyVatAmount = (importShipment.DutyAmount ?? 0) + (importShipment.VATAmount ?? 0),
+            ReferenceNo = importShipment.ReferenceNo,
+            Remarks = $"Auto-created from import shipment #{importShipment.Id}",
+            IsAutoGenerated = true,
+            CreatedAt = DateTime.UtcNow,
+            IsActive = true
+        };
     }
 
     private async Task OpenStatusDialog(DRSDetail detail)

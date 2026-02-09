@@ -28,7 +28,7 @@ public class AWBPrintService
             container.Page(page =>
             {
                 page.Size(PageSizes.A5);
-                page.Margin(10);
+                page.Margin(8);
                 page.DefaultTextStyle(x => x.FontSize(8).FontFamily("Arial"));
                 
                 page.Content().Column(column =>
@@ -69,14 +69,14 @@ public class AWBPrintService
             row.RelativeItem(1).BorderLeft(1).Padding(3).Column(orgCol =>
             {
                 orgCol.Item().Text("ORG. STN").FontSize(6);
-                var orgCode = shipment.OriginPortCode ?? shipment.ConsignorCountry ?? "---";
+                var orgCode = GetCountryDisplayCode(shipment.OriginPortCode, shipment.ConsignorCountry);
                 orgCol.Item().AlignCenter().Text(orgCode).Bold().FontSize(orgCode.Length > 5 ? 9 : 14);
             });
             
             row.RelativeItem(1).BorderLeft(1).Padding(3).Column(destCol =>
             {
                 destCol.Item().Text("DEST").FontSize(6);
-                var destCode = shipment.DestinationPortCode ?? shipment.ConsigneeCountry ?? "---";
+                var destCode = GetCountryDisplayCode(shipment.DestinationPortCode, shipment.ConsigneeCountry);
                 destCol.Item().AlignCenter().Text(destCode).Bold().FontSize(destCode.Length > 5 ? 9 : 14);
             });
             
@@ -436,6 +436,79 @@ public class AWBPrintService
         });
     }
 
+    public byte[] GenerateBulkA5AWB(List<InscanMaster> shipments, string? companyName = null, byte[]? logoData = null)
+    {
+        var effectiveLogo = logoData ?? _logoData;
+        var document = Document.Create(container =>
+        {
+            foreach (var shipment in shipments)
+            {
+                container.Page(page =>
+                {
+                    page.Size(PageSizes.A5);
+                    page.Margin(8);
+                    page.DefaultTextStyle(x => x.FontSize(8).FontFamily("Arial"));
+                    
+                    page.Content().Column(column =>
+                    {
+                        column.Spacing(3);
+                        
+                        BuildHeader(column, shipment, companyName ?? "Net4Courier", effectiveLogo);
+                        BuildShipperSection(column, shipment);
+                        BuildReceiverSection(column, shipment);
+                        BuildShipmentInfoSection(column, shipment);
+                        BuildChargesSection(column, shipment);
+                        BuildSignatureSection(column, shipment);
+                    });
+                });
+            }
+        });
+        
+        return document.GeneratePdf();
+    }
+
+    public byte[] GenerateBulkLabel(List<InscanMaster> shipments, string? companyName = null, byte[]? logoData = null)
+    {
+        var effectiveLogo = logoData ?? _logoData;
+        var document = Document.Create(container =>
+        {
+            foreach (var shipment in shipments)
+            {
+                container.Page(page =>
+                {
+                    page.Size(100, 150, Unit.Millimetre);
+                    page.Margin(2);
+                    page.DefaultTextStyle(x => x.FontSize(7).FontFamily("Arial"));
+                    
+                    page.Content().Border(1).Shrink().Row(mainRow =>
+                    {
+                        mainRow.RelativeItem(3).Shrink().Column(column =>
+                        {
+                            column.Spacing(0);
+                            
+                            BuildGateexHeader(column, shipment, companyName ?? "Net4Courier", effectiveLogo);
+                            BuildGateexOriginDest(column, shipment, effectiveLogo);
+                            BuildGateexService(column, shipment);
+                            BuildGateexWeight(column, shipment);
+                            BuildGateexShipper(column, shipment);
+                            BuildGateexConsignee(column, shipment);
+                            BuildGateexRouteRemarks(column, shipment);
+                            BuildGateexDescription(column, shipment);
+                            BuildGateexReferences(column, shipment);
+                        });
+                        
+                        mainRow.ConstantItem(28).BorderLeft(1).Shrink().Column(rightCol =>
+                        {
+                            BuildGateexRightPanel(rightCol, shipment);
+                        });
+                    });
+                });
+            }
+        });
+        
+        return document.GeneratePdf();
+    }
+
     public byte[] GenerateLabel(InscanMaster shipment, string? companyName = null, byte[]? logoData = null)
     {
         var effectiveLogo = logoData ?? _logoData;
@@ -480,6 +553,15 @@ public class AWBPrintService
         if (!string.IsNullOrWhiteSpace(portCode)) return portCode;
         if (!string.IsNullOrWhiteSpace(city) && city.Length >= 3) return city.Substring(0, 3).ToUpper();
         if (!string.IsNullOrWhiteSpace(city)) return city.ToUpper();
+        return "---";
+    }
+
+    private string GetCountryDisplayCode(string? portCode, string? country)
+    {
+        if (!string.IsNullOrWhiteSpace(portCode)) return portCode;
+        if (!string.IsNullOrWhiteSpace(country) && country.Length > 3)
+            return country.Substring(0, 3).ToUpper();
+        if (!string.IsNullOrWhiteSpace(country)) return country.ToUpper();
         return "---";
     }
 
@@ -649,7 +731,7 @@ public class AWBPrintService
             c.Item().Text(Truncate($"{shipment.ConsigneeAddress1} {shipment.ConsigneeAddress2}".Trim(), 70)).FontSize(6);
             c.Item().Height(2);
             c.Item().Text(Truncate(shipment.ConsigneeCity, 25)).Bold().FontSize(8);
-            c.Item().Text(Truncate(shipment.ConsigneeCountry, 25)).FontSize(6);
+            c.Item().Text(GetCountryDisplayCode(null, shipment.ConsigneeCountry)).FontSize(6);
             c.Item().Text(Truncate(CombinePhoneNumbers(shipment.ConsigneePhone, shipment.ConsigneeMobile), 40)).Bold().FontSize(7);
         });
     }
@@ -873,7 +955,7 @@ public class AWBPrintService
             });
             c.Item().Row(r =>
             {
-                r.RelativeItem().Text(shipment.ConsignorCountry ?? "").FontSize(7);
+                r.RelativeItem().Text(GetCountryDisplayCode(null, shipment.ConsignorCountry)).FontSize(7);
                 r.RelativeItem().Text(shipment.ConsignorPhone ?? shipment.ConsignorMobile ?? "").FontSize(7);
             });
         });
@@ -893,7 +975,7 @@ public class AWBPrintService
             });
             c.Item().Row(r =>
             {
-                r.RelativeItem().Text(shipment.ConsigneeCountry ?? "").FontSize(7);
+                r.RelativeItem().Text(GetCountryDisplayCode(null, shipment.ConsigneeCountry)).FontSize(7);
             });
             c.Item().Row(r =>
             {
@@ -995,11 +1077,11 @@ public class AWBPrintService
         {
             row.RelativeItem().Column(c =>
             {
-                c.Item().Text($"SHIPMENT FROM: {shipment.ConsignorCountry ?? "UAE"}").Bold().FontSize(10);
+                c.Item().Text($"SHIPMENT FROM: {GetCountryDisplayCode(null, shipment.ConsignorCountry)}").Bold().FontSize(10);
             });
             row.RelativeItem().Column(c =>
             {
-                c.Item().Text($"SHIPMENT TO: {shipment.ConsigneeCountry ?? ""}").Bold().FontSize(10);
+                c.Item().Text($"SHIPMENT TO: {GetCountryDisplayCode(null, shipment.ConsigneeCountry)}").Bold().FontSize(10);
             });
         });
     }
@@ -1030,7 +1112,7 @@ public class AWBPrintService
                 shipperCol.Item().Row(r =>
                 {
                     r.ConstantItem(50).Text("Country:").FontSize(9);
-                    r.RelativeItem().Text(shipment.ConsignorCountry ?? "").FontSize(9);
+                    r.RelativeItem().Text(GetCountryDisplayCode(null, shipment.ConsignorCountry)).FontSize(9);
                 });
                 shipperCol.Item().Height(5);
                 shipperCol.Item().Row(r =>
@@ -1062,7 +1144,7 @@ public class AWBPrintService
                 consigneeCol.Item().Row(r =>
                 {
                     r.ConstantItem(80).Text("Country:").FontSize(9);
-                    r.RelativeItem().Text(shipment.ConsigneeCountry ?? "").FontSize(9);
+                    r.RelativeItem().Text(GetCountryDisplayCode(null, shipment.ConsigneeCountry)).FontSize(9);
                 });
                 consigneeCol.Item().Height(5);
                 consigneeCol.Item().Row(r =>
