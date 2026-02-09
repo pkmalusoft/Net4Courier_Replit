@@ -1,5 +1,6 @@
 @page "/operational-desktop"
 @inject IDbContextFactory<Net4Courier.Infrastructure.Data.ApplicationDbContext> DbFactory
+@inject Net4Courier.Web.Services.IDateTimeService DateTimeService
 @using Microsoft.EntityFrameworkCore
 @using Net4Courier.Operations.Entities
 @using Net4Courier.Kernel.Enums
@@ -66,6 +67,7 @@ else
                 <div class="d-flex justify-space-between align-center">
                     <div>
                         <MudText Typo="Typo.subtitle2" Color="Color.Secondary">Delivered Today</MudText>
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">@_todayDateDisplay</MudText>
                         <MudText Typo="Typo.h4" Color="Color.Success">@_deliveredToday</MudText>
                     </div>
                     <MudAvatar Color="Color.Success" Size="Size.Large">
@@ -257,6 +259,7 @@ else
     private int _inTransit;
     private int _outForDelivery;
     private int _deliveredToday;
+    private string _todayDateDisplay = "";
     private int _onHold;
     private int _exceptions;
     private int _pendingMAWB;
@@ -274,7 +277,11 @@ else
         try
         {
             await using var dbContext = await DbFactory.CreateDbContextAsync();
-            var today = DateTime.UtcNow.Date;
+            var localNow = DateTimeService.ToLocalTime(DateTime.UtcNow);
+            var localToday = localNow.Date;
+            _todayDateDisplay = localToday.ToString("dd MMM yyyy");
+            var todayUtcStart = TimeZoneInfo.ConvertTimeToUtc(localToday, DateTimeService.GetTimeZone());
+            var todayUtcEnd = todayUtcStart.AddDays(1);
             
             _pendingPickup = await dbContext.InscanMasters
                 .Where(x => !x.IsDeleted && (x.CourierStatusId == CourierStatus.Pending || x.CourierStatusId == CourierStatus.AssignedToPickup))
@@ -288,9 +295,15 @@ else
                 .Where(x => !x.IsDeleted && x.CourierStatusId == CourierStatus.OutForDelivery)
                 .CountAsync();
             
-            _deliveredToday = await dbContext.InscanMasters
-                .Where(x => !x.IsDeleted && x.CourierStatusId == CourierStatus.Delivered && x.DeliveredDate != null && x.DeliveredDate.Value.Date == today)
+            var domesticDelivered = await dbContext.InscanMasters
+                .Where(x => !x.IsDeleted && x.CourierStatusId == CourierStatus.Delivered && x.DeliveredDate != null && x.DeliveredDate >= todayUtcStart && x.DeliveredDate < todayUtcEnd)
                 .CountAsync();
+
+            var importDelivered = await dbContext.ImportShipments
+                .Where(x => !x.IsDeleted && x.Status == ImportShipmentStatus.HandedOver && x.HandedOverAt != null && x.HandedOverAt >= todayUtcStart && x.HandedOverAt < todayUtcEnd)
+                .CountAsync();
+
+            _deliveredToday = domesticDelivered + importDelivered;
             
             _onHold = await dbContext.InscanMasters
                 .Where(x => !x.IsDeleted && x.IsOnHold)
