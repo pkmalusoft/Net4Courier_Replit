@@ -13,9 +13,16 @@ using Net4Courier.Kernel.Enums;
 using QuestPDF.Infrastructure;
 
 // Log startup immediately
-Console.WriteLine($"[{DateTime.UtcNow:O}] Net4Courier starting...");
-Console.WriteLine($"[{DateTime.UtcNow:O}] Environment: {Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT") ?? "Production"}");
-Console.WriteLine($"[{DateTime.UtcNow:O}] DATABASE_URL: {(string.IsNullOrEmpty(Environment.GetEnvironmentVariable("DATABASE_URL")) ? "NOT SET" : "SET")}");
+var buildTimestamp = System.IO.File.Exists("build_timestamp.txt") 
+    ? System.IO.File.ReadAllText("build_timestamp.txt").Trim() 
+    : "unknown";
+Console.WriteLine($"=====================================================");
+Console.WriteLine($"  NET4COURIER BUILD INFO");
+Console.WriteLine($"  Build: {buildTimestamp}");
+Console.WriteLine($"  Started: {DateTime.UtcNow:O}");
+Console.WriteLine($"  Environment: {Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT") ?? "Production"}");
+Console.WriteLine($"  DATABASE_URL: {(string.IsNullOrEmpty(Environment.GetEnvironmentVariable("DATABASE_URL")) ? "NOT SET" : "SET")}");
+Console.WriteLine($"=====================================================");
 
 // Handle command-line utilities (runs without starting web server)
 if (args.Length >= 3 && args[0] == "--reset-password")
