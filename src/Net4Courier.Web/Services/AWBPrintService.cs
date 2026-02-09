@@ -50,7 +50,7 @@ public class AWBPrintService
     private void A5Header(ColumnDescriptor column, InscanMaster shipment, string companyName, byte[]? logoData)
     {
         var effectiveLogo = logoData ?? _logoData;
-        var serviceDesc = shipment.CargoDescription ?? "E-Commerce Delivery";
+        var serviceDesc = GetMovementTypeDisplay(shipment.MovementTypeId);
         var originCity = shipment.ConsignorCity ?? GetCountryDisplayCode(shipment.OriginPortCode, shipment.ConsignorCountry);
         var destCity = shipment.ConsigneeCity ?? GetCountryDisplayCode(shipment.DestinationPortCode, shipment.ConsigneeCountry);
 
@@ -134,7 +134,12 @@ public class AWBPrintService
                     });
                 });
 
-                var itemDesc = shipment.Remarks ?? "";
+                var itemDescParts = new List<string>();
+                if (!string.IsNullOrWhiteSpace(shipment.CargoDescription))
+                    itemDescParts.Add(shipment.CargoDescription);
+                if (!string.IsNullOrWhiteSpace(shipment.Remarks))
+                    itemDescParts.Add(shipment.Remarks);
+                var itemDesc = string.Join(" | ", itemDescParts);
                 leftCol.Item().PaddingTop(3).Border(1).Background("#fffbeb").Padding(3).Row(instrRow =>
                 {
                     instrRow.ConstantItem(140).Text("Item Description / Special Instruction:").Bold().FontSize(8);
@@ -287,7 +292,7 @@ public class AWBPrintService
     private void A5PodFooter(ColumnDescriptor column, InscanMaster shipment, string? website = null)
     {
         var accountCode = shipment.CustomerId != null ? $"Account: {shipment.CustomerId}" : "";
-        var serviceType = shipment.CargoDescription ?? "E-COMMERCE DELIVERY";
+        var serviceType = GetMovementTypeDisplay(shipment.MovementTypeId);
 
         column.Item().PaddingTop(4).BorderTop(2).PaddingTop(3).Column(footer =>
         {
@@ -296,7 +301,12 @@ public class AWBPrintService
                 podHeaderRow.RelativeItem().Column(leftPod =>
                 {
                     leftPod.Item().Text("Item Description / Special Instruction").Bold().FontSize(8).FontColor(Colors.Grey.Darken1);
-                    leftPod.Item().PaddingTop(2).Text(shipment.Remarks ?? "").FontSize(8);
+                    var footerDescParts = new List<string>();
+                    if (!string.IsNullOrWhiteSpace(shipment.CargoDescription))
+                        footerDescParts.Add(shipment.CargoDescription);
+                    if (!string.IsNullOrWhiteSpace(shipment.Remarks))
+                        footerDescParts.Add(shipment.Remarks);
+                    leftPod.Item().PaddingTop(2).Text(string.Join(" | ", footerDescParts)).FontSize(8);
                 });
                 podHeaderRow.RelativeItem().AlignRight().Column(rightPod =>
                 {
@@ -445,6 +455,18 @@ public class AWBPrintService
         if (!string.IsNullOrWhiteSpace(city) && city.Length >= 3) return city.Substring(0, 3).ToUpper();
         if (!string.IsNullOrWhiteSpace(city)) return city.ToUpper();
         return "---";
+    }
+
+    private static string GetMovementTypeDisplay(MovementType movementType)
+    {
+        return movementType switch
+        {
+            MovementType.Domestic => "Domestic",
+            MovementType.InternationalExport => "International Export",
+            MovementType.InternationalImport => "Import",
+            MovementType.Transhipment => "Transhipment",
+            _ => "E-Commerce Delivery"
+        };
     }
 
     private string GetCountryDisplayCode(string? portCode, string? country)
