@@ -1,0 +1,410 @@
+@page "/labels/a5-landscape"
+@page "/labels/a5-landscape/{AwbId:long}"
+@inject IJSRuntime JSRuntime
+@inject Net4Courier.Infrastructure.Data.ApplicationDbContext Db
+@inject Net4Courier.Operations.Services.BarcodeService BarcodeService
+@using Microsoft.EntityFrameworkCore
+
+<MudContainer MaxWidth="MaxWidth.Large" Class="mt-10 d-flex flex-column align-center no-print">
+    <MudPaper Elevation="4" Class="pa-6 rounded-lg d-flex flex-column align-center w-100" Style="max-width:500px;">
+        <MudText Typo="Typo.h5" Class="mb-4" Style="font-weight:700;">Label Print Preview</MudText>
+        <MudStack Row="true" Spacing="4">
+            <MudButton Variant="Variant.Filled"
+                       Color="Color.Info"
+                       StartIcon="@Icons.Material.Filled.Print"
+                       OnClick="PrintLabel"
+                       Class="px-8 py-2 rounded-pill"
+                       Style="font-weight:700;">
+                PRINT A5 LABEL
+            </MudButton>
+        </MudStack>
+        <MudText Typo="Typo.caption" Class="mt-4" Style="color:#64748b;font-style:italic;">
+            Optimized for A5 Landscape (210mm x 148mm)
+        </MudText>
+    </MudPaper>
+</MudContainer>
+
+<div class="label-view-container py-10">
+    <div id="a5-label-printable" class="a5-label-box">
+
+        <div class="label-row header-border pb-3 mb-3">
+            <div class="brand-area">
+                @if (_logoBase64 != null)
+                {
+                    <img src="@_logoBase64" style="height:36px;" />
+                }
+                else
+                {
+                    <h1 class="brand-text">@_companyName</h1>
+                }
+                <span class="service-chip">@LabelData.ServiceType</span>
+            </div>
+
+            <div class="route-badge">
+                <span class="city-name">@LabelData.Origin</span>
+                <MudIcon Icon="@Icons.Material.Filled.ArrowForward" Size="Size.Small" Class="mx-2" />
+                <span class="city-name underline-bold">@LabelData.Destination</span>
+            </div>
+
+            <div class="waybill-info">
+                <span class="label-caption">Waybill Number</span>
+                <span class="waybill-number">@LabelData.Waybill</span>
+                <span class="date-text">@LabelData.BookingDate</span>
+            </div>
+        </div>
+
+        <div class="label-body-grid">
+            <div class="address-grid">
+                <div class="grid-columns">
+                    <div class="info-card shipper-card">
+                        <div class="card-header">From (Shipper)</div>
+                        <div class="card-content">
+                            <p class="entity-name">@LabelData.Shipper.Name</p>
+                            <p class="address-text">@LabelData.Shipper.Address</p>
+                            <p class="contact-info">
+                                <MudIcon Icon="@Icons.Material.Filled.Phone" Size="Size.Small" Class="mr-1" />
+                                @LabelData.Shipper.Phone
+                            </p>
+                        </div>
+                    </div>
+                    <div class="info-card receiver-card">
+                        <div class="card-header dark">To (Receiver)</div>
+                        <div class="card-content">
+                            <p class="entity-name-lg">@LabelData.Receiver.Name</p>
+                            <p class="address-text-bold">@LabelData.Receiver.Address</p>
+                            <p class="contact-info-lg">
+                                <MudIcon Icon="@Icons.Material.Filled.Smartphone" Size="Size.Small" Class="mr-1" />
+                                @LabelData.Receiver.Phone
+                            </p>
+                        </div>
+                    </div>
+                </div>
+
+                @if (!string.IsNullOrWhiteSpace(LabelData.Instructions))
+                {
+                    <div class="instruction-banner">
+                        <span class="inst-bold">Special Instructions:</span> @LabelData.Instructions
+                    </div>
+                }
+            </div>
+
+            <div class="metrics-column">
+                <div class="barcode-container">
+                    @if (_barcodeBase64 != null)
+                    {
+                        <img src="data:image/png;base64,@_barcodeBase64" style="height:40px;max-width:100%;" />
+                    }
+                    else
+                    {
+                        <div class="sim-barcode">
+                            @for (int i = 0; i < 45; i++)
+                            {
+                                var w = i % 3 == 0 ? "3px" : "1px";
+                                <div class="bar" style="width: @w"></div>
+                            }
+                        </div>
+                    }
+                    <span class="barcode-id">@LabelData.Waybill</span>
+                </div>
+
+                <div class="stats-table">
+                    <div class="stat-cell">
+                        <span class="s-cap">Weight</span>
+                        <span class="s-val">@LabelData.Weight</span>
+                    </div>
+                    <div class="stat-cell border-l">
+                        <span class="s-cap">Pieces</span>
+                        <span class="s-val">@LabelData.Pieces</span>
+                    </div>
+                </div>
+
+                <div class="cod-callout">
+                    <span class="cod-title">Collect Cash</span>
+                    <div class="cod-amount-group">
+                        <span class="currency">@LabelData.Currency</span>
+                        <span class="amount">@LabelData.Cod</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="label-footer mt-auto">
+            <div class="pod-label">POD - PROOF OF DELIVERY</div>
+            <div class="signature-grid">
+                <div class="sig-box">
+                    <div class="sig-line"></div>
+                    <span class="sig-cap">Customer Name & Signature</span>
+                </div>
+                <div class="sig-box">
+                    <div class="sig-line"></div>
+                    <span class="sig-cap">Courier Collection (Date/Sign)</span>
+                </div>
+                <div class="sig-box">
+                    <div class="sig-line"></div>
+                    <span class="sig-cap">Courier Delivery (Date/Sign)</span>
+                </div>
+            </div>
+
+            <div class="footer-bottom">
+                <div class="footer-links">
+                    <span>Account: @LabelData.AccountNo</span>
+                </div>
+                <span>Page 1 of 1</span>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+    .label-view-container {
+        width: 100%;
+        display: flex;
+        justify-content: center;
+        background: #f1f5f9;
+    }
+
+    .a5-label-box {
+        width: 792px;
+        height: 560px;
+        background: white;
+        border: 1px solid #ddd;
+        padding: 24px;
+        display: flex;
+        flex-direction: column;
+        color: black;
+        font-family: 'Inter', 'Segoe UI', sans-serif;
+        box-shadow: 0 10px 15px -3px rgba(0,0,0,0.1);
+    }
+
+    .label-row { display: flex; justify-content: space-between; align-items: center; }
+    .header-border { border-bottom: 2px solid black; }
+
+    .brand-text { font-size: 32px; font-weight: 900; font-style: italic; color: #1e3a8a; line-height: 1; margin: 0; }
+    .brand-area { display: flex; flex-direction: column; }
+    .service-chip { background: #1e3a8a; color: white; padding: 2px 8px; font-size: 10px; font-weight: bold; border-radius: 4px; text-transform: uppercase; display: inline-block; margin-top: 4px; width: fit-content; }
+
+    .route-badge { display: flex; align-items: center; background: #f8fafc; border: 1.5px solid black; padding: 4px 16px; border-radius: 50px; }
+    .city-name { font-size: 16px; font-weight: 900; }
+    .underline-bold { border-bottom: 3px solid black; }
+
+    .waybill-info { text-align: right; }
+    .label-caption { font-size: 9px; font-weight: bold; color: #64748b; text-transform: uppercase; display: block; }
+    .waybill-number { font-size: 20px; font-weight: 900; letter-spacing: 1px; display: block; line-height: 1; }
+    .date-text { font-size: 11px; font-weight: bold; color: #94a3b8; }
+
+    .label-body-grid { display: grid; grid-template-columns: repeat(12, 1fr); gap: 16px; flex-grow: 1; margin-bottom: 16px; overflow: hidden; }
+    .address-grid { grid-column: span 8; display: flex; flex-direction: column; gap: 12px; }
+    .metrics-column { grid-column: span 4; display: flex; flex-direction: column; gap: 12px; }
+
+    .grid-columns { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; flex-grow: 1; }
+    .info-card { border: 1px solid black; border-radius: 4px; display: flex; flex-direction: column; overflow: hidden; }
+    .receiver-card { border-width: 2px; }
+    .card-header { background: #f1f5f9; border-bottom: 1px solid black; padding: 4px 8px; font-size: 9px; font-weight: 900; text-transform: uppercase; }
+    .card-header.dark { background: black; color: white; }
+    .card-content { padding: 8px; flex-grow: 1; display: flex; flex-direction: column; }
+
+    .entity-name { font-size: 12px; font-weight: 900; text-transform: uppercase; margin: 0; }
+    .entity-name-lg { font-size: 14px; font-weight: 900; text-transform: uppercase; margin: 0; }
+    .address-text { font-size: 10px; color: #4b5563; line-height: 1.2; margin-top: 4px; }
+    .address-text-bold { font-size: 11px; font-weight: 500; line-height: 1.2; margin-top: 4px; }
+    .contact-info { font-size: 10px; font-weight: bold; margin-top: auto; padding-top: 6px; display: flex; align-items: center; }
+    .contact-info-lg { font-size: 12px; font-weight: 900; margin-top: auto; padding-top: 6px; display: flex; align-items: center; }
+
+    .instruction-banner { border: 1px solid black; background: #fffbeb; padding: 8px; font-size: 10px; font-style: italic; }
+    .inst-bold { font-weight: 900; font-style: normal; }
+
+    .barcode-container { border: 1px solid black; padding: 8px; text-align: center; }
+    .sim-barcode { display: flex; justify-content: center; align-items: flex-end; height: 40px; margin-bottom: 4px; }
+    .bar { height: 100%; background: black; margin-right: 1px; }
+    .barcode-id { font-size: 11px; font-weight: bold; letter-spacing: 4px; display: block; margin-top: 4px; }
+
+    .stats-table { display: grid; grid-template-columns: 1fr 1fr; border: 1px solid black; }
+    .stat-cell { padding: 4px; text-align: center; }
+    .border-l { border-left: 1px solid black; }
+    .s-cap { font-size: 8px; font-weight: bold; color: #64748b; display: block; text-transform: uppercase; }
+    .s-val { font-size: 14px; font-weight: 900; }
+
+    .cod-callout { background: black; color: white; padding: 12px; border-radius: 4px; text-align: center; flex-grow: 1; display: flex; flex-direction: column; justify-content: center; }
+    .cod-title { font-size: 10px; font-weight: bold; opacity: 0.8; letter-spacing: 1px; text-transform: uppercase; }
+    .cod-amount-group { display: flex; align-items: baseline; justify-content: center; gap: 4px; }
+    .currency { font-size: 12px; font-weight: bold; }
+    .amount { font-size: 32px; font-weight: 900; line-height: 1; }
+
+    .label-footer { border-top: 2px solid black; padding-top: 12px; }
+    .pod-label { font-size: 11px; font-weight: 900; margin-bottom: 12px; }
+    .signature-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 24px; margin-bottom: 12px; }
+    .sig-line { border-bottom: 1px solid black; height: 20px; }
+    .sig-cap { font-size: 8px; font-weight: bold; color: #94a3b8; text-transform: uppercase; margin-top: 4px; display: block; }
+
+    .footer-bottom { display: flex; justify-content: space-between; font-size: 10px; font-weight: bold; color: #94a3b8; }
+    .footer-links { display: flex; gap: 16px; }
+
+    @@media print {
+        .no-print { display: none !important; }
+        .label-view-container { background: white; padding: 0; }
+        .a5-label-box {
+            box-shadow: none;
+            border: none;
+            padding: 10mm;
+            width: 100%;
+            height: 100%;
+        }
+    }
+</style>
+
+@code {
+    [Parameter] public long AwbId { get; set; }
+
+    private A5LabelModel LabelData = new();
+    private string? _logoBase64;
+    private string? _barcodeBase64;
+    private string _companyName = "Net4Courier";
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (AwbId > 0)
+        {
+            await LoadShipmentData();
+        }
+        else
+        {
+            LoadDemoData();
+        }
+    }
+
+    private async Task LoadShipmentData()
+    {
+        var awb = await Db.InscanMasters.FindAsync(AwbId);
+        if (awb == null) return;
+
+        if (awb.BarcodeImage == null && !string.IsNullOrEmpty(awb.AWBNo))
+        {
+            var (h, v) = BarcodeService.GenerateBothBarcodes(awb.AWBNo);
+            awb.BarcodeImage = h;
+        }
+
+        if (awb.BarcodeImage != null)
+            _barcodeBase64 = Convert.ToBase64String(awb.BarcodeImage);
+
+        if (awb.BranchId.HasValue)
+        {
+            var branch = await Db.Branches.Include(b => b.Company).FirstOrDefaultAsync(b => b.Id == awb.BranchId);
+            if (branch?.Company != null)
+            {
+                _companyName = branch.Company.Name ?? "Net4Courier";
+                if (!string.IsNullOrEmpty(branch.Company.Logo))
+                    _logoBase64 = branch.Company.Logo;
+            }
+        }
+
+        var shipperPhone = CombinePhone(awb.ConsignorPhone, awb.ConsignorMobile);
+        var receiverPhone = CombinePhone(awb.ConsigneePhone, awb.ConsigneeMobile);
+
+        var shipperAddress = BuildAddress(awb.ConsignorAddress1, awb.ConsignorAddress2, awb.ConsignorCity, awb.ConsignorCountry);
+        var receiverAddress = BuildAddress(awb.ConsigneeAddress1, awb.ConsigneeAddress2, awb.ConsigneeCity, awb.ConsigneeCountry);
+
+        var weight = awb.ChargeableWeight ?? awb.Weight ?? 0;
+        var pieces = awb.Pieces ?? 1;
+        var codAmount = awb.IsCOD ? (awb.CODAmount ?? 0) : 0;
+        var vatAmount = awb.TaxAmount ?? 0;
+        var dutyAmount = awb.DutyVatAmount ?? 0;
+        var totalCollect = codAmount + vatAmount + dutyAmount;
+
+        LabelData = new A5LabelModel
+        {
+            Waybill = awb.AWBNo ?? "",
+            BookingDate = awb.TransactionDate.ToString("dd/MM/yyyy"),
+            AccountNo = awb.CustomerId?.ToString() ?? "",
+            ServiceType = awb.CargoDescription ?? "E-COMMERCE DELIVERY",
+            Origin = (awb.ConsignorCity ?? "").ToUpper(),
+            Destination = (awb.ConsigneeCity ?? "").ToUpper(),
+            Cod = totalCollect > 0 ? totalCollect.ToString("N2") : "0.00",
+            Currency = awb.Currency ?? "AED",
+            Weight = $"{weight:F2} KG",
+            Pieces = pieces.ToString(),
+            Instructions = awb.Remarks ?? "",
+            Shipper = new A5Entity { Name = awb.Consignor ?? "", Address = shipperAddress, Phone = shipperPhone },
+            Receiver = new A5Entity { Name = awb.Consignee ?? "", Address = receiverAddress, Phone = receiverPhone }
+        };
+    }
+
+    private void LoadDemoData()
+    {
+        LabelData = new A5LabelModel
+        {
+            Waybill = "ND23291",
+            BookingDate = "23/01/2026",
+            AccountNo = "ND1134",
+            ServiceType = "E-COMMERCE DELIVERY",
+            Origin = "DUBAI",
+            Destination = "AJMAN",
+            Cod = "1.00",
+            Currency = "AED",
+            Weight = "0.00 KG",
+            Pieces = "1",
+            Instructions = "Fragile - Handle with care. Please call before delivery.",
+            Shipper = new A5Entity { Name = "A&F FASHION / ADIL", Address = "UMMO RAMOOL, DUBAI, UAE", Phone = "+971523379386" },
+            Receiver = new A5Entity { Name = "ROLNDY WILKINS", Address = "AJMAN ROWDA 1, STREET 118, AJMAN, UAE", Phone = "1234" }
+        };
+    }
+
+    private string BuildAddress(string? addr1, string? addr2, string? city, string? country)
+    {
+        var parts = new List<string>();
+        var street = $"{addr1} {addr2}".Trim();
+        if (!string.IsNullOrEmpty(street)) parts.Add(street);
+        if (!string.IsNullOrEmpty(city)) parts.Add(city);
+        if (!string.IsNullOrEmpty(country)) parts.Add(country);
+        return string.Join(", ", parts).ToUpper();
+    }
+
+    private string CombinePhone(string? phone, string? mobile)
+    {
+        if (!string.IsNullOrWhiteSpace(mobile)) return mobile;
+        if (!string.IsNullOrWhiteSpace(phone)) return phone;
+        return "";
+    }
+
+    private async Task PrintLabel()
+    {
+        await JSRuntime.InvokeVoidAsync("eval", @"
+            var printContent = document.getElementById('a5-label-printable').outerHTML;
+            var printWindow = window.open('', '_blank', 'width=1200,height=800');
+            printWindow.document.write('<html><head><title>Print Label</title>');
+            printWindow.document.write('<link href=""https://cdn.jsdelivr.net/npm/mudblazor@7.0.0/dist/MudBlazor.min.css"" rel=""stylesheet"">');
+            printWindow.document.write('<style>@page { size: A5 landscape; margin: 0; } body { margin: 0; padding: 10mm; font-family: sans-serif; } .a5-label-box { width: 100% !important; border: 2px solid black !important; box-shadow: none !important; }</style>');
+            var styles = document.getElementsByTagName('style');
+            for(var i=0; i<styles.length; i++) { printWindow.document.write(styles[i].outerHTML); }
+            printWindow.document.write('</head><body>');
+            printWindow.document.write(printContent);
+            printWindow.document.write('</body></html>');
+            printWindow.document.close();
+            printWindow.focus();
+            setTimeout(function() { printWindow.print(); printWindow.close(); }, 800);
+        ");
+    }
+
+    public class A5LabelModel
+    {
+        public string Waybill { get; set; } = "";
+        public string BookingDate { get; set; } = "";
+        public string AccountNo { get; set; } = "";
+        public string ServiceType { get; set; } = "";
+        public string Origin { get; set; } = "";
+        public string Destination { get; set; } = "";
+        public string Cod { get; set; } = "";
+        public string Currency { get; set; } = "AED";
+        public string Weight { get; set; } = "";
+        public string Pieces { get; set; } = "";
+        public string Instructions { get; set; } = "";
+        public A5Entity Shipper { get; set; } = new();
+        public A5Entity Receiver { get; set; } = new();
+    }
+
+    public class A5Entity
+    {
+        public string Name { get; set; } = "";
+        public string Address { get; set; } = "";
+        public string Phone { get; set; } = "";
+    }
+}
