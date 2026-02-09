@@ -2746,6 +2746,7 @@ public class DatabaseInitializationService : BackgroundService
 
             var authService = scope.ServiceProvider.GetRequiredService<AuthService>();
             await authService.SeedAdminUserAsync();
+            await authService.SeedPlatformAdminAsync();
 
             if (!await dbContext.OtherChargeTypes.AnyAsync(stoppingToken))
             {
