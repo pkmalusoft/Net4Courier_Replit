@@ -224,6 +224,16 @@ public class AuthService
             }
             
             Console.WriteLine("SeedPlatformAdminAsync: Completed successfully");
+            Console.WriteLine("=====================================================");
+            Console.WriteLine("  PLATFORM ADMIN LOGIN CREDENTIALS");
+            Console.WriteLine("  Username: platformadmin");
+            if (!string.IsNullOrEmpty(platformAdminPassword))
+                Console.WriteLine("  Password: (from PLATFORMADMIN_PASSWORD secret)");
+            else if (!string.IsNullOrEmpty(setupKey))
+                Console.WriteLine("  Password: (from SETUP_KEY secret)");
+            else
+                Console.WriteLine("  Password: Admin@123 (default - change via Secrets tab)");
+            Console.WriteLine("=====================================================");
         }
         catch (Exception ex)
         {

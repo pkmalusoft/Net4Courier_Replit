@@ -59,6 +59,45 @@ The application is built on .NET 8 Blazor Server, adopting a modular architectur
 - **Cost Update Module**: Implemented Cost Management with `AgentRateAssignment`, `RateCardType` enum, cost-specific fields on `RateCardZone`, and cost tracking fields on `InscanMaster`. Includes a `CalculateCost()` method in `RatingEngineService` and dedicated pages for Cost Rate Card Management, MAWB cost entry, cost actualization, and profitability reporting.
 - **LinkDel PWA (Courier Mobile App)**: PWA for courier roles with mobile-first layout, courier-specific login, home dashboard, JavaScript interop for device features (GPS, camera, barcode, navigation), Phase 2 pickup workflow with list/detail pages, accept/reject, collect with GPS/actual pieces/weight, attempt recording with status history tracking, and courier-scoped authorization. Phase 3 delivery workflow with DRS-based delivery list, delivery detail with consignee info/address/navigation, POD capture (receiver name, relation, collected amount), delivery attempt with predefined reasons and RTS marking, DRS counter updates on delivery/attempt. Phase 4 expenses & cash: expense list with Today/Week/All tabs and Add Expense dialog (DRS selection, expense type, amount, description), COD cash submission against DRS with server-side balance validation, daily summary with operations stats/collections/expenses/net position. Phase 5 offline & notifications: IndexedDB-based offline data caching wired into Pickups/Deliveries/Expenses pages (cache on load, fallback on offline), offline mutation queue with background sync via service worker, sync processing with authorization-checked server-side mutation handling (accept/reject pickup, add expense, submit cash), online/offline status indicator in layout, push notification support with VAPID-based subscription creation and service worker push/notificationclick handlers.
 
+## New Project Setup Guide (Import from Git)
+
+### Step 1: Import from Git
+- In Replit, click "Create Repl" > "Import from GitHub" and paste the repository URL
+
+### Step 2: Give setup prompt to Agent
+After the import completes, give this prompt to the Replit Agent:
+```
+Set up this .NET 8.0 Blazor Server project with the following requirements:
+1. Install .NET 8.0 SDK
+2. Restore all NuGet packages from both nuget.org and the local NuGet/packages folder (contains Truebooks custom packages)
+3. The project uses MudBlazor 7.x (already in .csproj files)
+4. Configure workflow to run: cd src/Net4Courier.Web && dotnet build --no-incremental && dotnet bin/Debug/net8.0/Net4Courier.Web.dll --urls http://0.0.0.0:5000
+5. Build and verify the application starts successfully
+The nuget.config file references ./NuGet/packages for local Truebooks packages. Make sure to restore from both sources.
+```
+
+### Step 3: Platform Admin Login (automatic - no secrets needed)
+- The system automatically creates the `platformadmin` account on first startup
+- **Default credentials**: `platformadmin` / `Admin@123`
+- The credentials are displayed in the console/workflow logs at startup
+- To use a custom password: add a secret called `PLATFORMADMIN_PASSWORD` in the Secrets tab before first run
+- Password priority: `PLATFORMADMIN_PASSWORD` secret > `SETUP_KEY` secret > default `Admin@123`
+
+### Step 4: Initial Setup
+1. Log in as `platformadmin` / `Admin@123` (or your custom password)
+2. Create company via the Initial Setup Wizard
+3. Seed demo data (optional) from Platform Admin menu
+4. Create admin users from Settings > User Management
+
+### Step 5: Start Using
+- Log out and log in as the new admin user
+- Begin testing and configuring the system
+
+### Memory Constraints Note
+- Replit's memory limits may require `DevMinimalMode=true` during build (compiles ~35 essential pages)
+- Full compilation requires higher-memory environments or `DevMinimalMode=false`
+- The workflow uses memory-optimization flags: `DOTNET_gcServer=0 DOTNET_GCConserveMemory=9`
+
 ## External Dependencies
 - **Database**: PostgreSQL
 - **UI Framework**: MudBlazor
