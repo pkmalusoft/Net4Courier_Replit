@@ -1343,11 +1343,25 @@ app.MapPost("/api/bookings/webhook/{integrationId}", async (
 app.MapRazorComponents<App>()
     .AddInteractiveServerRenderMode();
 
-var listenUrl = args.FirstOrDefault(a => a.StartsWith("--urls"))?.Split('=').LastOrDefault() 
-    ?? Environment.GetEnvironmentVariable("ASPNETCORE_URLS") 
-    ?? "http://0.0.0.0:5000";
+var urlsArgIndex = Array.IndexOf(args, "--urls");
+var listenUrl = urlsArgIndex >= 0 && urlsArgIndex + 1 < args.Length 
+    ? args[urlsArgIndex + 1]
+    : args.FirstOrDefault(a => a.StartsWith("--urls="))?.Split('=', 2).LastOrDefault()
+      ?? Environment.GetEnvironmentVariable("ASPNETCORE_URLS") 
+      ?? "http://0.0.0.0:5000";
 Console.WriteLine($"[{DateTime.UtcNow:O}] Starting HTTP server on {listenUrl}");
 Console.WriteLine($"[{DateTime.UtcNow:O}] All middleware and routes configured successfully");
+
+Console.WriteLine();
+Console.WriteLine("=====================================================");
+Console.WriteLine("  NET4COURIER - APPLICATION READY");
+Console.WriteLine($"  Build Timestamp : {buildTimestamp}");
+Console.WriteLine($"  Server Started  : {DateTime.UtcNow:yyyy-MM-dd HH:mm:ss} UTC");
+Console.WriteLine($"  Listening On    : {listenUrl}");
+Console.WriteLine($"  Environment     : {Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT") ?? "Production"}");
+Console.WriteLine($"  Database        : {(string.IsNullOrEmpty(Environment.GetEnvironmentVariable("DATABASE_URL")) ? "NOT SET" : "Connected")}");
+Console.WriteLine("=====================================================");
+Console.WriteLine();
 
 try
 {
