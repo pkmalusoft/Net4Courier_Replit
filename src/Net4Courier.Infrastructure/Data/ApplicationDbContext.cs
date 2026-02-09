@@ -1294,10 +1294,15 @@ public class ApplicationDbContext : DbContext
             entity.Property(e => e.DeclaredValue).HasPrecision(18, 2);
             entity.Property(e => e.Currency).HasMaxLength(10);
             entity.Property(e => e.HSCode).HasMaxLength(20);
+            entity.Property(e => e.IncoTerms).HasMaxLength(20);
+            entity.Property(e => e.CustomsValue).HasPrecision(18, 2);
             entity.Property(e => e.DutyAmount).HasPrecision(18, 2);
             entity.Property(e => e.VATAmount).HasPrecision(18, 2);
             entity.Property(e => e.OtherCharges).HasPrecision(18, 2);
             entity.Property(e => e.TotalCustomsCharges).HasPrecision(18, 2);
+            entity.Property(e => e.CalculatedImportVAT).HasPrecision(18, 2);
+            entity.Property(e => e.DutyVatAmount).HasPrecision(18, 2);
+            entity.Property(e => e.NetTotal).HasPrecision(18, 2);
             entity.Property(e => e.CODAmount).HasPrecision(18, 2);
             entity.Property(e => e.HoldReasonDetails).HasMaxLength(500);
             entity.Property(e => e.ImporterOfRecord).HasMaxLength(200);
