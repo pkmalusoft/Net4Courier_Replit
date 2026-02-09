@@ -256,23 +256,32 @@ else
         {
             await using var dbContext = await DbFactory.CreateDbContextAsync();
             
-            var awbTrimmed = _scanAwb.Trim();
+            var awbNormalized = _scanAwb.Trim().ToUpperInvariant();
             var existing = await dbContext.ImportShipments
-                .FirstOrDefaultAsync(s => s.AWBNo == awbTrimmed && !s.IsDeleted);
+                .FirstOrDefaultAsync(s => s.AWBNo.ToUpper() == awbNormalized && !s.IsDeleted);
             
             if (existing != null)
             {
-                _lastMessage = $"AWB {awbTrimmed} already exists in the system. Duplicate AWB numbers are not allowed.";
+                _lastMessage = $"AWB {awbNormalized} already exists in the system. Duplicate AWB numbers are not allowed.";
                 _lastSeverity = Severity.Warning;
                 _scanAwb = "";
                 return;
             }
             
-            var awbNo = _scanAwb.Trim();
+            var existingInscan = await dbContext.InscanMasters
+                .AnyAsync(i => i.AWBNo.ToUpper() == awbNormalized && !i.IsDeleted);
+            if (existingInscan)
+            {
+                _lastMessage = $"AWB {awbNormalized} already exists as a domestic shipment. Duplicate AWB numbers are not allowed.";
+                _lastSeverity = Severity.Warning;
+                _scanAwb = "";
+                return;
+            }
             
-            // Look up existing InscanMaster to copy values
+            var awbNo = awbNormalized;
+            
             var inscanMaster = await dbContext.InscanMasters
-                .FirstOrDefaultAsync(i => i.AWBNo == awbNo);
+                .FirstOrDefaultAsync(i => i.AWBNo.ToUpper() == awbNormalized);
             
             var shipment = new ImportShipment
             {

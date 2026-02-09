@@ -79,6 +79,18 @@ public class ImportValidationError
 
 public class ImportExcelService
 {
+    private static readonly HashSet<string> ValidIncoTermsCodes = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "EXW", "FCA", "CPT", "CIP", "DAP", "DPU", "DDP", "DDU", "FAS", "FOB", "CFR", "CIF"
+    };
+
+    private static string? NormalizeIncoTerms(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value)) return null;
+        var trimmed = value.Trim().ToUpperInvariant();
+        return ValidIncoTermsCodes.Contains(trimmed) ? trimmed : value.Trim();
+    }
+
     public byte[] GenerateTemplate(ImportMode mode)
     {
         return GenerateTemplateWithMasterData(mode, null, null, null, null);
@@ -783,7 +795,7 @@ public class ImportExcelService
                 HSCode = colHsCode > 0 ? sheet.Cell(row, colHsCode).GetString()?.Trim() : null,
                 Currency = colCurrency > 0 ? sheet.Cell(row, colCurrency).GetString()?.Trim() : null,
                 PaymentMode = colPaymentMode > 0 ? sheet.Cell(row, colPaymentMode).GetString()?.Trim() : null,
-                IncoTerms = colIncoTerms > 0 ? sheet.Cell(row, colIncoTerms).GetString()?.Trim() : null,
+                IncoTerms = colIncoTerms > 0 ? NormalizeIncoTerms(sheet.Cell(row, colIncoTerms).GetString()?.Trim()) : null,
                 SpecialInstructions = colSpecialInstr > 0 ? sheet.Cell(row, colSpecialInstr).GetString()?.Trim() : null
             };
             
@@ -921,7 +933,12 @@ public class ImportExcelService
             });
         }
         
-        // Only check for duplicate AWBs when not auto-generating
+        foreach (var s in shipments)
+        {
+            if (!string.IsNullOrWhiteSpace(s.AWBNo))
+                s.AWBNo = s.AWBNo.Trim().ToUpperInvariant();
+        }
+        
         if (!autoGenerateAwb)
         {
             var duplicateAwbs = shipments
@@ -941,6 +958,20 @@ public class ImportExcelService
                     Message = $"Duplicate AWB '{dup}' found in rows {string.Join(", ", dupRows)}" 
                 });
             }
+        }
+        
+        var invalidIncoTerms = shipments
+            .Where(s => !string.IsNullOrWhiteSpace(s.IncoTerms) && !ValidIncoTermsCodes.Contains(s.IncoTerms.ToUpperInvariant()))
+            .ToList();
+        foreach (var inv in invalidIncoTerms)
+        {
+            errors.Add(new ImportValidationError
+            {
+                Sheet = "Shipments",
+                RowNumber = inv.RowNumber,
+                Column = "Inco Terms",
+                Message = $"Invalid Inco Terms code '{inv.IncoTerms}' in row {inv.RowNumber}. Valid codes: {string.Join(", ", ValidIncoTermsCodes)}"
+            });
         }
         
         return shipments;
