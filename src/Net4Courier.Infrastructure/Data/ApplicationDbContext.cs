@@ -1294,6 +1294,11 @@ public class ApplicationDbContext : DbContext
             entity.Property(e => e.DeclaredValue).HasPrecision(18, 2);
             entity.Property(e => e.Currency).HasMaxLength(10);
             entity.Property(e => e.HSCode).HasMaxLength(20);
+            entity.Property(e => e.IncoTerms).HasColumnType("text").HasColumnName("IncoTerms");
+            entity.Property(e => e.CustomsValue).HasColumnType("numeric");
+            entity.Property(e => e.DutyVatAmount).HasColumnType("numeric");
+            entity.Property(e => e.CalculatedImportVAT).HasColumnType("numeric");
+            entity.Property(e => e.NetTotal).HasColumnType("numeric");
             entity.Property(e => e.DutyAmount).HasPrecision(18, 2);
             entity.Property(e => e.VATAmount).HasPrecision(18, 2);
             entity.Property(e => e.OtherCharges).HasPrecision(18, 2);
