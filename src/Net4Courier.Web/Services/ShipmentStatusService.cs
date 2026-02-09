@@ -135,7 +135,8 @@ public class ShipmentStatusService
             new() { Code = "DELIVERY", Name = "Delivery", Description = "Last-mile delivery", SequenceNo = 6, IconName = "DeliveryDining", ColorCode = "#4CAF50", CreatedAt = DateTime.UtcNow },
             new() { Code = "EXCEPTION", Name = "Exception / Return", Description = "Failed or returned shipments", SequenceNo = 7, IconName = "Warning", ColorCode = "#F44336", CreatedAt = DateTime.UtcNow },
             new() { Code = "FINANCE", Name = "Billing & Payment", Description = "Invoicing and settlement", SequenceNo = 8, IconName = "AttachMoney", ColorCode = "#795548", CreatedAt = DateTime.UtcNow },
-            new() { Code = "CLOSED", Name = "Closed", Description = "Finalized shipments", SequenceNo = 9, IconName = "CheckCircle", ColorCode = "#607D8B", CreatedAt = DateTime.UtcNow }
+            new() { Code = "CLOSED", Name = "Closed", Description = "Finalized shipments", SequenceNo = 9, IconName = "CheckCircle", ColorCode = "#607D8B", CreatedAt = DateTime.UtcNow },
+            new() { Code = "IMPORT", Name = "Import Shipment", Description = "Import shipment processing statuses", SequenceNo = 10, IconName = "FlightLand", ColorCode = "#E91E63", CreatedAt = DateTime.UtcNow }
         };
 
         _context.ShipmentStatusGroups.AddRange(groups);
@@ -179,7 +180,19 @@ public class ShipmentStatusService
             new() { StatusGroupId = groups[7].Id, Code = "COD_RECONCILED", Name = "COD Reconciled", TimelineDescription = "COD settled", SequenceNo = 3, CreatedAt = DateTime.UtcNow },
             new() { StatusGroupId = groups[7].Id, Code = "PAYMENT_RECEIVED", Name = "Payment Received", TimelineDescription = "Payment completed", SequenceNo = 4, CreatedAt = DateTime.UtcNow },
             
-            new() { StatusGroupId = groups[8].Id, Code = "SHIPMENT_CLOSED", Name = "Shipment Closed", TimelineDescription = "Lifecycle completed", SequenceNo = 1, IsTerminal = true, CreatedAt = DateTime.UtcNow }
+            new() { StatusGroupId = groups[8].Id, Code = "SHIPMENT_CLOSED", Name = "Shipment Closed", TimelineDescription = "Lifecycle completed", SequenceNo = 1, IsTerminal = true, CreatedAt = DateTime.UtcNow },
+            
+            new() { StatusGroupId = groups[9].Id, Code = "IMP_EXPECTED", Name = "Expected", TimelineDescription = "Shipment expected from origin", SequenceNo = 1, CreatedAt = DateTime.UtcNow },
+            new() { StatusGroupId = groups[9].Id, Code = "IMP_INSCANNED", Name = "Inscanned", TimelineDescription = "Shipment inscanned at warehouse", SequenceNo = 2, CreatedAt = DateTime.UtcNow },
+            new() { StatusGroupId = groups[9].Id, Code = "IMP_RECEIVED_WAREHOUSE", Name = "Received at Warehouse", TimelineDescription = "Received at destination warehouse", SequenceNo = 3, CreatedAt = DateTime.UtcNow },
+            new() { StatusGroupId = groups[9].Id, Code = "IMP_PENDING_CUSTOMS", Name = "Pending Customs", TimelineDescription = "Awaiting customs clearance", SequenceNo = 4, CreatedAt = DateTime.UtcNow },
+            new() { StatusGroupId = groups[9].Id, Code = "IMP_CUSTOMS_HOLD", Name = "Customs Hold", TimelineDescription = "Held by customs authority", SequenceNo = 5, IsException = true, RequiresRemarks = true, CreatedAt = DateTime.UtcNow },
+            new() { StatusGroupId = groups[9].Id, Code = "IMP_UNDER_EXAMINATION", Name = "Under Examination", TimelineDescription = "Under customs examination", SequenceNo = 6, CreatedAt = DateTime.UtcNow },
+            new() { StatusGroupId = groups[9].Id, Code = "IMP_AWAITING_DOCUMENTS", Name = "Awaiting Documents", TimelineDescription = "Waiting for required documents", SequenceNo = 7, CreatedAt = DateTime.UtcNow },
+            new() { StatusGroupId = groups[9].Id, Code = "IMP_CLEARED", Name = "Cleared", TimelineDescription = "Customs clearance completed", SequenceNo = 8, CreatedAt = DateTime.UtcNow },
+            new() { StatusGroupId = groups[9].Id, Code = "IMP_RELEASED", Name = "Released", TimelineDescription = "Released for delivery", SequenceNo = 9, CreatedAt = DateTime.UtcNow },
+            new() { StatusGroupId = groups[9].Id, Code = "IMP_HANDED_OVER", Name = "Handed Over", TimelineDescription = "Handed over to consignee/agent", SequenceNo = 10, IsTerminal = true, CreatedAt = DateTime.UtcNow },
+            new() { StatusGroupId = groups[9].Id, Code = "IMP_ON_HOLD", Name = "On Hold", TimelineDescription = "Shipment on hold", SequenceNo = 11, IsException = true, RequiresRemarks = true, CreatedAt = DateTime.UtcNow }
         };
 
         _context.ShipmentStatuses.AddRange(statuses);

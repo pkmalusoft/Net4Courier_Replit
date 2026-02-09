@@ -4,6 +4,7 @@
 @using Net4Courier.Infrastructure.Data
 @using Net4Courier.Operations.Entities
 @using Net4Courier.Operations.Enums
+@using Net4Courier.Kernel.Enums
 @using Net4Courier.Web.Services
 @using System.Security.Claims
 @inject IDbContextFactory<ApplicationDbContext> DbContextFactory
@@ -111,6 +112,7 @@
     
     [Parameter] public InscanMaster? Shipment { get; set; }
     [Parameter] public PickupRequest? PickupRequest { get; set; }
+    [Parameter] public ImportShipment? ImportShipment { get; set; }
     [Parameter] public EntityType EntityType { get; set; } = EntityType.Shipment;
 
     private List<ShipmentStatusGroup> _statusGroups = new();
@@ -126,9 +128,13 @@
 
     private bool CanSubmit => _selectedStatusId.HasValue && !string.IsNullOrWhiteSpace(_remarks);
     
-    private string DisplayReference => EntityType == EntityType.Shipment 
-        ? Shipment?.AWBNo ?? "Unknown"
-        : PickupRequest?.PickupNo ?? "Unknown";
+    private string DisplayReference => EntityType switch
+    {
+        EntityType.Shipment => Shipment?.AWBNo ?? "Unknown",
+        EntityType.ImportShipment => ImportShipment?.AWBNo ?? "Unknown",
+        EntityType.Pickup => PickupRequest?.PickupNo ?? "Unknown",
+        _ => "Unknown"
+    };
         
     private string CurrentStatusDisplay
     {
@@ -137,6 +143,10 @@
             if (EntityType == EntityType.Shipment)
             {
                 return Shipment?.CourierStatusId.ToString() ?? "Unknown";
+            }
+            else if (EntityType == EntityType.ImportShipment)
+            {
+                return FormatImportStatus(ImportShipment?.Status ?? ImportShipmentStatus.Expected);
             }
             else
             {
@@ -199,12 +209,6 @@
                 .Where(g => g.IsActive && (g.Code == "PRE_PICKUP" || g.Code == "COLLECTION"))
                 .OrderBy(g => g.SequenceNo)
                 .ToListAsync();
-                
-            var groupIds = _statusGroups.Select(g => g.Id).ToList();
-            _allStatuses = await dbContext.ShipmentStatuses
-                .Where(s => s.IsActive && groupIds.Contains(s.StatusGroupId))
-                .OrderBy(s => s.SequenceNo)
-                .ToListAsync();
         }
         else
         {
@@ -212,12 +216,13 @@
                 .Where(g => g.IsActive)
                 .OrderBy(g => g.SequenceNo)
                 .ToListAsync();
-                
-            _allStatuses = await dbContext.ShipmentStatuses
-                .Where(s => s.IsActive)
-                .OrderBy(s => s.SequenceNo)
-                .ToListAsync();
         }
+
+        var groupIds = _statusGroups.Select(g => g.Id).ToList();
+        _allStatuses = await dbContext.ShipmentStatuses
+            .Where(s => s.IsActive && groupIds.Contains(s.StatusGroupId))
+            .OrderBy(s => s.SequenceNo)
+            .ToListAsync();
     }
 
     private IEnumerable<ShipmentStatus> GetFilteredStatuses()
@@ -266,6 +271,10 @@
                     Snackbar.Add("Failed to update status", Severity.Error);
                 }
             }
+            else if (EntityType == EntityType.ImportShipment && ImportShipment != null)
+            {
+                await UpdateImportShipmentStatus(status);
+            }
             else if (EntityType == EntityType.Pickup && PickupRequest != null)
             {
                 await UpdatePickupRequestStatus(status);
@@ -280,6 +289,66 @@
             _isSaving = false;
             StateHasChanged();
         }
+    }
+
+    private async Task UpdateImportShipmentStatus(ShipmentStatus status)
+    {
+        if (ImportShipment == null) return;
+
+        await using var dbContext = await DbContextFactory.CreateDbContextAsync();
+        var shipment = await dbContext.ImportShipments.FindAsync(ImportShipment.Id);
+
+        if (shipment == null)
+        {
+            Snackbar.Add("Import shipment not found", Severity.Error);
+            return;
+        }
+
+        var oldStatus = shipment.Status;
+        if (!status.Code.StartsWith("IMP_"))
+        {
+            Snackbar.Add("Please select a status from the Import Shipment group", Severity.Warning);
+            return;
+        }
+        var newImportStatus = MapStatusCodeToImportEnum(status.Code);
+        shipment.Status = newImportStatus;
+        shipment.ModifiedAt = DateTime.UtcNow;
+        shipment.ModifiedBy = (int?)_currentUserId;
+
+        switch (newImportStatus)
+        {
+            case ImportShipmentStatus.Inscanned:
+                shipment.InscannedAt ??= DateTime.UtcNow;
+                break;
+            case ImportShipmentStatus.Cleared:
+                shipment.CustomsClearedAt ??= DateTime.UtcNow;
+                break;
+            case ImportShipmentStatus.Released:
+                shipment.ReleasedAt ??= DateTime.UtcNow;
+                break;
+            case ImportShipmentStatus.HandedOver:
+                shipment.HandedOverAt ??= DateTime.UtcNow;
+                break;
+        }
+
+        var note = new ImportShipmentNote
+        {
+            ImportShipmentId = shipment.Id,
+            Category = NoteCategory.Operations,
+            NoteText = $"Status changed from {FormatImportStatus(oldStatus)} to {FormatImportStatus(newImportStatus)}. Location: {(_location ?? "N/A")}. Reason: {_remarks.Trim()}",
+            AddedByUserId = _currentUserId,
+            AddedByUserName = _currentUserName,
+            AddedAt = DateTime.UtcNow,
+            IsActive = true,
+            CreatedAt = DateTime.UtcNow,
+            CreatedBy = (int?)_currentUserId
+        };
+
+        dbContext.Set<ImportShipmentNote>().Add(note);
+        await dbContext.SaveChangesAsync();
+
+        Snackbar.Add($"Import status updated to: {status.Name}", Severity.Success);
+        MudDialog.Close(DialogResult.Ok(true));
     }
 
     private async Task UpdatePickupRequestStatus(ShipmentStatus status)
@@ -301,7 +370,7 @@
         pickup.ModifiedBy = (int?)_currentUserId;
 
         var oldEnumStatus = pickup.Status;
-        pickup.Status = MapStatusCodeToEnum(status.Code);
+        pickup.Status = MapStatusCodeToPickupEnum(status.Code);
 
         if (status.Code == "ASSIGNED_FOR_COLLECTION")
         {
@@ -337,7 +406,26 @@
         MudDialog.Close(DialogResult.Ok(true));
     }
 
-    private PickupStatus MapStatusCodeToEnum(string statusCode)
+    private ImportShipmentStatus MapStatusCodeToImportEnum(string statusCode)
+    {
+        return statusCode switch
+        {
+            "IMP_EXPECTED" => ImportShipmentStatus.Expected,
+            "IMP_INSCANNED" => ImportShipmentStatus.Inscanned,
+            "IMP_RECEIVED_WAREHOUSE" => ImportShipmentStatus.ReceivedAtWarehouse,
+            "IMP_PENDING_CUSTOMS" => ImportShipmentStatus.PendingCustoms,
+            "IMP_CUSTOMS_HOLD" => ImportShipmentStatus.CustomsHold,
+            "IMP_UNDER_EXAMINATION" => ImportShipmentStatus.UnderExamination,
+            "IMP_AWAITING_DOCUMENTS" => ImportShipmentStatus.AwaitingDocuments,
+            "IMP_CLEARED" => ImportShipmentStatus.Cleared,
+            "IMP_RELEASED" => ImportShipmentStatus.Released,
+            "IMP_HANDED_OVER" => ImportShipmentStatus.HandedOver,
+            "IMP_ON_HOLD" => ImportShipmentStatus.OnHold,
+            _ => ImportShipmentStatus.Expected
+        };
+    }
+
+    private PickupStatus MapStatusCodeToPickupEnum(string statusCode)
     {
         return statusCode switch
         {
@@ -350,6 +438,22 @@
             _ => PickupStatus.PickupRequest
         };
     }
+
+    private string FormatImportStatus(ImportShipmentStatus status) => status switch
+    {
+        ImportShipmentStatus.Expected => "Expected",
+        ImportShipmentStatus.Inscanned => "Inscanned",
+        ImportShipmentStatus.ReceivedAtWarehouse => "Received at Warehouse",
+        ImportShipmentStatus.PendingCustoms => "Pending Customs",
+        ImportShipmentStatus.CustomsHold => "Customs Hold",
+        ImportShipmentStatus.UnderExamination => "Under Examination",
+        ImportShipmentStatus.AwaitingDocuments => "Awaiting Documents",
+        ImportShipmentStatus.Cleared => "Cleared",
+        ImportShipmentStatus.Released => "Released",
+        ImportShipmentStatus.HandedOver => "Handed Over",
+        ImportShipmentStatus.OnHold => "On Hold",
+        _ => status.ToString()
+    };
 
     private void Cancel() => MudDialog.Cancel();
 }
