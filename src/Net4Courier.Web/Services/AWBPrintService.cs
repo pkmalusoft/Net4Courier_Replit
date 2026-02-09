@@ -28,7 +28,8 @@ public class AWBPrintService
             container.Page(page =>
             {
                 page.Size(PageSizes.A5.Landscape());
-                page.Margin(22);
+                page.MarginHorizontal(18);
+                page.MarginVertical(14);
                 page.DefaultTextStyle(x => x.FontSize(8).FontFamily("Arial"));
 
                 page.Content().Column(column =>
@@ -47,61 +48,64 @@ public class AWBPrintService
     private void A5Header(ColumnDescriptor column, InscanMaster shipment, string companyName, byte[]? logoData)
     {
         var effectiveLogo = logoData ?? _logoData;
-        var isInternational = shipment.MovementTypeId == MovementType.InternationalExport || shipment.MovementTypeId == MovementType.InternationalImport;
         var serviceDesc = shipment.CargoDescription ?? "E-Commerce Delivery";
-        var originCode = GetCountryDisplayCode(shipment.OriginPortCode, shipment.ConsignorCountry);
-        var destCode = GetCountryDisplayCode(shipment.DestinationPortCode, shipment.ConsigneeCountry);
-        var originCity = shipment.ConsignorCity ?? originCode;
-        var destCity = shipment.ConsigneeCity ?? destCode;
+        var originCity = shipment.ConsignorCity ?? GetCountryDisplayCode(shipment.OriginPortCode, shipment.ConsignorCountry);
+        var destCity = shipment.ConsigneeCity ?? GetCountryDisplayCode(shipment.DestinationPortCode, shipment.ConsigneeCountry);
 
-        column.Item().BorderBottom(2).PaddingBottom(8).Row(row =>
+        column.Item().BorderBottom(2).PaddingBottom(5).Row(row =>
         {
             row.RelativeItem(3).Column(left =>
             {
                 if (effectiveLogo != null)
                 {
-                    left.Item().Height(28).Image(effectiveLogo).FitHeight();
+                    left.Item().Height(24).Image(effectiveLogo).FitHeight();
                 }
                 else
                 {
-                    left.Item().Text(companyName).Bold().FontSize(20).FontColor("#1e3a5f");
+                    left.Item().Text(companyName).Bold().FontSize(18).FontColor("#1e3a5f");
                 }
-                left.Item().PaddingTop(2).Background("#1e3a5f").PaddingHorizontal(6).PaddingVertical(2)
-                    .Text(serviceDesc.ToUpper()).FontColor(Colors.White).Bold().FontSize(7);
+                left.Item().PaddingTop(1).Row(tagRow =>
+                {
+                    tagRow.AutoItem().Background("#1e3a5f").PaddingHorizontal(5).PaddingVertical(1)
+                        .Text(serviceDesc.ToUpper()).FontColor(Colors.White).Bold().FontSize(6);
+                });
             });
 
-            row.RelativeItem(4).AlignCenter().AlignMiddle().Background("#f1f5f9").Border(1).PaddingHorizontal(12).PaddingVertical(4).Row(routeRow =>
+            row.RelativeItem(4).AlignCenter().AlignMiddle().Row(routeRow =>
             {
-                routeRow.RelativeItem().AlignCenter().Text(originCity.ToUpper()).Bold().FontSize(12);
-                routeRow.ConstantItem(20).AlignCenter().AlignMiddle().Text("\u2192").Bold().FontSize(14).FontColor("#1e3a5f");
-                routeRow.RelativeItem().AlignCenter().Column(destCol =>
+                routeRow.RelativeItem().AlignCenter().Column(rc =>
                 {
-                    destCol.Item().AlignCenter().Text(destCity.ToUpper()).Bold().FontSize(12);
+                    rc.Item().AlignCenter().Border(1.5f).PaddingHorizontal(14).PaddingVertical(3).Row(pill =>
+                    {
+                        pill.AutoItem().Text(originCity.ToUpper()).Bold().FontSize(11);
+                        pill.AutoItem().PaddingHorizontal(6).Text("\u2192").Bold().FontSize(12);
+                        pill.AutoItem().Text(destCity.ToUpper()).Bold().FontSize(11).Underline();
+                    });
                 });
             });
 
             row.RelativeItem(3).AlignRight().Column(right =>
             {
-                right.Item().AlignRight().Text("Waybill Number").Bold().FontSize(7).FontColor(Colors.Grey.Darken1);
-                right.Item().AlignRight().Text(shipment.AWBNo ?? "").Bold().FontSize(14).LetterSpacing(0.1f);
-                right.Item().AlignRight().Text(shipment.TransactionDate.ToString("dd/MM/yyyy")).Bold().FontSize(8).FontColor(Colors.Grey.Medium);
+                right.Item().AlignRight().Text("WAYBILL NUMBER").Bold().FontSize(6).FontColor(Colors.Grey.Darken1);
+                right.Item().AlignRight().Text(shipment.AWBNo ?? "").Bold().FontSize(16).LetterSpacing(0.1f);
+                right.Item().AlignRight().Text(shipment.TransactionDate.ToString("dd/MM/yyyy")).FontSize(8).FontColor(Colors.Grey.Medium);
             });
         });
     }
 
     private void A5MiddleSection(ColumnDescriptor column, InscanMaster shipment)
     {
-        column.Item().PaddingTop(8).Row(mainRow =>
+        column.Item().PaddingTop(6).Row(mainRow =>
         {
-            mainRow.RelativeItem(8).PaddingRight(8).Column(leftCol =>
+            mainRow.RelativeItem(6).PaddingRight(6).Column(leftCol =>
             {
-                leftCol.Item().Height(130).Row(cardsRow =>
+                leftCol.Item().Row(cardsRow =>
                 {
-                    cardsRow.RelativeItem().PaddingRight(4).Border(1).Column(fromCard =>
+                    cardsRow.RelativeItem().Border(1).Column(fromCard =>
                     {
                         A5ShipperCard(fromCard, shipment);
                     });
-                    cardsRow.RelativeItem().PaddingLeft(4).Border(2).Column(toCard =>
+                    cardsRow.RelativeItem().Border(2).Column(toCard =>
                     {
                         A5ReceiverCard(toCard, shipment);
                     });
@@ -110,10 +114,10 @@ public class AWBPrintService
                 var instructions = shipment.Remarks ?? "";
                 if (!string.IsNullOrWhiteSpace(instructions))
                 {
-                    leftCol.Item().PaddingTop(6).Border(1).Background("#fffbeb").Padding(5).Row(instrRow =>
+                    leftCol.Item().PaddingTop(4).Border(1).Background("#fffbeb").Padding(4).Row(instrRow =>
                     {
-                        instrRow.ConstantItem(100).Text("Special Instructions:").Bold().FontSize(7);
-                        instrRow.RelativeItem().Text(instructions).Bold().FontSize(7);
+                        instrRow.ConstantItem(90).Text("SPECIAL INSTRUCTIONS:").Bold().FontSize(6);
+                        instrRow.RelativeItem().Text(instructions).FontSize(7).Italic();
                     });
                 }
             });
@@ -136,13 +140,13 @@ public class AWBPrintService
         if (!string.IsNullOrEmpty(shipment.ConsignorCountry))
             address += $", {shipment.ConsignorCountry}";
 
-        card.Item().Background("#e2e8f0").BorderBottom(1).PaddingHorizontal(6).PaddingVertical(3)
-            .Text("From (Shipper)").Bold().FontSize(7);
-        card.Item().Padding(6).Column(content =>
+        card.Item().Background("#e2e8f0").BorderBottom(1).PaddingHorizontal(5).PaddingVertical(2)
+            .Text("FROM (SHIPPER)").Bold().FontSize(6);
+        card.Item().Padding(5).Column(content =>
         {
             content.Item().Text(shipment.Consignor ?? "").Bold().FontSize(9);
-            content.Item().PaddingTop(3).Text(address).FontSize(8).FontColor(Colors.Grey.Darken2);
-            content.Item().PaddingTop(8).Text(phone).Bold().FontSize(8);
+            content.Item().PaddingTop(2).Text(address).FontSize(7).FontColor(Colors.Grey.Darken2);
+            content.Item().PaddingTop(5).Text($"\u260E {phone}").Bold().FontSize(8);
         });
     }
 
@@ -155,25 +159,23 @@ public class AWBPrintService
         if (!string.IsNullOrEmpty(shipment.ConsigneeCountry))
             address += $", {shipment.ConsigneeCountry}";
 
-        card.Item().Background(Colors.Black).PaddingHorizontal(6).PaddingVertical(3)
-            .Text("To (Receiver)").FontColor(Colors.White).Bold().FontSize(7);
-        card.Item().Padding(6).Column(content =>
+        card.Item().Background(Colors.Black).PaddingHorizontal(5).PaddingVertical(2)
+            .Text("TO (RECEIVER)").FontColor(Colors.White).Bold().FontSize(6);
+        card.Item().Padding(5).Column(content =>
         {
             content.Item().Text(shipment.Consignee ?? "").Bold().FontSize(10);
-            content.Item().PaddingTop(3).Text(address).FontSize(8);
-            if (!string.IsNullOrWhiteSpace(shipment.ConsigneeLocation))
-                content.Item().PaddingTop(2).Text(shipment.ConsigneeLocation).FontSize(8);
-            content.Item().PaddingTop(8).Text(phone).Bold().FontSize(10);
+            content.Item().PaddingTop(2).Text(address).FontSize(8);
+            content.Item().PaddingTop(5).Text($"\u260E {phone}").Bold().FontSize(9);
         });
     }
 
     private void A5BarcodeBox(ColumnDescriptor col, InscanMaster shipment)
     {
-        col.Item().Border(1).Padding(5).AlignCenter().Column(bc =>
+        col.Item().Border(1).Padding(4).AlignCenter().Column(bc =>
         {
             if (shipment.BarcodeImage != null)
             {
-                bc.Item().AlignCenter().Height(35).Image(shipment.BarcodeImage);
+                bc.Item().AlignCenter().Height(30).Image(shipment.BarcodeImage);
             }
             bc.Item().PaddingTop(2).AlignCenter().Text(shipment.AWBNo ?? "").Bold().FontSize(8).LetterSpacing(0.3f);
         });
@@ -184,17 +186,17 @@ public class AWBPrintService
         var weight = shipment.ChargeableWeight ?? shipment.Weight ?? 0;
         var pieces = shipment.Pieces ?? 1;
 
-        col.Item().PaddingTop(6).Border(1).Row(row =>
+        col.Item().PaddingTop(4).Border(1).Row(row =>
         {
-            row.RelativeItem().BorderRight(1).PaddingVertical(4).AlignCenter().Column(c =>
+            row.RelativeItem().BorderRight(1).PaddingVertical(3).AlignCenter().Column(c =>
             {
-                c.Item().AlignCenter().Text("Weight").Bold().FontSize(6).FontColor(Colors.Grey.Darken1);
-                c.Item().AlignCenter().Text($"{weight:F2} KG").Bold().FontSize(10);
+                c.Item().AlignCenter().Text("WEIGHT").Bold().FontSize(6).FontColor(Colors.Grey.Darken1);
+                c.Item().AlignCenter().Text($"{weight:F2} KG").Bold().FontSize(12);
             });
-            row.RelativeItem().PaddingVertical(4).AlignCenter().Column(c =>
+            row.RelativeItem().PaddingVertical(3).AlignCenter().Column(c =>
             {
-                c.Item().AlignCenter().Text("Pieces").Bold().FontSize(6).FontColor(Colors.Grey.Darken1);
-                c.Item().AlignCenter().Text(pieces.ToString()).Bold().FontSize(10);
+                c.Item().AlignCenter().Text("PIECES").Bold().FontSize(6).FontColor(Colors.Grey.Darken1);
+                c.Item().AlignCenter().Text(pieces.ToString()).Bold().FontSize(12);
             });
         });
     }
@@ -207,13 +209,13 @@ public class AWBPrintService
         var dutyAmount = shipment.DutyVatAmount ?? 0;
         var totalAmount = codAmount + vatAmount + dutyAmount;
 
-        col.Item().PaddingTop(6).Extend().Background(Colors.Black).Padding(8).AlignCenter().Column(cash =>
+        col.Item().PaddingTop(4).Background(Colors.Black).Padding(6).AlignCenter().Column(cash =>
         {
-            cash.Item().AlignCenter().Text("Collect Cash").FontColor(Colors.White).Bold().FontSize(8).LetterSpacing(0.15f);
-            cash.Item().PaddingTop(4).AlignCenter().Row(amtRow =>
+            cash.Item().AlignCenter().Text("COLLECT CASH").FontColor(Colors.White).Bold().FontSize(7).LetterSpacing(0.15f);
+            cash.Item().PaddingTop(2).AlignCenter().Row(amtRow =>
             {
                 amtRow.AutoItem().AlignBottom().PaddingBottom(2).Text(currency).FontColor(Colors.White).Bold().FontSize(8);
-                amtRow.AutoItem().PaddingLeft(4).Text(totalAmount > 0 ? totalAmount.ToString("N2") : "0.00").FontColor(Colors.White).Bold().FontSize(28);
+                amtRow.AutoItem().PaddingLeft(4).Text(totalAmount > 0 ? totalAmount.ToString("N2") : "0.00").FontColor(Colors.White).Bold().FontSize(24);
             });
         });
     }
@@ -222,36 +224,35 @@ public class AWBPrintService
     {
         var accountCode = shipment.CustomerId != null ? $"Account: {shipment.CustomerId}" : "";
 
-        column.Item().PaddingTop(6).BorderTop(2).PaddingTop(4).Column(footer =>
+        column.Item().PaddingTop(4).BorderTop(2).PaddingTop(3).Column(footer =>
         {
             footer.Item().Text("POD - Proof of Delivery").Bold().FontSize(8);
-            footer.Item().PaddingTop(6).Row(podRow =>
+            footer.Item().PaddingTop(4).Row(podRow =>
             {
                 podRow.RelativeItem().PaddingRight(10).Column(sigCol =>
                 {
-                    sigCol.Item().Text("Customer Sign / Stamp").FontSize(6).FontColor(Colors.Grey.Medium);
-                    sigCol.Item().PaddingTop(15).BorderBottom(0.5f);
+                    sigCol.Item().PaddingTop(10).BorderBottom(0.5f);
+                    sigCol.Item().PaddingTop(1).Text("Customer Sign / Stamp").FontSize(6).FontColor(Colors.Red.Darken1);
                 });
                 podRow.RelativeItem().PaddingRight(10).Column(pickCol =>
                 {
-                    pickCol.Item().Text("Courier Pickup Date").FontSize(6).FontColor(Colors.Grey.Medium);
-                    pickCol.Item().PaddingTop(15).BorderBottom(0.5f);
+                    pickCol.Item().PaddingTop(10).BorderBottom(0.5f);
+                    pickCol.Item().PaddingTop(1).Text("Courier Pickup Date").FontSize(6).FontColor(Colors.Red.Darken1);
                 });
                 podRow.RelativeItem().Column(delCol =>
                 {
-                    delCol.Item().Text("Delivery Success Date").FontSize(6).FontColor(Colors.Grey.Medium);
-                    delCol.Item().PaddingTop(15).BorderBottom(0.5f);
+                    delCol.Item().PaddingTop(10).BorderBottom(0.5f);
+                    delCol.Item().PaddingTop(1).Text("Delivery Success Date").FontSize(6).FontColor(Colors.Red.Darken1);
                 });
             });
 
-            footer.Item().PaddingTop(8).Row(bottomRow =>
+            footer.Item().PaddingTop(4).Row(bottomRow =>
             {
                 bottomRow.RelativeItem().Text(text =>
                 {
                     if (!string.IsNullOrEmpty(accountCode))
                     {
-                        text.Span(accountCode).Bold().FontSize(7).FontColor(Colors.Grey.Medium);
-                        text.Span("     ");
+                        text.Span(accountCode).Bold().FontSize(7).FontColor("#1e3a5f");
                     }
                 });
                 bottomRow.ConstantItem(60).AlignRight().Text("Page 1 of 1").Bold().FontSize(7).FontColor(Colors.Grey.Medium);
@@ -269,7 +270,8 @@ public class AWBPrintService
                 container.Page(page =>
                 {
                     page.Size(PageSizes.A5.Landscape());
-                    page.Margin(22);
+                    page.MarginHorizontal(18);
+                    page.MarginVertical(14);
                     page.DefaultTextStyle(x => x.FontSize(8).FontFamily("Arial"));
 
                     page.Content().Column(column =>
