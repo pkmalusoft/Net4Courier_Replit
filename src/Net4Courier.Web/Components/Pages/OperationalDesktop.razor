@@ -336,7 +336,7 @@ else
                 .Select(x => new { x.AWBNo, x.ConsigneeName, x.ConsigneeCity, x.Status, x.ImportMasterId, x.CreatedAt })
                 .ToListAsync();
 
-            _recentShipmentItems = recentInscan
+            var inscanItems = recentInscan
                 .Select(x => new RecentShipmentItem
                 {
                     AWBNo = x.AWBNo,
@@ -346,8 +346,13 @@ else
                     StatusColor = GetStatusColor(x.CourierStatusId),
                     TrackingUrl = $"/tracking/{x.AWBNo}",
                     SortDate = x.CreatedAt
-                })
-                .Concat(recentImport.Select(x => new RecentShipmentItem
+                }).ToList();
+
+            var inscanAwbNos = new HashSet<string>(inscanItems.Select(r => r.AWBNo), StringComparer.OrdinalIgnoreCase);
+
+            var importItems = recentImport
+                .Where(x => !inscanAwbNos.Contains(x.AWBNo))
+                .Select(x => new RecentShipmentItem
                 {
                     AWBNo = x.AWBNo,
                     ConsigneeName = x.ConsigneeName ?? "-",
@@ -356,7 +361,10 @@ else
                     StatusColor = GetImportStatusColor(x.Status),
                     TrackingUrl = $"/import-customs/{x.ImportMasterId}",
                     SortDate = x.CreatedAt
-                }))
+                }).ToList();
+
+            _recentShipmentItems = inscanItems
+                .Concat(importItems)
                 .OrderByDescending(x => x.SortDate)
                 .Take(10)
                 .ToList();

@@ -541,11 +541,15 @@ else
         var startOfMonth = new DateTime(today.Year, today.Month, 1, 0, 0, 0, DateTimeKind.Utc);
 
         var inscanCount = await context.InscanMasters.CountAsync(s => !s.IsDeleted);
-        var importCount = await context.ImportShipments.CountAsync(s => !s.IsDeleted && !s.LinkedInscanMasterId.HasValue);
+        var allInscanAwbNos = await context.InscanMasters
+            .Where(s => !s.IsDeleted)
+            .Select(s => s.AWBNo)
+            .ToListAsync();
+        var importCount = await context.ImportShipments.CountAsync(s => !s.IsDeleted && !s.LinkedInscanMasterId.HasValue && !allInscanAwbNos.Contains(s.AWBNo));
         _stats.TotalShipments = inscanCount + importCount;
 
         var inscanToday = await context.InscanMasters.CountAsync(s => !s.IsDeleted && s.TransactionDate.Date == today);
-        var importToday = await context.ImportShipments.Include(s => s.ImportMaster).CountAsync(s => !s.IsDeleted && !s.LinkedInscanMasterId.HasValue && s.ImportMaster != null && s.ImportMaster.TransactionDate.Date == today);
+        var importToday = await context.ImportShipments.Include(s => s.ImportMaster).CountAsync(s => !s.IsDeleted && !s.LinkedInscanMasterId.HasValue && !allInscanAwbNos.Contains(s.AWBNo) && s.ImportMaster != null && s.ImportMaster.TransactionDate.Date == today);
         _stats.TodayShipments = inscanToday + importToday;
 
         _stats.PendingDeliveries = await context.InscanMasters
@@ -585,7 +589,12 @@ else
 
         var inscanImportCount = await context.InscanMasters
             .CountAsync(s => !s.IsDeleted && s.MovementTypeId == MovementType.InternationalImport);
-        var unlinkedImportCount = await context.ImportShipments.CountAsync(s => !s.IsDeleted && !s.LinkedInscanMasterId.HasValue);
+        var inscanImportAwbNos = await context.InscanMasters
+            .Where(s => !s.IsDeleted && s.MovementTypeId == MovementType.InternationalImport)
+            .Select(s => s.AWBNo)
+            .ToListAsync();
+        var unlinkedImportCount = await context.ImportShipments
+            .CountAsync(s => !s.IsDeleted && !s.LinkedInscanMasterId.HasValue && !inscanImportAwbNos.Contains(s.AWBNo));
         _stats.ImportShipments = inscanImportCount + unlinkedImportCount;
 
         _stats.TranshipmentShipments = await context.InscanMasters
@@ -640,8 +649,11 @@ else
             IsImport = true
         }).ToList();
 
+        var inscanAwbNos = new HashSet<string>(recentInscan.Select(r => r.AWBNo), StringComparer.OrdinalIgnoreCase);
+        var filteredImport = recentImport.Where(r => !inscanAwbNos.Contains(r.AWBNo));
+
         _recentShipmentItems = recentInscan
-            .Concat(recentImport)
+            .Concat(filteredImport)
             .OrderByDescending(s => s.TransactionDate)
             .Take(10)
             .ToList();
