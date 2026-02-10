@@ -364,7 +364,7 @@ app.UseAuthentication();
 app.UseAuthorization();
 app.UseAntiforgery();
 
-app.MapGet("/health", () => Results.Ok("Healthy"));
+app.MapGet("/health", () => Results.Ok(new { status = "Healthy", timestamp = DateTime.UtcNow }));
 
 app.MapGet("/api/company-logo", async (ApplicationDbContext db, IWebHostEnvironment env) =>
 {
