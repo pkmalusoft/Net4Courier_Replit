@@ -2,6 +2,7 @@
 @inject IDbContextFactory<Net4Courier.Infrastructure.Data.ApplicationDbContext> DbFactory
 @inject Net4Courier.Web.Services.IDateTimeService DateTimeService
 @inject AuthenticationStateProvider AuthStateProvider
+@inject ISnackbar Snackbar
 @using Microsoft.EntityFrameworkCore
 @using Microsoft.AspNetCore.Components.Authorization
 @using Net4Courier.Operations.Entities
@@ -200,6 +201,10 @@ else
                                StartIcon="@Icons.Material.Filled.Receipt" Href="/drs-cash-receipt">
                         Submit Cash Receipt
                     </MudButton>
+                    <MudButton Variant="Variant.Filled" Color="Color.Secondary" FullWidth="true"
+                               StartIcon="@Icons.Material.Filled.AddCircle" OnClick="OpenAddExpense">
+                        Add Expense
+                    </MudButton>
                 </MudStack>
             </MudPaper>
         </MudItem>
@@ -247,6 +252,43 @@ else
             </MudPaper>
         </MudItem>
     </MudGrid>
+
+    <MudDialog @bind-Visible="_showExpenseDialog" Options="@(new DialogOptions { FullWidth = true, MaxWidth = MaxWidth.Small })">
+        <TitleContent>
+            <MudText Typo="Typo.h6">Add Expense</MudText>
+        </TitleContent>
+        <DialogContent>
+            <MudSelect T="long?" Label="DRS" @bind-Value="_expDrsId" Required="true" Variant="Variant.Outlined" Dense="true" Margin="Margin.Dense">
+                @foreach (var drs in _expDrsList)
+                {
+                    <MudSelectItem T="long?" Value="@drs.Id">@drs.DRSNo | @drs.DRSDate.ToString("dd-MMM-yyyy") | @drs.CourierName</MudSelectItem>
+                }
+            </MudSelect>
+
+            <MudSelect T="ExpenseType" Label="Expense Type" @bind-Value="_expType" Required="true" Variant="Variant.Outlined" Dense="true" Margin="Margin.Dense" Class="mt-3">
+                <MudSelectItem T="ExpenseType" Value="ExpenseType.Fuel">Fuel</MudSelectItem>
+                <MudSelectItem T="ExpenseType" Value="ExpenseType.Toll">Toll</MudSelectItem>
+                <MudSelectItem T="ExpenseType" Value="ExpenseType.Parking">Parking</MudSelectItem>
+                <MudSelectItem T="ExpenseType" Value="ExpenseType.Repair">Repair</MudSelectItem>
+                <MudSelectItem T="ExpenseType" Value="ExpenseType.Food">Food</MudSelectItem>
+                <MudSelectItem T="ExpenseType" Value="ExpenseType.Other">Other</MudSelectItem>
+            </MudSelect>
+
+            <MudNumericField T="decimal" Label="Amount" @bind-Value="_expAmount" Required="true" Variant="Variant.Outlined" Dense="true" Margin="Margin.Dense" Min="0.01M" Class="mt-3" />
+
+            <MudTextField T="string" Label="Description" @bind-Value="_expDescription" Variant="Variant.Outlined" Dense="true" Margin="Margin.Dense" Lines="2" Class="mt-3" />
+        </DialogContent>
+        <DialogActions>
+            <MudButton OnClick="CloseAddExpense" Variant="Variant.Text">Cancel</MudButton>
+            <MudButton OnClick="SaveExpense" Variant="Variant.Filled" Color="Color.Primary" Disabled="_expSaving">
+                @if (_expSaving)
+                {
+                    <MudProgressCircular Indeterminate="true" Size="Size.Small" Class="mr-2" />
+                }
+                Add Expense
+            </MudButton>
+        </DialogActions>
+    </MudDialog>
 }
 
 @code {
@@ -412,6 +454,125 @@ else
         {
         }
         _isLoading = false;
+    }
+
+    private bool _showExpenseDialog;
+    private bool _expSaving;
+    private long? _expDrsId;
+    private ExpenseType _expType = ExpenseType.Fuel;
+    private decimal _expAmount;
+    private string? _expDescription;
+    private List<ExpDrsOption> _expDrsList = new();
+
+    private class ExpDrsOption
+    {
+        public long Id { get; set; }
+        public string DRSNo { get; set; } = "";
+        public DateTime DRSDate { get; set; }
+        public string CourierName { get; set; } = "";
+    }
+
+    private async Task OpenAddExpense()
+    {
+        _expDrsId = null;
+        _expType = ExpenseType.Fuel;
+        _expAmount = 0;
+        _expDescription = null;
+
+        try
+        {
+            await using var db = await DbFactory.CreateDbContextAsync();
+            var query = db.DRSs
+                .Where(d => !d.IsDeleted && d.Status != DRSStatus.Reconciled && d.Status != DRSStatus.Closed);
+
+            if (_isCourier)
+                query = query.Where(d => d.DeliveryEmployeeId == (int)_userId);
+            else if (_filterCourierId.HasValue)
+                query = query.Where(d => d.DeliveryEmployeeId == _filterCourierId.Value);
+
+            _expDrsList = await query
+                .OrderByDescending(d => d.DRSDate)
+                .Take(30)
+                .Select(d => new ExpDrsOption { Id = d.Id, DRSNo = d.DRSNo, DRSDate = d.DRSDate, CourierName = d.DeliveryEmployeeName ?? "" })
+                .ToListAsync();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[CourierDashboard] Load DRS error: {ex.Message}");
+        }
+
+        _showExpenseDialog = true;
+    }
+
+    private void CloseAddExpense()
+    {
+        _showExpenseDialog = false;
+    }
+
+    private async Task SaveExpense()
+    {
+        if (_expDrsId == null)
+        {
+            Snackbar.Add("Please select a DRS", Severity.Warning);
+            return;
+        }
+        if (_expAmount <= 0)
+        {
+            Snackbar.Add("Please enter a valid amount", Severity.Warning);
+            return;
+        }
+
+        _expSaving = true;
+        try
+        {
+            await using var db = await DbFactory.CreateDbContextAsync();
+            var drs = _expDrsList.FirstOrDefault(d => d.Id == _expDrsId.Value);
+            var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+            var fullName = authState.User.FindFirst("FullName")?.Value;
+
+            int courierId;
+            string? courierName;
+            if (_isCourier)
+            {
+                courierId = (int)_userId;
+                courierName = fullName;
+            }
+            else
+            {
+                courierId = drs != null ? (int)(await db.DRSs.Where(x => x.Id == _expDrsId.Value).Select(x => x.DeliveryEmployeeId).FirstOrDefaultAsync()) : 0;
+                courierName = drs?.CourierName;
+            }
+
+            var expense = new CourierExpense
+            {
+                DRSId = _expDrsId.Value,
+                CourierId = courierId,
+                CourierName = courierName,
+                ExpenseDate = DateTime.UtcNow,
+                ExpenseType = _expType,
+                Amount = _expAmount,
+                Description = _expDescription,
+                Status = ExpenseStatus.Pending,
+                CreatedAt = DateTime.UtcNow,
+                IsDeleted = false
+            };
+
+            db.CourierExpenses.Add(expense);
+            await db.SaveChangesAsync();
+
+            Snackbar.Add("Expense saved successfully", Severity.Success);
+            _showExpenseDialog = false;
+            await LoadDashboardData();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add("Failed to save expense", Severity.Error);
+            Console.WriteLine($"[CourierDashboard] Save expense error: {ex.Message}");
+        }
+        finally
+        {
+            _expSaving = false;
+        }
     }
 
     private static Color GetDrsStatusColor(DRSStatus status) => status switch
