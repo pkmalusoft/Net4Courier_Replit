@@ -1738,6 +1738,7 @@ public class ApplicationDbContext : DbContext
                   .HasForeignKey(e => e.BankStatementLineId).OnDelete(DeleteBehavior.Restrict);
             entity.HasOne(e => e.Journal).WithMany()
                   .HasForeignKey(e => e.JournalId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasIndex(e => e.CashBankTransactionId);
         });
 
         modelBuilder.Entity<ReconciliationAdjustment>(entity =>
@@ -1755,6 +1756,34 @@ public class ApplicationDbContext : DbContext
                   .HasForeignKey(e => e.BankStatementLineId).OnDelete(DeleteBehavior.Restrict);
             entity.HasOne(e => e.Journal).WithMany()
                   .HasForeignKey(e => e.JournalId).OnDelete(DeleteBehavior.Restrict);
+        });
+
+        modelBuilder.Entity<VendorPayment>(entity =>
+        {
+            entity.ToTable("VendorPayments");
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.PaymentNo).HasMaxLength(50).IsRequired();
+            entity.Property(e => e.SupplierName).HasMaxLength(200);
+            entity.Property(e => e.PaymentMode).HasMaxLength(50);
+            entity.Property(e => e.BankName).HasMaxLength(100);
+            entity.Property(e => e.ChequeNo).HasMaxLength(50);
+            entity.Property(e => e.TransactionRef).HasMaxLength(100);
+            entity.Property(e => e.Remarks).HasMaxLength(500);
+            entity.Property(e => e.Amount).HasPrecision(18, 2);
+            entity.HasIndex(e => e.PaymentNo);
+            entity.HasIndex(e => e.SupplierId);
+            entity.HasIndex(e => e.CompanyId);
+            entity.HasIndex(e => e.BranchId);
+        });
+
+        modelBuilder.Entity<VendorPaymentAllocation>(entity =>
+        {
+            entity.ToTable("VendorPaymentAllocations");
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.AllocatedAmount).HasPrecision(18, 2);
+            entity.Property(e => e.Remarks).HasMaxLength(500);
+            entity.HasOne(e => e.VendorPayment).WithMany(p => p.Allocations)
+                  .HasForeignKey(e => e.VendorPaymentId).OnDelete(DeleteBehavior.Cascade);
         });
 
         modelBuilder.Entity<TaxRate>(entity =>
