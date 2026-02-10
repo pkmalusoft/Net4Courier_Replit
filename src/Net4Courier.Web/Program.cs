@@ -293,6 +293,23 @@ app.Use(async (context, next) =>
         await context.Response.WriteAsync($"{{\"status\":\"Healthy\",\"timestamp\":\"{DateTime.UtcNow:O}\"}}");
         return;
     }
+    if (path == "/" || path == "")
+    {
+        var userAgent = context.Request.Headers["User-Agent"].ToString();
+        var accept = context.Request.Headers["Accept"].ToString();
+        var isHealthProbe = string.IsNullOrEmpty(userAgent) 
+            || userAgent.Contains("GoogleHC", StringComparison.OrdinalIgnoreCase)
+            || userAgent.Contains("kube-probe", StringComparison.OrdinalIgnoreCase)
+            || userAgent.Contains("Replit", StringComparison.OrdinalIgnoreCase)
+            || (!accept.Contains("text/html") && !context.Request.Headers.ContainsKey("Cookie"));
+        if (isHealthProbe)
+        {
+            context.Response.StatusCode = 200;
+            context.Response.ContentType = "application/json";
+            await context.Response.WriteAsync($"{{\"status\":\"Healthy\",\"timestamp\":\"{DateTime.UtcNow:O}\"}}");
+            return;
+        }
+    }
     await next();
 });
 
