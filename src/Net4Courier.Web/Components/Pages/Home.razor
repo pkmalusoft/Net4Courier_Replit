@@ -541,11 +541,11 @@ else
         var startOfMonth = new DateTime(today.Year, today.Month, 1, 0, 0, 0, DateTimeKind.Utc);
 
         var inscanCount = await context.InscanMasters.CountAsync(s => !s.IsDeleted);
-        var importCount = await context.ImportShipments.CountAsync(s => !s.IsDeleted);
+        var importCount = await context.ImportShipments.CountAsync(s => !s.IsDeleted && !s.LinkedInscanMasterId.HasValue);
         _stats.TotalShipments = inscanCount + importCount;
 
         var inscanToday = await context.InscanMasters.CountAsync(s => !s.IsDeleted && s.TransactionDate.Date == today);
-        var importToday = await context.ImportShipments.Include(s => s.ImportMaster).CountAsync(s => !s.IsDeleted && s.ImportMaster != null && s.ImportMaster.TransactionDate.Date == today);
+        var importToday = await context.ImportShipments.Include(s => s.ImportMaster).CountAsync(s => !s.IsDeleted && !s.LinkedInscanMasterId.HasValue && s.ImportMaster != null && s.ImportMaster.TransactionDate.Date == today);
         _stats.TodayShipments = inscanToday + importToday;
 
         _stats.PendingDeliveries = await context.InscanMasters
@@ -585,7 +585,8 @@ else
 
         var inscanImportCount = await context.InscanMasters
             .CountAsync(s => !s.IsDeleted && s.MovementTypeId == MovementType.InternationalImport);
-        _stats.ImportShipments = inscanImportCount + importCount;
+        var unlinkedImportCount = await context.ImportShipments.CountAsync(s => !s.IsDeleted && !s.LinkedInscanMasterId.HasValue);
+        _stats.ImportShipments = inscanImportCount + unlinkedImportCount;
 
         _stats.TranshipmentShipments = await context.InscanMasters
             .CountAsync(s => !s.IsDeleted && s.MovementTypeId == MovementType.Transhipment);
@@ -616,7 +617,7 @@ else
 
         var recentImportRaw = await context.ImportShipments
             .Include(s => s.ImportMaster)
-            .Where(s => !s.IsDeleted)
+            .Where(s => !s.IsDeleted && !s.LinkedInscanMasterId.HasValue)
             .OrderByDescending(s => s.ImportMaster!.TransactionDate)
             .ThenByDescending(s => s.Id)
             .Take(10)

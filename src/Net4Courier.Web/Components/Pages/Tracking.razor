@@ -399,28 +399,35 @@
                             </div>
                             
                             <div class="timeline-content">
-                                @if (result.Timeline.Any())
+                                @{
+                                    var combinedEvents = result.Timeline
+                                        .Select(t => new { Timestamp = t.ChangedAt, Label = t.Status?.Name ?? t.EventType, Remarks = t.Remarks, Location = t.LocationName, IsImport = false, Color = GetEventColor(t) })
+                                        .Concat(result.ImportTimelineEvents.Select(ie => new { Timestamp = ie.Timestamp, Label = ie.EventType, Remarks = (string?)ie.UserName != null ? $"By: {ie.UserName}" : (string?)null, Location = (string?)null, IsImport = true, Color = GetImportEventColor(ie.EventType) }))
+                                        .OrderByDescending(e => e.Timestamp)
+                                        .ToList();
+                                }
+                                @if (combinedEvents.Any())
                                 {
                                     <MudTimeline TimelinePosition="TimelinePosition.Start" TimelineAlign="TimelineAlign.Default" DisableModifiers="true">
-                                        @foreach (var eventItem in result.Timeline.OrderByDescending(t => t.ChangedAt))
+                                        @foreach (var eventItem in combinedEvents)
                                         {
-                                            <MudTimelineItem Color="@GetEventColor(eventItem)" Size="Size.Small" Variant="Variant.Filled">
+                                            <MudTimelineItem Color="@eventItem.Color" Size="Size.Small" Variant="Variant.Filled">
                                                 <ItemContent>
                                                     <MudText Typo="Typo.body2" Style="font-weight: 600; color: #1f2937;">
-                                                        @(eventItem.Status?.Name ?? eventItem.EventType)
+                                                        @eventItem.Label
                                                     </MudText>
                                                     @if (!string.IsNullOrEmpty(eventItem.Remarks))
                                                     {
                                                         <MudText Typo="Typo.caption" Style="color: #6b7280;">@eventItem.Remarks</MudText>
                                                     }
-                                                    @if (!string.IsNullOrEmpty(eventItem.LocationName))
+                                                    @if (!string.IsNullOrEmpty(eventItem.Location))
                                                     {
                                                         <MudChip T="string" Size="Size.Small" Variant="Variant.Text" Color="Color.Success" Style="font-size: 0.7rem; height: 20px; padding: 0 6px;">
-                                                            @eventItem.LocationName
+                                                            @eventItem.Location
                                                         </MudChip>
                                                     }
                                                     <MudText Typo="Typo.caption" Style="color: #9ca3af; margin-top: 4px;">
-                                                        @DateTimeService.FormatDateTime(eventItem.ChangedAt, "dd MMM yyyy, HH:mm")
+                                                        @DateTimeService.FormatDateTime(eventItem.Timestamp, "dd MMM yyyy, HH:mm")
                                                     </MudText>
                                                 </ItemContent>
                                             </MudTimelineItem>
@@ -693,6 +700,8 @@
         public InscanMaster Shipment { get; set; } = null!;
         public List<ShipmentStatusHistory> Timeline { get; set; } = new();
         public string? ServiceTypeName { get; set; }
+        public List<ImportTimelineEvent> ImportTimelineEvents { get; set; } = new();
+        public ImportShipment? LinkedImportShipment { get; set; }
     }
 
     private class ImportTrackingResult
@@ -768,6 +777,11 @@
                     var shipment = await dbContext.InscanMasters
                         .FirstOrDefaultAsync(i => i.AWBNo == term && !i.IsDeleted);
 
+                    var importShipments = await dbContext.ImportShipments
+                        .Include(i => i.ImportMaster)
+                        .Where(i => i.AWBNo == term && !i.IsDeleted)
+                        .ToListAsync();
+
                     if (shipment != null)
                     {
                         var timeline = await dbContext.ShipmentStatusHistories
@@ -780,22 +794,29 @@
                             ? (await dbContext.ShipmentModes.FindAsync(shipment.ShipmentModeId.Value))?.Name 
                             : null;
 
-                        _shipmentResults.Add(new ShipmentTrackingResult
+                        var trackingResult = new ShipmentTrackingResult
                         {
                             Shipment = shipment,
                             Timeline = timeline,
                             ServiceTypeName = serviceTypeName ?? "Standard"
-                        });
+                        };
+
+                        var linkedImport = importShipments.FirstOrDefault(i => i.LinkedInscanMasterId == shipment.Id);
+                        if (linkedImport != null)
+                        {
+                            trackingResult.ImportTimelineEvents = BuildImportTimeline(linkedImport);
+                            trackingResult.LinkedImportShipment = linkedImport;
+                        }
+
+                        _shipmentResults.Add(trackingResult);
                         found = true;
                     }
 
-                    var importShipments = await dbContext.ImportShipments
-                        .Include(i => i.ImportMaster)
-                        .Where(i => i.AWBNo == term && !i.IsDeleted)
-                        .ToListAsync();
-
                     foreach (var importShipment in importShipments)
                     {
+                        if (importShipment.LinkedInscanMasterId.HasValue && shipment != null && importShipment.LinkedInscanMasterId == shipment.Id)
+                            continue;
+
                         _importTrackingResults.Add(new ImportTrackingResult
                         {
                             ImportShipment = importShipment,
@@ -840,6 +861,8 @@
                         .Where(i => i.ReferenceNo == term && !i.IsDeleted)
                         .ToListAsync();
 
+                    var linkedInscanIds = new HashSet<long>();
+
                     foreach (var shipment in shipments)
                     {
                         var timeline = await dbContext.ShipmentStatusHistories
@@ -852,12 +875,24 @@
                             ? (await dbContext.ShipmentModes.FindAsync(shipment.ShipmentModeId.Value))?.Name 
                             : null;
 
-                        _shipmentResults.Add(new ShipmentTrackingResult
+                        var trackingResult = new ShipmentTrackingResult
                         {
                             Shipment = shipment,
                             Timeline = timeline,
                             ServiceTypeName = serviceTypeName ?? "Standard"
-                        });
+                        };
+
+                        var linkedImport = await dbContext.ImportShipments
+                            .Include(i => i.ImportMaster)
+                            .FirstOrDefaultAsync(i => i.LinkedInscanMasterId == shipment.Id && !i.IsDeleted);
+                        if (linkedImport != null)
+                        {
+                            trackingResult.ImportTimelineEvents = BuildImportTimeline(linkedImport);
+                            trackingResult.LinkedImportShipment = linkedImport;
+                            linkedInscanIds.Add(shipment.Id);
+                        }
+
+                        _shipmentResults.Add(trackingResult);
                         found = true;
                     }
 
@@ -868,6 +903,9 @@
 
                     foreach (var importShipment in importShipments)
                     {
+                        if (importShipment.LinkedInscanMasterId.HasValue && linkedInscanIds.Contains(importShipment.LinkedInscanMasterId.Value))
+                            continue;
+
                         _importTrackingResults.Add(new ImportTrackingResult
                         {
                             ImportShipment = importShipment,
