@@ -93,6 +93,8 @@ public class ApplicationDbContext : DbContext
     public DbSet<CreditNote> CreditNotes => Set<CreditNote>();
     public DbSet<DebitNote> DebitNotes => Set<DebitNote>();
     public DbSet<VendorBill> VendorBills => Set<VendorBill>();
+    public DbSet<VendorPayment> VendorPayments => Set<VendorPayment>();
+    public DbSet<VendorPaymentAllocation> VendorPaymentAllocations => Set<VendorPaymentAllocation>();
     public DbSet<Expense> Expenses => Set<Expense>();
     public DbSet<TaxRate> TaxRates => Set<TaxRate>();
     public DbSet<TransactionPageType> TransactionPageTypes => Set<TransactionPageType>();

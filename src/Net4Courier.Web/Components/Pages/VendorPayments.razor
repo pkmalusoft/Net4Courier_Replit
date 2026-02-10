@@ -1,0 +1,211 @@
+@page "/vendor-payments"
+@using Net4Courier.Finance.Entities
+@using Net4Courier.Infrastructure.Data
+@using Net4Courier.Masters.Entities
+@using Microsoft.EntityFrameworkCore
+@using ClosedXML.Excel
+@inject ApplicationDbContext DbContext
+@inject NavigationManager NavigationManager
+@inject ISnackbar Snackbar
+@inject IJSRuntime JS
+
+<PageTitle>Vendor Payments - Net4Courier</PageTitle>
+
+<MudPaper Class="pa-4">
+    <MudStack Row="true" AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween" Class="mb-4">
+        <MudText Typo="Typo.h5">Vendor Payments</MudText>
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add"
+                   OnClick="CreateNew">New Payment</MudButton>
+    </MudStack>
+
+    <MudStack Row="true" Spacing="3" Class="mb-4">
+        <MudDatePicker @bind-Date="filterFromDate" Label="From Date" DateFormat="dd-MMM-yyyy" />
+        <MudDatePicker @bind-Date="filterToDate" Label="To Date" DateFormat="dd-MMM-yyyy" />
+        <MudSelect T="string" @bind-Value="filterPaymentMode" Label="Payment Mode" Clearable="true">
+            <MudSelectItem Value="@("Cash")">Cash</MudSelectItem>
+            <MudSelectItem Value="@("Cheque")">Cheque</MudSelectItem>
+            <MudSelectItem Value="@("Bank Transfer")">Bank Transfer</MudSelectItem>
+            <MudSelectItem Value="@("Online")">Online</MudSelectItem>
+        </MudSelect>
+        <MudTextField @bind-Value="searchText" Label="Search" Immediate="true"
+                      Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Filled.Search" />
+        <MudButton Variant="Variant.Outlined" Color="Color.Primary" OnClick="LoadPayments">Filter</MudButton>
+        <MudButton Variant="Variant.Filled" Color="Color.Success" StartIcon="@Icons.Material.Filled.Download"
+                   OnClick="DownloadExcel" Disabled="@(payments.Count == 0)">Download Excel</MudButton>
+    </MudStack>
+
+    <MudTable Items="@payments" Hover="true" Striped="true" Dense="true" Loading="@isLoading">
+        <HeaderContent>
+            <MudTh>Payment No</MudTh>
+            <MudTh>Date</MudTh>
+            <MudTh>Party Type</MudTh>
+            <MudTh>Supplier</MudTh>
+            <MudTh Style="text-align:right">Amount</MudTh>
+            <MudTh>Payment Mode</MudTh>
+            <MudTh>Reference</MudTh>
+            <MudTh>Allocated</MudTh>
+            <MudTh Style="width:120px">Actions</MudTh>
+        </HeaderContent>
+        <RowTemplate>
+            <MudTd>@context.PaymentNo</MudTd>
+            <MudTd>@context.PaymentDate.ToString("dd-MMM-yyyy")</MudTd>
+            <MudTd>@GetPartyTypeName(context.PartyType)</MudTd>
+            <MudTd>@context.SupplierName</MudTd>
+            <MudTd Style="text-align:right">@context.Amount?.ToString("N2")</MudTd>
+            <MudTd>@context.PaymentMode</MudTd>
+            <MudTd>@(context.ChequeNo ?? context.TransactionRef)</MudTd>
+            <MudTd>
+                @if (context.IsAllocated)
+                {
+                    <MudIcon Icon="@Icons.Material.Filled.CheckCircle" Color="Color.Success" Size="Size.Small" />
+                }
+                else
+                {
+                    <MudIcon Icon="@Icons.Material.Filled.RadioButtonUnchecked" Color="Color.Default" Size="Size.Small" />
+                }
+            </MudTd>
+            <MudTd>
+                <MudIconButton Icon="@Icons.Material.Filled.Edit" Size="Size.Small"
+                               OnClick="() => EditPayment(context.Id)" />
+                <MudIconButton Icon="@Icons.Material.Filled.Print" Size="Size.Small"
+                               Color="Color.Primary" OnClick="() => PrintPayment(context.Id)" />
+            </MudTd>
+        </RowTemplate>
+        <NoRecordsContent>
+            <MudText>No vendor payments found</MudText>
+        </NoRecordsContent>
+    </MudTable>
+</MudPaper>
+
+@code {
+    private List<VendorPayment> payments = new();
+    private bool isLoading = true;
+    private DateTime? filterFromDate = DateTime.Today.AddMonths(-1);
+    private DateTime? filterToDate = DateTime.Today;
+    private string? filterPaymentMode;
+    private string searchText = "";
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadPayments();
+    }
+
+    private string GetPartyTypeName(int? partyType) => partyType switch
+    {
+        (int)PartyType.Supplier => "Supplier",
+        (int)PartyType.ForwardingAgent => "Forwarding Agent",
+        (int)PartyType.CoLoader => "Co-Loader",
+        (int)PartyType.DeliveryAgent => "Delivery Agent",
+        _ => ""
+    };
+
+    private async Task LoadPayments()
+    {
+        isLoading = true;
+        try
+        {
+            var query = DbContext.VendorPayments.AsQueryable();
+
+            if (filterFromDate.HasValue)
+            {
+                var fromDateUtc = DateTime.SpecifyKind(filterFromDate.Value.Date, DateTimeKind.Utc);
+                query = query.Where(p => p.PaymentDate >= fromDateUtc);
+            }
+
+            if (filterToDate.HasValue)
+            {
+                var toDateUtc = DateTime.SpecifyKind(filterToDate.Value.Date.AddDays(1), DateTimeKind.Utc);
+                query = query.Where(p => p.PaymentDate < toDateUtc);
+            }
+
+            if (!string.IsNullOrWhiteSpace(filterPaymentMode))
+                query = query.Where(p => p.PaymentMode == filterPaymentMode);
+
+            if (!string.IsNullOrWhiteSpace(searchText))
+            {
+                var search = searchText.ToLower();
+                query = query.Where(p =>
+                    p.PaymentNo.ToLower().Contains(search) ||
+                    (p.SupplierName != null && p.SupplierName.ToLower().Contains(search)) ||
+                    (p.ChequeNo != null && p.ChequeNo.ToLower().Contains(search)) ||
+                    (p.TransactionRef != null && p.TransactionRef.ToLower().Contains(search)));
+            }
+
+            payments = await query.OrderByDescending(p => p.PaymentDate)
+                                   .ThenByDescending(p => p.PaymentNo)
+                                   .Take(100)
+                                   .ToListAsync();
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private void CreateNew()
+    {
+        NavigationManager.NavigateTo("/vendor-payment/new");
+    }
+
+    private void EditPayment(long id)
+    {
+        NavigationManager.NavigateTo($"/vendor-payment/{id}");
+    }
+
+    private async Task PrintPayment(long id)
+    {
+        await JS.InvokeVoidAsync("open", $"/api/report/vendor-payment/{id}", "_blank");
+    }
+
+    private async Task DownloadExcel()
+    {
+        if (payments.Count == 0)
+        {
+            Snackbar.Add("No payments to export", Severity.Warning);
+            return;
+        }
+
+        try
+        {
+            using var workbook = new XLWorkbook();
+            var worksheet = workbook.Worksheets.Add("Vendor Payments");
+
+            var headers = new[] { "Payment No", "Date", "Party Type", "Supplier", "Amount", "Payment Mode", "Cheque No", "Transaction Ref", "Allocated" };
+            for (int i = 0; i < headers.Length; i++)
+            {
+                worksheet.Cell(1, i + 1).Value = headers[i];
+                worksheet.Cell(1, i + 1).Style.Font.Bold = true;
+                worksheet.Cell(1, i + 1).Style.Fill.BackgroundColor = XLColor.LightBlue;
+            }
+
+            int row = 2;
+            foreach (var pay in payments)
+            {
+                worksheet.Cell(row, 1).Value = pay.PaymentNo;
+                worksheet.Cell(row, 2).Value = pay.PaymentDate.ToString("dd-MMM-yyyy");
+                worksheet.Cell(row, 3).Value = GetPartyTypeName(pay.PartyType);
+                worksheet.Cell(row, 4).Value = pay.SupplierName ?? "";
+                worksheet.Cell(row, 5).Value = pay.Amount ?? 0;
+                worksheet.Cell(row, 6).Value = pay.PaymentMode ?? "";
+                worksheet.Cell(row, 7).Value = pay.ChequeNo ?? "";
+                worksheet.Cell(row, 8).Value = pay.TransactionRef ?? "";
+                worksheet.Cell(row, 9).Value = pay.IsAllocated ? "Yes" : "No";
+                row++;
+            }
+
+            worksheet.Columns().AdjustToContents();
+
+            using var stream = new MemoryStream();
+            workbook.SaveAs(stream);
+            var content = stream.ToArray();
+            var fileName = $"VendorPayments_{DateTime.Now:yyyyMMdd_HHmmss}.xlsx";
+
+            await JS.InvokeVoidAsync("downloadFileFromStream", fileName, Convert.ToBase64String(content));
+            Snackbar.Add($"Downloaded {payments.Count} payments", Severity.Success);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error exporting: {ex.Message}", Severity.Error);
+        }
+    }
+}

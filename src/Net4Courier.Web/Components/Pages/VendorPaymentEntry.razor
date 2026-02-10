@@ -1,0 +1,394 @@
+@page "/vendor-payment/{Id:long?}"
+@page "/vendor-payment/new"
+@using Net4Courier.Finance.Entities
+@using Net4Courier.Infrastructure.Data
+@using Net4Courier.Masters.Entities
+@using Microsoft.EntityFrameworkCore
+@inject ApplicationDbContext DbContext
+@inject NavigationManager NavigationManager
+@inject ISnackbar Snackbar
+
+<PageTitle>@(Id.HasValue ? "Edit Vendor Payment" : "New Vendor Payment") - Net4Courier</PageTitle>
+
+<MudPaper Class="pa-4">
+    <MudStack Row="true" AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween" Class="mb-4">
+        <MudText Typo="Typo.h5">@(Id.HasValue ? "Edit Vendor Payment" : "New Vendor Payment")</MudText>
+        <MudButton Variant="Variant.Outlined" OnClick="GoBack">Back to List</MudButton>
+    </MudStack>
+
+    <EditForm Model="@payment" OnValidSubmit="SavePayment">
+        <DataAnnotationsValidator />
+
+        <MudGrid Spacing="3">
+            <MudItem xs="12" md="3">
+                <MudTextField @bind-Value="payment.PaymentNo" Label="Payment No*" Required="true"
+                              ReadOnly="@Id.HasValue" />
+            </MudItem>
+            <MudItem xs="12" md="3">
+                <MudDatePicker @bind-Date="paymentDate" Label="Payment Date*" Required="true"
+                               DateFormat="dd-MMM-yyyy" AnchorOrigin="Origin.BottomCenter" TransformOrigin="Origin.TopCenter" />
+            </MudItem>
+            <MudItem xs="12" md="3">
+                <MudNumericField @bind-Value="payment.Amount" Label="Amount*" Required="true"
+                                 T="decimal?" Format="N2" />
+            </MudItem>
+            <MudItem xs="12" md="3">
+                <MudSelect T="string" @bind-Value="payment.PaymentMode" Label="Payment Mode*" Required="true">
+                    <MudSelectItem Value="@("Cash")">Cash</MudSelectItem>
+                    <MudSelectItem Value="@("Cheque")">Cheque</MudSelectItem>
+                    <MudSelectItem Value="@("Bank Transfer")">Bank Transfer</MudSelectItem>
+                    <MudSelectItem Value="@("Online")">Online</MudSelectItem>
+                    <MudSelectItem Value="@("UPI")">UPI</MudSelectItem>
+                </MudSelect>
+            </MudItem>
+
+            <MudItem xs="12" md="3">
+                <MudSelect T="int?" Value="selectedPartyType" Label="Party Type*" Required="true"
+                           ValueChanged="OnPartyTypeChanged">
+                    <MudSelectItem T="int?" Value="@((int)PartyType.Supplier)">Supplier</MudSelectItem>
+                    <MudSelectItem T="int?" Value="@((int)PartyType.ForwardingAgent)">Forwarding Agent</MudSelectItem>
+                    <MudSelectItem T="int?" Value="@((int)PartyType.CoLoader)">Co-Loader</MudSelectItem>
+                    <MudSelectItem T="int?" Value="@((int)PartyType.DeliveryAgent)">Delivery Agent</MudSelectItem>
+                </MudSelect>
+            </MudItem>
+            <MudItem xs="12" md="5">
+                <MudAutocomplete T="Party" Label="Supplier/Vendor*" @bind-Value="selectedSupplier"
+                                 SearchFunc="SearchSuppliers" ToStringFunc="@(p => p?.Name ?? "")"
+                                 Required="true" OnBlur="OnSupplierSelected"
+                                 Disabled="@(selectedPartyType == null)" />
+            </MudItem>
+            <MudItem xs="12" md="4">
+                <MudTextField @bind-Value="payment.BankName" Label="Bank Name" />
+            </MudItem>
+
+            @if (payment.PaymentMode == "Cheque")
+            {
+                <MudItem xs="12" md="4">
+                    <MudTextField @bind-Value="payment.ChequeNo" Label="Cheque No" />
+                </MudItem>
+                <MudItem xs="12" md="4">
+                    <MudDatePicker @bind-Date="chequeDate" Label="Cheque Date" DateFormat="dd-MMM-yyyy" AnchorOrigin="Origin.BottomCenter" TransformOrigin="Origin.TopCenter" />
+                </MudItem>
+            }
+            else
+            {
+                <MudItem xs="12" md="4">
+                    <MudTextField @bind-Value="payment.TransactionRef" Label="Transaction Reference" />
+                </MudItem>
+            }
+
+            <MudItem xs="12" md="4">
+                <MudTextField @bind-Value="payment.Remarks" Label="Remarks" />
+            </MudItem>
+        </MudGrid>
+
+        <MudDivider Class="my-4" />
+        <MudText Typo="Typo.h6" Class="mb-3">Allocate to Vendor Bills</MudText>
+
+        <MudTable Items="@pendingBills" Hover="true" Dense="true" Context="bill">
+            <HeaderContent>
+                <MudTh Style="width:50px">Select</MudTh>
+                <MudTh>Bill No</MudTh>
+                <MudTh>Vendor Bill No</MudTh>
+                <MudTh>Date</MudTh>
+                <MudTh Style="text-align:right">Bill Amount</MudTh>
+                <MudTh Style="text-align:right">Balance</MudTh>
+                <MudTh Style="text-align:right; width:150px">Allocate</MudTh>
+            </HeaderContent>
+            <RowTemplate>
+                <MudTd>
+                    <MudCheckBox T="bool" Value="@IsBillSelected(bill)"
+                                 ValueChanged="@(v => ToggleBill(bill, v))" />
+                </MudTd>
+                <MudTd>@bill.BillNo</MudTd>
+                <MudTd>@bill.VendorBillNo</MudTd>
+                <MudTd>@bill.BillDate.ToString("dd-MMM-yyyy")</MudTd>
+                <MudTd Style="text-align:right">@bill.TotalAmount.ToString("N2")</MudTd>
+                <MudTd Style="text-align:right">@bill.BalanceAmount.ToString("N2")</MudTd>
+                <MudTd Style="text-align:right">
+                    @{
+                        var allocation = payment.Allocations.FirstOrDefault(a => a.VendorBillId == bill.Id);
+                    }
+                    @if (allocation != null)
+                    {
+                        <MudNumericField @bind-Value="allocation.AllocatedAmount" T="decimal?" Format="N2"
+                                         Dense="true" Margin="Margin.Dense" />
+                    }
+                </MudTd>
+            </RowTemplate>
+            <NoRecordsContent>
+                <MudText Class="pa-4">@(selectedSupplier == null ? "Select a party type and supplier to see pending bills" : "No pending bills")</MudText>
+            </NoRecordsContent>
+        </MudTable>
+
+        <MudStack Row="true" Justify="Justify.SpaceBetween" Class="mt-3">
+            <MudText>
+                Total Allocated: <strong>@payment.Allocations.Sum(a => a.AllocatedAmount ?? 0).ToString("N2")</strong>
+            </MudText>
+            <MudText>
+                Remaining: <strong>@((payment.Amount ?? 0) - payment.Allocations.Sum(a => a.AllocatedAmount ?? 0)).ToString("N2")</strong>
+            </MudText>
+        </MudStack>
+
+        <MudStack Row="true" Justify="Justify.FlexEnd" Spacing="2" Class="mt-4">
+            <MudButton Variant="Variant.Outlined" OnClick="GoBack">Cancel</MudButton>
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" ButtonType="ButtonType.Submit"
+                       Disabled="@isSaving">
+                @(isSaving ? "Saving..." : "Save Payment")
+            </MudButton>
+        </MudStack>
+    </EditForm>
+</MudPaper>
+
+@code {
+    [Parameter] public long? Id { get; set; }
+
+    private VendorPayment payment = new() { PaymentDate = DateTime.Today, PaymentMode = "Cash" };
+    private int? selectedPartyType;
+    private Party? selectedSupplier;
+    private List<Party> filteredSuppliers = new();
+    private List<VendorBill> pendingBills = new();
+    private DateTime? paymentDate;
+    private DateTime? chequeDate;
+    private bool isSaving;
+    private Dictionary<long, decimal> originalAllocations = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (Id.HasValue)
+        {
+            var existing = await DbContext.VendorPayments
+                .Include(p => p.Allocations)
+                .FirstOrDefaultAsync(p => p.Id == Id.Value);
+
+            if (existing != null)
+            {
+                payment = existing;
+                paymentDate = existing.PaymentDate;
+                chequeDate = existing.ChequeDate;
+                selectedPartyType = existing.PartyType;
+
+                foreach (var alloc in existing.Allocations)
+                {
+                    originalAllocations[alloc.VendorBillId] = alloc.AllocatedAmount ?? 0;
+                }
+
+                if (existing.SupplierId.HasValue)
+                {
+                    selectedSupplier = await DbContext.Parties.FindAsync(existing.SupplierId.Value);
+                    await LoadFilteredSuppliers();
+                    await LoadPendingBills();
+                }
+            }
+        }
+        else
+        {
+            paymentDate = DateTime.Today;
+            payment.PaymentNo = await GeneratePaymentNo();
+        }
+    }
+
+    private async Task<string> GeneratePaymentNo()
+    {
+        var prefix = $"VP-{DateTime.Today:yyMM}-";
+        var lastPayment = await DbContext.VendorPayments
+            .Where(p => p.PaymentNo.StartsWith(prefix))
+            .OrderByDescending(p => p.PaymentNo)
+            .FirstOrDefaultAsync();
+
+        var nextNum = 1;
+        if (lastPayment != null)
+        {
+            var lastNumStr = lastPayment.PaymentNo.Replace(prefix, "");
+            if (int.TryParse(lastNumStr, out var lastNum))
+                nextNum = lastNum + 1;
+        }
+        return $"{prefix}{nextNum:D4}";
+    }
+
+    private async Task OnPartyTypeChanged(int? value)
+    {
+        selectedPartyType = value;
+        payment.PartyType = value;
+        selectedSupplier = null;
+        payment.SupplierId = null;
+        payment.SupplierName = null;
+        pendingBills.Clear();
+        payment.Allocations.Clear();
+        await LoadFilteredSuppliers();
+    }
+
+    private async Task LoadFilteredSuppliers()
+    {
+        if (selectedPartyType == null)
+        {
+            filteredSuppliers = new();
+            return;
+        }
+
+        filteredSuppliers = await DbContext.Parties
+            .Where(p => p.IsActive && (int)p.PartyType == selectedPartyType.Value)
+            .OrderBy(p => p.Name)
+            .ToListAsync();
+    }
+
+    private Task<IEnumerable<Party>> SearchSuppliers(string value, CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return Task.FromResult(filteredSuppliers.Take(20).AsEnumerable());
+
+        return Task.FromResult(filteredSuppliers
+            .Where(s => s.Name.Contains(value, StringComparison.OrdinalIgnoreCase))
+            .Take(20)
+            .AsEnumerable());
+    }
+
+    private async Task OnSupplierSelected()
+    {
+        if (selectedSupplier != null)
+        {
+            payment.SupplierId = selectedSupplier.Id;
+            payment.SupplierName = selectedSupplier.Name;
+            await LoadPendingBills();
+        }
+    }
+
+    private async Task LoadPendingBills()
+    {
+        if (selectedSupplier == null) return;
+
+        pendingBills = await DbContext.VendorBills
+            .Where(b => b.SupplierId == selectedSupplier.Id)
+            .Where(b => b.Status != VendorBillStatus.Cancelled && b.Status != VendorBillStatus.Paid)
+            .Where(b => b.BalanceAmount > 0)
+            .OrderBy(b => b.BillDate)
+            .ToListAsync();
+    }
+
+    private bool IsBillSelected(VendorBill bill)
+    {
+        return payment.Allocations.Any(a => a.VendorBillId == bill.Id);
+    }
+
+    private void ToggleBill(VendorBill bill, bool selected)
+    {
+        if (selected)
+        {
+            payment.Allocations.Add(new VendorPaymentAllocation
+            {
+                VendorBillId = bill.Id,
+                AllocatedAmount = bill.BalanceAmount
+            });
+        }
+        else
+        {
+            var allocation = payment.Allocations.FirstOrDefault(a => a.VendorBillId == bill.Id);
+            if (allocation != null)
+                payment.Allocations.Remove(allocation);
+        }
+    }
+
+    private async Task SavePayment()
+    {
+        isSaving = true;
+        try
+        {
+            var totalAllocated = payment.Allocations.Sum(a => a.AllocatedAmount ?? 0);
+            if (totalAllocated > (payment.Amount ?? 0))
+            {
+                Snackbar.Add("Total allocated amount cannot exceed payment amount", Severity.Warning);
+                isSaving = false;
+                return;
+            }
+
+            foreach (var alloc in payment.Allocations)
+            {
+                var bill = pendingBills.FirstOrDefault(b => b.Id == alloc.VendorBillId);
+                if (bill != null)
+                {
+                    var originalAmount = originalAllocations.GetValueOrDefault(alloc.VendorBillId, 0);
+                    var availableBalance = bill.BalanceAmount + originalAmount;
+                    if ((alloc.AllocatedAmount ?? 0) > availableBalance)
+                    {
+                        Snackbar.Add($"Allocation for bill {bill.BillNo} exceeds available balance of {availableBalance:N2}", Severity.Warning);
+                        isSaving = false;
+                        return;
+                    }
+                }
+            }
+
+            payment.PaymentDate = paymentDate ?? DateTime.Today;
+            payment.ChequeDate = chequeDate;
+            payment.IsAllocated = payment.Allocations.Any();
+
+            if (Id.HasValue)
+            {
+                var removedBillIds = originalAllocations.Keys
+                    .Except(payment.Allocations.Select(a => a.VendorBillId))
+                    .ToList();
+
+                foreach (var billId in removedBillIds)
+                {
+                    var bill = await DbContext.VendorBills.FindAsync(billId);
+                    if (bill != null)
+                    {
+                        var prevAmount = originalAllocations[billId];
+                        bill.PaidAmount -= prevAmount;
+                        bill.BalanceAmount = bill.TotalAmount - bill.PaidAmount;
+                        bill.Status = bill.PaidAmount <= 0 ? VendorBillStatus.Approved
+                            : bill.BalanceAmount <= 0 ? VendorBillStatus.Paid
+                            : VendorBillStatus.PartiallyPaid;
+                    }
+                }
+
+                var existingAllocIds = await DbContext.VendorPaymentAllocations
+                    .Where(a => a.VendorPaymentId == payment.Id && removedBillIds.Contains(a.VendorBillId))
+                    .ToListAsync();
+                DbContext.VendorPaymentAllocations.RemoveRange(existingAllocIds);
+
+                DbContext.VendorPayments.Update(payment);
+            }
+            else
+            {
+                DbContext.VendorPayments.Add(payment);
+            }
+
+            await DbContext.SaveChangesAsync();
+
+            foreach (var allocation in payment.Allocations)
+            {
+                var bill = await DbContext.VendorBills.FindAsync(allocation.VendorBillId);
+                if (bill != null)
+                {
+                    var previousAmount = originalAllocations.GetValueOrDefault(allocation.VendorBillId, 0);
+                    var delta = (allocation.AllocatedAmount ?? 0) - previousAmount;
+                    bill.PaidAmount += delta;
+                    bill.BalanceAmount = bill.TotalAmount - bill.PaidAmount;
+                    if (bill.BalanceAmount <= 0)
+                        bill.Status = VendorBillStatus.Paid;
+                    else if (bill.PaidAmount > 0)
+                        bill.Status = VendorBillStatus.PartiallyPaid;
+                    else
+                        bill.Status = VendorBillStatus.Approved;
+                }
+            }
+            await DbContext.SaveChangesAsync();
+
+            Snackbar.Add("Payment saved successfully", Severity.Success);
+            NavigationManager.NavigateTo("/vendor-payments");
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error saving payment: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            isSaving = false;
+        }
+    }
+
+    private void GoBack()
+    {
+        NavigationManager.NavigateTo("/vendor-payments");
+    }
+}
