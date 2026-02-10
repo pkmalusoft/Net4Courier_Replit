@@ -1,4 +1,4 @@
-@inject ApplicationDbContext DbContext
+@inject IDbContextFactory<ApplicationDbContext> DbFactory
 @inject ISnackbar Snackbar
 @using Microsoft.EntityFrameworkCore
 @using MudBlazor
@@ -96,7 +96,8 @@
 
     protected override async Task OnInitializedAsync()
     {
-        var customers = await DbContext.Parties.Where(p => p.IsActive).ToListAsync();
+        await using var dbContext = await DbFactory.CreateDbContextAsync();
+        var customers = await dbContext.Parties.Where(p => p.IsActive).ToListAsync();
         _customerNames = customers.ToDictionary(c => c.Id, c => c.Name);
 
         if (CustomerId.HasValue)
@@ -131,7 +132,8 @@
 
         try
         {
-            var service = new CODRemittanceService(DbContext);
+            await using var dbContext = await DbFactory.CreateDbContextAsync();
+            var service = new CODRemittanceService(dbContext);
             _pendingShipments = await service.GetPendingCODShipmentsAsync(_selectedCustomerId.Value);
             _selectedShipments = _pendingShipments.ToHashSet();
         }
@@ -154,7 +156,8 @@
         _isSaving = true;
         try
         {
-            var service = new CODRemittanceService(DbContext);
+            await using var dbContext = await DbFactory.CreateDbContextAsync();
+            var service = new CODRemittanceService(dbContext);
             var remittance = await service.CreateRemittanceAsync(
                 _selectedCustomerId.Value,
                 _selectedShipments.Select(s => s.Id).ToList(),
