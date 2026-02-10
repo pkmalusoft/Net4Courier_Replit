@@ -5,6 +5,7 @@
 @using Microsoft.EntityFrameworkCore
 @using Microsoft.AspNetCore.Components.Authorization
 @using Net4Courier.Operations.Entities
+@using Net4Courier.Masters.Entities
 @using Net4Courier.Kernel.Enums
 @using System.Security.Claims
 
@@ -12,6 +13,44 @@
 
 <MudText Typo="Typo.h4" GutterBottom="true">Courier Dashboard</MudText>
 <MudText Typo="Typo.subtitle1" Class="mb-4" Color="Color.Secondary">Daily operations overview — @_todayDisplay</MudText>
+
+@if (!_isCourier)
+{
+    <MudPaper Class="pa-4 mb-4" Elevation="1">
+        <MudGrid>
+            <MudItem xs="12" sm="6" md="4">
+                <MudAutocomplete T="CourierItem" Label="Select Courier" @bind-Value="_selectedCourier"
+                                 SearchFunc="SearchCouriers" ToStringFunc="@(c => c?.DisplayName ?? "")"
+                                 Variant="Variant.Outlined" Dense="true" ResetValueOnEmptyText="true"
+                                 Clearable="true" Adornment="Adornment.Start"
+                                 AdornmentIcon="@Icons.Material.Filled.PersonSearch"
+                                 Placeholder="All Couriers" />
+            </MudItem>
+            <MudItem xs="12" sm="6" md="2" Class="d-flex align-end">
+                <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="OnCourierFilterChanged"
+                           StartIcon="@Icons.Material.Filled.FilterAlt">Filter</MudButton>
+                @if (_selectedCourier != null)
+                {
+                    <MudButton Variant="Variant.Text" Color="Color.Default" OnClick="ClearCourierFilter" Class="ml-2">Clear</MudButton>
+                }
+            </MudItem>
+            <MudItem xs="12" sm="12" md="6" Class="d-flex align-center">
+                @if (_selectedCourier != null)
+                {
+                    <MudAlert Severity="Severity.Info" Dense="true" Class="flex-grow-1">
+                        Showing data for: <strong>@_selectedCourier.DisplayName</strong>
+                    </MudAlert>
+                }
+                else
+                {
+                    <MudAlert Severity="Severity.Normal" Dense="true" Class="flex-grow-1">
+                        Showing data for: <strong>All Couriers</strong>
+                    </MudAlert>
+                }
+            </MudItem>
+        </MudGrid>
+    </MudPaper>
+}
 
 @if (_isLoading)
 {
@@ -170,7 +209,7 @@ else
                 <MudText Typo="Typo.h6" GutterBottom="true">Active Delivery Run Sheets</MudText>
                 @if (_activeDrsList.Count == 0)
                 {
-                    <MudAlert Severity="Severity.Info" Dense="true">No active DRS found for today.</MudAlert>
+                    <MudAlert Severity="Severity.Info" Dense="true">No active DRS found.</MudAlert>
                 }
                 else
                 {
@@ -224,7 +263,16 @@ else
     private List<DRS> _activeDrsList = new();
     private long _userId;
     private bool _isCourier;
-    private string _courierLabel = "";
+
+    private List<CourierItem> _courierList = new();
+    private CourierItem? _selectedCourier;
+    private int? _filterCourierId;
+
+    public class CourierItem
+    {
+        public int Id { get; set; }
+        public string DisplayName { get; set; } = "";
+    }
 
     protected override async Task OnInitializedAsync()
     {
@@ -234,7 +282,54 @@ else
             _userId = uid;
         var role = authState.User.FindFirst(ClaimTypes.Role)?.Value ?? "";
         _isCourier = role == "Courier";
-        _courierLabel = _isCourier ? " (My)" : " (All Couriers)";
+
+        if (!_isCourier)
+        {
+            await LoadCourierList();
+        }
+
+        await LoadDashboardData();
+    }
+
+    private async Task LoadCourierList()
+    {
+        try
+        {
+            await using var dbContext = await DbFactory.CreateDbContextAsync();
+            _courierList = await dbContext.Employees
+                .Include(e => e.Designation)
+                .Include(e => e.Department)
+                .Where(e => !e.IsDeleted && e.IsActive &&
+                    ((e.Designation != null && EF.Functions.ILike(e.Designation.Name, "%courier%")) ||
+                     (e.Department != null && EF.Functions.ILike(e.Department.Name, "%courier%"))))
+                .OrderBy(e => e.Name)
+                .Select(e => new CourierItem { Id = (int)e.Id, DisplayName = e.Name + (e.Code != null ? " (" + e.Code + ")" : "") })
+                .ToListAsync();
+        }
+        catch { }
+    }
+
+    private Task<IEnumerable<CourierItem>> SearchCouriers(string? value, CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return Task.FromResult(_courierList.AsEnumerable());
+
+        var results = _courierList
+            .Where(c => c.DisplayName.Contains(value, StringComparison.OrdinalIgnoreCase))
+            .AsEnumerable();
+        return Task.FromResult(results);
+    }
+
+    private async Task OnCourierFilterChanged()
+    {
+        _filterCourierId = _selectedCourier?.Id;
+        await LoadDashboardData();
+    }
+
+    private async Task ClearCourierFilter()
+    {
+        _selectedCourier = null;
+        _filterCourierId = null;
         await LoadDashboardData();
     }
 
@@ -250,17 +345,19 @@ else
             var todayUtcStart = TimeZoneInfo.ConvertTimeToUtc(localToday, DateTimeService.GetTimeZone());
             var todayUtcEnd = todayUtcStart.AddDays(1);
 
+            int? effectiveCourierId = _isCourier ? (int)_userId : _filterCourierId;
+
             var courierDrsIds = new List<long>();
-            if (_isCourier)
+            if (effectiveCourierId.HasValue)
             {
                 courierDrsIds = await dbContext.DRSs
-                    .Where(x => !x.IsDeleted && x.DeliveryEmployeeId == (int)_userId)
+                    .Where(x => !x.IsDeleted && x.DeliveryEmployeeId == effectiveCourierId.Value)
                     .Select(x => x.Id)
                     .ToListAsync();
             }
 
             var inscanQuery = dbContext.InscanMasters.Where(x => !x.IsDeleted);
-            if (_isCourier)
+            if (effectiveCourierId.HasValue)
             {
                 var drsInscanIds = await dbContext.Set<DRSDetail>()
                     .Where(d => courierDrsIds.Contains(d.DRSId))
@@ -295,8 +392,8 @@ else
                 .CountAsync();
 
             var drsQuery = dbContext.DRSs.Where(x => !x.IsDeleted && (x.Status == DRSStatus.Open || x.Status == DRSStatus.Submitted));
-            if (_isCourier)
-                drsQuery = drsQuery.Where(x => x.DeliveryEmployeeId == (int)_userId);
+            if (effectiveCourierId.HasValue)
+                drsQuery = drsQuery.Where(x => x.DeliveryEmployeeId == effectiveCourierId.Value);
 
             _activeDrsList = await drsQuery
                 .OrderByDescending(x => x.DRSDate)
@@ -305,8 +402,8 @@ else
 
             var expenseQuery = dbContext.CourierExpenses
                 .Where(x => !x.IsDeleted && x.CreatedAt >= todayUtcStart && x.CreatedAt < todayUtcEnd);
-            if (_isCourier)
-                expenseQuery = expenseQuery.Where(x => x.CourierId == (int)_userId);
+            if (effectiveCourierId.HasValue)
+                expenseQuery = expenseQuery.Where(x => x.CourierId == effectiveCourierId.Value);
 
             _totalExpenses = await expenseQuery.SumAsync(x => x.Amount);
             _netCash = _codCollected - _totalExpenses;
