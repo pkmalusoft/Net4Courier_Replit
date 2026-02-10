@@ -1,0 +1,329 @@
+@page "/courier-dashboard"
+@inject IDbContextFactory<Net4Courier.Infrastructure.Data.ApplicationDbContext> DbFactory
+@inject Net4Courier.Web.Services.IDateTimeService DateTimeService
+@inject AuthenticationStateProvider AuthStateProvider
+@using Microsoft.EntityFrameworkCore
+@using Microsoft.AspNetCore.Components.Authorization
+@using Net4Courier.Operations.Entities
+@using Net4Courier.Kernel.Enums
+@using System.Security.Claims
+
+<PageTitle>Courier Dashboard - Net4Courier</PageTitle>
+
+<MudText Typo="Typo.h4" GutterBottom="true">Courier Dashboard</MudText>
+<MudText Typo="Typo.subtitle1" Class="mb-4" Color="Color.Secondary">Daily operations overview — @_todayDisplay</MudText>
+
+@if (_isLoading)
+{
+    <MudProgressCircular Indeterminate="true" Color="Color.Primary" />
+}
+else
+{
+    <MudGrid>
+        <MudItem xs="12" sm="6" md="3">
+            <MudPaper Class="pa-4" Elevation="2" Style="border-left: 4px solid var(--mud-palette-primary);">
+                <div class="d-flex justify-space-between align-center">
+                    <div>
+                        <MudText Typo="Typo.subtitle2" Color="Color.Secondary">Out for Delivery</MudText>
+                        <MudText Typo="Typo.h4" Color="Color.Primary">@_outForDelivery</MudText>
+                    </div>
+                    <MudAvatar Color="Color.Primary" Size="Size.Large">
+                        <MudIcon Icon="@Icons.Material.Filled.DeliveryDining" />
+                    </MudAvatar>
+                </div>
+                <MudButton Variant="Variant.Text" Color="Color.Primary" Size="Size.Small" Href="/outscan" Class="mt-2">View DRS</MudButton>
+            </MudPaper>
+        </MudItem>
+
+        <MudItem xs="12" sm="6" md="3">
+            <MudPaper Class="pa-4" Elevation="2" Style="border-left: 4px solid var(--mud-palette-success);">
+                <div class="d-flex justify-space-between align-center">
+                    <div>
+                        <MudText Typo="Typo.subtitle2" Color="Color.Secondary">Delivered Today</MudText>
+                        <MudText Typo="Typo.h4" Color="Color.Success">@_deliveredToday</MudText>
+                    </div>
+                    <MudAvatar Color="Color.Success" Size="Size.Large">
+                        <MudIcon Icon="@Icons.Material.Filled.CheckCircle" />
+                    </MudAvatar>
+                </div>
+                <MudButton Variant="Variant.Text" Color="Color.Success" Size="Size.Small" Href="/pod-bulk" Class="mt-2">POD Update</MudButton>
+            </MudPaper>
+        </MudItem>
+
+        <MudItem xs="12" sm="6" md="3">
+            <MudPaper Class="pa-4" Elevation="2" Style="border-left: 4px solid var(--mud-palette-error);">
+                <div class="d-flex justify-space-between align-center">
+                    <div>
+                        <MudText Typo="Typo.subtitle2" Color="Color.Secondary">Attempted / Failed</MudText>
+                        <MudText Typo="Typo.h4" Color="Color.Error">@_attempted</MudText>
+                    </div>
+                    <MudAvatar Color="Color.Error" Size="Size.Large">
+                        <MudIcon Icon="@Icons.Material.Filled.ErrorOutline" />
+                    </MudAvatar>
+                </div>
+            </MudPaper>
+        </MudItem>
+
+        <MudItem xs="12" sm="6" md="3">
+            <MudPaper Class="pa-4" Elevation="2" Style="border-left: 4px solid var(--mud-palette-warning);">
+                <div class="d-flex justify-space-between align-center">
+                    <div>
+                        <MudText Typo="Typo.subtitle2" Color="Color.Secondary">COD Collected</MudText>
+                        <MudText Typo="Typo.h4" Color="Color.Warning">@_codCollected.ToString("N0")</MudText>
+                    </div>
+                    <MudAvatar Color="Color.Warning" Size="Size.Large">
+                        <MudIcon Icon="@Icons.Material.Filled.AttachMoney" />
+                    </MudAvatar>
+                </div>
+                <MudButton Variant="Variant.Text" Color="Color.Warning" Size="Size.Small" Href="/drs-cash-receipt" Class="mt-2">Cash Receipt</MudButton>
+            </MudPaper>
+        </MudItem>
+    </MudGrid>
+
+    <MudGrid Class="mt-4">
+        <MudItem xs="12" sm="6" md="3">
+            <MudPaper Class="pa-4" Elevation="2" Style="border-left: 4px solid var(--mud-palette-info);">
+                <div class="d-flex justify-space-between align-center">
+                    <div>
+                        <MudText Typo="Typo.subtitle2" Color="Color.Secondary">Pending Pickup</MudText>
+                        <MudText Typo="Typo.h4" Color="Color.Info">@_pendingPickup</MudText>
+                    </div>
+                    <MudAvatar Color="Color.Info" Size="Size.Large">
+                        <MudIcon Icon="@Icons.Material.Filled.Schedule" />
+                    </MudAvatar>
+                </div>
+                <MudButton Variant="Variant.Text" Color="Color.Info" Size="Size.Small" Href="/pickup-management" Class="mt-2">View Pickups</MudButton>
+            </MudPaper>
+        </MudItem>
+
+        <MudItem xs="12" sm="6" md="3">
+            <MudPaper Class="pa-4" Elevation="2" Style="border-left: 4px solid var(--mud-palette-tertiary);">
+                <div class="d-flex justify-space-between align-center">
+                    <div>
+                        <MudText Typo="Typo.subtitle2" Color="Color.Secondary">Return to Shipper</MudText>
+                        <MudText Typo="Typo.h4" Color="Color.Tertiary">@_rts</MudText>
+                    </div>
+                    <MudAvatar Color="Color.Tertiary" Size="Size.Large">
+                        <MudIcon Icon="@Icons.Material.Filled.Undo" />
+                    </MudAvatar>
+                </div>
+            </MudPaper>
+        </MudItem>
+
+        <MudItem xs="12" sm="6" md="3">
+            <MudPaper Class="pa-4" Elevation="2" Style="border-left: 4px solid var(--mud-palette-secondary);">
+                <div class="d-flex justify-space-between align-center">
+                    <div>
+                        <MudText Typo="Typo.subtitle2" Color="Color.Secondary">Total Expenses</MudText>
+                        <MudText Typo="Typo.h4" Color="Color.Dark">@_totalExpenses.ToString("N0")</MudText>
+                    </div>
+                    <MudAvatar Color="Color.Secondary" Size="Size.Large">
+                        <MudIcon Icon="@Icons.Material.Filled.Receipt" />
+                    </MudAvatar>
+                </div>
+            </MudPaper>
+        </MudItem>
+
+        <MudItem xs="12" sm="6" md="3">
+            <MudPaper Class="pa-4" Elevation="2" Style="border-left: 4px solid var(--mud-palette-dark);">
+                <div class="d-flex justify-space-between align-center">
+                    <div>
+                        <MudText Typo="Typo.subtitle2" Color="Color.Secondary">Net Cash Position</MudText>
+                        <MudText Typo="Typo.h4" Style="@(_netCash >= 0 ? "color: var(--mud-palette-success);" : "color: var(--mud-palette-error);")">@_netCash.ToString("N0")</MudText>
+                    </div>
+                    <MudAvatar Color="Color.Dark" Size="Size.Large">
+                        <MudIcon Icon="@Icons.Material.Filled.AccountBalanceWallet" />
+                    </MudAvatar>
+                </div>
+                <MudButton Variant="Variant.Text" Color="Color.Dark" Size="Size.Small" Href="/drs-submission" Class="mt-2">Day-End</MudButton>
+            </MudPaper>
+        </MudItem>
+    </MudGrid>
+
+    <MudGrid Class="mt-4">
+        <MudItem xs="12" md="4">
+            <MudPaper Class="pa-4" Elevation="2">
+                <MudText Typo="Typo.h6" GutterBottom="true">Quick Actions</MudText>
+                <MudStack Spacing="2">
+                    <MudButton Variant="Variant.Filled" Color="Color.Primary" FullWidth="true"
+                               StartIcon="@Icons.Material.Filled.Assignment" Href="/outscan">
+                        View Assigned Shipments
+                    </MudButton>
+                    <MudButton Variant="Variant.Filled" Color="Color.Success" FullWidth="true"
+                               StartIcon="@Icons.Material.Filled.CameraAlt" Href="/pod-scanner">
+                        Capture POD
+                    </MudButton>
+                    <MudButton Variant="Variant.Filled" Color="Color.Warning" FullWidth="true"
+                               StartIcon="@Icons.Material.Filled.Today" Href="/drs-submission">
+                        Courier Day-End Submission
+                    </MudButton>
+                    <MudButton Variant="Variant.Filled" Color="Color.Info" FullWidth="true"
+                               StartIcon="@Icons.Material.Filled.Receipt" Href="/drs-cash-receipt">
+                        Submit Cash Receipt
+                    </MudButton>
+                </MudStack>
+            </MudPaper>
+        </MudItem>
+
+        <MudItem xs="12" md="8">
+            <MudPaper Class="pa-4" Elevation="2">
+                <MudText Typo="Typo.h6" GutterBottom="true">Active Delivery Run Sheets</MudText>
+                @if (_activeDrsList.Count == 0)
+                {
+                    <MudAlert Severity="Severity.Info" Dense="true">No active DRS found for today.</MudAlert>
+                }
+                else
+                {
+                    <MudTable Items="@_activeDrsList" Dense="true" Hover="true" Striped="true" Bordered="true">
+                        <HeaderContent>
+                            <MudTh>DRS No</MudTh>
+                            <MudTh>Date</MudTh>
+                            <MudTh>Courier</MudTh>
+                            <MudTh Style="text-align:center">AWBs</MudTh>
+                            <MudTh Style="text-align:center">Delivered</MudTh>
+                            <MudTh Style="text-align:center">Pending</MudTh>
+                            <MudTh Style="text-align:right">COD</MudTh>
+                            <MudTh>Status</MudTh>
+                        </HeaderContent>
+                        <RowTemplate>
+                            <MudTd DataLabel="DRS No">
+                                <MudLink Href="@($"/outscan?drs={context.DRSNo}")">@context.DRSNo</MudLink>
+                            </MudTd>
+                            <MudTd DataLabel="Date">@DateTimeService.ToLocalTime(context.DRSDate).ToString("dd/MM/yyyy")</MudTd>
+                            <MudTd DataLabel="Courier">@(context.DeliveryEmployeeName ?? "-")</MudTd>
+                            <MudTd DataLabel="AWBs" Style="text-align:center">@(context.TotalAWBs ?? 0)</MudTd>
+                            <MudTd DataLabel="Delivered" Style="text-align:center">
+                                <MudChip T="string" Color="Color.Success" Size="Size.Small">@(context.DeliveredCount ?? 0)</MudChip>
+                            </MudTd>
+                            <MudTd DataLabel="Pending" Style="text-align:center">
+                                <MudChip T="string" Color="Color.Warning" Size="Size.Small">@(context.PendingCount ?? 0)</MudChip>
+                            </MudTd>
+                            <MudTd DataLabel="COD" Style="text-align:right">@((context.TotalCOD ?? 0).ToString("N2"))</MudTd>
+                            <MudTd DataLabel="Status">
+                                <MudChip T="string" Color="@GetDrsStatusColor(context.Status)" Size="Size.Small">@context.Status.ToString()</MudChip>
+                            </MudTd>
+                        </RowTemplate>
+                    </MudTable>
+                }
+            </MudPaper>
+        </MudItem>
+    </MudGrid>
+}
+
+@code {
+    private bool _isLoading = true;
+    private string _todayDisplay = "";
+    private int _outForDelivery;
+    private int _deliveredToday;
+    private int _attempted;
+    private decimal _codCollected;
+    private int _pendingPickup;
+    private int _rts;
+    private decimal _totalExpenses;
+    private decimal _netCash;
+    private List<DRS> _activeDrsList = new();
+    private long _userId;
+    private bool _isCourier;
+    private string _courierLabel = "";
+
+    protected override async Task OnInitializedAsync()
+    {
+        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+        var userIdClaim = authState.User.FindFirst("UserId")?.Value;
+        if (long.TryParse(userIdClaim, out var uid))
+            _userId = uid;
+        var role = authState.User.FindFirst(ClaimTypes.Role)?.Value ?? "";
+        _isCourier = role == "Courier";
+        _courierLabel = _isCourier ? " (My)" : " (All Couriers)";
+        await LoadDashboardData();
+    }
+
+    private async Task LoadDashboardData()
+    {
+        _isLoading = true;
+        try
+        {
+            await using var dbContext = await DbFactory.CreateDbContextAsync();
+            var localNow = DateTimeService.ToLocalTime(DateTime.UtcNow);
+            var localToday = localNow.Date;
+            _todayDisplay = localToday.ToString("dddd, dd MMM yyyy");
+            var todayUtcStart = TimeZoneInfo.ConvertTimeToUtc(localToday, DateTimeService.GetTimeZone());
+            var todayUtcEnd = todayUtcStart.AddDays(1);
+
+            var courierDrsIds = new List<long>();
+            if (_isCourier)
+            {
+                courierDrsIds = await dbContext.DRSs
+                    .Where(x => !x.IsDeleted && x.DeliveryEmployeeId == (int)_userId)
+                    .Select(x => x.Id)
+                    .ToListAsync();
+            }
+
+            var inscanQuery = dbContext.InscanMasters.Where(x => !x.IsDeleted);
+            if (_isCourier)
+            {
+                var drsInscanIds = await dbContext.Set<DRSDetail>()
+                    .Where(d => courierDrsIds.Contains(d.DRSId))
+                    .Select(d => d.InscanId)
+                    .Distinct()
+                    .ToListAsync();
+                inscanQuery = inscanQuery.Where(x => drsInscanIds.Contains(x.Id));
+            }
+
+            _outForDelivery = await inscanQuery
+                .Where(x => x.CourierStatusId == CourierStatus.OutForDelivery)
+                .CountAsync();
+
+            _deliveredToday = await inscanQuery
+                .Where(x => x.CourierStatusId == CourierStatus.Delivered && x.DeliveredDate != null && x.DeliveredDate >= todayUtcStart && x.DeliveredDate < todayUtcEnd)
+                .CountAsync();
+
+            _attempted = await inscanQuery
+                .Where(x => x.CourierStatusId == CourierStatus.NotDelivered)
+                .CountAsync();
+
+            _codCollected = await inscanQuery
+                .Where(x => x.IsCOD && x.CODCollected && x.DeliveredDate != null && x.DeliveredDate >= todayUtcStart && x.DeliveredDate < todayUtcEnd)
+                .SumAsync(x => x.CODAmount ?? 0);
+
+            _pendingPickup = await inscanQuery
+                .Where(x => x.CourierStatusId == CourierStatus.Pending || x.CourierStatusId == CourierStatus.AssignedToPickup)
+                .CountAsync();
+
+            _rts = await inscanQuery
+                .Where(x => x.CourierStatusId == CourierStatus.ReturnToOrigin || x.CourierStatusId == CourierStatus.Returned)
+                .CountAsync();
+
+            var drsQuery = dbContext.DRSs.Where(x => !x.IsDeleted && (x.Status == DRSStatus.Open || x.Status == DRSStatus.Submitted));
+            if (_isCourier)
+                drsQuery = drsQuery.Where(x => x.DeliveryEmployeeId == (int)_userId);
+
+            _activeDrsList = await drsQuery
+                .OrderByDescending(x => x.DRSDate)
+                .Take(20)
+                .ToListAsync();
+
+            var expenseQuery = dbContext.CourierExpenses
+                .Where(x => !x.IsDeleted && x.CreatedAt >= todayUtcStart && x.CreatedAt < todayUtcEnd);
+            if (_isCourier)
+                expenseQuery = expenseQuery.Where(x => x.CourierId == (int)_userId);
+
+            _totalExpenses = await expenseQuery.SumAsync(x => x.Amount);
+            _netCash = _codCollected - _totalExpenses;
+        }
+        catch
+        {
+        }
+        _isLoading = false;
+    }
+
+    private static Color GetDrsStatusColor(DRSStatus status) => status switch
+    {
+        DRSStatus.Open => Color.Info,
+        DRSStatus.Submitted => Color.Warning,
+        DRSStatus.PartiallyReconciled => Color.Secondary,
+        DRSStatus.Reconciled => Color.Success,
+        DRSStatus.Closed => Color.Dark,
+        _ => Color.Default
+    };
+}
