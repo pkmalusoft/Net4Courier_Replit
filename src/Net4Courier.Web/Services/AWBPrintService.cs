@@ -407,7 +407,7 @@ public class AWBPrintService
                     {
                         column.Spacing(0);
 
-                        LabelHeader(column, shipment);
+                        LabelHeader(column, shipment, effectiveLogo);
                         LabelBarcode(column, shipment);
                         LabelShipper(column, shipment);
                         LabelReceiver(column, shipment);
@@ -436,7 +436,7 @@ public class AWBPrintService
                 {
                     column.Spacing(0);
 
-                    LabelHeader(column, shipment);
+                    LabelHeader(column, shipment, effectiveLogo);
                     LabelBarcode(column, shipment);
                     LabelShipper(column, shipment);
                     LabelReceiver(column, shipment);
@@ -495,13 +495,19 @@ public class AWBPrintService
         return text.Length <= maxLength ? text : text.Substring(0, maxLength) + "..";
     }
 
-    private void LabelHeader(ColumnDescriptor column, InscanMaster shipment)
+    private void LabelHeader(ColumnDescriptor column, InscanMaster shipment, byte[]? logoData = null)
     {
+        var effectiveLogo = logoData ?? _logoData;
         var isExport = shipment.MovementTypeId == MovementType.InternationalExport || shipment.MovementTypeId == MovementType.InternationalImport;
         var movementLabel = isExport ? "INTERNATIONAL" : "DOMESTIC";
 
         column.Item().BorderBottom(1.5f).PaddingHorizontal(6).PaddingVertical(4).Row(row =>
         {
+            if (effectiveLogo != null)
+            {
+                row.ConstantItem(40).AlignLeft().AlignMiddle().Height(20).Image(effectiveLogo).FitArea();
+                row.ConstantItem(4);
+            }
             row.RelativeItem().Column(c =>
             {
                 c.Item().Text(movementLabel).Bold().FontSize(11);
