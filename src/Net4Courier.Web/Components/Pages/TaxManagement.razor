@@ -1,5 +1,5 @@
 @page "/tax-management"
-@inject ApplicationDbContext DbContext
+@inject IDbContextFactory<ApplicationDbContext> DbFactory
 @inject ISnackbar Snackbar
 @inject IDialogService DialogService
 @using Microsoft.EntityFrameworkCore
@@ -125,12 +125,13 @@
         _loading = true;
         try
         {
-            _taxRates = await DbContext.TaxRates
+            await using var dbContext = await DbFactory.CreateDbContextAsync();
+            _taxRates = await dbContext.TaxRates
                 .Where(t => !t.IsDeleted)
                 .OrderBy(t => t.Code)
                 .ToListAsync();
 
-            _accountHeads = await DbContext.AccountHeads
+            _accountHeads = await dbContext.AccountHeads
                 .Where(a => a.IsActive && !a.IsDeleted && !a.IsGroup)
                 .OrderBy(a => a.Code)
                 .ToListAsync();
@@ -191,14 +192,16 @@
             _editingTaxRate.EffectiveFrom = _effectiveFrom.HasValue ? DateTime.SpecifyKind(_effectiveFrom.Value, DateTimeKind.Utc) : null;
             _editingTaxRate.EffectiveTo = _effectiveTo.HasValue ? DateTime.SpecifyKind(_effectiveTo.Value, DateTimeKind.Utc) : null;
 
+            await using var dbContext = await DbFactory.CreateDbContextAsync();
+
             if (_editingTaxRate.Id == 0)
             {
                 _editingTaxRate.CreatedAt = DateTime.UtcNow;
-                DbContext.TaxRates.Add(_editingTaxRate);
+                dbContext.TaxRates.Add(_editingTaxRate);
             }
             else
             {
-                var existing = await DbContext.TaxRates.FindAsync(_editingTaxRate.Id);
+                var existing = await dbContext.TaxRates.FindAsync(_editingTaxRate.Id);
                 if (existing != null)
                 {
                     existing.Code = _editingTaxRate.Code;
@@ -216,14 +219,14 @@
 
             if (_editingTaxRate.IsDefault)
             {
-                var others = await DbContext.TaxRates.Where(t => t.Id != _editingTaxRate.Id && t.IsDefault).ToListAsync();
+                var others = await dbContext.TaxRates.Where(t => t.Id != _editingTaxRate.Id && t.IsDefault).ToListAsync();
                 foreach (var other in others)
                 {
                     other.IsDefault = false;
                 }
             }
 
-            await DbContext.SaveChangesAsync();
+            await dbContext.SaveChangesAsync();
             Snackbar.Add("Tax rate saved successfully", Severity.Success);
             CloseDialog();
             await LoadData();
@@ -246,9 +249,11 @@
         {
             try
             {
+                await using var dbContext = await DbFactory.CreateDbContextAsync();
+                dbContext.Attach(taxRate);
                 taxRate.IsDeleted = true;
                 taxRate.ModifiedAt = DateTime.UtcNow;
-                await DbContext.SaveChangesAsync();
+                await dbContext.SaveChangesAsync();
                 Snackbar.Add("Tax rate deleted", Severity.Success);
                 await LoadData();
             }

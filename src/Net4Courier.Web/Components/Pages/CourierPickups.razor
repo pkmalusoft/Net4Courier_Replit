@@ -1,5 +1,5 @@
 @page "/courier-pickups"
-@inject ApplicationDbContext DbContext
+@inject IDbContextFactory<ApplicationDbContext> DbFactory
 @inject ISnackbar Snackbar
 @inject IDialogService DialogService
 @using Microsoft.EntityFrameworkCore
@@ -232,7 +232,8 @@
 
     protected override async Task OnInitializedAsync()
     {
-        _couriers = await DbContext.Employees
+        await using var dbContext = await DbFactory.CreateDbContextAsync();
+        _couriers = await dbContext.Employees
             .Include(e => e.Designation)
             .Include(e => e.Department)
             .Where(e => !e.IsDeleted && e.IsActive && 
@@ -266,9 +267,10 @@
 
     private async Task LoadData()
     {
+        await using var dbContext = await DbFactory.CreateDbContextAsync();
         var (from, to) = GetDateRange();
         
-        var query = DbContext.PickupRequests
+        var query = dbContext.PickupRequests
             .Where(p => !p.IsDeleted && p.RequestDate >= from && p.RequestDate < to);
             
         if (_selectedCourierId.HasValue)
@@ -287,6 +289,7 @@
 
     private async Task MarkCollected(PickupRequest pickup)
     {
+        await using var dbContext = await DbFactory.CreateDbContextAsync();
         var parameters = new DialogParameters<CollectPickupDialog>
         {
             { x => x.Pickup, pickup }
@@ -297,6 +300,7 @@
         
         if (result != null && !result.Canceled && result.Data is CollectPickupDialog.CollectionResult collectionResult)
         {
+            dbContext.Attach(pickup);
             pickup.Status = PickupStatus.ShipmentCollected;
             pickup.CollectedAt = DateTime.UtcNow;
             pickup.CollectionRemarks = collectionResult.Remarks;
@@ -304,7 +308,7 @@
             {
                 pickup.ActualPieces = collectionResult.ActualPieces;
             }
-            await DbContext.SaveChangesAsync();
+            await dbContext.SaveChangesAsync();
             Snackbar.Add($"Pickup {pickup.PickupNo} marked as collected!", Severity.Success);
             await LoadData();
         }

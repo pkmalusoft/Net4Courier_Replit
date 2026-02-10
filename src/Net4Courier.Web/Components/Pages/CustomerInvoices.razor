@@ -1,6 +1,6 @@
 @page "/customer/invoices"
 @layout CustomerLayout
-@inject ApplicationDbContext DbContext
+@inject IDbContextFactory<ApplicationDbContext> DbFactory
 @inject NavigationManager NavigationManager
 @inject Microsoft.AspNetCore.Components.Authorization.AuthenticationStateProvider AuthStateProvider
 @using Microsoft.EntityFrameworkCore
@@ -120,6 +120,7 @@
 
     private async Task LoadCustomerId()
     {
+        await using var dbContext = await DbFactory.CreateDbContextAsync();
         var authState = await AuthStateProvider.GetAuthenticationStateAsync();
         var user = authState.User;
         
@@ -128,10 +129,10 @@
             var userIdClaim = user.FindFirst("UserId")?.Value;
             if (long.TryParse(userIdClaim, out var userId))
             {
-                var dbUser = await DbContext.Users.FindAsync(userId);
+                var dbUser = await dbContext.Users.FindAsync(userId);
                 if (dbUser != null)
                 {
-                    var party = await DbContext.Parties
+                    var party = await dbContext.Parties
                         .FirstOrDefaultAsync(p => p.Email == dbUser.Email && !p.IsDeleted);
                     if (party != null)
                     {
@@ -144,9 +145,10 @@
 
     private async Task LoadInvoices()
     {
+        await using var dbContext = await DbFactory.CreateDbContextAsync();
         if (_customerId.HasValue)
         {
-            _invoices = await DbContext.Invoices
+            _invoices = await dbContext.Invoices
                 .Include(i => i.Details)
                 .Where(i => i.CustomerId == _customerId && !i.IsDeleted)
                 .OrderByDescending(i => i.InvoiceDate)

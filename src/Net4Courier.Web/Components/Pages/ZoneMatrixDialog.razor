@@ -2,7 +2,7 @@
 @using Net4Courier.Masters.Entities
 @using Net4Courier.Infrastructure.Data
 @using ZoneMatrixEntity = Net4Courier.Masters.Entities.ZoneMatrix
-@inject ApplicationDbContext DbContext
+@inject IDbContextFactory<ApplicationDbContext> DbFactory
 @inject ISnackbar Snackbar
 
 <MudDialog>
@@ -101,9 +101,10 @@
 
     protected override async Task OnInitializedAsync()
     {
+        await using var dbContext = await DbFactory.CreateDbContextAsync();
         if (!_isNew)
         {
-            _zone = await DbContext.ZoneMatrices
+            _zone = await dbContext.ZoneMatrices
                 .Include(z => z.Details)
                 .FirstOrDefaultAsync(z => z.Id == ZoneId) ?? new ZoneMatrixEntity();
             
@@ -112,14 +113,14 @@
             
             if (countryIds.Any())
             {
-                _selectedCountries = await DbContext.Countries
+                _selectedCountries = await dbContext.Countries
                     .Where(c => countryIds.Contains(c.Id))
                     .ToListAsync();
             }
             
             if (cityIds.Any())
             {
-                _selectedCities = await DbContext.Cities
+                _selectedCities = await dbContext.Cities
                     .Include(c => c.Country)
                     .Where(c => cityIds.Contains(c.Id))
                     .ToListAsync();
@@ -133,7 +134,8 @@
 
     private async Task<IEnumerable<Country>> SearchCountries(string value, CancellationToken cancellationToken)
     {
-        var query = DbContext.Countries.Where(c => !c.IsDeleted && c.IsActive);
+        await using var dbContext = await DbFactory.CreateDbContextAsync();
+        var query = dbContext.Countries.Where(c => !c.IsDeleted && c.IsActive);
         
         var selectedIds = _selectedCountries.Select(c => c.Id).ToList();
         query = query.Where(c => !selectedIds.Contains(c.Id));
@@ -148,7 +150,8 @@
 
     private async Task<IEnumerable<City>> SearchCities(string value, CancellationToken cancellationToken)
     {
-        var query = DbContext.Cities
+        await using var dbContext = await DbFactory.CreateDbContextAsync();
+        var query = dbContext.Cities
             .Include(c => c.Country)
             .Where(c => !c.IsDeleted && c.IsActive);
         
@@ -211,6 +214,7 @@
 
     private async Task Save()
     {
+        await using var dbContext = await DbFactory.CreateDbContextAsync();
         if (string.IsNullOrWhiteSpace(_zone.ZoneCode) || string.IsNullOrWhiteSpace(_zone.ZoneName))
         {
             Snackbar.Add("Zone code and name are required", Severity.Error);
@@ -230,27 +234,27 @@
         }
 
         _saving = true;
-        var strategy = DbContext.Database.CreateExecutionStrategy();
+        var strategy = dbContext.Database.CreateExecutionStrategy();
         
         await strategy.ExecuteAsync(async () =>
         {
-            using var transaction = await DbContext.Database.BeginTransactionAsync();
+            using var transaction = await dbContext.Database.BeginTransactionAsync();
             try
             {
                 if (_isNew)
             {
                 _zone.CreatedAt = DateTime.UtcNow;
-                DbContext.ZoneMatrices.Add(_zone);
-                await DbContext.SaveChangesAsync();
+                dbContext.ZoneMatrices.Add(_zone);
+                await dbContext.SaveChangesAsync();
             }
             else
             {
                 _zone.ModifiedAt = DateTime.UtcNow;
                 
-                var existingDetails = await DbContext.ZoneMatrixDetails
+                var existingDetails = await dbContext.ZoneMatrixDetails
                     .Where(d => d.ZoneMatrixId == _zone.Id)
                     .ToListAsync();
-                DbContext.ZoneMatrixDetails.RemoveRange(existingDetails);
+                dbContext.ZoneMatrixDetails.RemoveRange(existingDetails);
             }
 
             if (_zone.ZoneType == ZoneType.International)
@@ -264,7 +268,7 @@
                         CreatedAt = DateTime.UtcNow,
                         IsActive = true
                     };
-                    DbContext.ZoneMatrixDetails.Add(detail);
+                    dbContext.ZoneMatrixDetails.Add(detail);
                 }
                 _zone.CountryId = _selectedCountries.FirstOrDefault()?.Id;
                 _zone.CityId = null;
@@ -280,13 +284,13 @@
                         CreatedAt = DateTime.UtcNow,
                         IsActive = true
                     };
-                    DbContext.ZoneMatrixDetails.Add(detail);
+                    dbContext.ZoneMatrixDetails.Add(detail);
                 }
                 _zone.CityId = _selectedCities.FirstOrDefault()?.Id;
                 _zone.CountryId = null;
             }
 
-                await DbContext.SaveChangesAsync();
+                await dbContext.SaveChangesAsync();
                 await transaction.CommitAsync();
                 MudDialog.Close(DialogResult.Ok(true));
             }

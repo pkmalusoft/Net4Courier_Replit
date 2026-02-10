@@ -1,6 +1,6 @@
 @page "/customer/pickup-request"
 @layout CustomerLayout
-@inject ApplicationDbContext DbContext
+@inject IDbContextFactory<ApplicationDbContext> DbFactory
 @inject NavigationManager NavigationManager
 @inject ISnackbar Snackbar
 @inject Microsoft.AspNetCore.Components.Authorization.AuthenticationStateProvider AuthStateProvider
@@ -277,7 +277,8 @@
 
     protected override async Task OnInitializedAsync()
     {
-        _pickupSchedules = await DbContext.PickupSchedules
+        await using var dbContext = await DbFactory.CreateDbContextAsync();
+        _pickupSchedules = await dbContext.PickupSchedules
             .Where(s => s.IsActive && !s.IsDeleted)
             .OrderBy(s => s.SortOrder)
             .ToListAsync();
@@ -290,14 +291,14 @@
             var userIdClaim = user.FindFirst("UserId")?.Value;
             if (long.TryParse(userIdClaim, out var userId))
             {
-                var dbUser = await DbContext.Users.FindAsync(userId);
+                var dbUser = await dbContext.Users.FindAsync(userId);
                 if (dbUser != null)
                 {
                     _entity.Email = dbUser.Email;
                     _entity.ContactPerson = dbUser.FullName;
                     _entity.Phone = dbUser.Phone;
                     
-                    _customerParty = await DbContext.Parties
+                    _customerParty = await dbContext.Parties
                         .Include(p => p.Addresses)
                         .FirstOrDefaultAsync(p => p.Email == dbUser.Email && !p.IsDeleted);
                     
@@ -373,11 +374,12 @@
 
     private async Task<IEnumerable<City>> SearchCities(string value, CancellationToken cancellationToken)
     {
+        await using var dbContext = await DbFactory.CreateDbContextAsync();
         if (string.IsNullOrWhiteSpace(value) || value.Length < 2)
             return Enumerable.Empty<City>();
         
         var searchValue = value.ToLower();
-        return await DbContext.Cities
+        return await dbContext.Cities
             .Include(c => c.State)
             .Include(c => c.Country)
             .Where(c => c.IsActive && !c.IsDeleted && c.Name.ToLower().Contains(searchValue))
@@ -408,6 +410,7 @@
 
     private async Task Submit()
     {
+        await using var dbContext = await DbFactory.CreateDbContextAsync();
         if (_enableShipments && _shipments.Count == 0)
         {
             Snackbar.Add("Please add at least one shipment or disable the shipments checkbox", Severity.Warning);
@@ -439,8 +442,8 @@
             }
         }
         
-        DbContext.PickupRequests.Add(_entity);
-        await DbContext.SaveChangesAsync();
+        dbContext.PickupRequests.Add(_entity);
+        await dbContext.SaveChangesAsync();
         
         var message = _enableShipments 
             ? $"Pickup request {_entity.PickupNo} with {_shipments.Count} shipment(s) submitted successfully!"
@@ -451,8 +454,9 @@
 
     private async Task<string> GeneratePickupNo()
     {
+        await using var dbContext = await DbFactory.CreateDbContextAsync();
         var today = DateTime.UtcNow.Date;
-        var count = await DbContext.PickupRequests
+        var count = await dbContext.PickupRequests
             .Where(p => p.RequestDate >= today)
             .CountAsync();
         return $"PU{DateTime.UtcNow:yyyyMMdd}{(count + 1):D4}";

@@ -1,5 +1,5 @@
 @page "/debit-notes"
-@inject ApplicationDbContext DbContext
+@inject IDbContextFactory<ApplicationDbContext> DbFactory
 @inject IDialogService DialogService
 @inject ISnackbar Snackbar
 @inject IJSRuntime JS
@@ -110,7 +110,8 @@
 
     protected override async Task OnInitializedAsync()
     {
-        _suppliers = await DbContext.Parties
+        await using var dbContext = await DbFactory.CreateDbContextAsync();
+        _suppliers = await dbContext.Parties
             .Where(p => _supplierTypes.Contains(p.PartyType) && !p.IsDeleted && p.IsActive)
             .OrderBy(p => p.Name)
             .ToListAsync();
@@ -120,7 +121,8 @@
     private async Task LoadDebitNotes()
     {
         _loading = true;
-        var query = DbContext.DebitNotes.Where(d => !d.IsDeleted).AsQueryable();
+        await using var dbContext = await DbFactory.CreateDbContextAsync();
+        var query = dbContext.DebitNotes.Where(d => !d.IsDeleted).AsQueryable();
 
         if (_fromDate.HasValue)
         {
@@ -186,10 +188,12 @@
         
         if (confirm == true)
         {
+            await using var dbContext = await DbFactory.CreateDbContextAsync();
+            dbContext.Attach(note);
             note.Status = DebitNoteStatus.Approved;
             note.ApprovedDate = DateTime.UtcNow;
             note.ModifiedAt = DateTime.UtcNow;
-            await DbContext.SaveChangesAsync();
+            await dbContext.SaveChangesAsync();
             await LoadDebitNotes();
             Snackbar.Add("Debit note approved", Severity.Success);
         }
@@ -202,8 +206,10 @@
         
         if (confirm == true)
         {
+            await using var dbContext = await DbFactory.CreateDbContextAsync();
+            dbContext.Attach(note);
             note.IsDeleted = true;
-            await DbContext.SaveChangesAsync();
+            await dbContext.SaveChangesAsync();
             await LoadDebitNotes();
             Snackbar.Add("Debit note deleted", Severity.Success);
         }

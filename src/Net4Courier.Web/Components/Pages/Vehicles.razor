@@ -1,5 +1,5 @@
 @page "/vehicles"
-@inject ApplicationDbContext DbContext
+@inject IDbContextFactory<ApplicationDbContext> DbFactory
 @inject IDialogService DialogService
 @inject ISnackbar Snackbar
 @using Microsoft.EntityFrameworkCore
@@ -103,8 +103,9 @@
 
     private async Task LoadVehicles()
     {
+        await using var dbContext = await DbFactory.CreateDbContextAsync();
         _loading = true;
-        _vehicles = await DbContext.Set<Vehicle>()
+        _vehicles = await dbContext.Set<Vehicle>()
             .Where(v => !v.IsDeleted)
             .OrderBy(v => v.VehicleNo)
             .ToListAsync();
@@ -168,6 +169,7 @@
 
     private async Task DeleteVehicle(Vehicle vehicle)
     {
+        await using var dbContext = await DbFactory.CreateDbContextAsync();
         bool? confirm = await DialogService.ShowMessageBox(
             "Confirm Delete",
             $"Are you sure you want to delete vehicle {vehicle.VehicleNo}?",
@@ -176,7 +178,7 @@
         if (confirm == true)
         {
             vehicle.IsDeleted = true;
-            await DbContext.SaveChangesAsync();
+            await dbContext.SaveChangesAsync();
             await LoadVehicles();
             Snackbar.Add("Vehicle deleted", Severity.Success);
         }

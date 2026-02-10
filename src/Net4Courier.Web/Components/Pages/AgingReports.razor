@@ -1,5 +1,5 @@
 @page "/aging-reports"
-@inject ApplicationDbContext DbContext
+@inject IDbContextFactory<ApplicationDbContext> DbFactory
 @inject ISnackbar Snackbar
 @inject IJSRuntime JS
 @inject Net4Courier.Web.Services.AppAuthStateProvider AppAuthState
@@ -141,7 +141,8 @@
 
     protected override async Task OnInitializedAsync()
     {
-        _customers = await DbContext.Parties
+        await using var dbContext = await DbFactory.CreateDbContextAsync();
+        _customers = await dbContext.Parties
             .Where(p => p.PartyType == PartyType.Customer && !p.IsDeleted && p.IsActive)
             .OrderBy(p => p.Name)
             .ToListAsync();
@@ -151,9 +152,10 @@
     private async Task LoadAgingData()
     {
         _loading = true;
+        await using var dbContext = await DbFactory.CreateDbContextAsync();
         var asOfDate = _asOfDate ?? DateTime.Today;
 
-        var customerQuery = DbContext.Parties
+        var customerQuery = dbContext.Parties
             .Where(p => p.PartyType == PartyType.Customer && !p.IsDeleted);
 
         if (_customerId.HasValue)
@@ -161,7 +163,7 @@
 
         var customers = await customerQuery.ToListAsync();
 
-        var invoices = await DbContext.Invoices
+        var invoices = await dbContext.Invoices
             .Where(i => !i.IsDeleted && i.Status != InvoiceStatus.Cancelled)
             .ToListAsync();
 

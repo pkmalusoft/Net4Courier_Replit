@@ -1,4 +1,4 @@
-@inject ApplicationDbContext DbContext
+@inject IDbContextFactory<ApplicationDbContext> DbFactory
 @inject ISnackbar Snackbar
 @using Microsoft.EntityFrameworkCore
 @using MudBlazor
@@ -50,9 +50,10 @@
 
         try
         {
+            await using var dbContext = await DbFactory.CreateDbContextAsync();
             if (Currency.Id == 0)
             {
-                var exists = await DbContext.Currencies.AnyAsync(c => c.Code == Currency.Code && !c.IsDeleted);
+                var exists = await dbContext.Currencies.AnyAsync(c => c.Code == Currency.Code && !c.IsDeleted);
                 if (exists)
                 {
                     Snackbar.Add("A currency with this code already exists", Severity.Warning);
@@ -60,13 +61,13 @@
                 }
 
                 Currency.CreatedAt = DateTime.UtcNow;
-                DbContext.Currencies.Add(Currency);
-                await DbContext.SaveChangesAsync();
+                dbContext.Currencies.Add(Currency);
+                await dbContext.SaveChangesAsync();
                 Snackbar.Add("Currency added successfully", Severity.Success);
             }
             else
             {
-                var existing = await DbContext.Currencies.FindAsync(Currency.Id);
+                var existing = await dbContext.Currencies.FindAsync(Currency.Id);
                 if (existing != null)
                 {
                     existing.Code = Currency.Code;
@@ -75,7 +76,7 @@
                     existing.DecimalPlaces = Currency.DecimalPlaces;
                     existing.IsActive = Currency.IsActive;
                     existing.ModifiedAt = DateTime.UtcNow;
-                    await DbContext.SaveChangesAsync();
+                    await dbContext.SaveChangesAsync();
                     Snackbar.Add("Currency updated successfully", Severity.Success);
                 }
             }

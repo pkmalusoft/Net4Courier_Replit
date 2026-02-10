@@ -5,7 +5,7 @@
 @using Net4Courier.Masters.Entities
 @using Net4Courier.Web.Services
 @using Microsoft.JSInterop
-@inject ApplicationDbContext DbContext
+@inject IDbContextFactory<ApplicationDbContext> DbFactory
 @inject ReportExportService ExportService
 @inject IJSRuntime JS
 @inject ISnackbar Snackbar
@@ -130,11 +130,13 @@
 
     protected override async Task OnInitializedAsync()
     {
-        _branches = await DbContext.Branches.Where(b => b.IsActive).OrderBy(b => b.Name).ToListAsync();
+        await using var dbContext = await DbFactory.CreateDbContextAsync();
+        _branches = await dbContext.Branches.Where(b => b.IsActive).OrderBy(b => b.Name).ToListAsync();
     }
 
     private async Task LoadData()
     {
+        await using var dbContext = await DbFactory.CreateDbContextAsync();
         _isLoading = true;
         _data.Clear();
 
@@ -143,7 +145,7 @@
             var fromUtc = _fromDate.HasValue ? DateTime.SpecifyKind(_fromDate.Value.Date, DateTimeKind.Utc) : DateTime.MinValue;
             var toUtc = _toDate.HasValue ? DateTime.SpecifyKind(_toDate.Value.Date.AddDays(1).AddTicks(-1), DateTimeKind.Utc) : DateTime.MaxValue;
 
-            var query = DbContext.DRSs
+            var query = dbContext.DRSs
                 .Where(d => d.DRSDate >= fromUtc && d.DRSDate <= toUtc);
 
             if (_branchId.HasValue)

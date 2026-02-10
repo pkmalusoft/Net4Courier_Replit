@@ -3,7 +3,7 @@
 @using Net4Courier.Infrastructure.Data
 @using Net4Courier.Finance.Entities
 @using Net4Courier.Masters.Entities
-@inject ApplicationDbContext DbContext
+@inject IDbContextFactory<ApplicationDbContext> DbFactory
 @inject ISnackbar Snackbar
 
 <PageTitle>Profit & Loss - Period Comparison</PageTitle>
@@ -149,7 +149,8 @@
 
     protected override async Task OnInitializedAsync()
     {
-        _branches = await DbContext.Branches.Where(b => b.IsActive).OrderBy(b => b.Name).ToListAsync();
+        await using var dbContext = await DbFactory.CreateDbContextAsync();
+        _branches = await dbContext.Branches.Where(b => b.IsActive).OrderBy(b => b.Name).ToListAsync();
     }
 
     private async Task LoadReport()
@@ -166,23 +167,25 @@
 
         try
         {
+            await using var dbContext = await DbFactory.CreateDbContextAsync();
+
             var p1FromUtc = DateTime.SpecifyKind(_period1From.Value.Date, DateTimeKind.Utc);
             var p1ToUtc = DateTime.SpecifyKind(_period1To.Value.Date.AddDays(1).AddTicks(-1), DateTimeKind.Utc);
             var p2FromUtc = DateTime.SpecifyKind(_period2From.Value.Date, DateTimeKind.Utc);
             var p2ToUtc = DateTime.SpecifyKind(_period2To.Value.Date.AddDays(1).AddTicks(-1), DateTimeKind.Utc);
 
-            var accountHeads = await DbContext.AccountHeads
+            var accountHeads = await dbContext.AccountHeads
                 .Where(a => a.IsActive && 
                     (a.Classification == AccountClassification.Income || a.Classification == AccountClassification.Expenditure))
                 .OrderBy(a => a.Classification)
                 .ThenBy(a => a.Code)
                 .ToListAsync();
 
-            var period1JournalsQuery = DbContext.Journals
+            var period1JournalsQuery = dbContext.Journals
                 .Include(j => j.Entries)
                 .Where(j => j.VoucherDate >= p1FromUtc && j.VoucherDate <= p1ToUtc);
 
-            var period2JournalsQuery = DbContext.Journals
+            var period2JournalsQuery = dbContext.Journals
                 .Include(j => j.Entries)
                 .Where(j => j.VoucherDate >= p2FromUtc && j.VoucherDate <= p2ToUtc);
 

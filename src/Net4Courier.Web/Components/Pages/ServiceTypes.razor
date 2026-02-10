@@ -1,5 +1,5 @@
 @page "/service-types"
-@inject ApplicationDbContext DbContext
+@inject IDbContextFactory<ApplicationDbContext> DbFactory
 @inject ISnackbar Snackbar
 @inject IDialogService DialogService
 @using Microsoft.EntityFrameworkCore
@@ -116,7 +116,8 @@
     private async Task LoadData()
     {
         _loading = true;
-        _serviceTypes = await DbContext.ServiceTypes
+        await using var dbContext = await DbFactory.CreateDbContextAsync();
+        _serviceTypes = await dbContext.ServiceTypes
             .Where(s => !s.IsDeleted)
             .OrderBy(s => s.SortOrder)
             .ThenBy(s => s.Name)
@@ -162,14 +163,15 @@
 
         try
         {
+            await using var dbContext = await DbFactory.CreateDbContextAsync();
             if (_editingServiceType.Id == 0)
             {
                 _editingServiceType.CreatedAt = DateTime.UtcNow;
-                DbContext.ServiceTypes.Add(_editingServiceType);
+                dbContext.ServiceTypes.Add(_editingServiceType);
             }
             else
             {
-                var existing = await DbContext.ServiceTypes.FindAsync(_editingServiceType.Id);
+                var existing = await dbContext.ServiceTypes.FindAsync(_editingServiceType.Id);
                 if (existing != null)
                 {
                     existing.Code = _editingServiceType.Code;
@@ -186,7 +188,7 @@
 
             if (_editingServiceType.IsDefault)
             {
-                var others = await DbContext.ServiceTypes
+                var others = await dbContext.ServiceTypes
                     .Where(s => s.Id != _editingServiceType.Id && s.IsDefault)
                     .ToListAsync();
                 foreach (var other in others)
@@ -195,7 +197,7 @@
                 }
             }
 
-            await DbContext.SaveChangesAsync();
+            await dbContext.SaveChangesAsync();
             Snackbar.Add("Service type saved successfully", Severity.Success);
             _dialogVisible = false;
             await LoadData();
@@ -217,9 +219,14 @@
         {
             try
             {
-                serviceType.IsDeleted = true;
-                serviceType.ModifiedAt = DateTime.UtcNow;
-                await DbContext.SaveChangesAsync();
+                await using var dbContext = await DbFactory.CreateDbContextAsync();
+                var entity = await dbContext.ServiceTypes.FindAsync(serviceType.Id);
+                if (entity != null)
+                {
+                    entity.IsDeleted = true;
+                    entity.ModifiedAt = DateTime.UtcNow;
+                    await dbContext.SaveChangesAsync();
+                }
                 Snackbar.Add("Service type deleted", Severity.Success);
                 await LoadData();
             }

@@ -1,5 +1,5 @@
 @page "/departments"
-@inject ApplicationDbContext DbContext
+@inject IDbContextFactory<ApplicationDbContext> DbFactory
 @inject ISnackbar Snackbar
 @inject IDialogService DialogService
 @using Microsoft.EntityFrameworkCore
@@ -65,7 +65,8 @@
     private async Task LoadData()
     {
         _loading = true;
-        _departments = await DbContext.Departments
+        await using var dbContext = await DbFactory.CreateDbContextAsync();
+        _departments = await dbContext.Departments
             .Include(d => d.ParentDepartment)
             .Include(d => d.Branch)
             .Where(d => !d.IsDeleted)
@@ -113,14 +114,15 @@
 
     private async Task DeleteDepartment(Department department)
     {
-        var hasChildren = await DbContext.Departments.AnyAsync(d => d.ParentDepartmentId == department.Id && !d.IsDeleted);
+        await using var dbContext = await DbFactory.CreateDbContextAsync();
+        var hasChildren = await dbContext.Departments.AnyAsync(d => d.ParentDepartmentId == department.Id && !d.IsDeleted);
         if (hasChildren)
         {
             Snackbar.Add("Cannot delete department with child departments", Severity.Warning);
             return;
         }
 
-        var hasEmployees = await DbContext.Employees.AnyAsync(e => e.DepartmentId == department.Id && !e.IsDeleted);
+        var hasEmployees = await dbContext.Employees.AnyAsync(e => e.DepartmentId == department.Id && !e.IsDeleted);
         if (hasEmployees)
         {
             Snackbar.Add("Cannot delete department with assigned employees", Severity.Warning);
@@ -138,7 +140,8 @@
             {
                 department.IsDeleted = true;
                 department.ModifiedAt = DateTime.SpecifyKind(DateTime.UtcNow, DateTimeKind.Utc);
-                await DbContext.SaveChangesAsync();
+                dbContext.Departments.Update(department);
+                await dbContext.SaveChangesAsync();
                 Snackbar.Add("Department deleted", Severity.Success);
                 await LoadData();
             }

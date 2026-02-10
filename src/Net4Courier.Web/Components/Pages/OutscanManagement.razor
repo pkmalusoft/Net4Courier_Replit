@@ -1,5 +1,5 @@
 @page "/outscan"
-@inject ApplicationDbContext DbContext
+@inject IDbContextFactory<ApplicationDbContext> DbFactory
 @inject ISnackbar Snackbar
 @inject IDialogService DialogService
 @inject NavigationManager Navigation
@@ -164,7 +164,8 @@
 
     protected override async Task OnInitializedAsync()
     {
-        _couriers = await DbContext.Employees
+        await using var dbContext = await DbFactory.CreateDbContextAsync();
+        _couriers = await dbContext.Employees
             .Include(e => e.Designation)
             .Include(e => e.Department)
             .Where(e => !e.IsDeleted && e.IsActive && 
@@ -172,7 +173,7 @@
             .OrderBy(e => e.Name)
             .ToListAsync();
         
-        _vehicles = await DbContext.Vehicles
+        _vehicles = await dbContext.Vehicles
             .Where(v => !v.IsDeleted && v.IsActive)
             .OrderBy(v => v.VehicleNo)
             .ToListAsync();
@@ -202,10 +203,11 @@
 
     private async Task Search()
     {
+        await using var dbContext = await DbFactory.CreateDbContextAsync();
         _loading = true;
         var (from, to) = GetDateRange();
         
-        var query = DbContext.Set<DRS>()
+        var query = dbContext.Set<DRS>()
             .Where(d => d.DRSDate >= from && d.DRSDate < to);
         
         if (_selectedStatus.HasValue)
@@ -245,6 +247,7 @@
 
     private async Task CloseDRS(DRS drs)
     {
+        await using var dbContext = await DbFactory.CreateDbContextAsync();
         var confirmed = await DialogService.ShowMessageBox(
             "Close DRS",
             $"Are you sure you want to close DRS {drs.DRSNo}? This will finalize the delivery run.",
@@ -252,9 +255,10 @@
             
         if (confirmed == true)
         {
+            dbContext.Attach(drs);
             drs.Status = DRSStatus.Closed;
             drs.ClosedAt = DateTime.UtcNow;
-            await DbContext.SaveChangesAsync();
+            await dbContext.SaveChangesAsync();
             Snackbar.Add($"DRS {drs.DRSNo} has been closed", Severity.Success);
             await Search();
         }

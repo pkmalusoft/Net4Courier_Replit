@@ -4,7 +4,7 @@
 @using Net4Courier.Masters.Entities
 @using Net4Courier.Kernel.Enums
 @using Microsoft.EntityFrameworkCore
-@inject ApplicationDbContext Context
+@inject IDbContextFactory<ApplicationDbContext> DbFactory
 @inject NavigationManager Navigation
 @inject ISnackbar Snackbar
 @rendermode InteractiveServer
@@ -138,7 +138,8 @@
 
         try
         {
-            var query = Context.Invoices.Where(i => i.IsActive && !i.IsDeleted);
+            await using var dbContext = await DbFactory.CreateDbContextAsync();
+            var query = dbContext.Invoices.Where(i => i.IsActive && !i.IsDeleted);
 
             if (_filterCustomer != null)
             {
@@ -177,12 +178,13 @@
 
     private async Task<IEnumerable<Party>> SearchCustomers(string value, CancellationToken cancellationToken)
     {
+        await using var dbContext = await DbFactory.CreateDbContextAsync();
         if (string.IsNullOrEmpty(value))
-            return await Context.Parties
+            return await dbContext.Parties
                 .Where(p => p.PartyType == PartyType.Customer && p.IsActive && !p.IsDeleted)
                 .Take(20).ToListAsync();
 
-        return await Context.Parties
+        return await dbContext.Parties
             .Where(p => p.PartyType == PartyType.Customer && p.IsActive && !p.IsDeleted &&
                    (p.Name.Contains(value) || (p.Code != null && p.Code.Contains(value))))
             .Take(20).ToListAsync();

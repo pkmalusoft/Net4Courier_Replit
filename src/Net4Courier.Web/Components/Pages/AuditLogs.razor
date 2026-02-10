@@ -6,7 +6,7 @@
 @using Net4Courier.Kernel.Entities
 @using Net4Courier.Masters.Entities
 @using System.Text.Json
-@inject ApplicationDbContext DbContext
+@inject IDbContextFactory<ApplicationDbContext> DbFactory
 @inject ISnackbar Snackbar
 @inject NavigationManager NavigationManager
 @inject AuthenticationStateProvider AuthStateProvider
@@ -243,12 +243,13 @@
 
     private async Task LoadFilters()
     {
-        _users = await DbContext.Users
+        await using var dbContext = await DbFactory.CreateDbContextAsync();
+        _users = await dbContext.Users
             .Where(u => u.IsActive && !u.IsDeleted)
             .OrderBy(u => u.FullName)
             .ToListAsync();
             
-        _entityNames = await DbContext.AuditLogs
+        _entityNames = await dbContext.AuditLogs
             .Select(a => a.EntityName)
             .Distinct()
             .OrderBy(e => e)
@@ -262,7 +263,8 @@
 
         try
         {
-            var query = DbContext.AuditLogs.AsQueryable();
+            await using var dbContext = await DbFactory.CreateDbContextAsync();
+            var query = dbContext.AuditLogs.AsQueryable();
 
             if (_fromDate.HasValue)
             {

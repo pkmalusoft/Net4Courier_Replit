@@ -1,4 +1,4 @@
-@inject ApplicationDbContext DbContext
+@inject IDbContextFactory<ApplicationDbContext> DbFactory
 @using Microsoft.EntityFrameworkCore
 @using Net4Courier.Infrastructure.Data
 @using Net4Courier.Finance.Entities
@@ -98,14 +98,16 @@
             _dueDate = Bill.DueDate;
             if (Bill.SupplierId.HasValue)
             {
-                _selectedSupplier = await DbContext.Parties.FindAsync(Bill.SupplierId.Value);
+                await using var dbContext = await DbFactory.CreateDbContextAsync();
+                _selectedSupplier = await dbContext.Parties.FindAsync(Bill.SupplierId.Value);
             }
         }
     }
 
     private async Task<IEnumerable<Party>> SearchSuppliers(string value, CancellationToken cancellationToken)
     {
-        var query = DbContext.Parties.Where(p => p.PartyType == PartyType.Supplier && !p.IsDeleted && p.IsActive);
+        await using var dbContext = await DbFactory.CreateDbContextAsync();
+        var query = dbContext.Parties.Where(p => p.PartyType == PartyType.Supplier && !p.IsDeleted && p.IsActive);
         
         if (!string.IsNullOrWhiteSpace(value))
             query = query.Where(p => p.Name.ToLower().Contains(value.ToLower()));
@@ -128,24 +130,26 @@
         Bill.TotalAmount = Bill.SubTotal + (Bill.TaxAmount ?? 0);
         Bill.BalanceAmount = Bill.TotalAmount - Bill.PaidAmount;
 
+        await using var dbContext = await DbFactory.CreateDbContextAsync();
+
         if (IsNew)
         {
             if (string.IsNullOrEmpty(Bill.BillNo))
             {
-                var maxNo = await DbContext.VendorBills.MaxAsync(b => (int?)b.Id) ?? 0;
+                var maxNo = await dbContext.VendorBills.MaxAsync(b => (int?)b.Id) ?? 0;
                 Bill.BillNo = $"VB-{(maxNo + 1):D6}";
             }
             Bill.Status = VendorBillStatus.Draft;
             Bill.CreatedAt = DateTime.UtcNow;
-            DbContext.VendorBills.Add(Bill);
+            dbContext.VendorBills.Add(Bill);
         }
         else
         {
             Bill.ModifiedAt = DateTime.UtcNow;
-            DbContext.VendorBills.Update(Bill);
+            dbContext.VendorBills.Update(Bill);
         }
 
-        await DbContext.SaveChangesAsync();
+        await dbContext.SaveChangesAsync();
         MudDialog.Close(DialogResult.Ok(Bill));
     }
 

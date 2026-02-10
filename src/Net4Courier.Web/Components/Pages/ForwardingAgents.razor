@@ -1,5 +1,5 @@
 @page "/forwarding-agents"
-@inject ApplicationDbContext DbContext
+@inject IDbContextFactory<ApplicationDbContext> DbFactory
 @inject ISnackbar Snackbar
 @inject IDialogService DialogService
 @using Microsoft.EntityFrameworkCore
@@ -102,8 +102,9 @@
 
     private async Task LoadAgents()
     {
+        await using var dbContext = await DbFactory.CreateDbContextAsync();
         _loading = true;
-        _agents = await DbContext.Parties
+        _agents = await dbContext.Parties
             .Where(p => p.PartyType == PartyType.ForwardingAgent && !p.IsDeleted)
             .OrderBy(p => p.Name)
             .ToListAsync();
@@ -148,6 +149,7 @@
 
     private async Task SaveAgent()
     {
+        await using var dbContext = await DbFactory.CreateDbContextAsync();
         if (string.IsNullOrWhiteSpace(_editingAgent.Name))
         {
             Snackbar.Add("Name is required", Severity.Error);
@@ -156,12 +158,12 @@
 
         if (_editingAgent.Id == 0)
         {
-            DbContext.Parties.Add(_editingAgent);
+            dbContext.Parties.Add(_editingAgent);
             Snackbar.Add("Forwarding agent added successfully", Severity.Success);
         }
         else
         {
-            var existing = await DbContext.Parties.FindAsync(_editingAgent.Id);
+            var existing = await dbContext.Parties.FindAsync(_editingAgent.Id);
             if (existing != null)
             {
                 existing.Code = _editingAgent.Code;
@@ -176,13 +178,14 @@
             Snackbar.Add("Forwarding agent updated successfully", Severity.Success);
         }
 
-        await DbContext.SaveChangesAsync();
+        await dbContext.SaveChangesAsync();
         _dialogVisible = false;
         await LoadAgents();
     }
 
     private async Task DeleteAgent(Party agent)
     {
+        await using var dbContext = await DbFactory.CreateDbContextAsync();
         bool? confirm = await DialogService.ShowMessageBox(
             "Delete Forwarding Agent",
             $"Are you sure you want to delete '{agent.Name}'?",
@@ -190,9 +193,10 @@
 
         if (confirm == true)
         {
+            dbContext.Attach(agent);
             agent.IsDeleted = true;
             agent.ModifiedAt = DateTime.UtcNow;
-            await DbContext.SaveChangesAsync();
+            await dbContext.SaveChangesAsync();
             Snackbar.Add("Forwarding agent deleted", Severity.Success);
             await LoadAgents();
         }

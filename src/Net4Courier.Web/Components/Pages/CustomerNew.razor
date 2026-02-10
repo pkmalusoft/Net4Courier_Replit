@@ -1,6 +1,6 @@
 @page "/customer-new"
 @attribute [Authorize]
-@inject ApplicationDbContext DbContext
+@inject IDbContextFactory<ApplicationDbContext> DbFactory
 @inject ISnackbar Snackbar
 @inject IDialogService DialogService
 @using Microsoft.EntityFrameworkCore
@@ -120,7 +120,8 @@
         _loading = true;
         try
         {
-            _customers = await DbContext.Parties
+            await using var dbContext = await DbFactory.CreateDbContextAsync();
+            _customers = await dbContext.Parties
                 .Where(p => !p.IsDeleted && (
                     p.PartyType == PartyType.Customer || 
                     p.PartyType == PartyType.DeliveryAgent || 
@@ -211,10 +212,14 @@
 
         if (confirm == true)
         {
-            customer.IsDeleted = true;
-            customer.ModifiedAt = DateTime.UtcNow;
-            DbContext.Parties.Update(customer);
-            await DbContext.SaveChangesAsync();
+            await using var dbContext = await DbFactory.CreateDbContextAsync();
+            var entity = await dbContext.Parties.FindAsync(customer.Id);
+            if (entity != null)
+            {
+                entity.IsDeleted = true;
+                entity.ModifiedAt = DateTime.UtcNow;
+                await dbContext.SaveChangesAsync();
+            }
             await LoadCustomers();
             Snackbar.Add("Customer deleted successfully", Severity.Success);
         }

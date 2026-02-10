@@ -1,5 +1,5 @@
 @page "/ar-reports"
-@inject ApplicationDbContext DbContext
+@inject IDbContextFactory<ApplicationDbContext> DbFactory
 @inject ISnackbar Snackbar
 @inject IJSRuntime JS
 @using Microsoft.EntityFrameworkCore
@@ -231,7 +231,8 @@
 
     protected override async Task OnInitializedAsync()
     {
-        _customers = await DbContext.Parties
+        await using var dbContext = await DbFactory.CreateDbContextAsync();
+        _customers = await dbContext.Parties
             .Where(p => p.PartyType == PartyType.Customer && !p.IsDeleted && p.IsActive)
             .OrderBy(p => p.Name)
             .ToListAsync();
@@ -249,29 +250,31 @@
         _selectedCustomer = _customers.FirstOrDefault(c => c.Id == _statementCustomerId);
         _statementLines.Clear();
 
-        var invoices = await DbContext.Invoices
+        await using var dbContext = await DbFactory.CreateDbContextAsync();
+
+        var invoices = await dbContext.Invoices
             .Where(i => i.CustomerId == _statementCustomerId && !i.IsDeleted &&
                        i.InvoiceDate >= _statementFromDate && i.InvoiceDate <= _statementToDate)
             .OrderBy(i => i.InvoiceDate)
             .ToListAsync();
 
-        var receipts = await DbContext.Receipts
+        var receipts = await dbContext.Receipts
             .Where(r => r.CustomerId == _statementCustomerId && !r.IsDeleted &&
                        r.ReceiptDate >= _statementFromDate && r.ReceiptDate <= _statementToDate)
             .OrderBy(r => r.ReceiptDate)
             .ToListAsync();
 
-        var creditNotes = await DbContext.CreditNotes
+        var creditNotes = await dbContext.CreditNotes
             .Where(c => c.CustomerId == _statementCustomerId && !c.IsDeleted &&
                        c.CreditNoteDate >= _statementFromDate && c.CreditNoteDate <= _statementToDate)
             .OrderBy(c => c.CreditNoteDate)
             .ToListAsync();
 
-        var priorInvoices = await DbContext.Invoices
+        var priorInvoices = await dbContext.Invoices
             .Where(i => i.CustomerId == _statementCustomerId && !i.IsDeleted && i.InvoiceDate < _statementFromDate)
             .SumAsync(i => i.NetTotal ?? 0);
 
-        var priorReceipts = await DbContext.Receipts
+        var priorReceipts = await dbContext.Receipts
             .Where(r => r.CustomerId == _statementCustomerId && !r.IsDeleted && r.ReceiptDate < _statementFromDate)
             .SumAsync(r => r.Amount ?? 0);
 
@@ -329,7 +332,8 @@
     private async Task LoadCollectionSummary()
     {
         _collectionLoading = true;
-        _collectionData = await DbContext.Receipts
+        await using var dbContext = await DbFactory.CreateDbContextAsync();
+        _collectionData = await dbContext.Receipts
             .Where(r => !r.IsDeleted && r.ReceiptDate >= _collectionFromDate && r.ReceiptDate <= _collectionToDate)
             .OrderByDescending(r => r.ReceiptDate)
             .ToListAsync();
@@ -339,7 +343,8 @@
     private async Task LoadOutstandingInvoices()
     {
         _outstandingLoading = true;
-        var query = DbContext.Invoices
+        await using var dbContext = await DbFactory.CreateDbContextAsync();
+        var query = dbContext.Invoices
             .Where(i => !i.IsDeleted && i.Status != InvoiceStatus.Cancelled && (i.BalanceAmount ?? i.NetTotal ?? 0) > 0);
 
         if (_outstandingCustomerId.HasValue)

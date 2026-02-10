@@ -5,7 +5,7 @@
 @using Net4Courier.Finance.Entities
 @using Net4Courier.Masters.Entities
 @using Net4Courier.Web.Services
-@inject ApplicationDbContext DbContext
+@inject IDbContextFactory<ApplicationDbContext> DbFactory
 @inject ISnackbar Snackbar
 @inject AuthenticationStateProvider AuthStateProvider
 
@@ -102,7 +102,8 @@
     protected override async Task OnInitializedAsync()
     {
         LoadBranchSettings();
-        _branches = await DbContext.Branches.Where(b => b.IsActive).OrderBy(b => b.Name).ToListAsync();
+        await using var dbContext = await DbFactory.CreateDbContextAsync();
+        _branches = await dbContext.Branches.Where(b => b.IsActive).OrderBy(b => b.Name).ToListAsync();
     }
 
     private void LoadBranchSettings()
@@ -125,14 +126,16 @@
 
         try
         {
+            await using var dbContext = await DbFactory.CreateDbContextAsync();
+
             var asOnDateUtc = DateTime.SpecifyKind(_asOnDate.Value.Date.AddDays(1).AddTicks(-1), DateTimeKind.Utc);
             
-            var accountHeads = await DbContext.AccountHeads
+            var accountHeads = await dbContext.AccountHeads
                 .Where(a => a.IsActive)
                 .OrderBy(a => a.Code)
                 .ToListAsync();
 
-            var journalsQuery = DbContext.Journals
+            var journalsQuery = dbContext.Journals
                 .Include(j => j.Entries)
                 .Where(j => j.VoucherDate <= asOnDateUtc);
 

@@ -1,4 +1,4 @@
-@inject ApplicationDbContext DbContext
+@inject IDbContextFactory<ApplicationDbContext> DbFactory
 @inject ISnackbar Snackbar
 @inject IWebHostEnvironment WebHostEnvironment
 @inject IJSRuntime JSRuntime
@@ -230,7 +230,8 @@
 
     private async Task LoadDocuments()
     {
-        _documents = await DbContext.SLADocuments
+        await using var dbContext = await DbFactory.CreateDbContextAsync();
+        _documents = await dbContext.SLADocuments
             .Where(d => d.SLAAgreementId == Agreement.Id && d.IsActive)
             .OrderByDescending(d => d.UploadedAt)
             .ToListAsync();
@@ -238,12 +239,13 @@
 
     private async Task LoadLookups()
     {
-        _customers = await DbContext.Parties
+        await using var dbContext = await DbFactory.CreateDbContextAsync();
+        _customers = await dbContext.Parties
             .Where(p => p.PartyType == PartyType.Customer && p.IsActive && !p.IsDeleted)
             .OrderBy(p => p.Name)
             .ToListAsync();
             
-        _companies = await DbContext.Companies
+        _companies = await dbContext.Companies
             .Where(c => c.IsActive && !c.IsDeleted)
             .OrderBy(c => c.Name)
             .ToListAsync();
@@ -251,7 +253,8 @@
 
     private async Task<string> GenerateAgreementNo()
     {
-        var count = await DbContext.SLAAgreements.CountAsync() + 1;
+        await using var dbContext = await DbFactory.CreateDbContextAsync();
+        var count = await dbContext.SLAAgreements.CountAsync() + 1;
         return $"SLA-{DateTime.UtcNow:yyyyMM}-{count:D4}";
     }
 
@@ -277,18 +280,19 @@
             ? DateTime.SpecifyKind(_expiryDate.Value, DateTimeKind.Utc) 
             : null;
         
+        await using var dbContext = await DbFactory.CreateDbContextAsync();
         if (IsNew)
         {
             Agreement.CreatedAt = DateTime.UtcNow;
-            DbContext.SLAAgreements.Add(Agreement);
+            dbContext.SLAAgreements.Add(Agreement);
         }
         else
         {
             Agreement.ModifiedAt = DateTime.UtcNow;
-            DbContext.SLAAgreements.Update(Agreement);
+            dbContext.SLAAgreements.Update(Agreement);
         }
 
-        await DbContext.SaveChangesAsync();
+        await dbContext.SaveChangesAsync();
         Snackbar.Add(IsNew ? "Agreement created successfully" : "Agreement updated successfully", Severity.Success);
         MudDialog.Close(DialogResult.Ok(Agreement));
     }
@@ -340,8 +344,9 @@
                 IsActive = true
             };
 
-            DbContext.SLADocuments.Add(document);
-            await DbContext.SaveChangesAsync();
+            await using var dbContext = await DbFactory.CreateDbContextAsync();
+            dbContext.SLADocuments.Add(document);
+            await dbContext.SaveChangesAsync();
 
             await LoadDocuments();
             Snackbar.Add("Document uploaded successfully", Severity.Success);
@@ -383,10 +388,14 @@
                 File.Delete(fullPath);
             }
 
-            document.IsActive = false;
-            document.ModifiedAt = DateTime.UtcNow;
-            DbContext.SLADocuments.Update(document);
-            await DbContext.SaveChangesAsync();
+            await using var dbContext = await DbFactory.CreateDbContextAsync();
+            var entity = await dbContext.SLADocuments.FindAsync(document.Id);
+            if (entity != null)
+            {
+                entity.IsActive = false;
+                entity.ModifiedAt = DateTime.UtcNow;
+                await dbContext.SaveChangesAsync();
+            }
 
             await LoadDocuments();
             Snackbar.Add("Document deleted", Severity.Success);

@@ -3,7 +3,7 @@
 @using Net4Courier.Infrastructure.Data
 @using Net4Courier.Masters.Entities
 @using Net4Courier.Kernel.Enums
-@inject ApplicationDbContext DbContext
+@inject IDbContextFactory<ApplicationDbContext> DbFactory
 @inject IDialogService DialogService
 @inject ISnackbar Snackbar
 @inject NavigationManager Navigation
@@ -99,10 +99,11 @@
 
     private async Task LoadCategories()
     {
+        await using var dbContext = await DbFactory.CreateDbContextAsync();
         _loading = true;
         try
         {
-            var query = DbContext.ZoneCategories
+            var query = dbContext.ZoneCategories
                 .Include(z => z.ZoneMatrices)
                 .Where(z => !z.IsDeleted)
                 .AsQueryable();
@@ -134,7 +135,7 @@
 
             if (agentIds.Any())
             {
-                _agentNames = await DbContext.Parties
+                _agentNames = await dbContext.Parties
                     .Where(p => agentIds.Contains(p.Id))
                     .ToDictionaryAsync(p => p.Id, p => p.Name);
             }
@@ -184,6 +185,7 @@
 
     private async Task Edit(ZoneCategory category)
     {
+        await using var dbContext = await DbFactory.CreateDbContextAsync();
         var model = new ZoneCategory
         {
             Id = category.Id,
@@ -201,11 +203,11 @@
         Party? selectedDeliveryAgent = null;
         if (category.ForwardingAgentId.HasValue)
         {
-            selectedForwardingAgent = await DbContext.Parties.FirstOrDefaultAsync(p => p.Id == category.ForwardingAgentId);
+            selectedForwardingAgent = await dbContext.Parties.FirstOrDefaultAsync(p => p.Id == category.ForwardingAgentId);
         }
         if (category.DeliveryAgentId.HasValue)
         {
-            selectedDeliveryAgent = await DbContext.Parties.FirstOrDefaultAsync(p => p.Id == category.DeliveryAgentId);
+            selectedDeliveryAgent = await dbContext.Parties.FirstOrDefaultAsync(p => p.Id == category.DeliveryAgentId);
         }
 
         var parameters = new DialogParameters<ZoneCategoryDialog>
@@ -228,6 +230,7 @@
 
     private async Task SaveCategory(ZoneCategory model, bool isEdit)
     {
+        await using var dbContext = await DbFactory.CreateDbContextAsync();
         if (string.IsNullOrWhiteSpace(model.Code) || string.IsNullOrWhiteSpace(model.Name))
         {
             Snackbar.Add("Code and Name are required", Severity.Error);
@@ -238,7 +241,7 @@
         {
             if (isEdit)
             {
-                var existing = await DbContext.ZoneCategories.FindAsync(model.Id);
+                var existing = await dbContext.ZoneCategories.FindAsync(model.Id);
                 if (existing != null)
                 {
                     existing.Code = model.Code;
@@ -255,10 +258,10 @@
             else
             {
                 model.CreatedAt = DateTime.UtcNow;
-                DbContext.ZoneCategories.Add(model);
+                dbContext.ZoneCategories.Add(model);
             }
 
-            await DbContext.SaveChangesAsync();
+            await dbContext.SaveChangesAsync();
             Snackbar.Add(isEdit ? "Category updated" : "Category created", Severity.Success);
             await LoadCategories();
         }
@@ -270,6 +273,7 @@
 
     private async Task Delete(ZoneCategory category)
     {
+        await using var dbContext = await DbFactory.CreateDbContextAsync();
         var result = await DialogService.ShowMessageBox(
             "Delete Zone Category",
             $"Are you sure you want to delete '{category.Name}'?",
@@ -277,12 +281,12 @@
 
         if (result == true)
         {
-            var existing = await DbContext.ZoneCategories.FindAsync(category.Id);
+            var existing = await dbContext.ZoneCategories.FindAsync(category.Id);
             if (existing != null)
             {
                 existing.IsDeleted = true;
                 existing.ModifiedAt = DateTime.UtcNow;
-                await DbContext.SaveChangesAsync();
+                await dbContext.SaveChangesAsync();
                 Snackbar.Add("Category deleted", Severity.Success);
                 await LoadCategories();
             }

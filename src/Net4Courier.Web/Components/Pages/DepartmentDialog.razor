@@ -1,4 +1,4 @@
-@inject ApplicationDbContext DbContext
+@inject IDbContextFactory<ApplicationDbContext> DbFactory
 @inject ISnackbar Snackbar
 @using Microsoft.EntityFrameworkCore
 @using MudBlazor
@@ -59,12 +59,13 @@
 
     protected override async Task OnInitializedAsync()
     {
-        _parentDepartments = await DbContext.Departments
+        await using var dbContext = await DbFactory.CreateDbContextAsync();
+        _parentDepartments = await dbContext.Departments
             .Where(d => !d.IsDeleted)
             .OrderBy(d => d.Name)
             .ToListAsync();
 
-        _branches = await DbContext.Branches
+        _branches = await dbContext.Branches
             .Where(b => !b.IsDeleted && b.IsActive)
             .OrderBy(b => b.Name)
             .ToListAsync();
@@ -86,8 +87,9 @@
             return;
         }
 
-        // Check for duplicate code, excluding current record
-        var duplicateExists = await DbContext.Departments
+        await using var dbContext = await DbFactory.CreateDbContextAsync();
+
+        var duplicateExists = await dbContext.Departments
             .AnyAsync(d => d.Code == Department.Code && d.Id != Department.Id && !d.IsDeleted);
         if (duplicateExists)
         {
@@ -100,11 +102,11 @@
             if (Department.Id == 0)
             {
                 Department.CreatedAt = DateTime.UtcNow;
-                DbContext.Departments.Add(Department);
+                dbContext.Departments.Add(Department);
             }
             else
             {
-                var existing = await DbContext.Departments.FindAsync(Department.Id);
+                var existing = await dbContext.Departments.FindAsync(Department.Id);
                 if (existing != null)
                 {
                     existing.Code = Department.Code;
@@ -118,7 +120,7 @@
                 }
             }
 
-            await DbContext.SaveChangesAsync();
+            await dbContext.SaveChangesAsync();
             Snackbar.Add("Department saved successfully", Severity.Success);
             MudDialog?.Close(DialogResult.Ok(true));
         }

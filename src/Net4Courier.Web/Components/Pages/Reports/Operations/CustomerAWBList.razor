@@ -6,7 +6,7 @@
 @using Net4Courier.Kernel.Enums
 @using Net4Courier.Web.Services
 @using Microsoft.JSInterop
-@inject ApplicationDbContext DbContext
+@inject IDbContextFactory<ApplicationDbContext> DbFactory
 @inject ReportExportService ExportService
 @inject IJSRuntime JS
 @inject ISnackbar Snackbar
@@ -153,7 +153,8 @@
 
     protected override async Task OnInitializedAsync()
     {
-        _customers = await DbContext.Parties
+        await using var dbContext = await DbFactory.CreateDbContextAsync();
+        _customers = await dbContext.Parties
             .Where(p => p.IsActive && p.AccountNature == PartyAccountNature.Receivable)
             .OrderBy(p => p.Name)
             .ToListAsync();
@@ -161,6 +162,7 @@
 
     private async Task LoadData()
     {
+        await using var dbContext = await DbFactory.CreateDbContextAsync();
         if (!_customerId.HasValue)
         {
             Snackbar.Add("Please select a customer", Severity.Warning);
@@ -178,7 +180,7 @@
             var fromUtc = _fromDate.HasValue ? DateTime.SpecifyKind(_fromDate.Value.Date, DateTimeKind.Utc) : DateTime.MinValue;
             var toUtc = _toDate.HasValue ? DateTime.SpecifyKind(_toDate.Value.Date.AddDays(1).AddTicks(-1), DateTimeKind.Utc) : DateTime.MaxValue;
 
-            var query = DbContext.InscanMasters
+            var query = dbContext.InscanMasters
                 .Where(a => a.CustomerId == _customerId)
                 .Where(a => a.TransactionDate >= fromUtc && a.TransactionDate <= toUtc);
 

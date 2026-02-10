@@ -1,6 +1,6 @@
 @page "/customer/dashboard"
 @layout CustomerLayout
-@inject ApplicationDbContext DbContext
+@inject IDbContextFactory<ApplicationDbContext> DbFactory
 @inject NavigationManager NavigationManager
 @inject Microsoft.AspNetCore.Components.Authorization.AuthenticationStateProvider AuthStateProvider
 @using Microsoft.EntityFrameworkCore
@@ -255,12 +255,14 @@
 
     private async Task LoadCompanyInfo()
     {
-        _company = await DbContext.Companies
+        await using var dbContext = await DbFactory.CreateDbContextAsync();
+        _company = await dbContext.Companies
             .FirstOrDefaultAsync(c => c.IsActive && !c.IsDeleted);
     }
 
     private async Task LoadCustomerInfo()
     {
+        await using var dbContext = await DbFactory.CreateDbContextAsync();
         var authState = await AuthStateProvider.GetAuthenticationStateAsync();
         var user = authState.User;
         
@@ -269,12 +271,12 @@
             var userIdClaim = user.FindFirst("UserId")?.Value;
             if (long.TryParse(userIdClaim, out var userId))
             {
-                var dbUser = await DbContext.Users.FindAsync(userId);
+                var dbUser = await dbContext.Users.FindAsync(userId);
                 if (dbUser != null)
                 {
                     _customerName = dbUser.FullName ?? dbUser.Username;
                     
-                    var party = await DbContext.Parties
+                    var party = await dbContext.Parties
                         .FirstOrDefaultAsync(p => p.Email == dbUser.Email && !p.IsDeleted);
                     if (party != null)
                     {
@@ -289,29 +291,30 @@
     {
         if (_customerId.HasValue)
         {
-            _stats.TotalPickups = await DbContext.PickupRequests
+            await using var dbContext = await DbFactory.CreateDbContextAsync();
+            _stats.TotalPickups = await dbContext.PickupRequests
                 .CountAsync(p => p.CustomerId == _customerId && !p.IsDeleted);
             
-            _stats.TotalShipments = await DbContext.InscanMasters
+            _stats.TotalShipments = await dbContext.InscanMasters
                 .CountAsync(a => a.CustomerId == _customerId && !a.IsDeleted);
             
-            _stats.Pending = await DbContext.InscanMasters
+            _stats.Pending = await dbContext.InscanMasters
                 .CountAsync(a => a.CustomerId == _customerId && !a.IsDeleted && a.CourierStatusId == CourierStatus.Pending);
             
-            _stats.InTransit = await DbContext.InscanMasters
+            _stats.InTransit = await dbContext.InscanMasters
                 .CountAsync(a => a.CustomerId == _customerId && !a.IsDeleted && 
                     (a.CourierStatusId == CourierStatus.InTransit || a.CourierStatusId == CourierStatus.PickedUp));
             
-            _stats.OutForDelivery = await DbContext.InscanMasters
+            _stats.OutForDelivery = await dbContext.InscanMasters
                 .CountAsync(a => a.CustomerId == _customerId && !a.IsDeleted && a.CourierStatusId == CourierStatus.OutForDelivery);
             
-            _stats.Delivered = await DbContext.InscanMasters
+            _stats.Delivered = await dbContext.InscanMasters
                 .CountAsync(a => a.CustomerId == _customerId && !a.IsDeleted && a.CourierStatusId == CourierStatus.Delivered);
             
-            _stats.Returned = await DbContext.InscanMasters
+            _stats.Returned = await dbContext.InscanMasters
                 .CountAsync(a => a.CustomerId == _customerId && !a.IsDeleted && a.IsReturnedToConsignor);
             
-            _stats.OpenTickets = await DbContext.Tickets
+            _stats.OpenTickets = await dbContext.Tickets
                 .CountAsync(t => t.PartyId == _customerId && !t.IsDeleted && 
                     (t.Status == TicketStatus.Open || t.Status == TicketStatus.InProgress || t.Status == TicketStatus.PendingCustomer));
         }
@@ -321,14 +324,15 @@
     {
         if (_customerId.HasValue)
         {
-            _recentPickups = await DbContext.PickupRequests
+            await using var dbContext = await DbFactory.CreateDbContextAsync();
+            _recentPickups = await dbContext.PickupRequests
                 .Include(p => p.Shipments)
                 .Where(p => p.CustomerId == _customerId && !p.IsDeleted)
                 .OrderByDescending(p => p.RequestDate)
                 .Take(5)
                 .ToListAsync();
             
-            _recentShipments = await DbContext.InscanMasters
+            _recentShipments = await dbContext.InscanMasters
                 .Where(a => a.CustomerId == _customerId && !a.IsDeleted)
                 .OrderByDescending(a => a.TransactionDate)
                 .Take(5)

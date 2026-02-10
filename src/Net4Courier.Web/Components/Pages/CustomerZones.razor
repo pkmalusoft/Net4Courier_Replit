@@ -5,7 +5,7 @@
 @using Net4Courier.Infrastructure.Data
 @using Net4Courier.Masters.Entities
 @attribute [Authorize(Roles = "Administrator,PlatformAdmin,Manager")]
-@inject ApplicationDbContext DbContext
+@inject IDbContextFactory<ApplicationDbContext> DbFactory
 @inject IDialogService DialogService
 @inject ISnackbar Snackbar
 @inject AuthenticationStateProvider AuthStateProvider
@@ -265,7 +265,8 @@
     {
         _loading = true;
         
-        _zones = await DbContext.CustomerZones
+        await using var dbContext = await DbFactory.CreateDbContextAsync();
+        _zones = await dbContext.CustomerZones
             .Include(z => z.Cities).ThenInclude(zc => zc.City)
             .Include(z => z.Couriers).ThenInclude(zc => zc.User)
             .Include(z => z.Customers)
@@ -273,7 +274,7 @@
             .OrderBy(z => z.Name)
             .ToListAsync();
             
-        _allCities = await DbContext.Cities
+        _allCities = await dbContext.Cities
             .Include(c => c.State)
             .Include(c => c.Country)
             .Where(c => c.IsActive && !c.IsDeleted)
@@ -315,9 +316,10 @@
         _saving = true;
         try
         {
+            await using var dbContext = await DbFactory.CreateDbContextAsync();
             if (_isEditing)
             {
-                var existing = await DbContext.CustomerZones
+                var existing = await dbContext.CustomerZones
                     .Include(z => z.Cities)
                     .FirstOrDefaultAsync(z => z.Id == _editZone.Id);
                     
@@ -330,7 +332,7 @@
                     existing.ModifiedAt = DateTime.UtcNow;
                     existing.ModifiedBy = _userId;
                     
-                    DbContext.CustomerZoneCities.RemoveRange(existing.Cities);
+                    dbContext.CustomerZoneCities.RemoveRange(existing.Cities);
                     foreach (var cityId in _selectedCityIds)
                     {
                         existing.Cities.Add(new CustomerZoneCity { CustomerZoneId = existing.Id, CityId = cityId });
@@ -342,16 +344,16 @@
                 _editZone.BranchId = _branchId;
                 _editZone.CreatedAt = DateTime.UtcNow;
                 _editZone.CreatedBy = _userId;
-                DbContext.CustomerZones.Add(_editZone);
-                await DbContext.SaveChangesAsync();
+                dbContext.CustomerZones.Add(_editZone);
+                await dbContext.SaveChangesAsync();
                 
                 foreach (var cityId in _selectedCityIds)
                 {
-                    DbContext.CustomerZoneCities.Add(new CustomerZoneCity { CustomerZoneId = _editZone.Id, CityId = cityId });
+                    dbContext.CustomerZoneCities.Add(new CustomerZoneCity { CustomerZoneId = _editZone.Id, CityId = cityId });
                 }
             }
             
-            await DbContext.SaveChangesAsync();
+            await dbContext.SaveChangesAsync();
             Snackbar.Add(_isEditing ? "Zone updated successfully" : "Zone created successfully", Severity.Success);
             _showZoneDialog = false;
             await LoadData();
@@ -375,9 +377,14 @@
             
         if (confirm == true)
         {
-            zone.IsDeleted = true;
-            zone.ModifiedAt = DateTime.UtcNow;
-            await DbContext.SaveChangesAsync();
+            await using var dbContext = await DbFactory.CreateDbContextAsync();
+            var entity = await dbContext.CustomerZones.FindAsync(zone.Id);
+            if (entity != null)
+            {
+                entity.IsDeleted = true;
+                entity.ModifiedAt = DateTime.UtcNow;
+                await dbContext.SaveChangesAsync();
+            }
             Snackbar.Add("Zone deleted successfully", Severity.Success);
             await LoadData();
         }
@@ -386,7 +393,8 @@
     private async Task OpenCustomersDialog(CustomerZone zone)
     {
         _selectedZone = zone;
-        _zoneCustomers = await DbContext.Parties
+        await using var dbContext = await DbFactory.CreateDbContextAsync();
+        _zoneCustomers = await dbContext.Parties
             .Where(p => p.CustomerZoneId == zone.Id && !p.IsDeleted && p.PartyType == PartyType.Customer)
             .OrderBy(p => p.Name)
             .ToListAsync();
@@ -398,8 +406,9 @@
     {
         if (string.IsNullOrWhiteSpace(value))
             return new List<Party>();
-            
-        return await DbContext.Parties
+        
+        await using var dbContext = await DbFactory.CreateDbContextAsync();
+        return await dbContext.Parties
             .Where(p => !p.IsDeleted && p.IsActive && p.PartyType == PartyType.Customer && 
                        (p.CustomerZoneId == null || p.CustomerZoneId == _selectedZone!.Id) &&
                        (p.Name.Contains(value) || (p.Code != null && p.Code.Contains(value))))
@@ -412,11 +421,17 @@
     {
         if (_selectedCustomer == null || _selectedZone == null) return;
         
-        _selectedCustomer.CustomerZoneId = _selectedZone.Id;
-        await DbContext.SaveChangesAsync();
+        await using var dbContext = await DbFactory.CreateDbContextAsync();
+        var entity = await dbContext.Parties.FindAsync(_selectedCustomer.Id);
+        if (entity != null)
+        {
+            entity.CustomerZoneId = _selectedZone.Id;
+            await dbContext.SaveChangesAsync();
+        }
         Snackbar.Add($"{_selectedCustomer.Name} added to zone", Severity.Success);
         
-        _zoneCustomers = await DbContext.Parties
+        await using var dbContext2 = await DbFactory.CreateDbContextAsync();
+        _zoneCustomers = await dbContext2.Parties
             .Where(p => p.CustomerZoneId == _selectedZone.Id && !p.IsDeleted)
             .OrderBy(p => p.Name)
             .ToListAsync();
@@ -426,8 +441,13 @@
 
     private async Task RemoveCustomerFromZone(Party customer)
     {
-        customer.CustomerZoneId = null;
-        await DbContext.SaveChangesAsync();
+        await using var dbContext = await DbFactory.CreateDbContextAsync();
+        var entity = await dbContext.Parties.FindAsync(customer.Id);
+        if (entity != null)
+        {
+            entity.CustomerZoneId = null;
+            await dbContext.SaveChangesAsync();
+        }
         Snackbar.Add($"{customer.Name} removed from zone", Severity.Success);
         _zoneCustomers.Remove(customer);
         await LoadData();
@@ -436,7 +456,8 @@
     private async Task OpenCouriersDialog(CustomerZone zone)
     {
         _selectedZone = zone;
-        _zoneCouriers = await DbContext.CustomerZoneCouriers
+        await using var dbContext = await DbFactory.CreateDbContextAsync();
+        _zoneCouriers = await dbContext.CustomerZoneCouriers
             .Include(zc => zc.User)
             .Where(zc => zc.CustomerZoneId == zone.Id && !zc.IsDeleted)
             .ToListAsync();
@@ -450,8 +471,9 @@
             return new List<User>();
         
         var existingCourierIds = _zoneCouriers.Select(zc => zc.UserId).ToList();
-            
-        return await DbContext.Users
+        
+        await using var dbContext = await DbFactory.CreateDbContextAsync();
+        return await dbContext.Users
             .Include(u => u.Role)
             .Where(u => !u.IsDeleted && u.IsActive && 
                        u.Role != null && u.Role.Name == "Courier" &&
@@ -466,17 +488,19 @@
     {
         if (_selectedCourier == null || _selectedZone == null) return;
         
+        await using var dbContext = await DbFactory.CreateDbContextAsync();
         var assignment = new CustomerZoneCourier
         {
             CustomerZoneId = _selectedZone.Id,
             UserId = _selectedCourier.Id,
             CreatedAt = DateTime.UtcNow
         };
-        DbContext.CustomerZoneCouriers.Add(assignment);
-        await DbContext.SaveChangesAsync();
+        dbContext.CustomerZoneCouriers.Add(assignment);
+        await dbContext.SaveChangesAsync();
         Snackbar.Add($"{_selectedCourier.FullName} added to zone", Severity.Success);
         
-        _zoneCouriers = await DbContext.CustomerZoneCouriers
+        await using var dbContext2 = await DbFactory.CreateDbContextAsync();
+        _zoneCouriers = await dbContext2.CustomerZoneCouriers
             .Include(zc => zc.User)
             .Where(zc => zc.CustomerZoneId == _selectedZone.Id && !zc.IsDeleted)
             .ToListAsync();
@@ -486,9 +510,14 @@
 
     private async Task RemoveCourierFromZone(CustomerZoneCourier courier)
     {
-        courier.IsDeleted = true;
-        courier.ModifiedAt = DateTime.UtcNow;
-        await DbContext.SaveChangesAsync();
+        await using var dbContext = await DbFactory.CreateDbContextAsync();
+        var entity = await dbContext.CustomerZoneCouriers.FindAsync(courier.Id);
+        if (entity != null)
+        {
+            entity.IsDeleted = true;
+            entity.ModifiedAt = DateTime.UtcNow;
+            await dbContext.SaveChangesAsync();
+        }
         Snackbar.Add($"{courier.User?.FullName} removed from zone", Severity.Success);
         _zoneCouriers.Remove(courier);
         await LoadData();

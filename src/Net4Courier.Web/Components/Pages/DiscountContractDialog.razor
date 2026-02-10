@@ -1,4 +1,4 @@
-@inject ApplicationDbContext DbContext
+@inject IDbContextFactory<ApplicationDbContext> DbFactory
 @using Microsoft.EntityFrameworkCore
 @using Net4Courier.Infrastructure.Data
 @using Net4Courier.Operations.Entities
@@ -106,23 +106,25 @@
             _effectiveFrom = Contract.EffectiveFrom;
             _effectiveTo = Contract.EffectiveTo;
             
+            await using var dbContext = await DbFactory.CreateDbContextAsync();
             if (Contract.PartyId.HasValue)
             {
-                _selectedParty = await DbContext.Parties.FindAsync(Contract.PartyId.Value);
+                _selectedParty = await dbContext.Parties.FindAsync(Contract.PartyId.Value);
             }
             if (Contract.ServiceTypeId.HasValue)
             {
-                _selectedServiceType = await DbContext.ServiceTypes.FindAsync(Contract.ServiceTypeId.Value);
+                _selectedServiceType = await dbContext.ServiceTypes.FindAsync(Contract.ServiceTypeId.Value);
             }
         }
     }
 
     private async Task<IEnumerable<Party>> SearchParties(string value, CancellationToken cancellationToken)
     {
+        await using var dbContext = await DbFactory.CreateDbContextAsync();
         if (string.IsNullOrWhiteSpace(value))
-            return await DbContext.Parties.Where(p => p.IsActive && !p.IsDeleted).Take(20).ToListAsync(cancellationToken);
+            return await dbContext.Parties.Where(p => p.IsActive && !p.IsDeleted).Take(20).ToListAsync(cancellationToken);
         
-        return await DbContext.Parties
+        return await dbContext.Parties
             .Where(p => p.IsActive && !p.IsDeleted && p.Name.ToLower().Contains(value.ToLower()))
             .Take(20)
             .ToListAsync(cancellationToken);
@@ -130,10 +132,11 @@
 
     private async Task<IEnumerable<ServiceType>> SearchServiceTypes(string value, CancellationToken cancellationToken)
     {
+        await using var dbContext = await DbFactory.CreateDbContextAsync();
         if (string.IsNullOrWhiteSpace(value))
-            return await DbContext.ServiceTypes.Where(s => s.IsActive && !s.IsDeleted).Take(20).ToListAsync(cancellationToken);
+            return await dbContext.ServiceTypes.Where(s => s.IsActive && !s.IsDeleted).Take(20).ToListAsync(cancellationToken);
         
-        return await DbContext.ServiceTypes
+        return await dbContext.ServiceTypes
             .Where(s => s.IsActive && !s.IsDeleted && s.Name.ToLower().Contains(value.ToLower()))
             .Take(20)
             .ToListAsync(cancellationToken);
@@ -154,18 +157,20 @@
         Contract.ServiceTypeId = _selectedServiceType?.Id;
         Contract.ServiceTypeName = _selectedServiceType?.Name;
 
+        await using var dbContext = await DbFactory.CreateDbContextAsync();
+
         if (IsNew)
         {
             Contract.CreatedAt = DateTime.UtcNow;
-            DbContext.DiscountContracts.Add(Contract);
+            dbContext.DiscountContracts.Add(Contract);
         }
         else
         {
             Contract.ModifiedAt = DateTime.UtcNow;
-            DbContext.DiscountContracts.Update(Contract);
+            dbContext.DiscountContracts.Update(Contract);
         }
 
-        await DbContext.SaveChangesAsync();
+        await dbContext.SaveChangesAsync();
         MudDialog.Close(DialogResult.Ok(Contract));
     }
 

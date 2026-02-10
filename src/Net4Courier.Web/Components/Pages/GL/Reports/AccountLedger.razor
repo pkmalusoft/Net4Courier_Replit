@@ -1,5 +1,5 @@
 @page "/reports/account-ledger"
-@inject ApplicationDbContext DbContext
+@inject IDbContextFactory<ApplicationDbContext> DbFactory
 @inject ISnackbar Snackbar
 @using Microsoft.EntityFrameworkCore
 @using Net4Courier.Infrastructure.Data
@@ -136,10 +136,11 @@
 
     private async Task<IEnumerable<AccountHead>> SearchAccounts(string value, CancellationToken cancellationToken)
     {
+        await using var dbContext = await DbFactory.CreateDbContextAsync();
         if (string.IsNullOrWhiteSpace(value))
-            return await DbContext.AccountHeads.Where(a => a.IsActive && !a.IsGroup).OrderBy(a => a.Code).Take(50).ToListAsync();
+            return await dbContext.AccountHeads.Where(a => a.IsActive && !a.IsGroup).OrderBy(a => a.Code).Take(50).ToListAsync();
 
-        return await DbContext.AccountHeads
+        return await dbContext.AccountHeads
             .Where(a => a.IsActive && !a.IsGroup && 
                    (a.Code.Contains(value) || a.Name.ToLower().Contains(value.ToLower())))
             .OrderBy(a => a.Code)
@@ -157,10 +158,11 @@
 
         try
         {
+            await using var dbContext = await DbFactory.CreateDbContextAsync();
             var fromUtc = _fromDate.HasValue ? DateTime.SpecifyKind(_fromDate.Value.Date, DateTimeKind.Utc) : DateTime.MinValue;
             var toUtc = _toDate.HasValue ? DateTime.SpecifyKind(_toDate.Value.Date.AddDays(1).AddTicks(-1), DateTimeKind.Utc) : DateTime.MaxValue;
 
-            var priorEntries = await DbContext.JournalEntries
+            var priorEntries = await dbContext.JournalEntries
                 .Include(e => e.Journal)
                 .Where(e => e.AccountHeadId == _selectedAccount.Id && 
                        !e.IsDeleted && e.Journal.IsPosted && 
@@ -170,7 +172,7 @@
             _openingBalance = (_selectedAccount.OpeningBalance ?? 0) + 
                              priorEntries.Sum(e => (e.Debit ?? 0) - (e.Credit ?? 0));
 
-            var entries = await DbContext.JournalEntries
+            var entries = await dbContext.JournalEntries
                 .Include(e => e.Journal)
                 .Where(e => e.AccountHeadId == _selectedAccount.Id && 
                        !e.IsDeleted && e.Journal.IsPosted &&

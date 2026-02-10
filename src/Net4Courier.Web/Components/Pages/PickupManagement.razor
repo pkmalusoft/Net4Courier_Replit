@@ -1,7 +1,6 @@
 @page "/pickup-management"
 @page "/pickup-dashboard"
-@inject ApplicationDbContext DbContext
-@inject IDbContextFactory<ApplicationDbContext> DbContextFactory
+@inject IDbContextFactory<ApplicationDbContext> DbFactory
 @inject NavigationManager NavigationManager
 @inject IDialogService DialogService
 @inject ISnackbar Snackbar
@@ -418,7 +417,8 @@ else
 
     protected override async Task OnInitializedAsync()
     {
-        _courierEmployees = await DbContext.Employees
+        await using var dbContext = await DbFactory.CreateDbContextAsync();
+        _courierEmployees = await dbContext.Employees
             .Include(e => e.Designation)
             .Include(e => e.Department)
             .Where(e => !e.IsDeleted && e.IsActive && 
@@ -430,7 +430,7 @@ else
         // If no courier employees found by designation/department, load all active employees as fallback
         if (!_courierEmployees.Any())
         {
-            _courierEmployees = await DbContext.Employees
+            _courierEmployees = await dbContext.Employees
                 .Where(e => !e.IsDeleted && e.IsActive)
                 .OrderBy(e => e.Name)
                 .ToListAsync();
@@ -469,7 +469,7 @@ else
 
     private async Task LoadCommitmentDataFromFactory()
     {
-        await using var context = await DbContextFactory.CreateDbContextAsync();
+        await using var context = await DbFactory.CreateDbContextAsync();
         
         var pickupIds = _pickups.Select(p => p.Id).ToList();
         
@@ -505,8 +505,9 @@ else
 
     private async Task Search()
     {
+        await using var dbContext = await DbFactory.CreateDbContextAsync();
         _loading = true;
-        var query = DbContext.PickupRequests.Where(p => !p.IsDeleted).AsQueryable();
+        var query = dbContext.PickupRequests.Where(p => !p.IsDeleted).AsQueryable();
 
         if (!string.IsNullOrWhiteSpace(_searchString))
         {
@@ -539,9 +540,10 @@ else
 
     private async Task LoadCommitmentData()
     {
+        await using var dbContext = await DbFactory.CreateDbContextAsync();
         var pickupIds = _pickups.Select(p => p.Id).ToList();
         
-        _activeCommitments = await DbContext.PickupCommitments
+        _activeCommitments = await dbContext.PickupCommitments
             .Where(c => pickupIds.Contains(c.PickupRequestId) && 
                    (c.Status == PickupCommitmentStatus.Active || c.Status == PickupCommitmentStatus.Confirmed))
             .ToListAsync();
@@ -566,8 +568,9 @@ else
 
     private async Task LoadCourierPerformance()
     {
+        await using var dbContext = await DbFactory.CreateDbContextAsync();
         var today = DateTime.UtcNow.Date;
-        var todayCommitments = await DbContext.PickupCommitments
+        var todayCommitments = await dbContext.PickupCommitments
             .Where(c => c.CommittedAt >= today)
             .ToListAsync();
 
@@ -704,8 +707,9 @@ else
 
     private async Task LoadStatusCounts()
     {
+        await using var dbContext = await DbFactory.CreateDbContextAsync();
         var today = DateTime.UtcNow.Date;
-        var counts = await DbContext.PickupRequests
+        var counts = await dbContext.PickupRequests
             .Where(p => !p.IsDeleted && p.RequestDate >= today.AddDays(-7))
             .GroupBy(p => p.Status)
             .Select(g => new { Status = g.Key, Count = g.Count() })
@@ -780,6 +784,7 @@ else
 
     private async Task OpenAssignDialog(PickupRequest pickup)
     {
+        await using var dbContext = await DbFactory.CreateDbContextAsync();
         var parameters = new DialogParameters<AssignCourierDialog>
         {
             { x => x.CourierEmployees, _courierEmployees },
@@ -794,12 +799,13 @@ else
             var courier = _courierEmployees.FirstOrDefault(c => c.Id == courierId);
             if (courier != null)
             {
+                dbContext.Attach(pickup);
                 pickup.CourierId = courierId;
                 pickup.CourierName = courier.Name;
                 pickup.CourierPhone = courier.Mobile ?? courier.Phone;
                 pickup.Status = PickupStatus.AssignedForCollection;
                 pickup.AssignedAt = DateTime.UtcNow;
-                await DbContext.SaveChangesAsync();
+                await dbContext.SaveChangesAsync();
                 Snackbar.Add($"Pickup assigned to {courier.Name}", Severity.Success);
                 await Search();
                 await LoadStatusCounts();
@@ -809,10 +815,12 @@ else
 
     private async Task MarkCollected(PickupRequest pickup)
     {
+        await using var dbContext = await DbFactory.CreateDbContextAsync();
         var confirm = await DialogService.ShowMessageBox("Confirm Collection", 
             $"Mark pickup {pickup.PickupNo} as collected?", "Yes", "No");
         if (confirm == true)
         {
+            dbContext.Attach(pickup);
             pickup.Status = PickupStatus.ShipmentCollected;
             pickup.CollectedAt = DateTime.UtcNow;
 
@@ -822,7 +830,7 @@ else
                 await CommitmentService.CompleteCommitmentAsync(commitment.Id);
             }
 
-            await DbContext.SaveChangesAsync();
+            await dbContext.SaveChangesAsync();
             Snackbar.Add("Pickup marked as collected", Severity.Success);
             await Search();
             await LoadStatusCounts();
@@ -832,6 +840,7 @@ else
 
     private async Task MarkAttempted(PickupRequest pickup)
     {
+        await using var dbContext = await DbFactory.CreateDbContextAsync();
         var parameters = new DialogParameters
         {
             ["PickupNo"] = pickup.PickupNo
@@ -847,13 +856,14 @@ else
             var userIdClaim = authState.User.FindFirst("UserId")?.Value;
             var userName = authState.User.FindFirst("FullName")?.Value ?? authState.User.Identity?.Name ?? "System";
             
+            dbContext.Attach(pickup);
             pickup.Status = PickupStatus.Attempted;
             pickup.AttemptedAt = DateTime.UtcNow;
             pickup.AttemptedByUserId = long.TryParse(userIdClaim, out var uid) ? uid : null;
             pickup.AttemptedByUserName = userName;
             pickup.AttemptRemarks = remarks;
             
-            await DbContext.SaveChangesAsync();
+            await dbContext.SaveChangesAsync();
             Snackbar.Add("Pickup marked as attempted - can be reassigned", Severity.Warning);
             await Search();
             await LoadStatusCounts();
@@ -867,12 +877,14 @@ else
 
     private async Task CancelPickup(PickupRequest pickup)
     {
+        await using var dbContext = await DbFactory.CreateDbContextAsync();
         var confirm = await DialogService.ShowMessageBox("Cancel Pickup", 
             $"Are you sure you want to cancel pickup {pickup.PickupNo}?", "Yes, Cancel", "No");
         if (confirm == true)
         {
+            dbContext.Attach(pickup);
             pickup.Status = PickupStatus.Cancelled;
-            await DbContext.SaveChangesAsync();
+            await dbContext.SaveChangesAsync();
             Snackbar.Add("Pickup cancelled", Severity.Warning);
             await Search();
             await LoadStatusCounts();
@@ -1016,6 +1028,7 @@ else
 
     private async Task OnExcelFileSelected(IBrowserFile file)
     {
+        await using var dbContext = await DbFactory.CreateDbContextAsync();
         if (file == null) return;
 
         _isUploading = true;
@@ -1036,7 +1049,7 @@ else
                 return;
             }
 
-            var customers = await DbContext.Parties
+            var customers = await dbContext.Parties
                 .Where(p => p.PartyType == PartyType.Customer && !p.IsDeleted && p.IsActive && p.Code != null)
                 .ToDictionaryAsync(p => p.Code!.ToUpper(), p => p);
 
@@ -1048,7 +1061,7 @@ else
             bool hasValidationErrors = false;
 
             var today = DateTime.UtcNow.Date;
-            var baseCount = await DbContext.PickupRequests.Where(p => p.RequestDate >= today).CountAsync();
+            var baseCount = await dbContext.PickupRequests.Where(p => p.RequestDate >= today).CountAsync();
 
             var lastRow = pickupSheet.LastRowUsed()?.RowNumber() ?? 1;
             for (int row = 2; row <= lastRow; row++)
@@ -1231,22 +1244,22 @@ else
                 .ToList();
             shipmentLinesToPickupRow.RemoveAll(s => !pickupRows.ContainsKey(s.PickupRowNo));
 
-            using var transaction = await DbContext.Database.BeginTransactionAsync();
+            using var transaction = await dbContext.Database.BeginTransactionAsync();
             try
             {
                 foreach (var kvp in pickupRows)
                 {
-                    DbContext.PickupRequests.Add(kvp.Value);
+                    dbContext.PickupRequests.Add(kvp.Value);
                 }
-                await DbContext.SaveChangesAsync();
+                await dbContext.SaveChangesAsync();
 
                 foreach (var (pickupRowNo, shipment) in shipmentLinesToPickupRow)
                 {
                     shipment.PickupRequestId = pickupRows[pickupRowNo].Id;
-                    DbContext.PickupRequestShipments.Add(shipment);
+                    dbContext.PickupRequestShipments.Add(shipment);
                 }
 
-                await DbContext.SaveChangesAsync();
+                await dbContext.SaveChangesAsync();
                 await transaction.CommitAsync();
             }
             catch

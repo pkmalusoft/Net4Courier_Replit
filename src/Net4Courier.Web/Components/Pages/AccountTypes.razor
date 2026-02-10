@@ -2,7 +2,7 @@
 @using Microsoft.EntityFrameworkCore
 @using Net4Courier.Infrastructure.Data
 @using Net4Courier.Masters.Entities
-@inject ApplicationDbContext DbContext
+@inject IDbContextFactory<ApplicationDbContext> DbFactory
 @inject IDialogService DialogService
 @inject ISnackbar Snackbar
 
@@ -62,7 +62,8 @@
     private async Task LoadAccountTypes()
     {
         _loading = true;
-        _accountTypes = await DbContext.AccountTypes
+        await using var dbContext = await DbFactory.CreateDbContextAsync();
+        _accountTypes = await dbContext.AccountTypes
             .Include(at => at.Parties)
             .Where(at => !at.IsDeleted)
             .OrderBy(at => at.SortOrder)
@@ -125,8 +126,10 @@
 
         if (confirm == true)
         {
+            await using var dbContext = await DbFactory.CreateDbContextAsync();
+            dbContext.Attach(accountType);
             accountType.IsDeleted = true;
-            await DbContext.SaveChangesAsync();
+            await dbContext.SaveChangesAsync();
             await LoadAccountTypes();
             Snackbar.Add("Account type deleted successfully", Severity.Success);
         }

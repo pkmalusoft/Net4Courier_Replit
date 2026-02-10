@@ -1,5 +1,5 @@
 @page "/transfer-orders"
-@inject ApplicationDbContext DbContext
+@inject IDbContextFactory<ApplicationDbContext> DbFactory
 @inject ISnackbar Snackbar
 @inject IDialogService DialogService
 @inject NavigationManager Navigation
@@ -143,16 +143,18 @@
 
     protected override async Task OnInitializedAsync()
     {
-        _branches = await DbContext.Branches.Where(b => b.IsActive).ToListAsync();
+        await using var dbContext = await DbFactory.CreateDbContextAsync();
+        _branches = await dbContext.Branches.Where(b => b.IsActive).ToListAsync();
         await LoadTransfers();
     }
 
     private async Task LoadTransfers()
     {
+        await using var dbContext = await DbFactory.CreateDbContextAsync();
         _isLoading = true;
         try
         {
-            var service = new TransferOrderService(DbContext);
+            var service = new TransferOrderService(dbContext);
             _transfers = await service.GetTransferOrdersAsync(
                 sourceBranchId: _filterSourceBranchId,
                 destinationBranchId: _filterDestBranchId,
@@ -209,6 +211,7 @@
 
     private async Task ConfirmTransfer(TransferOrder transfer)
     {
+        await using var dbContext = await DbFactory.CreateDbContextAsync();
         var confirm = await DialogService.ShowMessageBox(
             "Confirm Transfer",
             $"Confirm transfer {transfer.TransferNo}?",
@@ -218,7 +221,7 @@
         {
             try
             {
-                var service = new TransferOrderService(DbContext);
+                var service = new TransferOrderService(dbContext);
                 var success = await service.ConfirmTransferOrderAsync(transfer.Id, 1, "Admin");
                 if (success)
                 {
@@ -235,6 +238,7 @@
 
     private async Task CancelTransfer(TransferOrder transfer)
     {
+        await using var dbContext = await DbFactory.CreateDbContextAsync();
         var confirm = await DialogService.ShowMessageBox(
             "Cancel Transfer",
             $"Are you sure you want to cancel {transfer.TransferNo}?",
@@ -244,7 +248,7 @@
         {
             try
             {
-                var service = new TransferOrderService(DbContext);
+                var service = new TransferOrderService(dbContext);
                 var success = await service.CancelTransferAsync(transfer.Id, "Cancelled by user", 1, "Admin");
                 if (success)
                 {
@@ -273,6 +277,7 @@
 
     private async Task DispatchTransfer(TransferOrder transfer)
     {
+        await using var dbContext = await DbFactory.CreateDbContextAsync();
         var confirm = await DialogService.ShowMessageBox(
             "Dispatch Transfer",
             $"Dispatch transfer {transfer.TransferNo}?",
@@ -282,7 +287,7 @@
         {
             try
             {
-                var service = new TransferOrderService(DbContext);
+                var service = new TransferOrderService(dbContext);
                 var success = await service.DispatchTransferAsync(transfer.Id, null, null, 1, "Admin");
                 if (success)
                 {
@@ -299,9 +304,10 @@
 
     private async Task MarkArrived(TransferOrder transfer)
     {
+        await using var dbContext = await DbFactory.CreateDbContextAsync();
         try
         {
-            var service = new TransferOrderService(DbContext);
+            var service = new TransferOrderService(dbContext);
             var success = await service.MarkArrivedAsync(transfer.Id, 1, "Admin");
             if (success)
             {

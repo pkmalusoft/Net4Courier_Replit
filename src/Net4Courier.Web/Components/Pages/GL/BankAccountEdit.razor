@@ -1,6 +1,6 @@
 @page "/bank-accounts/new"
 @page "/bank-accounts/edit/{Id:long}"
-@inject ApplicationDbContext DbContext
+@inject IDbContextFactory<ApplicationDbContext> DbFactory
 @inject NavigationManager Navigation
 @inject ISnackbar Snackbar
 @using Microsoft.EntityFrameworkCore
@@ -173,7 +173,8 @@
 
         if (Id.HasValue)
         {
-            var existing = await DbContext.BankAccounts
+            await using var dbContext = await DbFactory.CreateDbContextAsync();
+            var existing = await dbContext.BankAccounts
                 .FirstOrDefaultAsync(b => b.Id == Id.Value);
 
             if (existing != null)
@@ -197,12 +198,13 @@
 
     private async Task LoadReferenceData()
     {
-        _accountHeads = await DbContext.AccountHeads
+        await using var dbContext = await DbFactory.CreateDbContextAsync();
+        _accountHeads = await dbContext.AccountHeads
             .Where(a => a.AccountNature == AccountNature.BankAccount && a.IsActive && !a.IsGroup)
             .OrderBy(a => a.Code)
             .ToListAsync();
 
-        _currencies = await DbContext.Currencies
+        _currencies = await dbContext.Currencies
             .OrderBy(c => c.Code)
             .ToListAsync();
     }
@@ -231,11 +233,12 @@
 
         try
         {
+            await using var dbContext = await DbFactory.CreateDbContextAsync();
             if (Id.HasValue)
             {
                 _bankAccount.ModifiedAt = DateTime.UtcNow;
-                DbContext.BankAccounts.Update(_bankAccount);
-                await DbContext.SaveChangesAsync();
+                dbContext.BankAccounts.Update(_bankAccount);
+                await dbContext.SaveChangesAsync();
                 Snackbar.Add("Bank account updated successfully", Severity.Success);
             }
             else
@@ -243,8 +246,8 @@
                 _bankAccount.CreatedAt = DateTime.UtcNow;
                 _bankAccount.CompanyId = _companyId;
                 _bankAccount.BranchId = _branchId;
-                DbContext.BankAccounts.Add(_bankAccount);
-                await DbContext.SaveChangesAsync();
+                dbContext.BankAccounts.Add(_bankAccount);
+                await dbContext.SaveChangesAsync();
                 Snackbar.Add("Bank account created successfully", Severity.Success);
             }
 

@@ -2,7 +2,7 @@
 @using Microsoft.EntityFrameworkCore
 @using Net4Courier.Infrastructure.Data
 @using Net4Courier.Masters.Entities
-@inject ApplicationDbContext DbContext
+@inject IDbContextFactory<ApplicationDbContext> DbFactory
 @inject IDialogService DialogService
 @inject ISnackbar Snackbar
 
@@ -58,7 +58,8 @@
     private async Task LoadUserTypes()
     {
         _loading = true;
-        _userTypes = await DbContext.UserTypes
+        await using var dbContext = await DbFactory.CreateDbContextAsync();
+        _userTypes = await dbContext.UserTypes
             .Include(ut => ut.Users)
             .OrderBy(ut => ut.Name)
             .ToListAsync();
@@ -118,8 +119,13 @@
 
         if (confirm == true)
         {
-            DbContext.UserTypes.Remove(userType);
-            await DbContext.SaveChangesAsync();
+            await using var dbContext = await DbFactory.CreateDbContextAsync();
+            var entity = await dbContext.UserTypes.FindAsync(userType.Id);
+            if (entity != null)
+            {
+                dbContext.UserTypes.Remove(entity);
+                await dbContext.SaveChangesAsync();
+            }
             await LoadUserTypes();
             Snackbar.Add("User type deleted successfully", Severity.Success);
         }

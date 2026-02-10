@@ -1,5 +1,5 @@
 @page "/supplier-master"
-@inject ApplicationDbContext DbContext
+@inject IDbContextFactory<ApplicationDbContext> DbFactory
 @inject IDialogService DialogService
 @inject ISnackbar Snackbar
 @inject IJSRuntime JS
@@ -92,8 +92,9 @@
 
     private async Task LoadSuppliers()
     {
+        await using var dbContext = await DbFactory.CreateDbContextAsync();
         _loading = true;
-        _suppliers = await DbContext.Parties
+        _suppliers = await dbContext.Parties
             .Include(p => p.Company)
             .Where(p => _supplierTypes.Contains(p.PartyType) && !p.IsDeleted)
             .OrderBy(p => p.Name)
@@ -170,8 +171,10 @@
         
         if (confirm == true)
         {
+            await using var dbContext = await DbFactory.CreateDbContextAsync();
+            dbContext.Attach(supplier);
             supplier.IsDeleted = true;
-            await DbContext.SaveChangesAsync();
+            await dbContext.SaveChangesAsync();
             await LoadSuppliers();
             Snackbar.Add("Supplier deleted successfully", Severity.Success);
         }

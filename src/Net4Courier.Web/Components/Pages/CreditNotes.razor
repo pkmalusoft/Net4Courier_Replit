@@ -1,5 +1,5 @@
 @page "/credit-notes"
-@inject ApplicationDbContext DbContext
+@inject IDbContextFactory<ApplicationDbContext> DbFactory
 @inject IDialogService DialogService
 @inject ISnackbar Snackbar
 @inject IJSRuntime JS
@@ -108,7 +108,8 @@
 
     protected override async Task OnInitializedAsync()
     {
-        _customers = await DbContext.Parties
+        await using var dbContext = await DbFactory.CreateDbContextAsync();
+        _customers = await dbContext.Parties
             .Where(p => p.PartyType == PartyType.Customer && !p.IsDeleted && p.IsActive)
             .OrderBy(p => p.Name)
             .ToListAsync();
@@ -118,7 +119,8 @@
     private async Task LoadCreditNotes()
     {
         _loading = true;
-        var query = DbContext.CreditNotes.Where(c => !c.IsDeleted).AsQueryable();
+        await using var dbContext = await DbFactory.CreateDbContextAsync();
+        var query = dbContext.CreditNotes.Where(c => !c.IsDeleted).AsQueryable();
 
         if (_fromDate.HasValue)
         {
@@ -184,10 +186,12 @@
         
         if (confirm == true)
         {
+            await using var dbContext = await DbFactory.CreateDbContextAsync();
+            dbContext.Attach(note);
             note.Status = CreditNoteStatus.Approved;
             note.ApprovedDate = DateTime.UtcNow;
             note.ModifiedAt = DateTime.UtcNow;
-            await DbContext.SaveChangesAsync();
+            await dbContext.SaveChangesAsync();
             await LoadCreditNotes();
             Snackbar.Add("Credit note approved", Severity.Success);
         }
@@ -200,8 +204,10 @@
         
         if (confirm == true)
         {
+            await using var dbContext = await DbFactory.CreateDbContextAsync();
+            dbContext.Attach(note);
             note.IsDeleted = true;
-            await DbContext.SaveChangesAsync();
+            await dbContext.SaveChangesAsync();
             await LoadCreditNotes();
             Snackbar.Add("Credit note deleted", Severity.Success);
         }

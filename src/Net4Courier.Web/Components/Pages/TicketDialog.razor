@@ -1,4 +1,4 @@
-@inject ApplicationDbContext DbContext
+@inject IDbContextFactory<ApplicationDbContext> DbFactory
 @inject ISnackbar Snackbar
 @using Microsoft.EntityFrameworkCore
 @using Net4Courier.Infrastructure.Data
@@ -80,32 +80,34 @@
 
     protected override async Task OnInitializedAsync()
     {
+        await using var dbContext = await DbFactory.CreateDbContextAsync();
         if (Ticket.Id > 0)
         {
             if (Ticket.PartyId > 0)
             {
-                _selectedParty = await DbContext.Parties.FirstOrDefaultAsync(p => p.Id == Ticket.PartyId);
+                _selectedParty = await dbContext.Parties.FirstOrDefaultAsync(p => p.Id == Ticket.PartyId);
             }
             if (Ticket.AWBId > 0)
             {
-                _selectedAWB = await DbContext.InscanMasters.FirstOrDefaultAsync(a => a.Id == Ticket.AWBId);
+                _selectedAWB = await dbContext.InscanMasters.FirstOrDefaultAsync(a => a.Id == Ticket.AWBId);
             }
             if (Ticket.AssignedToUserId > 0)
             {
-                _assignedUser = await DbContext.Users.FirstOrDefaultAsync(u => u.Id == Ticket.AssignedToUserId);
+                _assignedUser = await dbContext.Users.FirstOrDefaultAsync(u => u.Id == Ticket.AssignedToUserId);
             }
         }
     }
 
     private async Task<IEnumerable<Party>> SearchCustomers(string value, CancellationToken cancellationToken)
     {
+        await using var dbContext = await DbFactory.CreateDbContextAsync();
         if (string.IsNullOrWhiteSpace(value))
-            return await DbContext.Parties
+            return await dbContext.Parties
                 .Where(p => !p.IsDeleted && p.IsActive && p.PartyType == PartyType.Customer)
                 .Take(20)
                 .ToListAsync();
 
-        return await DbContext.Parties
+        return await dbContext.Parties
             .Where(p => !p.IsDeleted && p.IsActive && p.PartyType == PartyType.Customer &&
                        (EF.Functions.ILike(p.Name, $"%{value}%") || EF.Functions.ILike(p.Code, $"%{value}%")))
             .Take(20)
@@ -114,11 +116,12 @@
 
     private async Task<IEnumerable<InscanMaster>> SearchAWBs(string value, CancellationToken cancellationToken)
     {
+        await using var dbContext = await DbFactory.CreateDbContextAsync();
         if (string.IsNullOrWhiteSpace(value))
             return Enumerable.Empty<InscanMaster>();
 
         var customerId = _selectedParty?.Id;
-        var query = DbContext.InscanMasters.Where(a => !a.IsDeleted);
+        var query = dbContext.InscanMasters.Where(a => !a.IsDeleted);
         
         if (customerId.HasValue)
             query = query.Where(a => a.CustomerId == customerId.Value);
@@ -132,13 +135,14 @@
 
     private async Task<IEnumerable<User>> SearchUsers(string value, CancellationToken cancellationToken)
     {
+        await using var dbContext = await DbFactory.CreateDbContextAsync();
         if (string.IsNullOrWhiteSpace(value))
-            return await DbContext.Users
+            return await dbContext.Users
                 .Where(u => !u.IsDeleted && u.IsActive)
                 .Take(20)
                 .ToListAsync();
 
-        return await DbContext.Users
+        return await dbContext.Users
             .Where(u => !u.IsDeleted && u.IsActive &&
                        (EF.Functions.ILike(u.FullName, $"%{value}%") || EF.Functions.ILike(u.Username, $"%{value}%")))
             .Take(20)
@@ -149,6 +153,7 @@
 
     private async Task Save()
     {
+        await using var dbContext = await DbFactory.CreateDbContextAsync();
         if (_selectedParty == null)
         {
             Snackbar.Add("Please select a customer", Severity.Warning);
@@ -197,11 +202,11 @@
                 Ticket.TicketNo = await GenerateTicketNo();
                 Ticket.CreatedAt = DateTime.UtcNow;
                 Ticket.Status = TicketStatus.Open;
-                DbContext.Tickets.Add(Ticket);
+                dbContext.Tickets.Add(Ticket);
             }
             else
             {
-                var existing = await DbContext.Tickets.FindAsync(Ticket.Id);
+                var existing = await dbContext.Tickets.FindAsync(Ticket.Id);
                 if (existing != null)
                 {
                     existing.PartyId = Ticket.PartyId;
@@ -225,7 +230,7 @@
                 }
             }
 
-            await DbContext.SaveChangesAsync();
+            await dbContext.SaveChangesAsync();
             Snackbar.Add("Ticket saved successfully", Severity.Success);
             MudDialog.Close(DialogResult.Ok(Ticket));
         }
@@ -237,9 +242,10 @@
 
     private async Task<string> GenerateTicketNo()
     {
+        await using var dbContext = await DbFactory.CreateDbContextAsync();
         var today = DateTime.UtcNow;
         var prefix = $"TKT{today:yyMM}";
-        var lastTicket = await DbContext.Tickets
+        var lastTicket = await dbContext.Tickets
             .Where(t => t.TicketNo.StartsWith(prefix))
             .OrderByDescending(t => t.TicketNo)
             .FirstOrDefaultAsync();

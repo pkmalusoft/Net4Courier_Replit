@@ -4,7 +4,7 @@
 @using Net4Courier.Infrastructure.Data
 @using Net4Courier.Masters.Entities
 @using Microsoft.EntityFrameworkCore
-@inject ApplicationDbContext DbContext
+@inject IDbContextFactory<ApplicationDbContext> DbFactory
 @inject NavigationManager NavigationManager
 @inject ISnackbar Snackbar
 
@@ -155,9 +155,10 @@
 
     protected override async Task OnInitializedAsync()
     {
+        await using var dbContext = await DbFactory.CreateDbContextAsync();
         if (Id.HasValue)
         {
-            var existing = await DbContext.VendorPayments
+            var existing = await dbContext.VendorPayments
                 .Include(p => p.Allocations)
                 .FirstOrDefaultAsync(p => p.Id == Id.Value);
 
@@ -175,7 +176,7 @@
 
                 if (existing.SupplierId.HasValue)
                 {
-                    selectedSupplier = await DbContext.Parties.FindAsync(existing.SupplierId.Value);
+                    selectedSupplier = await dbContext.Parties.FindAsync(existing.SupplierId.Value);
                     await LoadFilteredSuppliers();
                     await LoadPendingBills();
                 }
@@ -190,8 +191,9 @@
 
     private async Task<string> GeneratePaymentNo()
     {
+        await using var dbContext = await DbFactory.CreateDbContextAsync();
         var prefix = $"VP-{DateTime.Today:yyMM}-";
-        var lastPayment = await DbContext.VendorPayments
+        var lastPayment = await dbContext.VendorPayments
             .Where(p => p.PaymentNo.StartsWith(prefix))
             .OrderByDescending(p => p.PaymentNo)
             .FirstOrDefaultAsync();
@@ -226,7 +228,8 @@
             return;
         }
 
-        filteredSuppliers = await DbContext.Parties
+        await using var dbContext = await DbFactory.CreateDbContextAsync();
+        filteredSuppliers = await dbContext.Parties
             .Where(p => p.IsActive && (int)p.PartyType == selectedPartyType.Value)
             .OrderBy(p => p.Name)
             .ToListAsync();
@@ -257,7 +260,8 @@
     {
         if (selectedSupplier == null) return;
 
-        pendingBills = await DbContext.VendorBills
+        await using var dbContext = await DbFactory.CreateDbContextAsync();
+        pendingBills = await dbContext.VendorBills
             .Where(b => b.SupplierId == selectedSupplier.Id)
             .Where(b => b.Status != VendorBillStatus.Cancelled && b.Status != VendorBillStatus.Paid)
             .Where(b => b.BalanceAmount > 0)
@@ -321,6 +325,8 @@
             payment.ChequeDate = chequeDate;
             payment.IsAllocated = payment.Allocations.Any();
 
+            await using var dbContext = await DbFactory.CreateDbContextAsync();
+
             if (Id.HasValue)
             {
                 var removedBillIds = originalAllocations.Keys
@@ -329,7 +335,7 @@
 
                 foreach (var billId in removedBillIds)
                 {
-                    var bill = await DbContext.VendorBills.FindAsync(billId);
+                    var bill = await dbContext.VendorBills.FindAsync(billId);
                     if (bill != null)
                     {
                         var prevAmount = originalAllocations[billId];
@@ -341,23 +347,23 @@
                     }
                 }
 
-                var existingAllocIds = await DbContext.VendorPaymentAllocations
+                var existingAllocIds = await dbContext.VendorPaymentAllocations
                     .Where(a => a.VendorPaymentId == payment.Id && removedBillIds.Contains(a.VendorBillId))
                     .ToListAsync();
-                DbContext.VendorPaymentAllocations.RemoveRange(existingAllocIds);
+                dbContext.VendorPaymentAllocations.RemoveRange(existingAllocIds);
 
-                DbContext.VendorPayments.Update(payment);
+                dbContext.VendorPayments.Update(payment);
             }
             else
             {
-                DbContext.VendorPayments.Add(payment);
+                dbContext.VendorPayments.Add(payment);
             }
 
-            await DbContext.SaveChangesAsync();
+            await dbContext.SaveChangesAsync();
 
             foreach (var allocation in payment.Allocations)
             {
-                var bill = await DbContext.VendorBills.FindAsync(allocation.VendorBillId);
+                var bill = await dbContext.VendorBills.FindAsync(allocation.VendorBillId);
                 if (bill != null)
                 {
                     var previousAmount = originalAllocations.GetValueOrDefault(allocation.VendorBillId, 0);
@@ -372,7 +378,7 @@
                         bill.Status = VendorBillStatus.Approved;
                 }
             }
-            await DbContext.SaveChangesAsync();
+            await dbContext.SaveChangesAsync();
 
             Snackbar.Add("Payment saved successfully", Severity.Success);
             NavigationManager.NavigateTo("/vendor-payments");

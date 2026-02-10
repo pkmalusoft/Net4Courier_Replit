@@ -5,7 +5,7 @@
 @using Net4Courier.Operations.Entities
 @using Net4Courier.Web.Services
 @using Microsoft.EntityFrameworkCore
-@inject ApplicationDbContext Context
+@inject IDbContextFactory<ApplicationDbContext> DbFactory
 @inject InvoicingService InvoicingService
 @inject ISnackbar Snackbar
 @inject IDialogService DialogService
@@ -197,12 +197,13 @@
 
     private async Task<IEnumerable<Party>> SearchCustomers(string value, CancellationToken cancellationToken)
     {
+        await using var dbContext = await DbFactory.CreateDbContextAsync();
         if (string.IsNullOrEmpty(value))
-            return await Context.Parties
+            return await dbContext.Parties
                 .Where(p => p.PartyType == PartyType.Customer && p.IsActive && !p.IsDeleted)
                 .Take(20).ToListAsync();
 
-        return await Context.Parties
+        return await dbContext.Parties
             .Where(p => p.PartyType == PartyType.Customer && p.IsActive && !p.IsDeleted &&
                    (p.Name.Contains(value) || (p.Code != null && p.Code.Contains(value))))
             .Take(20).ToListAsync();
@@ -210,6 +211,7 @@
 
     private async Task FetchUnbilledAWBs()
     {
+        await using var dbContext = await DbFactory.CreateDbContextAsync();
         if (_selectedCustomer == null)
         {
             Snackbar.Add("Please select a customer", Severity.Warning);
@@ -228,7 +230,7 @@
             var awbs = await InvoicingService.GetUnbilledAWBs(_selectedCustomer.Id, fromDate, toDate);
             var specialCharges = await InvoicingService.GetApplicableSpecialCharges(_selectedCustomer.Id, invoiceDate);
 
-            var address = await Context.PartyAddresses
+            var address = await dbContext.PartyAddresses
                 .Where(a => a.PartyId == _selectedCustomer.Id && a.IsDefault)
                 .FirstOrDefaultAsync();
 

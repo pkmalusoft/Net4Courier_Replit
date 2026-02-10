@@ -5,7 +5,7 @@
 @using Net4Courier.Operations.Entities
 @using Microsoft.EntityFrameworkCore
 @using Microsoft.AspNetCore.Components.Authorization
-@inject ApplicationDbContext Context
+@inject IDbContextFactory<ApplicationDbContext> DbFactory
 @inject ISnackbar Snackbar
 @inject IDialogService DialogService
 @inject AuthenticationStateProvider AuthStateProvider
@@ -400,7 +400,8 @@
 
     private async Task LoadOtherChargeTypes()
     {
-        _otherChargeTypes = await Context.OtherChargeTypes
+        await using var dbContext = await DbFactory.CreateDbContextAsync();
+        _otherChargeTypes = await dbContext.OtherChargeTypes
             .Where(c => c.IsActive && !c.IsDeleted)
             .OrderBy(c => c.SortOrder)
             .ThenBy(c => c.Name)
@@ -409,10 +410,11 @@
 
     private async Task<IEnumerable<InscanMaster>> SearchAWB(string value, CancellationToken cancellationToken)
     {
+        await using var dbContext = await DbFactory.CreateDbContextAsync();
         if (string.IsNullOrWhiteSpace(value) || value.Length < 2)
             return Enumerable.Empty<InscanMaster>();
 
-        return await Context.InscanMasters
+        return await dbContext.InscanMasters
             .Where(a => a.IsActive && !a.IsDeleted && 
                    a.AWBNo.Contains(value))
             .OrderByDescending(a => a.TransactionDate)
@@ -435,6 +437,7 @@
 
     private async Task LoadAWBCharges()
     {
+        await using var dbContext = await DbFactory.CreateDbContextAsync();
         if (_selectedAWB == null) return;
 
         _loadingAWBCharges = true;
@@ -442,7 +445,7 @@
 
         try
         {
-            _awbCharges = await Context.AWBOtherCharges
+            _awbCharges = await dbContext.AWBOtherCharges
                 .Include(c => c.OtherChargeType)
                 .Where(c => c.InscanId == _selectedAWB.Id && c.IsActive && !c.IsDeleted)
                 .ToListAsync();
@@ -498,6 +501,7 @@
 
     private async Task SaveAWBCharge()
     {
+        await using var dbContext = await DbFactory.CreateDbContextAsync();
         if (_editingAWBCharge == null || _selectedChargeType == null)
         {
             Snackbar.Add("Please select a charge type", Severity.Warning);
@@ -514,14 +518,15 @@
 
         if (_editingAWBCharge.Id == 0)
         {
-            Context.AWBOtherCharges.Add(_editingAWBCharge);
+            dbContext.AWBOtherCharges.Add(_editingAWBCharge);
         }
         else
         {
+            dbContext.Attach(_editingAWBCharge);
             _editingAWBCharge.ModifiedAt = DateTime.UtcNow;
         }
 
-        await Context.SaveChangesAsync();
+        await dbContext.SaveChangesAsync();
 
         // Update the AWB's total other charges
         await UpdateAWBOtherChargesTotal();
@@ -533,17 +538,18 @@
 
     private async Task UpdateAWBOtherChargesTotal()
     {
+        await using var dbContext = await DbFactory.CreateDbContextAsync();
         if (_selectedAWB == null) return;
 
-        var totalOtherCharges = await Context.AWBOtherCharges
+        var totalOtherCharges = await dbContext.AWBOtherCharges
             .Where(c => c.InscanId == _selectedAWB.Id && c.IsActive && !c.IsDeleted)
             .SumAsync(c => c.Amount);
 
         // Ensure the entity is being tracked
-        var entry = Context.Entry(_selectedAWB);
+        var entry = dbContext.Entry(_selectedAWB);
         if (entry.State == EntityState.Detached)
         {
-            Context.Attach(_selectedAWB);
+            dbContext.Attach(_selectedAWB);
         }
 
         _selectedAWB.OtherCharge = totalOtherCharges;
@@ -551,11 +557,12 @@
         entry.Property(x => x.OtherCharge).IsModified = true;
         entry.Property(x => x.ModifiedAt).IsModified = true;
         
-        await Context.SaveChangesAsync();
+        await dbContext.SaveChangesAsync();
     }
 
     private async Task DeleteAWBCharge(AWBOtherCharge charge)
     {
+        await using var dbContext = await DbFactory.CreateDbContextAsync();
         var confirmed = await DialogService.ShowMessageBox(
             "Delete Charge",
             $"Are you sure you want to delete this charge?",
@@ -563,10 +570,11 @@
 
         if (confirmed == true)
         {
+            dbContext.Attach(charge);
             charge.IsDeleted = true;
             charge.IsActive = false;
             charge.ModifiedAt = DateTime.UtcNow;
-            await Context.SaveChangesAsync();
+            await dbContext.SaveChangesAsync();
 
             await UpdateAWBOtherChargesTotal();
 
@@ -578,12 +586,13 @@
     // Customer Special Charges Methods
     private async Task LoadCharges()
     {
+        await using var dbContext = await DbFactory.CreateDbContextAsync();
         _loading = true;
         StateHasChanged();
 
         try
         {
-            var query = Context.SpecialCharges.Where(c => c.IsActive && !c.IsDeleted);
+            var query = dbContext.SpecialCharges.Where(c => c.IsActive && !c.IsDeleted);
 
             if (_filterCustomer != null)
             {
@@ -606,12 +615,13 @@
 
     private async Task<IEnumerable<Party>> SearchCustomers(string value, CancellationToken cancellationToken)
     {
+        await using var dbContext = await DbFactory.CreateDbContextAsync();
         if (string.IsNullOrEmpty(value))
-            return await Context.Parties
+            return await dbContext.Parties
                 .Where(p => p.PartyType == PartyType.Customer && p.IsActive && !p.IsDeleted)
                 .Take(20).ToListAsync();
 
-        return await Context.Parties
+        return await dbContext.Parties
             .Where(p => p.PartyType == PartyType.Customer && p.IsActive && !p.IsDeleted && 
                    (p.Name.Contains(value) || (p.Code != null && p.Code.Contains(value))))
             .Take(20).ToListAsync();
@@ -634,11 +644,12 @@
         _showDialog = true;
     }
 
-    private void OpenEditDialog(SpecialCharge charge)
+    private async Task OpenEditDialog(SpecialCharge charge)
     {
+        await using var dbContext = await DbFactory.CreateDbContextAsync();
         _editingCharge = charge;
         _selectedCustomer = charge.CustomerId.HasValue
-            ? Context.Parties.FirstOrDefault(p => p.Id == charge.CustomerId)
+            ? await dbContext.Parties.FirstOrDefaultAsync(p => p.Id == charge.CustomerId)
             : null;
         _fromDate = charge.FromDate;
         _toDate = charge.ToDate;
@@ -653,6 +664,7 @@
 
     private async Task SaveCharge()
     {
+        await using var dbContext = await DbFactory.CreateDbContextAsync();
         if (_editingCharge == null || string.IsNullOrEmpty(_editingCharge.ChargeName))
         {
             Snackbar.Add("Charge name is required", Severity.Warning);
@@ -667,14 +679,15 @@
         if (_editingCharge.Id == 0)
         {
             _editingCharge.CreatedAt = DateTime.UtcNow;
-            Context.SpecialCharges.Add(_editingCharge);
+            dbContext.SpecialCharges.Add(_editingCharge);
         }
         else
         {
+            dbContext.Attach(_editingCharge);
             _editingCharge.ModifiedAt = DateTime.UtcNow;
         }
 
-        await Context.SaveChangesAsync();
+        await dbContext.SaveChangesAsync();
         Snackbar.Add("Charge saved successfully", Severity.Success);
         CloseDialog();
         await LoadCharges();
@@ -682,21 +695,24 @@
 
     private async Task ApproveCharge(SpecialCharge charge)
     {
+        await using var dbContext = await DbFactory.CreateDbContextAsync();
         var authState = await AuthStateProvider.GetAuthenticationStateAsync();
         var userName = authState.User.Identity?.Name ?? "Admin";
 
+        dbContext.Attach(charge);
         charge.Status = SpecialChargeStatus.Approved;
         charge.ApprovedByName = userName;
         charge.ApprovedAt = DateTime.UtcNow;
         charge.ModifiedAt = DateTime.UtcNow;
 
-        await Context.SaveChangesAsync();
+        await dbContext.SaveChangesAsync();
         Snackbar.Add($"Charge '{charge.ChargeName}' approved", Severity.Success);
         await LoadCharges();
     }
 
     private async Task CancelCharge(SpecialCharge charge)
     {
+        await using var dbContext = await DbFactory.CreateDbContextAsync();
         var confirmed = await DialogService.ShowMessageBox(
             "Cancel Charge",
             $"Are you sure you want to cancel '{charge.ChargeName}'?",
@@ -704,9 +720,10 @@
 
         if (confirmed == true)
         {
+            dbContext.Attach(charge);
             charge.Status = SpecialChargeStatus.Cancelled;
             charge.ModifiedAt = DateTime.UtcNow;
-            await Context.SaveChangesAsync();
+            await dbContext.SaveChangesAsync();
             Snackbar.Add($"Charge '{charge.ChargeName}' cancelled", Severity.Warning);
             await LoadCharges();
         }

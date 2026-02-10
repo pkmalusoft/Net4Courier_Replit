@@ -3,7 +3,7 @@
 @page "/sla-agreements/customer/{CustomerId:long}"
 @layout MainLayout
 @attribute [Authorize]
-@inject ApplicationDbContext DbContext
+@inject IDbContextFactory<ApplicationDbContext> DbFactory
 @inject IDialogService DialogService
 @inject ISnackbar Snackbar
 @inject NavigationManager Navigation
@@ -142,13 +142,14 @@
     private async Task LoadData()
     {
         _loading = true;
+        await using var dbContext = await DbFactory.CreateDbContextAsync();
         
         if (CustomerId.HasValue)
         {
-            _customer = await DbContext.Parties.FirstOrDefaultAsync(p => p.Id == CustomerId && !p.IsDeleted);
+            _customer = await dbContext.Parties.FirstOrDefaultAsync(p => p.Id == CustomerId && !p.IsDeleted);
         }
         
-        var query = DbContext.SLAAgreements
+        var query = dbContext.SLAAgreements
             .Include(s => s.Customer)
             .Include(s => s.Company)
             .Where(s => !s.IsDeleted);
@@ -258,10 +259,15 @@
             
         if (confirm == true)
         {
-            agreement.Status = SLAStatus.Active;
-            agreement.ApprovedAt = DateTime.UtcNow;
-            agreement.ModifiedAt = DateTime.UtcNow;
-            await DbContext.SaveChangesAsync();
+            await using var dbContext = await DbFactory.CreateDbContextAsync();
+            var entity = await dbContext.SLAAgreements.FindAsync(agreement.Id);
+            if (entity != null)
+            {
+                entity.Status = SLAStatus.Active;
+                entity.ApprovedAt = DateTime.UtcNow;
+                entity.ModifiedAt = DateTime.UtcNow;
+                await dbContext.SaveChangesAsync();
+            }
             Snackbar.Add("Agreement activated successfully", Severity.Success);
             await LoadData();
         }
@@ -276,10 +282,15 @@
             
         if (confirm == true)
         {
-            agreement.Status = SLAStatus.Terminated;
-            agreement.TerminatedAt = DateTime.UtcNow;
-            agreement.ModifiedAt = DateTime.UtcNow;
-            await DbContext.SaveChangesAsync();
+            await using var dbContext = await DbFactory.CreateDbContextAsync();
+            var entity = await dbContext.SLAAgreements.FindAsync(agreement.Id);
+            if (entity != null)
+            {
+                entity.Status = SLAStatus.Terminated;
+                entity.TerminatedAt = DateTime.UtcNow;
+                entity.ModifiedAt = DateTime.UtcNow;
+                await dbContext.SaveChangesAsync();
+            }
             Snackbar.Add("Agreement terminated", Severity.Warning);
             await LoadData();
         }
@@ -294,9 +305,14 @@
             
         if (confirm == true)
         {
-            agreement.IsDeleted = true;
-            agreement.ModifiedAt = DateTime.UtcNow;
-            await DbContext.SaveChangesAsync();
+            await using var dbContext = await DbFactory.CreateDbContextAsync();
+            var entity = await dbContext.SLAAgreements.FindAsync(agreement.Id);
+            if (entity != null)
+            {
+                entity.IsDeleted = true;
+                entity.ModifiedAt = DateTime.UtcNow;
+                await dbContext.SaveChangesAsync();
+            }
             Snackbar.Add("Agreement deleted", Severity.Success);
             await LoadData();
         }

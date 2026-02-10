@@ -1,5 +1,5 @@
 @page "/roles"
-@inject ApplicationDbContext DbContext
+@inject IDbContextFactory<ApplicationDbContext> DbFactory
 @inject IDialogService DialogService
 @inject ISnackbar Snackbar
 @using Microsoft.EntityFrameworkCore
@@ -64,7 +64,8 @@
     private async Task LoadRoles()
     {
         _loading = true;
-        _roles = await DbContext.Roles
+        await using var dbContext = await DbFactory.CreateDbContextAsync();
+        _roles = await dbContext.Roles
             .Include(r => r.Users)
             .Where(r => !r.IsDeleted)
             .OrderBy(r => r.Name)
@@ -131,8 +132,13 @@
         
         if (confirm == true)
         {
-            role.IsDeleted = true;
-            await DbContext.SaveChangesAsync();
+            await using var dbContext = await DbFactory.CreateDbContextAsync();
+            var entity = await dbContext.Roles.FindAsync(role.Id);
+            if (entity != null)
+            {
+                entity.IsDeleted = true;
+                await dbContext.SaveChangesAsync();
+            }
             await LoadRoles();
             Snackbar.Add("Role deleted successfully", Severity.Success);
         }

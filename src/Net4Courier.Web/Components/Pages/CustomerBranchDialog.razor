@@ -1,4 +1,4 @@
-@inject ApplicationDbContext DbContext
+@inject IDbContextFactory<ApplicationDbContext> DbFactory
 @inject ISnackbar Snackbar
 @using Net4Courier.Infrastructure.Data
 @using Net4Courier.Masters.Entities
@@ -93,7 +93,8 @@
         }
         else if (Branch.CityId.HasValue)
         {
-            _selectedCity = await DbContext.Cities
+            await using var dbContext = await DbFactory.CreateDbContextAsync();
+            _selectedCity = await dbContext.Cities
                 .Include(c => c.Country)
                 .FirstOrDefaultAsync(c => c.Id == Branch.CityId);
             
@@ -115,9 +116,10 @@
 
     private async Task<IEnumerable<City>> SearchCities(string value, CancellationToken cancellationToken)
     {
+        await using var dbContext = await DbFactory.CreateDbContextAsync();
         if (string.IsNullOrWhiteSpace(value))
         {
-            return await DbContext.Cities
+            return await dbContext.Cities
                 .Include(c => c.Country)
                 .Where(c => c.IsActive && !c.IsDeleted)
                 .OrderBy(c => c.Name)
@@ -125,7 +127,7 @@
                 .ToListAsync();
         }
 
-        return await DbContext.Cities
+        return await dbContext.Cities
             .Include(c => c.Country)
             .Where(c => c.IsActive && !c.IsDeleted && c.Name.ToLower().Contains(value.ToLower()))
             .OrderBy(c => c.Name)
@@ -155,10 +157,11 @@
         await _form.Validate();
         if (!_formIsValid) return;
 
+        await using var dbContext = await DbFactory.CreateDbContextAsync();
         if (IsNew)
         {
             Branch.CreatedAt = DateTime.UtcNow;
-            DbContext.CustomerBranches.Add(Branch);
+            dbContext.CustomerBranches.Add(Branch);
         }
         else
         {
@@ -167,10 +170,10 @@
                 Branch.CreatedAt = DateTime.SpecifyKind(Branch.CreatedAt, DateTimeKind.Utc);
             }
             Branch.ModifiedAt = DateTime.UtcNow;
-            DbContext.CustomerBranches.Update(Branch);
+            dbContext.CustomerBranches.Update(Branch);
         }
 
-        await DbContext.SaveChangesAsync();
+        await dbContext.SaveChangesAsync();
         Snackbar.Add(IsNew ? "Branch added" : "Branch updated", Severity.Success);
         MudDialog.Close(DialogResult.Ok(Branch));
     }

@@ -1,6 +1,6 @@
 @page "/users"
 @attribute [Authorize(Roles = "PlatformAdmin,Administrator")]
-@inject ApplicationDbContext DbContext
+@inject IDbContextFactory<ApplicationDbContext> DbFactory
 @inject IDialogService DialogService
 @inject ISnackbar Snackbar
 @using Microsoft.AspNetCore.Authorization
@@ -86,7 +86,8 @@
     private async Task LoadUsers()
     {
         _loading = true;
-        _users = await DbContext.Users
+        await using var dbContext = await DbFactory.CreateDbContextAsync();
+        _users = await dbContext.Users
             .Include(u => u.Role)
             .Include(u => u.Branch)
             .Include(u => u.UserBranches.Where(ub => !ub.IsDeleted))
@@ -139,8 +140,13 @@
         
         if (confirm == true)
         {
-            user.IsDeleted = true;
-            await DbContext.SaveChangesAsync();
+            await using var dbContext = await DbFactory.CreateDbContextAsync();
+            var entity = await dbContext.Users.FindAsync(user.Id);
+            if (entity != null)
+            {
+                entity.IsDeleted = true;
+                await dbContext.SaveChangesAsync();
+            }
             await LoadUsers();
             Snackbar.Add("User deleted successfully", Severity.Success);
         }

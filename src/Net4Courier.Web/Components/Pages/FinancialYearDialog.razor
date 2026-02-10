@@ -1,4 +1,4 @@
-@inject ApplicationDbContext DbContext
+@inject IDbContextFactory<ApplicationDbContext> DbFactory
 @using Microsoft.EntityFrameworkCore
 @using Net4Courier.Infrastructure.Data
 @using Net4Courier.Masters.Entities
@@ -75,7 +75,8 @@
         _loading = true;
         try
         {
-            _companies = await DbContext.Companies.Where(c => c.IsActive && !c.IsDeleted).OrderBy(c => c.Name).ToListAsync();
+            await using var dbContext = await DbFactory.CreateDbContextAsync();
+            _companies = await dbContext.Companies.Where(c => c.IsActive && !c.IsDeleted).OrderBy(c => c.Name).ToListAsync();
             
             if (!IsNew)
             {
@@ -110,22 +111,24 @@
         if (_endDate.HasValue)
             FinancialYear.EndDate = DateTime.SpecifyKind(_endDate.Value, DateTimeKind.Utc);
 
+        await using var dbContext = await DbFactory.CreateDbContextAsync();
+
         if (IsNew)
         {
             FinancialYear.CreatedAt = DateTime.UtcNow;
-            DbContext.FinancialYears.Add(FinancialYear);
+            dbContext.FinancialYears.Add(FinancialYear);
             
             GenerateMonthlyPeriods();
         }
         else
         {
             FinancialYear.ModifiedAt = DateTime.UtcNow;
-            DbContext.FinancialYears.Update(FinancialYear);
+            dbContext.FinancialYears.Update(FinancialYear);
         }
 
         if (FinancialYear.IsCurrent)
         {
-            var otherYears = await DbContext.FinancialYears
+            var otherYears = await dbContext.FinancialYears
                 .Where(f => f.CompanyId == FinancialYear.CompanyId && f.Id != FinancialYear.Id)
                 .ToListAsync();
             foreach (var fy in otherYears)
@@ -134,7 +137,7 @@
             }
         }
 
-        await DbContext.SaveChangesAsync();
+        await dbContext.SaveChangesAsync();
         MudDialog.Close(DialogResult.Ok(FinancialYear));
     }
 

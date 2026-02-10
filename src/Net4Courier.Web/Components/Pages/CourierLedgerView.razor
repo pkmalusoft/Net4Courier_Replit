@@ -7,7 +7,7 @@
 @using Net4Courier.Masters.Entities
 @using Microsoft.EntityFrameworkCore
 @using ClosedXML.Excel
-@inject ApplicationDbContext Context
+@inject IDbContextFactory<ApplicationDbContext> DbFactory
 @inject DRSReconciliationService ReconciliationService
 @inject ISnackbar Snackbar
 @inject IJSRuntime JSRuntime
@@ -180,9 +180,10 @@
 
     protected override async Task OnInitializedAsync()
     {
+        await using var dbContext = await DbFactory.CreateDbContextAsync();
         if (CourierId > 0)
         {
-            _selectedCourier = await Context.Users.FirstOrDefaultAsync(u => u.Id == CourierId);
+            _selectedCourier = await dbContext.Users.FirstOrDefaultAsync(u => u.Id == CourierId);
             await LoadLedger();
         }
         else
@@ -193,10 +194,11 @@
 
     private async Task<IEnumerable<User>> SearchCouriers(string value, CancellationToken cancellationToken)
     {
+        await using var dbContext = await DbFactory.CreateDbContextAsync();
         if (string.IsNullOrEmpty(value))
-            return await Context.Users.Where(u => u.IsActive).Take(20).ToListAsync();
+            return await dbContext.Users.Where(u => u.IsActive).Take(20).ToListAsync();
 
-        return await Context.Users
+        return await dbContext.Users
             .Where(u => u.IsActive && (u.FullName.Contains(value) || u.Username.Contains(value)))
             .Take(20)
             .ToListAsync();
@@ -204,6 +206,7 @@
 
     private async Task LoadLedger()
     {
+        await using var dbContext = await DbFactory.CreateDbContextAsync();
         var courierId = _selectedCourier?.Id ?? CourierId;
         if (courierId == 0) return;
 
@@ -212,7 +215,7 @@
 
         try
         {
-            var query = Context.CourierLedgers
+            var query = dbContext.CourierLedgers
                 .Where(l => l.CourierId == courierId);
 
             if (_fromDate.HasValue)
@@ -255,7 +258,8 @@
 
     private async Task SelectCourier(CourierBalanceSummary summary)
     {
-        _selectedCourier = await Context.Users.FirstOrDefaultAsync(u => u.Id == summary.CourierId);
+        await using var dbContext = await DbFactory.CreateDbContextAsync();
+        _selectedCourier = await dbContext.Users.FirstOrDefaultAsync(u => u.Id == summary.CourierId);
         await LoadLedger();
     }
 

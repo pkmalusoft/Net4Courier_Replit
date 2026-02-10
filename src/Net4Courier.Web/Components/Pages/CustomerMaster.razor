@@ -2,7 +2,7 @@
 @page "/customer-master/{Action}"
 @page "/customers"
 @page "/customers/{Action}"
-@inject ApplicationDbContext DbContext
+@inject IDbContextFactory<ApplicationDbContext> DbFactory
 @inject IDialogService DialogService
 @inject ISnackbar Snackbar
 @inject IJSRuntime JS
@@ -128,7 +128,8 @@
     private async Task LoadCustomers()
     {
         _loading = true;
-        _customers = await DbContext.Parties
+        await using var dbContext = await DbFactory.CreateDbContextAsync();
+        _customers = await dbContext.Parties
             .Include(p => p.Company)
             .Include(p => p.AccountType)
             .Where(p => p.PartyType == PartyType.Customer && !p.IsDeleted)
@@ -201,8 +202,13 @@
         
         if (confirm == true)
         {
-            customer.IsDeleted = true;
-            await DbContext.SaveChangesAsync();
+            await using var dbContext = await DbFactory.CreateDbContextAsync();
+            var entity = await dbContext.Parties.FindAsync(customer.Id);
+            if (entity != null)
+            {
+                entity.IsDeleted = true;
+                await dbContext.SaveChangesAsync();
+            }
             await LoadCustomers();
             Snackbar.Add("Customer deleted successfully", Severity.Success);
         }

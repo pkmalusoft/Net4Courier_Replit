@@ -4,7 +4,7 @@
 @using Net4Courier.Infrastructure.Data
 @using ZoneMatrixEntity = Net4Courier.Masters.Entities.ZoneMatrix
 @using Net4Courier.Masters.Entities
-@inject ApplicationDbContext DbContext
+@inject IDbContextFactory<ApplicationDbContext> DbFactory
 @inject IDialogService DialogService
 @inject ISnackbar Snackbar
 @inject NavigationManager Navigation
@@ -102,7 +102,8 @@
 
     protected override async Task OnInitializedAsync()
     {
-        _categories = await DbContext.ZoneCategories.Where(c => !c.IsDeleted).OrderBy(c => c.SortOrder).ToListAsync();
+        await using var dbContext = await DbFactory.CreateDbContextAsync();
+        _categories = await dbContext.ZoneCategories.Where(c => !c.IsDeleted).OrderBy(c => c.SortOrder).ToListAsync();
         
         var uri = new Uri(Navigation.Uri);
         if (QueryHelpers.ParseQuery(uri.Query).TryGetValue("categoryId", out var catIdValue) && long.TryParse(catIdValue, out var catId))
@@ -123,10 +124,11 @@
 
     private async Task LoadZones()
     {
+        await using var dbContext = await DbFactory.CreateDbContextAsync();
         _loading = true;
         try
         {
-            var query = DbContext.ZoneMatrices
+            var query = dbContext.ZoneMatrices
                 .Include(z => z.Details)
                 .Where(z => !z.IsDeleted)
                 .AsQueryable();
@@ -195,6 +197,7 @@
 
     private async Task DeleteZone(ZoneMatrixEntity zone)
     {
+        await using var dbContext = await DbFactory.CreateDbContextAsync();
         var parameters = new DialogParameters<ConfirmDialog>
         {
             { x => x.ContentText, $"Delete zone '{zone.ZoneCode} - {zone.ZoneName}'?" },
@@ -208,7 +211,7 @@
         if (result != null && !result.Canceled)
         {
             zone.IsDeleted = true;
-            await DbContext.SaveChangesAsync();
+            await dbContext.SaveChangesAsync();
             Snackbar.Add("Zone deleted", Severity.Success);
             await LoadZones();
         }

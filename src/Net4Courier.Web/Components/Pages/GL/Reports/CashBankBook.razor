@@ -1,5 +1,5 @@
 @page "/reports/cash-bank-book"
-@inject ApplicationDbContext DbContext
+@inject IDbContextFactory<ApplicationDbContext> DbFactory
 @inject ISnackbar Snackbar
 @using Microsoft.EntityFrameworkCore
 @using Net4Courier.Infrastructure.Data
@@ -140,7 +140,8 @@
 
     protected override async Task OnInitializedAsync()
     {
-        _cashBankAccounts = await DbContext.AccountHeads
+        await using var dbContext = await DbFactory.CreateDbContextAsync();
+        _cashBankAccounts = await dbContext.AccountHeads
             .Where(a => a.IsActive && !a.IsGroup && 
                    (a.AccountNature == AccountNature.CashAccount || a.AccountNature == AccountNature.BankAccount))
             .OrderBy(a => a.AccountNature)
@@ -158,13 +159,14 @@
 
         try
         {
+            await using var dbContext = await DbFactory.CreateDbContextAsync();
             var account = _cashBankAccounts.First(a => a.Id == _selectedAccountId);
             _selectedAccountName = $"{account.Code} - {account.Name}";
 
             var fromUtc = _fromDate.HasValue ? DateTime.SpecifyKind(_fromDate.Value.Date, DateTimeKind.Utc) : DateTime.MinValue;
             var toUtc = _toDate.HasValue ? DateTime.SpecifyKind(_toDate.Value.Date.AddDays(1).AddTicks(-1), DateTimeKind.Utc) : DateTime.MaxValue;
 
-            var priorEntries = await DbContext.JournalEntries
+            var priorEntries = await dbContext.JournalEntries
                 .Include(e => e.Journal)
                 .Where(e => e.AccountHeadId == _selectedAccountId && 
                        !e.IsDeleted && e.Journal.IsPosted && 
@@ -174,7 +176,7 @@
             _openingBalance = (account.OpeningBalance ?? 0) + 
                              priorEntries.Sum(e => (e.Debit ?? 0) - (e.Credit ?? 0));
 
-            var entries = await DbContext.JournalEntries
+            var entries = await dbContext.JournalEntries
                 .Include(e => e.Journal)
                 .Where(e => e.AccountHeadId == _selectedAccountId && 
                        !e.IsDeleted && e.Journal.IsPosted &&

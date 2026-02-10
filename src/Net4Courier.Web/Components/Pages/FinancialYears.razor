@@ -1,5 +1,5 @@
 @page "/financial-years"
-@inject ApplicationDbContext DbContext
+@inject IDbContextFactory<ApplicationDbContext> DbFactory
 @inject IDialogService DialogService
 @inject ISnackbar Snackbar
 @inject NavigationManager NavigationManager
@@ -86,7 +86,8 @@
     private async Task LoadFinancialYears()
     {
         _loading = true;
-        _financialYears = await DbContext.FinancialYears
+        await using var dbContext = await DbFactory.CreateDbContextAsync();
+        _financialYears = await dbContext.FinancialYears
             .Include(f => f.Company)
             .Where(f => !f.IsDeleted)
             .OrderByDescending(f => f.StartDate)
@@ -138,7 +139,14 @@
             f.IsCurrent = false;
         }
         fy.IsCurrent = true;
-        await DbContext.SaveChangesAsync();
+        {
+            await using var dbContext = await DbFactory.CreateDbContextAsync();
+            foreach (var f2 in _financialYears.Where(x => x.CompanyId == fy.CompanyId))
+            {
+                dbContext.Attach(f2);
+            }
+            await dbContext.SaveChangesAsync();
+        }
         await LoadFinancialYears();
         Snackbar.Add($"{fy.Name} is now the current financial year", Severity.Success);
     }
@@ -155,8 +163,10 @@
         
         if (confirm == true)
         {
+            await using var dbContext = await DbFactory.CreateDbContextAsync();
+            dbContext.Attach(fy);
             fy.IsDeleted = true;
-            await DbContext.SaveChangesAsync();
+            await dbContext.SaveChangesAsync();
             await LoadFinancialYears();
             Snackbar.Add("Financial Year deleted successfully", Severity.Success);
         }

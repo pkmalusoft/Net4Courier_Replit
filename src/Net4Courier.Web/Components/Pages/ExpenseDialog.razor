@@ -1,4 +1,4 @@
-@inject ApplicationDbContext DbContext
+@inject IDbContextFactory<ApplicationDbContext> DbFactory
 @using Microsoft.EntityFrameworkCore
 @using Net4Courier.Infrastructure.Data
 @using Net4Courier.Finance.Entities
@@ -110,20 +110,22 @@
         else
         {
             _expenseDate = Expense.ExpenseDate;
+            await using var dbContext = await DbFactory.CreateDbContextAsync();
             if (Expense.SupplierId.HasValue)
             {
-                _selectedSupplier = await DbContext.Parties.FindAsync(Expense.SupplierId.Value);
+                _selectedSupplier = await dbContext.Parties.FindAsync(Expense.SupplierId.Value);
             }
             if (Expense.EmployeeId.HasValue)
             {
-                _selectedEmployee = await DbContext.Employees.FindAsync(Expense.EmployeeId.Value);
+                _selectedEmployee = await dbContext.Employees.FindAsync(Expense.EmployeeId.Value);
             }
         }
     }
 
     private async Task<IEnumerable<Party>> SearchSuppliers(string value, CancellationToken cancellationToken)
     {
-        var query = DbContext.Parties.Where(p => p.PartyType == PartyType.Supplier && !p.IsDeleted && p.IsActive);
+        await using var dbContext = await DbFactory.CreateDbContextAsync();
+        var query = dbContext.Parties.Where(p => p.PartyType == PartyType.Supplier && !p.IsDeleted && p.IsActive);
         
         if (!string.IsNullOrWhiteSpace(value))
             query = query.Where(p => p.Name.ToLower().Contains(value.ToLower()));
@@ -133,7 +135,8 @@
 
     private async Task<IEnumerable<Employee>> SearchEmployees(string value, CancellationToken cancellationToken)
     {
-        var query = DbContext.Employees.Where(e => !e.IsDeleted && e.IsActive);
+        await using var dbContext = await DbFactory.CreateDbContextAsync();
+        var query = dbContext.Employees.Where(e => !e.IsDeleted && e.IsActive);
         
         if (!string.IsNullOrWhiteSpace(value))
             query = query.Where(e => e.Name.ToLower().Contains(value.ToLower()));
@@ -156,24 +159,26 @@
         Expense.TaxAmount = Expense.Amount * (Expense.TaxPercent ?? 0) / 100;
         Expense.TotalAmount = Expense.Amount + (Expense.TaxAmount ?? 0);
 
+        await using var dbContext = await DbFactory.CreateDbContextAsync();
+
         if (IsNew)
         {
             if (string.IsNullOrEmpty(Expense.ExpenseNo))
             {
-                var maxNo = await DbContext.Expenses.MaxAsync(e => (int?)e.Id) ?? 0;
+                var maxNo = await dbContext.Expenses.MaxAsync(e => (int?)e.Id) ?? 0;
                 Expense.ExpenseNo = $"EXP-{(maxNo + 1):D6}";
             }
             Expense.Status = FinanceExpenseStatus.Draft;
             Expense.CreatedAt = DateTime.UtcNow;
-            DbContext.Expenses.Add(Expense);
+            dbContext.Expenses.Add(Expense);
         }
         else
         {
             Expense.ModifiedAt = DateTime.UtcNow;
-            DbContext.Expenses.Update(Expense);
+            dbContext.Expenses.Update(Expense);
         }
 
-        await DbContext.SaveChangesAsync();
+        await dbContext.SaveChangesAsync();
         MudDialog.Close(DialogResult.Ok(Expense));
     }
 

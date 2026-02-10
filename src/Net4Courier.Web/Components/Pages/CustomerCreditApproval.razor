@@ -4,7 +4,7 @@
 @using Net4Courier.Masters.Entities
 @using Net4Courier.Web.Services
 @using Microsoft.AspNetCore.Components.Authorization
-@inject ApplicationDbContext DbContext
+@inject IDbContextFactory<ApplicationDbContext> DbFactory
 @inject IDialogService DialogService
 @inject ISnackbar Snackbar
 @inject AuthenticationStateProvider AuthStateProvider
@@ -173,9 +173,10 @@ else
         _loading = true;
         StateHasChanged();
 
+        await using var dbContext = await DbFactory.CreateDbContextAsync();
         var startOfMonth = new DateTime(DateTime.UtcNow.Year, DateTime.UtcNow.Month, 1, 0, 0, 0, DateTimeKind.Utc);
 
-        _customers = await DbContext.Parties
+        _customers = await dbContext.Parties
             .Where(p => !p.IsDeleted && p.PartyType == PartyType.Customer && 
                         p.CreditApprovalStatus != CreditApprovalStatus.NotApplicable)
             .OrderByDescending(p => p.CreditRequestDate)
@@ -218,7 +219,8 @@ else
             var approvalData = result.Data as CreditApprovalResult;
             if (approvalData != null)
             {
-                var party = await DbContext.Parties.FindAsync(customer.Id);
+                await using var dbContext = await DbFactory.CreateDbContextAsync();
+                var party = await dbContext.Parties.FindAsync(customer.Id);
                 if (party != null)
                 {
                     if (isApproval)
@@ -237,7 +239,7 @@ else
                     party.CreditApprovalRemarks = approvalData.Remarks;
                     party.ModifiedAt = DateTime.UtcNow;
 
-                    await DbContext.SaveChangesAsync();
+                    await dbContext.SaveChangesAsync();
                     Snackbar.Add($"Customer credit request {(isApproval ? "approved" : "rejected")} successfully!", 
                                  isApproval ? Severity.Success : Severity.Warning);
                     await LoadData();

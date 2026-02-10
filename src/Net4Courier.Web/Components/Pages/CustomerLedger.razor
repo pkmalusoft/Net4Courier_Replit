@@ -1,6 +1,6 @@
 @page "/customer/ledger"
 @layout CustomerLayout
-@inject ApplicationDbContext DbContext
+@inject IDbContextFactory<ApplicationDbContext> DbFactory
 @inject NavigationManager NavigationManager
 @inject Microsoft.AspNetCore.Components.Authorization.AuthenticationStateProvider AuthStateProvider
 @inject Net4Courier.Web.Services.AppAuthStateProvider AppAuthState
@@ -127,6 +127,7 @@
 
     private async Task LoadCustomerId()
     {
+        await using var dbContext = await DbFactory.CreateDbContextAsync();
         var authState = await AuthStateProvider.GetAuthenticationStateAsync();
         var user = authState.User;
         
@@ -135,10 +136,10 @@
             var userIdClaim = user.FindFirst("UserId")?.Value;
             if (long.TryParse(userIdClaim, out var userId))
             {
-                var dbUser = await DbContext.Users.FindAsync(userId);
+                var dbUser = await dbContext.Users.FindAsync(userId);
                 if (dbUser != null)
                 {
-                    var party = await DbContext.Parties
+                    var party = await dbContext.Parties
                         .FirstOrDefaultAsync(p => p.Email == dbUser.Email && !p.IsDeleted);
                     if (party != null)
                     {
@@ -162,25 +163,26 @@
         var fromDate = DateTime.SpecifyKind(_dateRange.Start.Value, DateTimeKind.Utc);
         var toDate = DateTime.SpecifyKind(_dateRange.End.Value.AddDays(1), DateTimeKind.Utc);
 
-        var invoicesBefore = await DbContext.Invoices
+        await using var dbContext = await DbFactory.CreateDbContextAsync();
+        var invoicesBefore = await dbContext.Invoices
             .Where(i => i.CustomerId == _customerId && !i.IsDeleted && i.InvoiceDate < fromDate)
             .SumAsync(i => i.NetTotal) ?? 0;
 
-        var receiptsBefore = await DbContext.Receipts
+        var receiptsBefore = await dbContext.Receipts
             .Where(r => r.CustomerId == _customerId && !r.IsDeleted && r.ReceiptDate < fromDate)
             .SumAsync(r => (decimal?)r.Amount) ?? 0;
 
         _openingBalance = invoicesBefore - receiptsBefore;
         var runningBalance = _openingBalance;
 
-        var invoices = await DbContext.Invoices
+        var invoices = await dbContext.Invoices
             .Where(i => i.CustomerId == _customerId && !i.IsDeleted && 
                    i.InvoiceDate >= fromDate && i.InvoiceDate < toDate)
             .OrderBy(i => i.InvoiceDate)
             .Select(i => new { i.InvoiceDate, i.InvoiceNo, NetTotal = i.NetTotal ?? 0 })
             .ToListAsync();
 
-        var receipts = await DbContext.Receipts
+        var receipts = await dbContext.Receipts
             .Where(r => r.CustomerId == _customerId && !r.IsDeleted && 
                    r.ReceiptDate >= fromDate && r.ReceiptDate < toDate)
             .OrderBy(r => r.ReceiptDate)

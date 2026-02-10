@@ -2,7 +2,7 @@
 @using Microsoft.EntityFrameworkCore
 @using Net4Courier.Infrastructure.Data
 @using Net4Courier.Masters.Entities
-@inject ApplicationDbContext DbContext
+@inject IDbContextFactory<ApplicationDbContext> DbFactory
 @inject IDialogService DialogService
 @inject ISnackbar Snackbar
 
@@ -73,8 +73,9 @@
     private async Task LoadData()
     {
         _loading = true;
-        _countries = await DbContext.Countries.Where(c => c.IsActive && !c.IsDeleted).OrderBy(c => c.Name).ToListAsync();
-        _states = await DbContext.States
+        await using var dbContext = await DbFactory.CreateDbContextAsync();
+        _countries = await dbContext.Countries.Where(c => c.IsActive && !c.IsDeleted).OrderBy(c => c.Name).ToListAsync();
+        _states = await dbContext.States
             .Include(s => s.Country)
             .Include(s => s.Cities)
             .Where(s => !s.IsDeleted)
@@ -152,8 +153,13 @@
 
         if (confirm == true)
         {
-            state.IsDeleted = true;
-            await DbContext.SaveChangesAsync();
+            await using var dbContext = await DbFactory.CreateDbContextAsync();
+            var entity = await dbContext.States.FindAsync(state.Id);
+            if (entity != null)
+            {
+                entity.IsDeleted = true;
+                await dbContext.SaveChangesAsync();
+            }
             await LoadData();
             Snackbar.Add("State deleted successfully", Severity.Success);
         }

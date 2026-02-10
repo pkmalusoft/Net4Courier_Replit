@@ -1,4 +1,4 @@
-@inject ApplicationDbContext DbContext
+@inject IDbContextFactory<ApplicationDbContext> DbFactory
 @using Microsoft.EntityFrameworkCore
 @using Net4Courier.Infrastructure.Data
 @using Net4Courier.Finance.Entities
@@ -93,7 +93,8 @@
 
     protected override async Task OnInitializedAsync()
     {
-        _suppliers = await DbContext.Parties
+        await using var dbContext = await DbFactory.CreateDbContextAsync();
+        _suppliers = await dbContext.Parties
             .Where(p => _supplierTypes.Contains(p.PartyType) && !p.IsDeleted && p.IsActive)
             .OrderBy(p => p.Name)
             .ToListAsync();
@@ -121,24 +122,26 @@
         DebitNote.TaxAmount = DebitNote.Amount * (DebitNote.TaxPercent ?? 0) / 100;
         DebitNote.NetAmount = DebitNote.Amount + DebitNote.TaxAmount;
 
+        await using var dbContext = await DbFactory.CreateDbContextAsync();
+
         if (IsNew)
         {
             if (string.IsNullOrEmpty(DebitNote.DebitNoteNo))
             {
-                var maxNo = await DbContext.DebitNotes.MaxAsync(d => (int?)d.Id) ?? 0;
+                var maxNo = await dbContext.DebitNotes.MaxAsync(d => (int?)d.Id) ?? 0;
                 DebitNote.DebitNoteNo = $"DN-{(maxNo + 1):D6}";
             }
             DebitNote.Status = DebitNoteStatus.Draft;
             DebitNote.CreatedAt = DateTime.UtcNow;
-            DbContext.DebitNotes.Add(DebitNote);
+            dbContext.DebitNotes.Add(DebitNote);
         }
         else
         {
             DebitNote.ModifiedAt = DateTime.UtcNow;
-            DbContext.DebitNotes.Update(DebitNote);
+            dbContext.DebitNotes.Update(DebitNote);
         }
 
-        await DbContext.SaveChangesAsync();
+        await dbContext.SaveChangesAsync();
         MudDialog.Close(DialogResult.Ok(DebitNote));
     }
 

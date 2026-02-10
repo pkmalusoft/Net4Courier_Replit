@@ -5,7 +5,7 @@
 @using Microsoft.EntityFrameworkCore
 @using ClosedXML.Excel
 @using BankRecon = Net4Courier.Finance.Entities.BankReconciliation
-@inject ApplicationDbContext DbContext
+@inject IDbContextFactory<ApplicationDbContext> DbFactory
 @inject ISnackbar Snackbar
 @inject NavigationManager Navigation
 @inject IJSRuntime JS
@@ -130,7 +130,8 @@ else
 
     private async Task LoadReconciliation()
     {
-        reconciliation = await DbContext.BankReconciliations.FindAsync(Id);
+        await using var dbContext = await DbFactory.CreateDbContextAsync();
+        reconciliation = await dbContext.BankReconciliations.FindAsync(Id);
         if (reconciliation == null)
         {
             Snackbar.Add("Reconciliation not found", Severity.Error);
@@ -138,7 +139,7 @@ else
             return;
         }
 
-        var ba = await DbContext.BankAccounts.AsNoTracking().FirstOrDefaultAsync(b => b.Id == reconciliation.BankAccountId);
+        var ba = await dbContext.BankAccounts.AsNoTracking().FirstOrDefaultAsync(b => b.Id == reconciliation.BankAccountId);
         bankAccountName = ba != null ? $"{ba.BankName} - {ba.AccountName} ({ba.AccountNumber})" : "Unknown";
 
         await LoadMatchedData();
@@ -150,7 +151,8 @@ else
 
     private async Task LoadMatchedData()
     {
-        var matches = await DbContext.ReconciliationMatches
+        await using var dbContext = await DbFactory.CreateDbContextAsync();
+        var matches = await dbContext.ReconciliationMatches
             .AsNoTracking()
             .Where(m => m.BankReconciliationId == Id && !m.IsReversed)
             .ToListAsync();
@@ -162,7 +164,7 @@ else
             .ToHashSet();
 
         var statementLineIds = matches.Select(m => m.BankStatementLineId).Distinct().ToList();
-        var statementLines = await DbContext.BankStatementLines
+        var statementLines = await dbContext.BankStatementLines
             .AsNoTracking()
             .Where(sl => statementLineIds.Contains(sl.Id))
             .ToDictionaryAsync(sl => sl.Id);
@@ -187,7 +189,7 @@ else
 
             if (match.CashBankTransactionId.HasValue)
             {
-                var cbt = await DbContext.CashBankTransactions.AsNoTracking().FirstOrDefaultAsync(t => t.Id == match.CashBankTransactionId.Value);
+                var cbt = await dbContext.CashBankTransactions.AsNoTracking().FirstOrDefaultAsync(t => t.Id == match.CashBankTransactionId.Value);
                 if (cbt != null)
                 {
                     pair.BookDate = cbt.VoucherDate;
@@ -197,7 +199,7 @@ else
             }
             else if (match.JournalId.HasValue)
             {
-                var cbt = await DbContext.CashBankTransactions.AsNoTracking().FirstOrDefaultAsync(t => t.JournalId == match.JournalId);
+                var cbt = await dbContext.CashBankTransactions.AsNoTracking().FirstOrDefaultAsync(t => t.JournalId == match.JournalId);
                 if (cbt != null)
                 {
                     pair.BookDate = cbt.VoucherDate;
@@ -212,9 +214,10 @@ else
 
     private async Task LoadUnmatchedBookEntries()
     {
+        await using var dbContext = await DbFactory.CreateDbContextAsync();
         if (reconciliation == null) return;
 
-        var allBookEntries = await DbContext.CashBankTransactions
+        var allBookEntries = await dbContext.CashBankTransactions
             .AsNoTracking()
             .Where(t => t.BankAccountId == reconciliation.BankAccountId
                 && t.Status == CashBankStatus.Posted
@@ -242,15 +245,16 @@ else
 
     private async Task LoadUnmatchedStatementLines()
     {
+        await using var dbContext = await DbFactory.CreateDbContextAsync();
         if (reconciliation == null) return;
 
-        var importIds = await DbContext.BankStatementImports
+        var importIds = await dbContext.BankStatementImports
             .AsNoTracking()
             .Where(i => i.BankReconciliationId == Id)
             .Select(i => i.Id)
             .ToListAsync();
 
-        unmatchedStatementLines = await DbContext.BankStatementLines
+        unmatchedStatementLines = await dbContext.BankStatementLines
             .AsNoTracking()
             .Where(sl => importIds.Contains(sl.BankStatementImportId) && !sl.IsMatched)
             .OrderByDescending(sl => sl.TransactionDate)
@@ -259,7 +263,8 @@ else
 
     private async Task LoadExistingImports()
     {
-        existingImports = await DbContext.BankStatementImports
+        await using var dbContext = await DbFactory.CreateDbContextAsync();
+        existingImports = await dbContext.BankStatementImports
             .AsNoTracking()
             .Where(i => i.BankReconciliationId == Id)
             .OrderByDescending(i => i.ImportedAt)
@@ -268,7 +273,8 @@ else
 
     private async Task LoadAdjustments()
     {
-        adjustments = await DbContext.ReconciliationAdjustments
+        await using var dbContext = await DbFactory.CreateDbContextAsync();
+        adjustments = await dbContext.ReconciliationAdjustments
             .AsNoTracking()
             .Where(a => a.BankReconciliationId == Id && !a.IsDeleted)
             .OrderByDescending(a => a.AdjustmentDate)
@@ -757,6 +763,7 @@ else
 
     private async Task MatchSelected()
     {
+        await using var dbContext = await DbFactory.CreateDbContextAsync();
         if (selectedBookEntryIds.Count == 0 || selectedStatementLineIds.Count == 0)
         {
             Snackbar.Add("Please select at least one book entry and one statement line", Severity.Warning);
@@ -787,9 +794,9 @@ else
                     MatchType = MatchType.Manual,
                     MatchedAt = DateTime.UtcNow
                 };
-                DbContext.ReconciliationMatches.Add(match);
+                dbContext.ReconciliationMatches.Add(match);
 
-                var stmtEntity = await DbContext.BankStatementLines.FindAsync(stmt.Id);
+                var stmtEntity = await dbContext.BankStatementLines.FindAsync(stmt.Id);
                 if (stmtEntity != null)
                     stmtEntity.IsMatched = true;
             }
@@ -800,7 +807,7 @@ else
                 reconciliation.ModifiedAt = DateTime.UtcNow;
             }
 
-            await DbContext.SaveChangesAsync();
+            await dbContext.SaveChangesAsync();
             Snackbar.Add($"{matchCount} pair(s) matched successfully", Severity.Success);
 
             ClearSelection();
@@ -817,19 +824,20 @@ else
 
     private async Task UnmatchPair(long matchId)
     {
+        await using var dbContext = await DbFactory.CreateDbContextAsync();
         try
         {
-            var match = await DbContext.ReconciliationMatches.FindAsync(matchId);
+            var match = await dbContext.ReconciliationMatches.FindAsync(matchId);
             if (match == null) return;
 
             match.IsReversed = true;
             match.ReversedAt = DateTime.UtcNow;
 
-            var stmtLine = await DbContext.BankStatementLines.FindAsync(match.BankStatementLineId);
+            var stmtLine = await dbContext.BankStatementLines.FindAsync(match.BankStatementLineId);
             if (stmtLine != null)
                 stmtLine.IsMatched = false;
 
-            await DbContext.SaveChangesAsync();
+            await dbContext.SaveChangesAsync();
             Snackbar.Add("Match reversed", Severity.Success);
 
             await LoadMatchedData();
@@ -845,28 +853,29 @@ else
 
     private async Task UpdateReconciliationBalances()
     {
+        await using var dbContext = await DbFactory.CreateDbContextAsync();
         if (reconciliation == null) return;
         try
         {
-            var rec = await DbContext.BankReconciliations.FindAsync(Id);
+            var rec = await dbContext.BankReconciliations.FindAsync(Id);
             if (rec == null) return;
 
-            var totalReceipts = await DbContext.CashBankTransactions.AsNoTracking()
+            var totalReceipts = await dbContext.CashBankTransactions.AsNoTracking()
                 .Where(t => t.BankAccountId == rec.BankAccountId && t.TransactionType == TransactionType.Bank
                     && t.RecPayType == RecPayType.Receipt && t.Status == CashBankStatus.Posted && !t.IsDeleted)
                 .SumAsync(t => t.TotalAmount);
-            var totalPayments = await DbContext.CashBankTransactions.AsNoTracking()
+            var totalPayments = await dbContext.CashBankTransactions.AsNoTracking()
                 .Where(t => t.BankAccountId == rec.BankAccountId && t.TransactionType == TransactionType.Bank
                     && t.RecPayType == RecPayType.Payment && t.Status == CashBankStatus.Posted && !t.IsDeleted)
                 .SumAsync(t => t.TotalAmount);
 
-            var ba = await DbContext.BankAccounts.AsNoTracking().FirstOrDefaultAsync(b => b.Id == rec.BankAccountId);
+            var ba = await dbContext.BankAccounts.AsNoTracking().FirstOrDefaultAsync(b => b.Id == rec.BankAccountId);
             var openBal = ba?.OpeningBalance ?? 0;
 
             rec.BookClosingBalance = openBal + totalReceipts - totalPayments;
             rec.DifferenceAmount = rec.StatementClosingBalance - rec.BookClosingBalance;
             rec.ModifiedAt = DateTime.UtcNow;
-            await DbContext.SaveChangesAsync();
+            await dbContext.SaveChangesAsync();
 
             reconciliation = rec;
         }
@@ -1002,6 +1011,7 @@ else
 
     private async Task ImportStatement()
     {
+        await using var dbContext = await DbFactory.CreateDbContextAsync();
         if (!colDate.HasValue || !colDescription.HasValue || !colDebit.HasValue || !colCredit.HasValue)
         {
             Snackbar.Add("Please map required columns: Date, Description, Debit, Credit", Severity.Warning);
@@ -1023,8 +1033,8 @@ else
                 ImportedAt = DateTime.UtcNow,
                 ImportedByUserId = 0
             };
-            DbContext.BankStatementImports.Add(import);
-            await DbContext.SaveChangesAsync();
+            dbContext.BankStatementImports.Add(import);
+            await dbContext.SaveChangesAsync();
 
             var errorLog = new System.Text.StringBuilder();
 
@@ -1064,7 +1074,7 @@ else
                         ChequeNumber = colCheque.HasValue && colCheque.Value < row.Length ? row[colCheque.Value] : null,
                         Balance = colBalance.HasValue && colBalance.Value < row.Length && decimal.TryParse(row[colBalance.Value].Replace(",", ""), out var bal) ? bal : 0
                     };
-                    DbContext.BankStatementLines.Add(line);
+                    dbContext.BankStatementLines.Add(line);
                     imported++;
                 }
                 catch
@@ -1083,7 +1093,7 @@ else
                 reconciliation.ModifiedAt = DateTime.UtcNow;
             }
 
-            await DbContext.SaveChangesAsync();
+            await dbContext.SaveChangesAsync();
 
             importResult = $"{imported} lines imported, {skipped} skipped, {errors} errors";
             Snackbar.Add(importResult, Severity.Success);
@@ -1225,6 +1235,7 @@ else
 
     private async Task ConfirmSelectedProposals()
     {
+        await using var dbContext = await DbFactory.CreateDbContextAsync();
         if (selectedProposalIndexes.Count == 0) return;
 
         try
@@ -1245,9 +1256,9 @@ else
                     MatchType = MatchType.Automatic,
                     MatchedAt = DateTime.UtcNow
                 };
-                DbContext.ReconciliationMatches.Add(match);
+                dbContext.ReconciliationMatches.Add(match);
 
-                var stmtEntity = await DbContext.BankStatementLines.FindAsync(proposal.StatementLine.Id);
+                var stmtEntity = await dbContext.BankStatementLines.FindAsync(proposal.StatementLine.Id);
                 if (stmtEntity != null)
                     stmtEntity.IsMatched = true;
             }
@@ -1258,7 +1269,7 @@ else
                 reconciliation.ModifiedAt = DateTime.UtcNow;
             }
 
-            await DbContext.SaveChangesAsync();
+            await dbContext.SaveChangesAsync();
             Snackbar.Add($"{toConfirm.Count} match(es) confirmed", Severity.Success);
 
             autoProposals.Clear();
@@ -1300,6 +1311,7 @@ else
 
     private async Task SaveAdjustment()
     {
+        await using var dbContext = await DbFactory.CreateDbContextAsync();
         if (string.IsNullOrWhiteSpace(adjDescription))
         {
             Snackbar.Add("Description is required", Severity.Warning);
@@ -1310,7 +1322,7 @@ else
         {
             if (editingAdjustmentId.HasValue)
             {
-                var adj = await DbContext.ReconciliationAdjustments.FindAsync(editingAdjustmentId.Value);
+                var adj = await dbContext.ReconciliationAdjustments.FindAsync(editingAdjustmentId.Value);
                 if (adj != null)
                 {
                     adj.AdjustmentType = adjType;
@@ -1333,10 +1345,10 @@ else
                     Notes = adjNotes,
                     CreatedAt = DateTime.UtcNow
                 };
-                DbContext.ReconciliationAdjustments.Add(adj);
+                dbContext.ReconciliationAdjustments.Add(adj);
             }
 
-            await DbContext.SaveChangesAsync();
+            await dbContext.SaveChangesAsync();
             Snackbar.Add("Adjustment saved", Severity.Success);
             showAdjustmentDialog = false;
             await LoadAdjustments();
@@ -1350,14 +1362,15 @@ else
 
     private async Task DeleteAdjustment(long id)
     {
+        await using var dbContext = await DbFactory.CreateDbContextAsync();
         try
         {
-            var adj = await DbContext.ReconciliationAdjustments.FindAsync(id);
+            var adj = await dbContext.ReconciliationAdjustments.FindAsync(id);
             if (adj != null)
             {
                 adj.IsDeleted = true;
                 adj.ModifiedAt = DateTime.UtcNow;
-                await DbContext.SaveChangesAsync();
+                await dbContext.SaveChangesAsync();
                 Snackbar.Add("Adjustment deleted", Severity.Success);
                 await LoadAdjustments();
                 await UpdateReconciliationBalances();
@@ -1371,14 +1384,15 @@ else
 
     private async Task MarkAsCompleted()
     {
+        await using var dbContext = await DbFactory.CreateDbContextAsync();
         try
         {
-            var rec = await DbContext.BankReconciliations.FindAsync(Id);
+            var rec = await dbContext.BankReconciliations.FindAsync(Id);
             if (rec == null) return;
             rec.Status = ReconciliationStatus.Completed;
             rec.CompletedDate = DateTime.UtcNow;
             rec.ModifiedAt = DateTime.UtcNow;
-            await DbContext.SaveChangesAsync();
+            await dbContext.SaveChangesAsync();
             reconciliation = rec;
             Snackbar.Add("Reconciliation marked as completed", Severity.Success);
         }
@@ -1390,14 +1404,15 @@ else
 
     private async Task LockReconciliation()
     {
+        await using var dbContext = await DbFactory.CreateDbContextAsync();
         try
         {
-            var rec = await DbContext.BankReconciliations.FindAsync(Id);
+            var rec = await dbContext.BankReconciliations.FindAsync(Id);
             if (rec == null) return;
             rec.Status = ReconciliationStatus.Locked;
             rec.LockedAt = DateTime.UtcNow;
             rec.ModifiedAt = DateTime.UtcNow;
-            await DbContext.SaveChangesAsync();
+            await dbContext.SaveChangesAsync();
             reconciliation = rec;
             Snackbar.Add("Reconciliation locked", Severity.Success);
         }
@@ -1409,14 +1424,15 @@ else
 
     private async Task ReopenReconciliation()
     {
+        await using var dbContext = await DbFactory.CreateDbContextAsync();
         try
         {
-            var rec = await DbContext.BankReconciliations.FindAsync(Id);
+            var rec = await dbContext.BankReconciliations.FindAsync(Id);
             if (rec == null) return;
             rec.Status = ReconciliationStatus.InProgress;
             rec.CompletedDate = null;
             rec.ModifiedAt = DateTime.UtcNow;
-            await DbContext.SaveChangesAsync();
+            await dbContext.SaveChangesAsync();
             reconciliation = rec;
             Snackbar.Add("Reconciliation reopened", Severity.Success);
         }

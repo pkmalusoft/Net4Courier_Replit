@@ -1,5 +1,5 @@
 @page "/n4c-reports/cash-flow/direct"
-@inject ApplicationDbContext DbContext
+@inject IDbContextFactory<ApplicationDbContext> DbFactory
 @inject ISnackbar Snackbar
 @using Microsoft.EntityFrameworkCore
 @using Net4Courier.Infrastructure.Data
@@ -242,7 +242,8 @@
                 ? DateTime.SpecifyKind(_toDate.Value.Date.AddDays(1).AddTicks(-1), DateTimeKind.Utc) 
                 : DateTime.UtcNow;
 
-            var allAccounts = await DbContext.AccountHeads
+            await using var dbContext = await DbFactory.CreateDbContextAsync();
+            var allAccounts = await dbContext.AccountHeads
                 .Where(a => a.IsActive && !a.IsGroup)
                 .ToListAsync();
 
@@ -262,7 +263,7 @@
                 var account = accountLookup.GetValueOrDefault(cashAccountId);
                 if (account == null) continue;
 
-                var priorEntries = await DbContext.JournalEntries
+                var priorEntries = await dbContext.JournalEntries
                     .Include(e => e.Journal)
                     .Where(e => !e.IsDeleted && e.Journal.IsPosted && 
                            e.AccountHeadId == cashAccountId && e.Journal.VoucherDate < fromUtc)
@@ -271,7 +272,7 @@
                 _openingCashBalance += (account.OpeningBalance ?? 0) + priorEntries.Sum(e => (e.Debit ?? 0) - (e.Credit ?? 0));
             }
 
-            var periodEntries = await DbContext.JournalEntries
+            var periodEntries = await dbContext.JournalEntries
                 .Include(e => e.Journal)
                 .Where(e => !e.IsDeleted && e.Journal.IsPosted && 
                        cashBankAccountIds.Contains(e.AccountHeadId) &&
@@ -279,7 +280,7 @@
                 .ToListAsync();
 
             var journalIds = periodEntries.Select(e => e.JournalId).Distinct().ToList();
-            var allEntriesByJournal = await DbContext.JournalEntries
+            var allEntriesByJournal = await dbContext.JournalEntries
                 .Where(e => journalIds.Contains(e.JournalId))
                 .ToListAsync();
 

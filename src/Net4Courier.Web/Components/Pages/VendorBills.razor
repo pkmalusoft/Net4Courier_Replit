@@ -1,5 +1,5 @@
 @page "/vendor-bills"
-@inject ApplicationDbContext DbContext
+@inject IDbContextFactory<ApplicationDbContext> DbFactory
 @inject IDialogService DialogService
 @inject ISnackbar Snackbar
 @inject IDateTimeService DateTimeService
@@ -99,7 +99,8 @@
     private async Task LoadData()
     {
         _loading = true;
-        var query = DbContext.VendorBills.Where(b => !b.IsDeleted);
+        await using var dbContext = await DbFactory.CreateDbContextAsync();
+        var query = dbContext.VendorBills.Where(b => !b.IsDeleted);
 
         if (_fromDate.HasValue)
             query = query.Where(b => b.BillDate >= DateTime.SpecifyKind(_fromDate.Value.Date, DateTimeKind.Utc));
@@ -163,9 +164,11 @@
 
         if (confirm == true)
         {
+            await using var dbContext = await DbFactory.CreateDbContextAsync();
+            dbContext.Attach(bill);
             bill.IsDeleted = true;
             bill.ModifiedAt = DateTime.UtcNow;
-            await DbContext.SaveChangesAsync();
+            await dbContext.SaveChangesAsync();
             await LoadData();
             Snackbar.Add("Vendor bill deleted successfully", Severity.Success);
         }

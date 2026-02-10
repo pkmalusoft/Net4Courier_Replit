@@ -3,7 +3,7 @@
 @using Net4Courier.Infrastructure.Data
 @using Net4Courier.Masters.Entities
 @using Net4Courier.Web.Services
-@inject ApplicationDbContext DbContext
+@inject IDbContextFactory<ApplicationDbContext> DbFactory
 @inject ISnackbar Snackbar
 @inject ISecureStorageService SecureStorage
 @inject NavigationManager Navigation
@@ -253,7 +253,8 @@
     private async Task LoadSettings()
     {
         _loading = true;
-        _apiSettings = await DbContext.ApiSettings
+        await using var dbContext = await DbFactory.CreateDbContextAsync();
+        _apiSettings = await dbContext.ApiSettings
             .Where(s => !s.IsDeleted)
             .OrderBy(s => s.Name)
             .ToListAsync();
@@ -314,10 +315,11 @@
         _saving = true;
         try
         {
+            await using var dbContext = await DbFactory.CreateDbContextAsync();
             ApiSetting entity;
             if (_editingId > 0)
             {
-                entity = await DbContext.ApiSettings.FindAsync(_editingId);
+                entity = await dbContext.ApiSettings.FindAsync(_editingId);
                 if (entity == null)
                 {
                     Snackbar.Add("Integration not found", Severity.Error);
@@ -327,7 +329,7 @@
             else
             {
                 entity = new ApiSetting();
-                DbContext.ApiSettings.Add(entity);
+                dbContext.ApiSettings.Add(entity);
             }
 
             entity.Name = _editModel.Name;
@@ -353,11 +355,11 @@
             
             if (entity.Id == 0)
             {
-                await DbContext.SaveChangesAsync();
+                await dbContext.SaveChangesAsync();
             }
             entity.WebhookEndpoint = $"{baseUrl}/api/bookings/webhook/{entity.Id}";
 
-            await DbContext.SaveChangesAsync();
+            await dbContext.SaveChangesAsync();
             Snackbar.Add("Integration saved successfully", Severity.Success);
             _showDialog = false;
             await LoadSettings();
@@ -374,8 +376,13 @@
 
     private async Task DeleteIntegration(ApiSetting setting)
     {
-        setting.IsDeleted = true;
-        await DbContext.SaveChangesAsync();
+        await using var dbContext = await DbFactory.CreateDbContextAsync();
+        var entity = await dbContext.ApiSettings.FindAsync(setting.Id);
+        if (entity != null)
+        {
+            entity.IsDeleted = true;
+            await dbContext.SaveChangesAsync();
+        }
         Snackbar.Add("Integration deleted", Severity.Success);
         await LoadSettings();
     }
@@ -385,18 +392,28 @@
         _testing = true;
         try
         {
-            setting.LastSyncAt = DateTime.UtcNow;
-            setting.LastSyncStatus = "Success";
-            setting.LastSyncError = null;
-            await DbContext.SaveChangesAsync();
+            await using var dbContext = await DbFactory.CreateDbContextAsync();
+            var entity = await dbContext.ApiSettings.FindAsync(setting.Id);
+            if (entity != null)
+            {
+                entity.LastSyncAt = DateTime.UtcNow;
+                entity.LastSyncStatus = "Success";
+                entity.LastSyncError = null;
+                await dbContext.SaveChangesAsync();
+            }
             Snackbar.Add("Connection test successful - webhook is ready to receive bookings", Severity.Success);
             await LoadSettings();
         }
         catch (Exception ex)
         {
-            setting.LastSyncStatus = "Failed";
-            setting.LastSyncError = ex.Message;
-            await DbContext.SaveChangesAsync();
+            await using var dbContext = await DbFactory.CreateDbContextAsync();
+            var entity = await dbContext.ApiSettings.FindAsync(setting.Id);
+            if (entity != null)
+            {
+                entity.LastSyncStatus = "Failed";
+                entity.LastSyncError = ex.Message;
+                await dbContext.SaveChangesAsync();
+            }
             Snackbar.Add($"Connection test failed: {ex.Message}", Severity.Error);
         }
         finally

@@ -1,4 +1,4 @@
-@inject ApplicationDbContext DbContext
+@inject IDbContextFactory<ApplicationDbContext> DbFactory
 @using Microsoft.EntityFrameworkCore
 @using Net4Courier.Infrastructure.Data
 @using Net4Courier.Infrastructure.Services
@@ -132,18 +132,19 @@
 
     protected override async Task OnInitializedAsync()
     {
-        _roles = await DbContext.Roles.Where(r => r.IsActive && !r.IsDeleted).OrderBy(r => r.Name).ToListAsync();
-        _branches = await DbContext.Branches
+        await using var dbContext = await DbFactory.CreateDbContextAsync();
+        _roles = await dbContext.Roles.Where(r => r.IsActive && !r.IsDeleted).OrderBy(r => r.Name).ToListAsync();
+        _branches = await dbContext.Branches
             .Include(b => b.Company)
             .Where(b => b.IsActive && !b.IsDeleted)
             .OrderBy(b => b.Company.Name)
             .ThenBy(b => b.Name)
             .ToListAsync();
-        _userTypes = await DbContext.UserTypes.Where(ut => ut.IsActive && !ut.IsDeleted).OrderBy(ut => ut.Name).ToListAsync();
+        _userTypes = await dbContext.UserTypes.Where(ut => ut.IsActive && !ut.IsDeleted).OrderBy(ut => ut.Name).ToListAsync();
         
         if (!IsNew && User.Id > 0)
         {
-            var userBranches = await DbContext.UserBranches
+            var userBranches = await dbContext.UserBranches
                 .Where(ub => ub.UserId == User.Id && !ub.IsDeleted)
                 .ToListAsync();
             _selectedBranchIds = userBranches.Select(ub => ub.BranchId).ToHashSet();
@@ -184,6 +185,7 @@
         await _form.Validate();
         if (!_formIsValid) return;
 
+        await using var dbContext = await DbFactory.CreateDbContextAsync();
         if (IsNew)
         {
             if (_password != _confirmPassword)
@@ -193,8 +195,8 @@
             User.PasswordHash = AuthService.HashPassword(_password);
             User.CreatedAt = DateTime.UtcNow;
             User.BranchId = _defaultBranchId;
-            DbContext.Users.Add(User);
-            await DbContext.SaveChangesAsync();
+            dbContext.Users.Add(User);
+            await dbContext.SaveChangesAsync();
             
             foreach (var branchId in _selectedBranchIds)
             {
@@ -205,19 +207,19 @@
                     IsDefault = branchId == _defaultBranchId,
                     CreatedAt = DateTime.UtcNow
                 };
-                DbContext.UserBranches.Add(userBranch);
+                dbContext.UserBranches.Add(userBranch);
             }
         }
         else
         {
             User.ModifiedAt = DateTime.UtcNow;
             User.BranchId = _defaultBranchId;
-            DbContext.Users.Update(User);
+            dbContext.Users.Update(User);
             
-            var existingUserBranches = await DbContext.UserBranches
+            var existingUserBranches = await dbContext.UserBranches
                 .Where(ub => ub.UserId == User.Id)
                 .ToListAsync();
-            DbContext.UserBranches.RemoveRange(existingUserBranches);
+            dbContext.UserBranches.RemoveRange(existingUserBranches);
             
             foreach (var branchId in _selectedBranchIds)
             {
@@ -228,11 +230,11 @@
                     IsDefault = branchId == _defaultBranchId,
                     CreatedAt = DateTime.UtcNow
                 };
-                DbContext.UserBranches.Add(userBranch);
+                dbContext.UserBranches.Add(userBranch);
             }
         }
 
-        await DbContext.SaveChangesAsync();
+        await dbContext.SaveChangesAsync();
         MudDialog.Close(DialogResult.Ok(User));
     }
 

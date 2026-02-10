@@ -1,5 +1,5 @@
 @page "/n4c-reports/account-ledger-detailed"
-@inject ApplicationDbContext DbContext
+@inject IDbContextFactory<ApplicationDbContext> DbFactory
 @inject ISnackbar Snackbar
 @using Microsoft.EntityFrameworkCore
 @using Net4Courier.Infrastructure.Data
@@ -170,7 +170,8 @@
     {
         try
         {
-            _accounts = await DbContext.AccountHeads
+            await using var dbContext = await DbFactory.CreateDbContextAsync();
+            _accounts = await dbContext.AccountHeads
                 .Where(a => a.IsActive && !a.IsGroup)
                 .OrderBy(a => a.Code)
                 .ToListAsync();
@@ -190,6 +191,7 @@
 
         try
         {
+            await using var dbContext = await DbFactory.CreateDbContextAsync();
             _selectedAccount = _accounts.FirstOrDefault(a => a.Id == _selectedAccountId);
             if (_selectedAccount == null) return;
 
@@ -201,7 +203,7 @@
                 : DateTime.UtcNow;
 
             _openingBalance = _selectedAccount.OpeningBalance ?? 0;
-            var priorEntries = await DbContext.JournalEntries
+            var priorEntries = await dbContext.JournalEntries
                 .Include(e => e.Journal)
                 .Where(e => !e.IsDeleted && e.Journal.IsPosted && 
                        e.AccountHeadId == _selectedAccountId.Value && 
@@ -210,7 +212,7 @@
 
             _openingBalance += priorEntries.Sum(e => (e.Debit ?? 0) - (e.Credit ?? 0));
 
-            var periodEntries = await DbContext.JournalEntries
+            var periodEntries = await dbContext.JournalEntries
                 .Include(e => e.Journal)
                 .Where(e => !e.IsDeleted && e.Journal.IsPosted && 
                        e.AccountHeadId == _selectedAccountId.Value && 

@@ -1,5 +1,5 @@
 @page "/designations"
-@inject ApplicationDbContext DbContext
+@inject IDbContextFactory<ApplicationDbContext> DbFactory
 @inject ISnackbar Snackbar
 @inject IDialogService DialogService
 @using Microsoft.EntityFrameworkCore
@@ -63,7 +63,8 @@
     private async Task LoadData()
     {
         _loading = true;
-        _designations = await DbContext.Designations
+        await using var dbContext = await DbFactory.CreateDbContextAsync();
+        _designations = await dbContext.Designations
             .Where(d => !d.IsDeleted)
             .OrderBy(d => d.SortOrder)
             .ThenBy(d => d.Name)
@@ -116,9 +117,14 @@
         {
             try
             {
-                designation.IsDeleted = true;
-                designation.ModifiedAt = DateTime.SpecifyKind(DateTime.UtcNow, DateTimeKind.Utc);
-                await DbContext.SaveChangesAsync();
+                await using var dbContext = await DbFactory.CreateDbContextAsync();
+                var entity = await dbContext.Designations.FindAsync(designation.Id);
+                if (entity != null)
+                {
+                    entity.IsDeleted = true;
+                    entity.ModifiedAt = DateTime.SpecifyKind(DateTime.UtcNow, DateTimeKind.Utc);
+                    await dbContext.SaveChangesAsync();
+                }
                 Snackbar.Add("Designation deleted", Severity.Success);
                 await LoadData();
             }

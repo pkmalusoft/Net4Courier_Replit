@@ -2,7 +2,7 @@
 @using Microsoft.EntityFrameworkCore
 @using Net4Courier.Infrastructure.Data
 @using Net4Courier.Masters.Entities
-@inject ApplicationDbContext DbContext
+@inject IDbContextFactory<ApplicationDbContext> DbFactory
 @inject IDialogService DialogService
 @inject ISnackbar Snackbar
 
@@ -96,11 +96,12 @@
     private async Task LoadData()
     {
         _loading = true;
-        _branches = await DbContext.Branches.Where(b => !b.IsDeleted && b.IsActive).OrderBy(b => b.Name).ToListAsync();
-        _users = await DbContext.Users.Where(u => u.IsActive && !u.IsDeleted).OrderBy(u => u.Username).ToListAsync();
-        _designations = await DbContext.Designations.Where(d => !d.IsDeleted && d.IsActive).OrderBy(d => d.SortOrder).ThenBy(d => d.Name).ToListAsync();
-        _departments = await DbContext.Departments.Where(d => !d.IsDeleted && d.IsActive).OrderBy(d => d.SortOrder).ThenBy(d => d.Name).ToListAsync();
-        _employees = await DbContext.Employees
+        await using var dbContext = await DbFactory.CreateDbContextAsync();
+        _branches = await dbContext.Branches.Where(b => !b.IsDeleted && b.IsActive).OrderBy(b => b.Name).ToListAsync();
+        _users = await dbContext.Users.Where(u => u.IsActive && !u.IsDeleted).OrderBy(u => u.Username).ToListAsync();
+        _designations = await dbContext.Designations.Where(d => !d.IsDeleted && d.IsActive).OrderBy(d => d.SortOrder).ThenBy(d => d.Name).ToListAsync();
+        _departments = await dbContext.Departments.Where(d => !d.IsDeleted && d.IsActive).OrderBy(d => d.SortOrder).ThenBy(d => d.Name).ToListAsync();
+        _employees = await dbContext.Employees
             .Include(e => e.User)
             .Include(e => e.Branch)
             .Include(e => e.Designation)
@@ -198,8 +199,13 @@
 
         if (confirm == true)
         {
-            employee.IsDeleted = true;
-            await DbContext.SaveChangesAsync();
+            await using var dbContext = await DbFactory.CreateDbContextAsync();
+            var entity = await dbContext.Employees.FindAsync(employee.Id);
+            if (entity != null)
+            {
+                entity.IsDeleted = true;
+                await dbContext.SaveChangesAsync();
+            }
             await LoadData();
             Snackbar.Add("Employee deleted successfully", Severity.Success);
         }

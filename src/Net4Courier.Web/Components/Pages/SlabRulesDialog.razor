@@ -1,7 +1,7 @@
 @using Microsoft.EntityFrameworkCore
 @using Net4Courier.Masters.Entities
 @using Net4Courier.Infrastructure.Data
-@inject ApplicationDbContext DbContext
+@inject IDbContextFactory<ApplicationDbContext> DbFactory
 @inject ISnackbar Snackbar
 @inject IDialogService DialogService
 
@@ -139,7 +139,8 @@
 
     protected override async Task OnInitializedAsync()
     {
-        var zone = await DbContext.RateCardZones
+        await using var dbContext = await DbFactory.CreateDbContextAsync();
+        var zone = await dbContext.RateCardZones
             .Include(z => z.ZoneMatrix)
             .Include(z => z.SlabRules.Where(s => !s.IsDeleted))
             .FirstOrDefaultAsync(z => z.Id == RateCardZoneId);
@@ -252,6 +253,7 @@
 
     private async Task Save()
     {
+        await using var dbContext = await DbFactory.CreateDbContextAsync();
         _saving = true;
         try
         {
@@ -263,7 +265,7 @@
                 if (rule.Id == 0)
                 {
                     rule.CreatedAt = DateTime.UtcNow;
-                    DbContext.RateCardSlabRules.Add(rule);
+                    dbContext.RateCardSlabRules.Add(rule);
                 }
                 else
                 {
@@ -271,7 +273,7 @@
                 }
             }
 
-            await DbContext.SaveChangesAsync();
+            await dbContext.SaveChangesAsync();
             Snackbar.Add("Slab rules saved successfully", Severity.Success);
             MudDialog.Close(DialogResult.Ok(true));
         }
@@ -285,7 +287,8 @@
 
     private async Task OpenLoadTemplate()
     {
-        var templates = await DbContext.SlabRuleTemplates
+        await using var dbContext = await DbFactory.CreateDbContextAsync();
+        var templates = await dbContext.SlabRuleTemplates
             .Include(t => t.Details.Where(d => !d.IsDeleted))
             .Where(t => !t.IsDeleted && t.IsActive)
             .OrderBy(t => t.TemplateName)

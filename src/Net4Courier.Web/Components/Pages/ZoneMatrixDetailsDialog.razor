@@ -1,7 +1,7 @@
 @using Microsoft.EntityFrameworkCore
 @using Net4Courier.Masters.Entities
 @using Net4Courier.Infrastructure.Data
-@inject ApplicationDbContext DbContext
+@inject IDbContextFactory<ApplicationDbContext> DbFactory
 @inject ISnackbar Snackbar
 
 <MudDialog>
@@ -99,7 +99,8 @@
 
     protected override async Task OnInitializedAsync()
     {
-        var zone = await DbContext.ZoneMatrices
+        await using var dbContext = await DbFactory.CreateDbContextAsync();
+        var zone = await dbContext.ZoneMatrices
             .Include(z => z.Details.Where(d => !d.IsDeleted))
             .FirstOrDefaultAsync(z => z.Id == ZoneMatrixId);
 
@@ -114,21 +115,23 @@
 
     private async Task LoadLookups()
     {
+        await using var dbContext = await DbFactory.CreateDbContextAsync();
         var countryIds = _details.Where(d => d.CountryId.HasValue).Select(d => d.CountryId!.Value).Distinct().ToList();
         var cityIds = _details.Where(d => d.CityId.HasValue).Select(d => d.CityId!.Value).Distinct().ToList();
         var stateIds = _details.Where(d => d.StateId.HasValue).Select(d => d.StateId!.Value).Distinct().ToList();
 
         if (countryIds.Any())
-            _countryNames = await DbContext.Countries.Where(c => countryIds.Contains(c.Id)).ToDictionaryAsync(c => c.Id, c => c.Name);
+            _countryNames = await dbContext.Countries.Where(c => countryIds.Contains(c.Id)).ToDictionaryAsync(c => c.Id, c => c.Name);
         if (cityIds.Any())
-            _cityNames = await DbContext.Cities.Where(c => cityIds.Contains(c.Id)).ToDictionaryAsync(c => c.Id, c => c.Name);
+            _cityNames = await dbContext.Cities.Where(c => cityIds.Contains(c.Id)).ToDictionaryAsync(c => c.Id, c => c.Name);
         if (stateIds.Any())
-            _stateNames = await DbContext.States.Where(s => stateIds.Contains(s.Id)).ToDictionaryAsync(s => s.Id, s => s.Name);
+            _stateNames = await dbContext.States.Where(s => stateIds.Contains(s.Id)).ToDictionaryAsync(s => s.Id, s => s.Name);
     }
 
     private async Task<IEnumerable<Country>> SearchCountries(string value, CancellationToken cancellationToken)
     {
-        var query = DbContext.Countries.Where(c => !c.IsDeleted && c.IsActive);
+        await using var dbContext = await DbFactory.CreateDbContextAsync();
+        var query = dbContext.Countries.Where(c => !c.IsDeleted && c.IsActive);
         if (!string.IsNullOrWhiteSpace(value))
             query = query.Where(c => c.Name.ToLower().Contains(value.ToLower()));
         return await query.OrderBy(c => c.Name).Take(20).ToListAsync();
@@ -136,7 +139,8 @@
 
     private async Task<IEnumerable<City>> SearchCities(string value, CancellationToken cancellationToken)
     {
-        var query = DbContext.Cities.Where(c => !c.IsDeleted && c.IsActive);
+        await using var dbContext = await DbFactory.CreateDbContextAsync();
+        var query = dbContext.Cities.Where(c => !c.IsDeleted && c.IsActive);
         if (_newCountry != null)
             query = query.Where(c => c.CountryId == _newCountry.Id);
         if (!string.IsNullOrWhiteSpace(value))
@@ -146,7 +150,8 @@
 
     private async Task<IEnumerable<State>> SearchStates(string value, CancellationToken cancellationToken)
     {
-        var query = DbContext.States.Where(s => !s.IsDeleted && s.IsActive);
+        await using var dbContext = await DbFactory.CreateDbContextAsync();
+        var query = dbContext.States.Where(s => !s.IsDeleted && s.IsActive);
         if (_newCountry != null)
             query = query.Where(s => s.CountryId == _newCountry.Id);
         if (!string.IsNullOrWhiteSpace(value))
@@ -199,15 +204,16 @@
 
     private async Task Save()
     {
+        await using var dbContext = await DbFactory.CreateDbContextAsync();
         _saving = true;
         try
         {
             foreach (var detail in _details.Where(d => d.Id == 0))
             {
-                DbContext.ZoneMatrixDetails.Add(detail);
+                dbContext.ZoneMatrixDetails.Add(detail);
             }
 
-            await DbContext.SaveChangesAsync();
+            await dbContext.SaveChangesAsync();
             Snackbar.Add("Zone locations saved", Severity.Success);
             MudDialog.Close(DialogResult.Ok(true));
         }

@@ -1,5 +1,5 @@
 @page "/expense-management"
-@inject ApplicationDbContext DbContext
+@inject IDbContextFactory<ApplicationDbContext> DbFactory
 @inject IDialogService DialogService
 @inject ISnackbar Snackbar
 @inject IDateTimeService DateTimeService
@@ -107,7 +107,8 @@
     private async Task LoadData()
     {
         _loading = true;
-        var query = DbContext.Expenses.Where(e => !e.IsDeleted);
+        await using var dbContext = await DbFactory.CreateDbContextAsync();
+        var query = dbContext.Expenses.Where(e => !e.IsDeleted);
 
         if (_fromDate.HasValue)
             query = query.Where(e => e.ExpenseDate >= DateTime.SpecifyKind(_fromDate.Value.Date, DateTimeKind.Utc));
@@ -164,28 +165,34 @@
 
     private async Task Submit(Expense expense)
     {
+        await using var dbContext = await DbFactory.CreateDbContextAsync();
+        dbContext.Attach(expense);
         expense.Status = FinanceExpenseStatus.Submitted;
         expense.ModifiedAt = DateTime.UtcNow;
-        await DbContext.SaveChangesAsync();
+        await dbContext.SaveChangesAsync();
         await LoadData();
         Snackbar.Add("Expense submitted for approval", Severity.Info);
     }
 
     private async Task Approve(Expense expense)
     {
+        await using var dbContext = await DbFactory.CreateDbContextAsync();
+        dbContext.Attach(expense);
         expense.Status = FinanceExpenseStatus.Approved;
         expense.ApprovedDate = DateTime.UtcNow;
         expense.ModifiedAt = DateTime.UtcNow;
-        await DbContext.SaveChangesAsync();
+        await dbContext.SaveChangesAsync();
         await LoadData();
         Snackbar.Add("Expense approved", Severity.Success);
     }
 
     private async Task Reject(Expense expense)
     {
+        await using var dbContext = await DbFactory.CreateDbContextAsync();
+        dbContext.Attach(expense);
         expense.Status = FinanceExpenseStatus.Rejected;
         expense.ModifiedAt = DateTime.UtcNow;
-        await DbContext.SaveChangesAsync();
+        await dbContext.SaveChangesAsync();
         await LoadData();
         Snackbar.Add("Expense rejected", Severity.Warning);
     }
@@ -199,9 +206,11 @@
 
         if (confirm == true)
         {
+            await using var dbContext = await DbFactory.CreateDbContextAsync();
+            dbContext.Attach(expense);
             expense.IsDeleted = true;
             expense.ModifiedAt = DateTime.UtcNow;
-            await DbContext.SaveChangesAsync();
+            await dbContext.SaveChangesAsync();
             await LoadData();
             Snackbar.Add("Expense deleted successfully", Severity.Success);
         }

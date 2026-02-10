@@ -1,4 +1,4 @@
-@inject ApplicationDbContext DbContext
+@inject IDbContextFactory<ApplicationDbContext> DbFactory
 @using Microsoft.EntityFrameworkCore
 @using Net4Courier.Infrastructure.Data
 @using Net4Courier.Finance.Entities
@@ -98,12 +98,13 @@
 
     protected override async Task OnInitializedAsync()
     {
-        _customers = await DbContext.Parties
+        await using var dbContext = await DbFactory.CreateDbContextAsync();
+        _customers = await dbContext.Parties
             .Where(p => p.PartyType == PartyType.Customer && !p.IsDeleted && p.IsActive)
             .OrderBy(p => p.Name)
             .ToListAsync();
 
-        _invoices = await DbContext.Invoices
+        _invoices = await dbContext.Invoices
             .Where(i => !i.IsDeleted)
             .OrderByDescending(i => i.InvoiceDate)
             .Take(100)
@@ -124,6 +125,8 @@
         await _form.Validate();
         if (!_formIsValid) return;
 
+        await using var dbContext = await DbFactory.CreateDbContextAsync();
+
         CreditNote.CreditNoteDate = DateTime.SpecifyKind((_creditNoteDate ?? DateTime.UtcNow.Date).Date, DateTimeKind.Utc);
         
         var customer = _customers.FirstOrDefault(c => c.Id == CreditNote.CustomerId);
@@ -142,20 +145,20 @@
         {
             if (string.IsNullOrEmpty(CreditNote.CreditNoteNo))
             {
-                var maxNo = await DbContext.CreditNotes.MaxAsync(c => (int?)c.Id) ?? 0;
+                var maxNo = await dbContext.CreditNotes.MaxAsync(c => (int?)c.Id) ?? 0;
                 CreditNote.CreditNoteNo = $"CN-{(maxNo + 1):D6}";
             }
             CreditNote.Status = CreditNoteStatus.Draft;
             CreditNote.CreatedAt = DateTime.UtcNow;
-            DbContext.CreditNotes.Add(CreditNote);
+            dbContext.CreditNotes.Add(CreditNote);
         }
         else
         {
             CreditNote.ModifiedAt = DateTime.UtcNow;
-            DbContext.CreditNotes.Update(CreditNote);
+            dbContext.CreditNotes.Update(CreditNote);
         }
 
-        await DbContext.SaveChangesAsync();
+        await dbContext.SaveChangesAsync();
         MudDialog.Close(DialogResult.Ok(CreditNote));
     }
 

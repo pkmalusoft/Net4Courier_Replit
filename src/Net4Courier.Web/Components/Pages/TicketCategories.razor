@@ -1,5 +1,5 @@
 @page "/ticket-categories"
-@inject ApplicationDbContext DbContext
+@inject IDbContextFactory<ApplicationDbContext> DbFactory
 @inject ISnackbar Snackbar
 @using Microsoft.EntityFrameworkCore
 @using Net4Courier.Infrastructure.Data
@@ -126,8 +126,9 @@
 
     private async Task LoadData()
     {
+        await using var dbContext = await DbFactory.CreateDbContextAsync();
         _loading = true;
-        _categories = await DbContext.TicketCategories
+        _categories = await dbContext.TicketCategories
             .Where(c => !c.IsDeleted)
             .OrderBy(c => c.SortOrder)
             .ThenBy(c => c.Name)
@@ -163,6 +164,7 @@
 
     private async Task SaveCategory()
     {
+        await using var dbContext = await DbFactory.CreateDbContextAsync();
         if (string.IsNullOrWhiteSpace(_editingCategory.Name))
         {
             Snackbar.Add("Name is required", Severity.Warning);
@@ -174,11 +176,11 @@
             if (_editingCategory.Id == 0)
             {
                 _editingCategory.CreatedAt = DateTime.UtcNow;
-                DbContext.TicketCategories.Add(_editingCategory);
+                dbContext.TicketCategories.Add(_editingCategory);
             }
             else
             {
-                var existing = await DbContext.TicketCategories.FindAsync(_editingCategory.Id);
+                var existing = await dbContext.TicketCategories.FindAsync(_editingCategory.Id);
                 if (existing != null)
                 {
                     existing.Name = _editingCategory.Name;
@@ -191,7 +193,7 @@
                 }
             }
 
-            await DbContext.SaveChangesAsync();
+            await dbContext.SaveChangesAsync();
             Snackbar.Add("Category saved successfully", Severity.Success);
             _dialogVisible = false;
             await LoadData();
@@ -204,7 +206,8 @@
 
     private async Task DeleteCategory(TicketCategory category)
     {
-        var ticketCount = await DbContext.Tickets.CountAsync(t => t.CategoryId == category.Id && !t.IsDeleted);
+        await using var dbContext = await DbFactory.CreateDbContextAsync();
+        var ticketCount = await dbContext.Tickets.CountAsync(t => t.CategoryId == category.Id && !t.IsDeleted);
         if (ticketCount > 0)
         {
             Snackbar.Add($"Cannot delete category with {ticketCount} associated tickets", Severity.Warning);
@@ -213,7 +216,7 @@
 
         category.IsDeleted = true;
         category.ModifiedAt = DateTime.UtcNow;
-        await DbContext.SaveChangesAsync();
+        await dbContext.SaveChangesAsync();
         Snackbar.Add("Category deleted successfully", Severity.Success);
         await LoadData();
     }

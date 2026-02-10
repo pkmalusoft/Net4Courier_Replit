@@ -5,7 +5,7 @@
 @using Net4Courier.Operations.Entities
 @using Net4Courier.Kernel.Enums
 @using Net4Courier.Web.Services
-@inject ApplicationDbContext DbContext
+@inject IDbContextFactory<ApplicationDbContext> DbFactory
 @inject ISnackbar Snackbar
 @inject AuthenticationStateProvider AuthStateProvider
 
@@ -176,6 +176,7 @@
 
     private async Task SearchOriginalShipment()
     {
+        await using var dbContext = await DbFactory.CreateDbContextAsync();
         if (string.IsNullOrWhiteSpace(_searchAWB))
         {
             Snackbar.Add("Please enter an AWB number to search", Severity.Warning);
@@ -184,14 +185,14 @@
 
         var allowedStatusIds = new long[] { 14, 16 };
         
-        var eligibleShipmentIds = await DbContext.ShipmentStatusHistories
+        var eligibleShipmentIds = await dbContext.ShipmentStatusHistories
             .GroupBy(h => h.InscanMasterId)
             .Select(g => new { InscanMasterId = g.Key, LatestStatusId = g.OrderByDescending(h => h.ChangedAt).ThenByDescending(h => h.Id).First().StatusId })
             .Where(x => allowedStatusIds.Contains(x.LatestStatusId))
             .Select(x => x.InscanMasterId)
             .ToListAsync();
         
-        _searchResults = await DbContext.InscanMasters
+        _searchResults = await dbContext.InscanMasters
             .Where(i => !i.IsDeleted && !i.IsRTS && eligibleShipmentIds.Contains(i.Id) && i.AWBNo.Contains(_searchAWB))
             .OrderByDescending(i => i.TransactionDate)
             .Take(20)
@@ -228,9 +229,10 @@
 
     private async Task CreateRTS()
     {
+        await using var dbContext = await DbFactory.CreateDbContextAsync();
         if (_originalShipment == null) return;
         
-        var currentStatus = await DbContext.ShipmentStatusHistories
+        var currentStatus = await dbContext.ShipmentStatusHistories
             .Where(h => h.InscanMasterId == _originalShipment.Id)
             .OrderByDescending(h => h.ChangedAt)
             .ThenByDescending(h => h.Id)
@@ -250,7 +252,7 @@
             return;
         }
         
-        var existingRTS = await DbContext.InscanMasters
+        var existingRTS = await dbContext.InscanMasters
             .AnyAsync(i => i.OriginalShipmentId == _originalShipment.Id && i.IsRTS && !i.IsDeleted);
         if (existingRTS)
         {
@@ -338,8 +340,8 @@
                 rtsShipment.ChargeableWeight = Math.Max(rtsShipment.Weight ?? 0, rtsShipment.VolumetricWeight ?? 0);
             }
             
-            DbContext.InscanMasters.Add(rtsShipment);
-            await DbContext.SaveChangesAsync();
+            dbContext.InscanMasters.Add(rtsShipment);
+            await dbContext.SaveChangesAsync();
             
             await ShipmentStatusService.SetStatus(
                 rtsShipment.Id,

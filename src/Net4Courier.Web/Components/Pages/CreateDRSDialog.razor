@@ -1,4 +1,4 @@
-@inject ApplicationDbContext DbContext
+@inject IDbContextFactory<ApplicationDbContext> DbFactory
 @inject ISnackbar Snackbar
 @using Microsoft.EntityFrameworkCore
 @using Net4Courier.Infrastructure.Data
@@ -64,6 +64,7 @@
 
     private async Task Submit()
     {
+        await using var dbContext = await DbFactory.CreateDbContextAsync();
         if (!IsValid) return;
         
         var courier = Couriers.FirstOrDefault(c => c.Id == _selectedCourierId);
@@ -92,8 +93,8 @@
             IsActive = true
         };
         
-        DbContext.Set<DRS>().Add(drs);
-        await DbContext.SaveChangesAsync();
+        dbContext.Set<DRS>().Add(drs);
+        await dbContext.SaveChangesAsync();
         
         Snackbar.Add($"DRS {drsNo} created successfully", Severity.Success);
         MudDialog.Close(DialogResult.Ok(drs));
@@ -101,10 +102,11 @@
 
     private async Task<string> GenerateDRSNo()
     {
+        await using var dbContext = await DbFactory.CreateDbContextAsync();
         var today = DateTime.UtcNow;
         var prefix = $"DRS{today:yyyyMMdd}";
         
-        var count = await DbContext.Set<DRS>()
+        var count = await dbContext.Set<DRS>()
             .CountAsync(d => d.DRSNo.StartsWith(prefix));
             
         return $"{prefix}{(count + 1):D4}";

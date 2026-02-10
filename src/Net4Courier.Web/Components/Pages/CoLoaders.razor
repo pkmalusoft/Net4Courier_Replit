@@ -1,5 +1,5 @@
 @page "/co-loaders"
-@inject ApplicationDbContext DbContext
+@inject IDbContextFactory<ApplicationDbContext> DbFactory
 @inject ISnackbar Snackbar
 @inject IDialogService DialogService
 @using Microsoft.EntityFrameworkCore
@@ -110,8 +110,9 @@
 
     private async Task LoadCoLoaders()
     {
+        await using var dbContext = await DbFactory.CreateDbContextAsync();
         _loading = true;
-        _coloaders = await DbContext.Parties
+        _coloaders = await dbContext.Parties
             .Where(p => p.PartyType == PartyType.CoLoader && !p.IsDeleted)
             .OrderBy(p => p.Name)
             .ToListAsync();
@@ -156,6 +157,7 @@
 
     private async Task SaveCoLoader()
     {
+        await using var dbContext = await DbFactory.CreateDbContextAsync();
         if (string.IsNullOrWhiteSpace(_editingCoLoader.Name))
         {
             Snackbar.Add("Name is required", Severity.Error);
@@ -164,12 +166,12 @@
 
         if (_editingCoLoader.Id == 0)
         {
-            DbContext.Parties.Add(_editingCoLoader);
+            dbContext.Parties.Add(_editingCoLoader);
             Snackbar.Add("Co-loader added successfully", Severity.Success);
         }
         else
         {
-            var existing = await DbContext.Parties.FindAsync(_editingCoLoader.Id);
+            var existing = await dbContext.Parties.FindAsync(_editingCoLoader.Id);
             if (existing != null)
             {
                 existing.Code = _editingCoLoader.Code;
@@ -186,13 +188,14 @@
             Snackbar.Add("Co-loader updated successfully", Severity.Success);
         }
 
-        await DbContext.SaveChangesAsync();
+        await dbContext.SaveChangesAsync();
         _dialogVisible = false;
         await LoadCoLoaders();
     }
 
     private async Task DeleteCoLoader(Party coloader)
     {
+        await using var dbContext = await DbFactory.CreateDbContextAsync();
         bool? confirm = await DialogService.ShowMessageBox(
             "Delete Co-Loader",
             $"Are you sure you want to delete '{coloader.Name}'?",
@@ -200,9 +203,10 @@
 
         if (confirm == true)
         {
+            dbContext.Attach(coloader);
             coloader.IsDeleted = true;
             coloader.ModifiedAt = DateTime.UtcNow;
-            await DbContext.SaveChangesAsync();
+            await dbContext.SaveChangesAsync();
             Snackbar.Add("Co-loader deleted", Severity.Success);
             await LoadCoLoaders();
         }

@@ -1,6 +1,6 @@
 @page "/financial-periods"
 @page "/financial-periods/{YearId:long}"
-@inject ApplicationDbContext DbContext
+@inject IDbContextFactory<ApplicationDbContext> DbFactory
 @inject IDialogService DialogService
 @inject ISnackbar Snackbar
 @inject NavigationManager Navigation
@@ -128,7 +128,8 @@
 
     protected override async Task OnInitializedAsync()
     {
-        _financialYears = await DbContext.FinancialYears
+        await using var dbContext = await DbFactory.CreateDbContextAsync();
+        _financialYears = await dbContext.FinancialYears
             .Include(f => f.Company)
             .Where(f => f.IsActive && !f.IsDeleted)
             .OrderByDescending(f => f.StartDate)
@@ -166,7 +167,8 @@
         }
 
         _selectedYear = _financialYears.FirstOrDefault(f => f.Id == _selectedYearId);
-        _periods = await DbContext.FinancialPeriods
+        await using var dbContext = await DbFactory.CreateDbContextAsync();
+        _periods = await dbContext.FinancialPeriods
             .Where(p => p.FinancialYearId == _selectedYearId && p.IsActive && !p.IsDeleted)
             .OrderBy(p => p.PeriodNumber)
             .ToListAsync();
@@ -181,10 +183,12 @@
 
         if (confirm == true)
         {
+            await using var dbContext = await DbFactory.CreateDbContextAsync();
+            dbContext.Attach(period);
             period.Status = PeriodStatus.Closed;
             period.ClosedAt = DateTime.UtcNow;
             period.ModifiedAt = DateTime.UtcNow;
-            await DbContext.SaveChangesAsync();
+            await dbContext.SaveChangesAsync();
             Snackbar.Add($"{period.PeriodName} closed successfully", Severity.Success);
         }
     }
@@ -198,10 +202,12 @@
 
         if (confirm == true)
         {
+            await using var dbContext = await DbFactory.CreateDbContextAsync();
+            dbContext.Attach(period);
             period.Status = PeriodStatus.Open;
             period.ReopenedAt = DateTime.UtcNow;
             period.ModifiedAt = DateTime.UtcNow;
-            await DbContext.SaveChangesAsync();
+            await dbContext.SaveChangesAsync();
             Snackbar.Add($"{period.PeriodName} reopened successfully", Severity.Success);
         }
     }
@@ -215,13 +221,15 @@
 
         if (confirm == true)
         {
+            await using var dbContext = await DbFactory.CreateDbContextAsync();
             foreach (var period in _periods.Where(p => p.Status == PeriodStatus.Open))
             {
+                dbContext.Attach(period);
                 period.Status = PeriodStatus.Closed;
                 period.ClosedAt = DateTime.UtcNow;
                 period.ModifiedAt = DateTime.UtcNow;
             }
-            await DbContext.SaveChangesAsync();
+            await dbContext.SaveChangesAsync();
             Snackbar.Add("All periods closed successfully", Severity.Success);
         }
     }
@@ -235,13 +243,15 @@
 
         if (confirm == true)
         {
+            await using var dbContext = await DbFactory.CreateDbContextAsync();
             foreach (var period in _periods.Where(p => p.Status == PeriodStatus.Closed))
             {
+                dbContext.Attach(period);
                 period.Status = PeriodStatus.Open;
                 period.ReopenedAt = DateTime.UtcNow;
                 period.ModifiedAt = DateTime.UtcNow;
             }
-            await DbContext.SaveChangesAsync();
+            await dbContext.SaveChangesAsync();
             Snackbar.Add("All periods reopened successfully", Severity.Success);
         }
     }
@@ -250,6 +260,7 @@
     {
         if (_selectedYear == null) return;
 
+        await using var dbContext = await DbFactory.CreateDbContextAsync();
         var startDate = _selectedYear.StartDate;
         var endDate = _selectedYear.EndDate;
         var periodNumber = 1;
@@ -275,12 +286,12 @@
                 CreatedAt = DateTime.UtcNow
             };
 
-            DbContext.FinancialPeriods.Add(period);
+            dbContext.FinancialPeriods.Add(period);
             periodNumber++;
             currentDate = periodEnd.AddDays(1).Date;
         }
 
-        await DbContext.SaveChangesAsync();
+        await dbContext.SaveChangesAsync();
         await LoadPeriods();
         Snackbar.Add($"Generated {periodNumber - 1} periods successfully", Severity.Success);
     }

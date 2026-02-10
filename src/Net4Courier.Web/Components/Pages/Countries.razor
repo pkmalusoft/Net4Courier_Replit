@@ -2,7 +2,7 @@
 @using Microsoft.EntityFrameworkCore
 @using Net4Courier.Infrastructure.Data
 @using Net4Courier.Masters.Entities
-@inject ApplicationDbContext DbContext
+@inject IDbContextFactory<ApplicationDbContext> DbFactory
 @inject IDialogService DialogService
 @inject ISnackbar Snackbar
 
@@ -60,7 +60,8 @@
     private async Task LoadData()
     {
         _loading = true;
-        _countries = await DbContext.Countries
+        await using var dbContext = await DbFactory.CreateDbContextAsync();
+        _countries = await dbContext.Countries
             .Include(c => c.States)
             .Where(c => !c.IsDeleted)
             .OrderBy(c => c.Name)
@@ -121,8 +122,13 @@
 
         if (confirm == true)
         {
-            country.IsDeleted = true;
-            await DbContext.SaveChangesAsync();
+            await using var dbContext = await DbFactory.CreateDbContextAsync();
+            var entity = await dbContext.Countries.FindAsync(country.Id);
+            if (entity != null)
+            {
+                entity.IsDeleted = true;
+                await dbContext.SaveChangesAsync();
+            }
             await LoadData();
             Snackbar.Add("Country deleted successfully", Severity.Success);
         }

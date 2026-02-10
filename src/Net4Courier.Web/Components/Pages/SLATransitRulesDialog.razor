@@ -1,4 +1,4 @@
-@inject ApplicationDbContext DbContext
+@inject IDbContextFactory<ApplicationDbContext> DbFactory
 @inject ISnackbar Snackbar
 @inject IDialogService DialogService
 @using Microsoft.EntityFrameworkCore
@@ -75,7 +75,8 @@
     private async Task LoadRules()
     {
         _loading = true;
-        _rules = await DbContext.SLATransitRules
+        await using var dbContext = await DbFactory.CreateDbContextAsync();
+        _rules = await dbContext.SLATransitRules
             .Include(r => r.ServiceType)
             .Include(r => r.OriginCountry)
             .Include(r => r.DestinationCountry)
@@ -133,9 +134,14 @@
             
         if (confirm == true)
         {
-            rule.IsDeleted = true;
-            rule.ModifiedAt = DateTime.UtcNow;
-            await DbContext.SaveChangesAsync();
+            await using var dbContext = await DbFactory.CreateDbContextAsync();
+            var entity = await dbContext.SLATransitRules.FindAsync(rule.Id);
+            if (entity != null)
+            {
+                entity.IsDeleted = true;
+                entity.ModifiedAt = DateTime.UtcNow;
+                await dbContext.SaveChangesAsync();
+            }
             Snackbar.Add("Rule deleted", Severity.Success);
             await LoadRules();
         }

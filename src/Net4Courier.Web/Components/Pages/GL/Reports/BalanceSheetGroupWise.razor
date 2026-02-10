@@ -1,5 +1,5 @@
 @page "/n4c-reports/balance-sheet/groupwise"
-@inject ApplicationDbContext DbContext
+@inject IDbContextFactory<ApplicationDbContext> DbFactory
 @inject ISnackbar Snackbar
 @using Microsoft.EntityFrameworkCore
 @using Net4Courier.Infrastructure.Data
@@ -226,16 +226,17 @@
 
         try
         {
+            await using var dbContext = await DbFactory.CreateDbContextAsync();
             var asAtUtc = _asAtDate.HasValue 
                 ? DateTime.SpecifyKind(_asAtDate.Value.Date.AddDays(1).AddTicks(-1), DateTimeKind.Utc) 
                 : DateTime.UtcNow;
 
-            var accounts = await DbContext.AccountHeads
+            var accounts = await dbContext.AccountHeads
                 .Where(a => a.IsActive)
                 .OrderBy(a => a.Code)
                 .ToListAsync();
 
-            var journalEntries = await DbContext.JournalEntries
+            var journalEntries = await dbContext.JournalEntries
                 .Include(e => e.Journal)
                 .Where(e => !e.IsDeleted && e.Journal.IsPosted && e.Journal.VoucherDate <= asAtUtc)
                 .ToListAsync();

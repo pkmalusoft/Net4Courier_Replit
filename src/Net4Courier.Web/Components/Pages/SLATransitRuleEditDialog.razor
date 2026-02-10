@@ -1,4 +1,4 @@
-@inject ApplicationDbContext DbContext
+@inject IDbContextFactory<ApplicationDbContext> DbFactory
 @inject ISnackbar Snackbar
 @using Microsoft.EntityFrameworkCore
 @using Net4Courier.Infrastructure.Data
@@ -97,12 +97,13 @@
 
     protected override async Task OnInitializedAsync()
     {
-        _serviceTypes = await DbContext.ServiceTypes
+        await using var dbContext = await DbFactory.CreateDbContextAsync();
+        _serviceTypes = await dbContext.ServiceTypes
             .Where(s => s.IsActive && !s.IsDeleted)
             .OrderBy(s => s.Name)
             .ToListAsync();
             
-        _countries = await DbContext.Countries
+        _countries = await dbContext.Countries
             .Where(c => c.IsActive && !c.IsDeleted)
             .OrderBy(c => c.Name)
             .ToListAsync();
@@ -113,18 +114,19 @@
         await _form.Validate();
         if (!_formIsValid) return;
 
+        await using var dbContext = await DbFactory.CreateDbContextAsync();
         if (IsNew)
         {
             Rule.CreatedAt = DateTime.UtcNow;
-            DbContext.SLATransitRules.Add(Rule);
+            dbContext.SLATransitRules.Add(Rule);
         }
         else
         {
             Rule.ModifiedAt = DateTime.UtcNow;
-            DbContext.SLATransitRules.Update(Rule);
+            dbContext.SLATransitRules.Update(Rule);
         }
 
-        await DbContext.SaveChangesAsync();
+        await dbContext.SaveChangesAsync();
         Snackbar.Add(IsNew ? "Rule created successfully" : "Rule updated successfully", Severity.Success);
         MudDialog.Close(DialogResult.Ok(Rule));
     }

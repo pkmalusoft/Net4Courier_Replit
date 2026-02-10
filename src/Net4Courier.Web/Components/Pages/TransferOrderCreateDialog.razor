@@ -1,4 +1,4 @@
-@inject ApplicationDbContext DbContext
+@inject IDbContextFactory<ApplicationDbContext> DbFactory
 @inject ISnackbar Snackbar
 @using Microsoft.EntityFrameworkCore
 @using MudBlazor
@@ -127,6 +127,7 @@
 
     private async Task LoadAvailableShipments()
     {
+        await using var dbContext = await DbFactory.CreateDbContextAsync();
         if (!_sourceBranchId.HasValue) return;
 
         _isLoadingShipments = true;
@@ -134,12 +135,12 @@
 
         try
         {
-            _availableShipments = await DbContext.InscanMasters
+            _availableShipments = await dbContext.InscanMasters
                 .Where(i => i.BranchId == _sourceBranchId)
                 .Where(i => i.CourierStatusId == Net4Courier.Kernel.Enums.CourierStatus.Pending ||
                            i.CourierStatusId == Net4Courier.Kernel.Enums.CourierStatus.InscanAtOrigin ||
                            i.CourierStatusId == Net4Courier.Kernel.Enums.CourierStatus.InscanAtDestination)
-                .Where(i => !DbContext.TransferOrderItems.Any(t => t.InscanMasterId == i.Id && 
+                .Where(i => !dbContext.TransferOrderItems.Any(t => t.InscanMasterId == i.Id && 
                     t.TransferOrder.Status != TransferOrderStatus.Cancelled))
                 .OrderByDescending(i => i.TransactionDate)
                 .Take(100)
@@ -156,6 +157,7 @@
 
     private async Task CreateTransfer()
     {
+        await using var dbContext = await DbFactory.CreateDbContextAsync();
         if (!IsValid)
         {
             Snackbar.Add("Please complete all required fields", Severity.Warning);
@@ -168,7 +170,7 @@
             var sourceBranch = Branches?.FirstOrDefault(b => b.Id == _sourceBranchId);
             var destBranch = Branches?.FirstOrDefault(b => b.Id == _destBranchId);
 
-            var service = new TransferOrderService(DbContext);
+            var service = new TransferOrderService(dbContext);
             var transfer = await service.CreateTransferOrderAsync(
                 _sourceBranchId!.Value,
                 sourceBranch?.Name ?? "",

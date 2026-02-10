@@ -1,5 +1,5 @@
 @page "/fuel-surcharge"
-@inject ApplicationDbContext DbContext
+@inject IDbContextFactory<ApplicationDbContext> DbFactory
 @inject IDialogService DialogService
 @inject ISnackbar Snackbar
 @inject IDateTimeService DateTimeService
@@ -94,7 +94,8 @@
     private async Task LoadData()
     {
         _loading = true;
-        _surcharges = await DbContext.FuelSurcharges
+        await using var dbContext = await DbFactory.CreateDbContextAsync();
+        _surcharges = await dbContext.FuelSurcharges
             .Where(s => !s.IsDeleted)
             .OrderByDescending(s => s.EffectiveFrom)
             .ToListAsync();
@@ -152,9 +153,11 @@
 
         if (confirm == true)
         {
+            await using var dbContext = await DbFactory.CreateDbContextAsync();
+            dbContext.Attach(surcharge);
             surcharge.IsDeleted = true;
             surcharge.ModifiedAt = DateTime.UtcNow;
-            await DbContext.SaveChangesAsync();
+            await dbContext.SaveChangesAsync();
             await LoadData();
             Snackbar.Add("Fuel surcharge deleted successfully", Severity.Success);
         }

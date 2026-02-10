@@ -1,5 +1,5 @@
 @page "/n4c-reports/account-ledger-summary"
-@inject ApplicationDbContext DbContext
+@inject IDbContextFactory<ApplicationDbContext> DbFactory
 @inject ISnackbar Snackbar
 @using Microsoft.EntityFrameworkCore
 @using Net4Courier.Infrastructure.Data
@@ -206,7 +206,8 @@
                 ? DateTime.SpecifyKind(_toDate.Value.Date.AddDays(1).AddTicks(-1), DateTimeKind.Utc) 
                 : DateTime.UtcNow;
 
-            var accountsQuery = DbContext.AccountHeads
+            await using var dbContext = await DbFactory.CreateDbContextAsync();
+            var accountsQuery = dbContext.AccountHeads
                 .Where(a => a.IsActive && !a.IsGroup);
 
             if (_selectedClassification.HasValue)
@@ -216,7 +217,7 @@
 
             var accounts = await accountsQuery.OrderBy(a => a.Code).ToListAsync();
 
-            var allEntries = await DbContext.JournalEntries
+            var allEntries = await dbContext.JournalEntries
                 .Include(e => e.Journal)
                 .Where(e => !e.IsDeleted && e.Journal.IsPosted && e.Journal.VoucherDate <= toUtc)
                 .ToListAsync();

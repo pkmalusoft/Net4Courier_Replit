@@ -4,7 +4,7 @@
 @using Net4Courier.Infrastructure.Data
 @using Microsoft.EntityFrameworkCore
 @using ClosedXML.Excel
-@inject ApplicationDbContext DbContext
+@inject IDbContextFactory<ApplicationDbContext> DbFactory
 @inject ISnackbar Snackbar
 @inject NavigationManager Navigation
 @inject IJSRuntime JS
@@ -179,8 +179,9 @@
         isLoading = true;
         try
         {
-            var query = from r in DbContext.BankReconciliations.AsNoTracking()
-                        join ba in DbContext.BankAccounts.AsNoTracking() on r.BankAccountId equals ba.Id into baJoin
+            await using var dbContext = await DbFactory.CreateDbContextAsync();
+            var query = from r in dbContext.BankReconciliations.AsNoTracking()
+                        join ba in dbContext.BankAccounts.AsNoTracking() on r.BankAccountId equals ba.Id into baJoin
                         from ba in baJoin.DefaultIfEmpty()
                         where !r.IsDeleted
                         select new ReconciliationListItem
@@ -226,7 +227,8 @@
 
     private async Task<IEnumerable<BankAccount>> SearchBankAccounts(string value, CancellationToken token)
     {
-        var query = DbContext.BankAccounts.AsNoTracking().Where(ba => ba.IsActive);
+        await using var dbContext = await DbFactory.CreateDbContextAsync();
+        var query = dbContext.BankAccounts.AsNoTracking().Where(ba => ba.IsActive);
 
         if (!string.IsNullOrWhiteSpace(value))
         {
@@ -253,7 +255,8 @@
 
         try
         {
-            var totalReceipts = await DbContext.CashBankTransactions
+            await using var dbContext = await DbFactory.CreateDbContextAsync();
+            var totalReceipts = await dbContext.CashBankTransactions
                 .AsNoTracking()
                 .Where(t => t.BankAccountId == selectedBankAccount.Id
                     && t.TransactionType == TransactionType.Bank
@@ -262,7 +265,7 @@
                     && !t.IsDeleted)
                 .SumAsync(t => t.TotalAmount);
 
-            var totalPayments = await DbContext.CashBankTransactions
+            var totalPayments = await dbContext.CashBankTransactions
                 .AsNoTracking()
                 .Where(t => t.BankAccountId == selectedBankAccount.Id
                     && t.TransactionType == TransactionType.Bank
@@ -313,7 +316,8 @@
         {
             await CalculateBookOpeningBalance();
 
-            var recNumber = await GenerateReconciliationNumber();
+            await using var dbContext = await DbFactory.CreateDbContextAsync();
+            var recNumber = await GenerateReconciliationNumber(dbContext);
 
             var reconciliation = new Finance.Entities.BankReconciliation
             {
@@ -332,8 +336,8 @@
                 CreatedAt = DateTime.UtcNow
             };
 
-            DbContext.BankReconciliations.Add(reconciliation);
-            await DbContext.SaveChangesAsync();
+            dbContext.BankReconciliations.Add(reconciliation);
+            await dbContext.SaveChangesAsync();
 
             Snackbar.Add($"Reconciliation {recNumber} created successfully", Severity.Success);
             showNewDialog = false;
@@ -349,10 +353,10 @@
         }
     }
 
-    private async Task<string> GenerateReconciliationNumber()
+    private async Task<string> GenerateReconciliationNumber(ApplicationDbContext dbContext)
     {
         var prefix = $"REC-{DateTime.Now:yyMM}-";
-        var lastRec = await DbContext.BankReconciliations
+        var lastRec = await dbContext.BankReconciliations
             .AsNoTracking()
             .Where(r => r.ReconciliationNumber.StartsWith(prefix))
             .OrderByDescending(r => r.ReconciliationNumber)
@@ -383,7 +387,8 @@
 
     private async Task DeleteReconciliation(long id)
     {
-        var rec = await DbContext.BankReconciliations.FindAsync(id);
+        await using var dbContext = await DbFactory.CreateDbContextAsync();
+        var rec = await dbContext.BankReconciliations.FindAsync(id);
         if (rec == null)
         {
             Snackbar.Add("Reconciliation not found", Severity.Warning);
@@ -407,7 +412,7 @@
             {
                 rec.IsDeleted = true;
                 rec.ModifiedAt = DateTime.UtcNow;
-                await DbContext.SaveChangesAsync();
+                await dbContext.SaveChangesAsync();
                 Snackbar.Add("Reconciliation deleted successfully", Severity.Success);
                 await LoadReconciliations();
             }

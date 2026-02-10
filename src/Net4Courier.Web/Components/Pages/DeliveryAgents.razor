@@ -1,5 +1,5 @@
 @page "/delivery-agents"
-@inject ApplicationDbContext DbContext
+@inject IDbContextFactory<ApplicationDbContext> DbFactory
 @inject ISnackbar Snackbar
 @inject IDialogService DialogService
 @using Microsoft.EntityFrameworkCore
@@ -111,7 +111,8 @@
     private async Task LoadAgents()
     {
         _loading = true;
-        _agents = await DbContext.Parties
+        await using var dbContext = await DbFactory.CreateDbContextAsync();
+        _agents = await dbContext.Parties
             .Where(p => p.PartyType == PartyType.DeliveryAgent && !p.IsDeleted)
             .OrderBy(p => p.Name)
             .ToListAsync();
@@ -162,14 +163,15 @@
             return;
         }
 
+        await using var dbContext = await DbFactory.CreateDbContextAsync();
         if (_editingAgent.Id == 0)
         {
-            DbContext.Parties.Add(_editingAgent);
+            dbContext.Parties.Add(_editingAgent);
             Snackbar.Add("Delivery agent added successfully", Severity.Success);
         }
         else
         {
-            var existing = await DbContext.Parties.FindAsync(_editingAgent.Id);
+            var existing = await dbContext.Parties.FindAsync(_editingAgent.Id);
             if (existing != null)
             {
                 existing.Code = _editingAgent.Code;
@@ -186,7 +188,7 @@
             Snackbar.Add("Delivery agent updated successfully", Severity.Success);
         }
 
-        await DbContext.SaveChangesAsync();
+        await dbContext.SaveChangesAsync();
         _dialogVisible = false;
         await LoadAgents();
     }
@@ -200,9 +202,14 @@
 
         if (confirm == true)
         {
-            agent.IsDeleted = true;
-            agent.ModifiedAt = DateTime.UtcNow;
-            await DbContext.SaveChangesAsync();
+            await using var dbContext = await DbFactory.CreateDbContextAsync();
+            var entity = await dbContext.Parties.FindAsync(agent.Id);
+            if (entity != null)
+            {
+                entity.IsDeleted = true;
+                entity.ModifiedAt = DateTime.UtcNow;
+                await dbContext.SaveChangesAsync();
+            }
             Snackbar.Add("Delivery agent deleted", Severity.Success);
             await LoadAgents();
         }

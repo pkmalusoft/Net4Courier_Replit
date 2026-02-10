@@ -1,5 +1,5 @@
 @page "/ticket/{Id:long}"
-@inject ApplicationDbContext DbContext
+@inject IDbContextFactory<ApplicationDbContext> DbFactory
 @inject ISnackbar Snackbar
 @inject NavigationManager NavigationManager
 @inject AuthenticationStateProvider AuthStateProvider
@@ -192,12 +192,13 @@ else
 
     private async Task LoadTicket()
     {
+        await using var dbContext = await DbFactory.CreateDbContextAsync();
         _loading = true;
-        _ticket = await DbContext.Tickets.FirstOrDefaultAsync(t => t.Id == Id && !t.IsDeleted);
+        _ticket = await dbContext.Tickets.FirstOrDefaultAsync(t => t.Id == Id && !t.IsDeleted);
         
         if (_ticket != null)
         {
-            _comments = await DbContext.TicketComments
+            _comments = await dbContext.TicketComments
                 .Where(c => c.TicketId == Id && !c.IsDeleted)
                 .OrderBy(c => c.CreatedAt)
                 .ToListAsync();
@@ -210,6 +211,7 @@ else
 
     private async Task UpdateStatus(TicketStatus newStatus)
     {
+        await using var dbContext = await DbFactory.CreateDbContextAsync();
         if (_ticket == null) return;
 
         var oldStatus = _ticket.Status;
@@ -221,7 +223,7 @@ else
         if (newStatus == TicketStatus.Closed && _ticket.ClosedAt == null)
             _ticket.ClosedAt = DateTime.UtcNow;
 
-        await DbContext.SaveChangesAsync();
+        await dbContext.SaveChangesAsync();
 
         var comment = new TicketComment
         {
@@ -232,8 +234,8 @@ else
             UserId = _currentUserId,
             CreatedAt = DateTime.UtcNow
         };
-        DbContext.TicketComments.Add(comment);
-        await DbContext.SaveChangesAsync();
+        dbContext.TicketComments.Add(comment);
+        await dbContext.SaveChangesAsync();
 
         _comments.Add(comment);
         Snackbar.Add("Status updated", Severity.Success);
@@ -241,6 +243,7 @@ else
 
     private async Task AddComment()
     {
+        await using var dbContext = await DbFactory.CreateDbContextAsync();
         if (_ticket == null || string.IsNullOrWhiteSpace(_newComment)) return;
 
         var comment = new TicketComment
@@ -254,14 +257,14 @@ else
             CreatedAt = DateTime.UtcNow
         };
 
-        DbContext.TicketComments.Add(comment);
+        dbContext.TicketComments.Add(comment);
 
         if (_ticket.FirstResponseAt == null)
         {
             _ticket.FirstResponseAt = DateTime.UtcNow;
         }
 
-        await DbContext.SaveChangesAsync();
+        await dbContext.SaveChangesAsync();
 
         _comments.Add(comment);
         _newComment = null;
@@ -271,10 +274,11 @@ else
 
     private async Task SaveResolution()
     {
+        await using var dbContext = await DbFactory.CreateDbContextAsync();
         if (_ticket == null) return;
         
         _ticket.ModifiedAt = DateTime.UtcNow;
-        await DbContext.SaveChangesAsync();
+        await dbContext.SaveChangesAsync();
         Snackbar.Add("Resolution notes saved", Severity.Success);
     }
 
