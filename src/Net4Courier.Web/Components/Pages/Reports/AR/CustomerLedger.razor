@@ -5,7 +5,7 @@
 @using Net4Courier.Masters.Entities
 @using Net4Courier.Web.Services
 @using Microsoft.JSInterop
-@inject ApplicationDbContext DbContext
+@inject IDbContextFactory<ApplicationDbContext> DbFactory
 @inject ReportExportService ExportService
 @inject IGmailEmailService EmailService
 @inject IJSRuntime JS
@@ -129,12 +129,13 @@
 
     protected override async Task OnInitializedAsync()
     {
-        _customers = await DbContext.Parties
+        await using var dbContext = await DbFactory.CreateDbContextAsync();
+        _customers = await dbContext.Parties
             .Where(p => p.IsActive && !p.IsDeleted && p.PartyType == PartyType.Customer)
             .OrderBy(p => p.Name)
             .ToListAsync();
 
-        _currentBranch = await DbContext.Branches.FirstOrDefaultAsync(b => b.IsActive && !b.IsDeleted);
+        _currentBranch = await dbContext.Branches.FirstOrDefaultAsync(b => b.IsActive && !b.IsDeleted);
     }
 
     private async Task LoadData()
@@ -145,6 +146,8 @@
             return;
         }
 
+        await using var dbContext = await DbFactory.CreateDbContextAsync();
+
         _isLoading = true;
         _data.Clear();
 
@@ -153,11 +156,11 @@
             var fromUtc = _fromDate.HasValue ? DateTime.SpecifyKind(_fromDate.Value.Date, DateTimeKind.Utc) : DateTime.MinValue;
             var toUtc = _toDate.HasValue ? DateTime.SpecifyKind(_toDate.Value.Date.AddDays(1), DateTimeKind.Utc) : DateTime.MaxValue;
 
-            var customer = await DbContext.Parties.FindAsync(_customerId.Value);
+            var customer = await dbContext.Parties.FindAsync(_customerId.Value);
             _openingBalance = 0;
 
             // Get invoices for this customer
-            var invoices = await DbContext.Invoices
+            var invoices = await dbContext.Invoices
                 .Where(i => i.CustomerId == _customerId && !i.IsDeleted)
                 .Where(i => i.InvoiceDate >= fromUtc && i.InvoiceDate < toUtc)
                 .OrderBy(i => i.InvoiceDate)
@@ -165,7 +168,7 @@
                 .ToListAsync();
 
             // Get receipts for this customer
-            var receipts = await DbContext.Receipts
+            var receipts = await dbContext.Receipts
                 .Where(r => r.CustomerId == _customerId && !r.IsDeleted)
                 .Where(r => r.ReceiptDate >= fromUtc && r.ReceiptDate < toUtc)
                 .OrderBy(r => r.ReceiptDate)
@@ -186,7 +189,7 @@
             }
 
             // Also check journals with PartyId
-            var journalEntries = await DbContext.Journals
+            var journalEntries = await dbContext.Journals
                 .Include(j => j.Entries)
                 .Where(j => j.VoucherDate >= fromUtc && j.VoucherDate < toUtc)
                 .Where(j => j.Entries.Any(e => e.PartyId == _customerId))

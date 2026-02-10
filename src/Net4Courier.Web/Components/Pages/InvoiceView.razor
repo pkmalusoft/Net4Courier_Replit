@@ -5,7 +5,7 @@
 @using Net4Courier.Web.Services
 @using Net4Courier.Kernel.Enums
 @using Microsoft.EntityFrameworkCore
-@inject ApplicationDbContext Context
+@inject IDbContextFactory<ApplicationDbContext> DbFactory
 @inject InvoicingService InvoicingService
 @inject ReportingService ReportingService
 @inject IGmailEmailService GmailEmailService
@@ -247,14 +247,15 @@ else
 
         try
         {
-            _invoice = await Context.Invoices
+            await using var dbContext = await DbFactory.CreateDbContextAsync();
+            _invoice = await dbContext.Invoices
                 .Include(i => i.Details)
                 .Include(i => i.SpecialCharges)
                 .FirstOrDefaultAsync(i => i.Id == InvoiceId);
 
             if (_invoice?.CustomerId > 0)
             {
-                _customer = await Context.Parties
+                _customer = await dbContext.Parties
                     .FirstOrDefaultAsync(p => p.Id == _invoice.CustomerId);
             }
         }
@@ -337,7 +338,8 @@ else
 
         try
         {
-            var company = await Context.Companies.FirstOrDefaultAsync(c => c.IsActive && !c.IsDeleted);
+            await using var dbContext = await DbFactory.CreateDbContextAsync();
+            var company = await dbContext.Companies.FirstOrDefaultAsync(c => c.IsActive && !c.IsDeleted);
             var companyName = company?.Name ?? "Net4Courier";
             var companyEmail = company?.Email ?? "noreply@net4courier.com";
 
@@ -363,22 +365,20 @@ else
                 catch { }
             }
 
-            // Get shipment for commercial invoice format (same logic as download API)
             Net4Courier.Operations.Entities.InscanMaster? shipment = null;
             if (_invoice.Details.Any())
             {
                 var firstDetail = _invoice.Details.First();
                 if (firstDetail.InscanId > 0)
                 {
-                    shipment = await Context.InscanMasters.FirstOrDefaultAsync(i => i.Id == firstDetail.InscanId);
+                    shipment = await dbContext.InscanMasters.FirstOrDefaultAsync(i => i.Id == firstDetail.InscanId);
                 }
                 else if (!string.IsNullOrEmpty(firstDetail.AWBNo))
                 {
-                    shipment = await Context.InscanMasters.FirstOrDefaultAsync(i => i.AWBNo == firstDetail.AWBNo && !i.IsDeleted);
+                    shipment = await dbContext.InscanMasters.FirstOrDefaultAsync(i => i.AWBNo == firstDetail.AWBNo && !i.IsDeleted);
                 }
             }
 
-            // Generate PDF using same format as download
             byte[] pdfBytes;
             if (shipment != null)
             {

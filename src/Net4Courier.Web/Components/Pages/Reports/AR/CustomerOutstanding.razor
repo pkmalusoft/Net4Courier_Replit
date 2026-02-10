@@ -6,7 +6,7 @@
 @using Net4Courier.Kernel.Enums
 @using Net4Courier.Web.Services
 @using Microsoft.JSInterop
-@inject ApplicationDbContext DbContext
+@inject IDbContextFactory<ApplicationDbContext> DbFactory
 @inject ReportExportService ExportService
 @inject IJSRuntime JS
 @inject ISnackbar Snackbar
@@ -123,11 +123,13 @@
 
     protected override async Task OnInitializedAsync()
     {
-        _branches = await DbContext.Branches.Where(b => b.IsActive).OrderBy(b => b.Name).ToListAsync();
+        await using var dbContext = await DbFactory.CreateDbContextAsync();
+        _branches = await dbContext.Branches.Where(b => b.IsActive).OrderBy(b => b.Name).ToListAsync();
     }
 
     private async Task LoadData()
     {
+        await using var dbContext = await DbFactory.CreateDbContextAsync();
         _isLoading = true;
         _data.Clear();
 
@@ -137,18 +139,18 @@
                 ? DateTime.SpecifyKind(_asOnDate.Value.Date.AddDays(1).AddTicks(-1), DateTimeKind.Utc) 
                 : DateTime.UtcNow;
 
-            var customersWithAccType = await DbContext.Parties
+            var customersWithAccType = await dbContext.Parties
                 .Where(p => p.IsActive && p.AccountNature == PartyAccountNature.Receivable)
                 .Include(p => p.AccountType)
                 .OrderBy(p => p.Name)
                 .ToListAsync();
 
-            var invoicesQuery = DbContext.Invoices.Where(i => i.InvoiceDate <= asOnUtc && i.Status != InvoiceStatus.Cancelled);
+            var invoicesQuery = dbContext.Invoices.Where(i => i.InvoiceDate <= asOnUtc && i.Status != InvoiceStatus.Cancelled);
             if (_branchId.HasValue)
                 invoicesQuery = invoicesQuery.Where(i => i.BranchId == _branchId);
             var invoices = await invoicesQuery.ToListAsync();
 
-            var receiptsQuery = DbContext.Receipts.Where(r => r.ReceiptDate <= asOnUtc);
+            var receiptsQuery = dbContext.Receipts.Where(r => r.ReceiptDate <= asOnUtc);
             if (_branchId.HasValue)
                 receiptsQuery = receiptsQuery.Where(r => r.BranchId == _branchId);
             var receipts = await receiptsQuery.ToListAsync();

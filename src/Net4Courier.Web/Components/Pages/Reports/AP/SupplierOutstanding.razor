@@ -5,7 +5,7 @@
 @using Net4Courier.Masters.Entities
 @using Net4Courier.Web.Services
 @using Microsoft.JSInterop
-@inject ApplicationDbContext DbContext
+@inject IDbContextFactory<ApplicationDbContext> DbFactory
 @inject ReportExportService ExportService
 @inject IJSRuntime JS
 @inject ISnackbar Snackbar
@@ -112,6 +112,7 @@
 
     private async Task LoadData()
     {
+        await using var dbContext = await DbFactory.CreateDbContextAsync();
         _isLoading = true;
         _data.Clear();
 
@@ -121,12 +122,12 @@
                 ? DateTime.SpecifyKind(_asOnDate.Value.Date.AddDays(1).AddTicks(-1), DateTimeKind.Utc) 
                 : DateTime.UtcNow;
 
-            var suppliers = await DbContext.Parties
+            var suppliers = await dbContext.Parties
                 .Where(p => p.IsActive && p.AccountNature == PartyAccountNature.Payable)
                 .OrderBy(p => p.Name)
                 .ToListAsync();
 
-            var journalEntries = await DbContext.JournalEntries
+            var journalEntries = await dbContext.JournalEntries
                 .Include(e => e.Journal)
                 .Where(e => e.PartyId.HasValue && e.Journal.VoucherDate <= asOnUtc)
                 .ToListAsync();

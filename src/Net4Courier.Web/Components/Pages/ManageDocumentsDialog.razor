@@ -3,7 +3,7 @@
 @using Microsoft.AspNetCore.Components.Forms
 @using Net4Courier.Infrastructure.Data
 @using Net4Courier.Operations.Entities
-@inject ApplicationDbContext DbContext
+@inject IDbContextFactory<ApplicationDbContext> DbFactory
 @inject ISnackbar Snackbar
 
 <MudDialog>
@@ -155,7 +155,8 @@
         _loading = true;
         try
         {
-            _documents = await DbContext.ShipmentDocuments
+            await using var dbContext = await DbFactory.CreateDbContextAsync();
+            _documents = await dbContext.ShipmentDocuments
                 .Where(d => d.InscanMasterId == ShipmentId && !d.IsDeleted)
                 .OrderByDescending(d => d.CreatedAt)
                 .ToListAsync();
@@ -195,6 +196,7 @@
             using var ms = new MemoryStream();
             await stream.CopyToAsync(ms);
             
+            await using var dbContext = await DbFactory.CreateDbContextAsync();
             var document = new ShipmentDocument
             {
                 InscanMasterId = ShipmentId,
@@ -207,8 +209,8 @@
                 CreatedAt = DateTime.UtcNow
             };
             
-            DbContext.ShipmentDocuments.Add(document);
-            await DbContext.SaveChangesAsync();
+            dbContext.ShipmentDocuments.Add(document);
+            await dbContext.SaveChangesAsync();
             
             Snackbar.Add("Document uploaded successfully", Severity.Success);
             
@@ -243,9 +245,14 @@
     
     private async Task DeleteDocument(ShipmentDocument document)
     {
-        document.IsDeleted = true;
-        document.ModifiedAt = DateTime.UtcNow;
-        await DbContext.SaveChangesAsync();
+        await using var dbContext = await DbFactory.CreateDbContextAsync();
+        var entity = await dbContext.ShipmentDocuments.FindAsync(document.Id);
+        if (entity != null)
+        {
+            entity.IsDeleted = true;
+            entity.ModifiedAt = DateTime.UtcNow;
+            await dbContext.SaveChangesAsync();
+        }
         
         Snackbar.Add("Document deleted", Severity.Success);
         await LoadDocuments();

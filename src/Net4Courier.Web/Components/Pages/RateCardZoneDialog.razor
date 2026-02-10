@@ -3,7 +3,7 @@
 @using Net4Courier.Infrastructure.Data
 @using Net4Courier.Kernel.Enums
 @using ZoneMatrixEntity = Net4Courier.Masters.Entities.ZoneMatrix
-@inject ApplicationDbContext DbContext
+@inject IDbContextFactory<ApplicationDbContext> DbFactory
 @inject ISnackbar Snackbar
 
 <MudDialog>
@@ -101,12 +101,13 @@
 
     protected override async Task OnInitializedAsync()
     {
-        _serviceTypes = await DbContext.ServiceTypes.Where(s => !s.IsDeleted && s.IsActive).OrderBy(s => s.Name).ToListAsync();
-        _shipmentModes = await DbContext.ShipmentModes.Where(s => !s.IsDeleted && s.IsActive).OrderBy(s => s.Name).ToListAsync();
+        await using var dbContext = await DbFactory.CreateDbContextAsync();
+        _serviceTypes = await dbContext.ServiceTypes.Where(s => !s.IsDeleted && s.IsActive).OrderBy(s => s.Name).ToListAsync();
+        _shipmentModes = await dbContext.ShipmentModes.Where(s => !s.IsDeleted && s.IsActive).OrderBy(s => s.Name).ToListAsync();
 
         if (!_isNew)
         {
-            _zone = await DbContext.RateCardZones
+            _zone = await dbContext.RateCardZones
                 .Include(z => z.ZoneMatrix)
                 .FirstOrDefaultAsync(z => z.Id == RateCardZoneId) ?? new RateCardZone();
             _selectedZone = _zone.ZoneMatrix;
@@ -131,7 +132,8 @@
 
     private async Task<IEnumerable<ZoneMatrixEntity>> SearchZones(string value, CancellationToken cancellationToken)
     {
-        var query = DbContext.ZoneMatrices
+        await using var dbContext = await DbFactory.CreateDbContextAsync();
+        var query = dbContext.ZoneMatrices
             .Where(z => !z.IsDeleted && z.IsActive);
 
         if (!string.IsNullOrWhiteSpace(value))
@@ -154,19 +156,21 @@
         _saving = true;
         try
         {
+            await using var dbContext = await DbFactory.CreateDbContextAsync();
             _zone.ZoneMatrixId = _selectedZone.Id;
 
             if (_isNew)
             {
                 _zone.CreatedAt = DateTime.UtcNow;
-                DbContext.RateCardZones.Add(_zone);
+                dbContext.RateCardZones.Add(_zone);
             }
             else
             {
                 _zone.ModifiedAt = DateTime.UtcNow;
+                dbContext.RateCardZones.Update(_zone);
             }
 
-            await DbContext.SaveChangesAsync();
+            await dbContext.SaveChangesAsync();
             MudDialog.Close(DialogResult.Ok(true));
         }
         finally

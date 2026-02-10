@@ -1,5 +1,5 @@
 @page "/outscan-scan/{DrsId:long}"
-@inject ApplicationDbContext DbContext
+@inject IDbContextFactory<ApplicationDbContext> DbFactory
 @inject ISnackbar Snackbar
 @inject NavigationManager Navigation
 @inject IDialogService DialogService
@@ -167,7 +167,8 @@ else
 
     private async Task LoadData()
     {
-        _drs = await DbContext.Set<DRS>().FirstOrDefaultAsync(d => d.Id == DrsId);
+        await using var dbContext = await DbFactory.CreateDbContextAsync();
+        _drs = await dbContext.Set<DRS>().FirstOrDefaultAsync(d => d.Id == DrsId);
         
         if (_drs == null)
         {
@@ -175,7 +176,7 @@ else
             return;
         }
         
-        _drsDetails = await DbContext.Set<DRSDetail>()
+        _drsDetails = await dbContext.Set<DRSDetail>()
             .Include(d => d.Inscan)
             .Where(d => d.DRSId == DrsId)
             .OrderBy(d => d.Sequence)
@@ -196,6 +197,7 @@ else
 
     private async Task ProcessScan()
     {
+        await using var dbContext = await DbFactory.CreateDbContextAsync();
         Logger.LogInformation("[OUTSCAN] ProcessScan started. Input: {Input}", _scanInput);
         
         if (string.IsNullOrWhiteSpace(_scanInput))
@@ -222,13 +224,13 @@ else
             }
             
             Logger.LogInformation("[OUTSCAN] Step 2: Looking up AWB in database");
-            var awb = await DbContext.InscanMasters
+            var awb = await dbContext.InscanMasters
                 .FirstOrDefaultAsync(a => a.AWBNo == awbNo && !a.IsDeleted);
             
             if (awb == null)
             {
                 Logger.LogInformation("[OUTSCAN] AWB not found in InscanMasters, checking ImportShipments");
-                var importShipment = await DbContext.ImportShipments
+                var importShipment = await dbContext.ImportShipments
                     .FirstOrDefaultAsync(s => s.AWBNo == awbNo && !s.IsDeleted);
                 
                 if (importShipment != null)
@@ -247,7 +249,7 @@ else
             Logger.LogInformation("[OUTSCAN] AWB found: Id={Id}, Status={Status}", awb.Id, awb.CourierStatusId);
             
             Logger.LogInformation("[OUTSCAN] Step 3: Checking shipment status history");
-            var currentStatusInfo = await DbContext.ShipmentStatusHistories
+            var currentStatusInfo = await dbContext.ShipmentStatusHistories
                 .Where(h => h.InscanMasterId == awb.Id)
                 .OrderByDescending(h => h.ChangedAt)
                 .ThenByDescending(h => h.Id)
@@ -259,7 +261,7 @@ else
             
             if (currentStatusInfo != null && !string.IsNullOrEmpty(currentStatusInfo.StatusCode) && !allowedStatusCodes.Contains(currentStatusInfo.StatusCode))
             {
-                var statusName = await DbContext.ShipmentStatuses
+                var statusName = await dbContext.ShipmentStatuses
                     .Where(s => s.Id == currentStatusInfo.StatusId)
                     .Select(s => s.Name)
                     .FirstOrDefaultAsync() ?? "Unknown";
@@ -279,7 +281,7 @@ else
             }
             
             Logger.LogInformation("[OUTSCAN] Step 4: Checking if AWB is in another DRS");
-            var alreadyInOtherDrs = await DbContext.Set<DRSDetail>()
+            var alreadyInOtherDrs = await dbContext.Set<DRSDetail>()
                 .Include(d => d.DRS)
                 .AnyAsync(d => d.InscanId == awb.Id && d.DRS.Status != DRSStatus.Closed);
                 
@@ -308,7 +310,7 @@ else
                 IsActive = true
             };
             
-            DbContext.Set<DRSDetail>().Add(detail);
+            dbContext.Set<DRSDetail>().Add(detail);
             Logger.LogInformation("[OUTSCAN] DRS detail created");
             
             Logger.LogInformation("[OUTSCAN] Step 6: Updating AWB status");
@@ -326,12 +328,12 @@ else
                 IsPublic = true,
                 IsDeleted = false
             };
-            DbContext.AWBTrackings.Add(tracking);
+            dbContext.AWBTrackings.Add(tracking);
             
             Logger.LogInformation("[OUTSCAN] Step 8: Saving changes to database");
             try
             {
-                await DbContext.SaveChangesAsync();
+                await dbContext.SaveChangesAsync();
                 Logger.LogInformation("[OUTSCAN] Database save successful");
             }
             catch (Exception dbEx)
@@ -367,7 +369,8 @@ else
 
     private async Task RemoveFromDRS(DRSDetail detail)
     {
-        DbContext.Set<DRSDetail>().Remove(detail);
+        await using var dbContext = await DbFactory.CreateDbContextAsync();
+        dbContext.Set<DRSDetail>().Remove(detail);
         
         if (detail.Inscan != null)
         {
@@ -384,16 +387,17 @@ else
                 IsPublic = true,
                 IsDeleted = false
             };
-            DbContext.AWBTrackings.Add(tracking);
+            dbContext.AWBTrackings.Add(tracking);
         }
         
-        await DbContext.SaveChangesAsync();
+        await dbContext.SaveChangesAsync();
         Snackbar.Add("AWB removed from DRS", Severity.Info);
         await LoadData();
     }
 
     private async Task UpdateDRSCounts()
     {
+        await using var dbContext = await DbFactory.CreateDbContextAsync();
         if (_drs == null) return;
         
         _drs.TotalAWBs = _drsDetails.Count;
@@ -403,11 +407,12 @@ else
         _drs.TotalCOD = _drsDetails.Sum(d => d.CODAmount ?? 0);
         _drs.CollectedCOD = _drsDetails.Where(d => d.Status == "Delivered").Sum(d => d.CollectedAmount ?? 0);
         
-        await DbContext.SaveChangesAsync();
+        await dbContext.SaveChangesAsync();
     }
 
     private async Task ProcessImportShipmentOutscan(ImportShipment importShipment, string awbNo)
     {
+        await using var dbContext = await DbFactory.CreateDbContextAsync();
         try
         {
             var existingInDrs = _drsDetails.Any(d => d.Inscan?.AWBNo == awbNo);
@@ -436,24 +441,24 @@ else
             InscanMaster linkedAwb;
             if (importShipment.LinkedInscanMasterId.HasValue)
             {
-                linkedAwb = await DbContext.InscanMasters.FindAsync(importShipment.LinkedInscanMasterId.Value);
+                linkedAwb = await dbContext.InscanMasters.FindAsync(importShipment.LinkedInscanMasterId.Value);
                 if (linkedAwb == null)
                 {
                     linkedAwb = CreateInscanMasterFromImport(importShipment);
-                    DbContext.InscanMasters.Add(linkedAwb);
-                    await DbContext.SaveChangesAsync();
+                    dbContext.InscanMasters.Add(linkedAwb);
+                    await dbContext.SaveChangesAsync();
                     importShipment.LinkedInscanMasterId = linkedAwb.Id;
                 }
             }
             else
             {
                 linkedAwb = CreateInscanMasterFromImport(importShipment);
-                DbContext.InscanMasters.Add(linkedAwb);
-                await DbContext.SaveChangesAsync();
+                dbContext.InscanMasters.Add(linkedAwb);
+                await dbContext.SaveChangesAsync();
                 importShipment.LinkedInscanMasterId = linkedAwb.Id;
             }
 
-            var alreadyInOtherDrs = await DbContext.Set<DRSDetail>()
+            var alreadyInOtherDrs = await dbContext.Set<DRSDetail>()
                 .Include(d => d.DRS)
                 .AnyAsync(d => d.InscanId == linkedAwb.Id && d.DRS.Status != DRSStatus.Closed);
             if (alreadyInOtherDrs)
@@ -478,7 +483,7 @@ else
                 CreatedAt = DateTime.UtcNow,
                 IsActive = true
             };
-            DbContext.Set<DRSDetail>().Add(detail);
+            dbContext.Set<DRSDetail>().Add(detail);
 
             linkedAwb.CourierStatusId = CourierStatus.OutForDelivery;
             linkedAwb.ModifiedAt = DateTime.UtcNow;
@@ -497,9 +502,9 @@ else
                 IsPublic = true,
                 IsDeleted = false
             };
-            DbContext.AWBTrackings.Add(tracking);
+            dbContext.AWBTrackings.Add(tracking);
 
-            await DbContext.SaveChangesAsync();
+            await dbContext.SaveChangesAsync();
 
             await ShipmentStatusService.SetStatus(
                 linkedAwb.Id, "OUT_FOR_DELIVERY", "Outscan", _drs!.Id, "DRS",

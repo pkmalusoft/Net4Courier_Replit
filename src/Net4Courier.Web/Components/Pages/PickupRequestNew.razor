@@ -1,6 +1,6 @@
 @page "/pickup-request-new"
 @page "/pickup-request-edit/{Id:long}"
-@inject ApplicationDbContext DbContext
+@inject IDbContextFactory<ApplicationDbContext> DbFactory
 @inject NavigationManager NavigationManager
 @inject ISnackbar Snackbar
 @using Microsoft.EntityFrameworkCore
@@ -253,7 +253,8 @@
 
     protected override async Task OnInitializedAsync()
     {
-        _pickupSchedules = await DbContext.PickupSchedules
+        await using var dbContext = await DbFactory.CreateDbContextAsync();
+        _pickupSchedules = await dbContext.PickupSchedules
             .Where(s => s.IsActive && !s.IsDeleted)
             .OrderBy(s => s.SortOrder)
             .ToListAsync();
@@ -261,11 +262,11 @@
         if (Id > 0)
         {
             _isEdit = true;
-            _entity = await DbContext.PickupRequests.FindAsync(Id) ?? new PickupRequest();
+            _entity = await dbContext.PickupRequests.FindAsync(Id) ?? new PickupRequest();
             _scheduledDate = _entity.ScheduledDate?.Date;
             if (_entity.CustomerId.HasValue)
             {
-                _selectedCustomer = await DbContext.Parties
+                _selectedCustomer = await dbContext.Parties
                     .Include(p => p.Addresses)
                     .FirstOrDefaultAsync(p => p.Id == _entity.CustomerId.Value);
                 if (_selectedCustomer != null)
@@ -277,14 +278,14 @@
             // Load city for form validation
             if (!string.IsNullOrEmpty(_entity.City))
             {
-                _selectedCity = await DbContext.Cities
+                _selectedCity = await dbContext.Cities
                     .Include(c => c.State)
                     .Include(c => c.Country)
                     .FirstOrDefaultAsync(c => c.Name.ToLower() == _entity.City.ToLower() && c.IsActive && !c.IsDeleted);
             }
             
             // Load existing shipment lines
-            _shipmentLines = await DbContext.PickupRequestShipments
+            _shipmentLines = await dbContext.PickupRequestShipments
                 .Where(s => s.PickupRequestId == Id)
                 .OrderBy(s => s.LineNo)
                 .ToListAsync();
@@ -310,8 +311,9 @@
 
     private async Task<string> GeneratePickupNo()
     {
+        await using var dbContext = await DbFactory.CreateDbContextAsync();
         var today = DateTime.UtcNow.Date;
-        var count = await DbContext.PickupRequests
+        var count = await dbContext.PickupRequests
             .Where(p => p.RequestDate >= today)
             .CountAsync();
         return $"PU{DateTime.UtcNow:yyyyMMdd}{(count + 1):D4}";
@@ -319,7 +321,8 @@
 
     private async Task<IEnumerable<Party>> SearchCustomers(string value, CancellationToken cancellationToken)
     {
-        var query = DbContext.Parties
+        await using var dbContext = await DbFactory.CreateDbContextAsync();
+        var query = dbContext.Parties
             .Include(p => p.Addresses)
             .Where(p => p.PartyType == PartyType.Customer && !p.IsDeleted && p.IsActive);
             
@@ -382,11 +385,12 @@
 
     private async Task<IEnumerable<City>> SearchCities(string value, CancellationToken cancellationToken)
     {
+        await using var dbContext = await DbFactory.CreateDbContextAsync();
         if (string.IsNullOrWhiteSpace(value) || value.Length < 2)
             return Enumerable.Empty<City>();
         
         var searchValue = value.ToLower();
-        return await DbContext.Cities
+        return await dbContext.Cities
             .Include(c => c.State)
             .Include(c => c.Country)
             .Where(c => c.IsActive && !c.IsDeleted && c.Name.ToLower().Contains(searchValue))
@@ -423,10 +427,11 @@
 
     private async Task<IEnumerable<Location>> SearchLocations(string value, CancellationToken cancellationToken)
     {
+        await using var dbContext = await DbFactory.CreateDbContextAsync();
         if (_selectedCity == null)
             return Enumerable.Empty<Location>();
             
-        var query = DbContext.Locations
+        var query = dbContext.Locations
             .Where(l => l.IsActive && !l.IsDeleted && l.CityId == _selectedCity.Id);
             
         if (!string.IsNullOrWhiteSpace(value))
@@ -473,6 +478,7 @@
 
     private async Task Save()
     {
+        await using var dbContext = await DbFactory.CreateDbContextAsync();
         // Server-side validation - only require shipment lines if enabled
         if (_enableShipments && !_shipmentLines.Any())
         {
@@ -508,8 +514,8 @@
         if (!_isEdit)
         {
             _entity.Status = PickupStatus.PickupRequest;
-            DbContext.PickupRequests.Add(_entity);
-            await DbContext.SaveChangesAsync();
+            dbContext.PickupRequests.Add(_entity);
+            await dbContext.SaveChangesAsync();
             
             // Add shipment lines for new pickup (only if shipments enabled)
             if (_enableShipments)
@@ -517,14 +523,14 @@
                 foreach (var line in _shipmentLines)
                 {
                     line.PickupRequestId = _entity.Id;
-                    DbContext.PickupRequestShipments.Add(line);
+                    dbContext.PickupRequestShipments.Add(line);
                 }
             }
         }
         else
         {
             // For edit mode, preserve existing lines and update them
-            var existingLines = await DbContext.PickupRequestShipments
+            var existingLines = await dbContext.PickupRequestShipments
                 .Where(s => s.PickupRequestId == _entity.Id)
                 .ToListAsync();
             
@@ -542,7 +548,7 @@
                             Snackbar.Add($"Cannot remove line {existing.LineNo}: already booked or linked to AWB", Severity.Error);
                             return;
                         }
-                        DbContext.PickupRequestShipments.Remove(existing);
+                        dbContext.PickupRequestShipments.Remove(existing);
                     }
                 }
                 
@@ -574,7 +580,7 @@
                     {
                         // Add new line
                         line.PickupRequestId = _entity.Id;
-                        DbContext.PickupRequestShipments.Add(line);
+                        dbContext.PickupRequestShipments.Add(line);
                     }
                 }
             }
@@ -588,12 +594,12 @@
                         // Can't remove processed lines - just keep them
                         continue;
                     }
-                    DbContext.PickupRequestShipments.Remove(existing);
+                    dbContext.PickupRequestShipments.Remove(existing);
                 }
             }
         }
         
-        await DbContext.SaveChangesAsync();
+        await dbContext.SaveChangesAsync();
         Snackbar.Add(_isEdit ? "Pickup request updated" : "Pickup request created", Severity.Success);
         NavigationManager.NavigateTo("/pickup-management");
     }

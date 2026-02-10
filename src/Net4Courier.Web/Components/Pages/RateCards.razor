@@ -3,7 +3,7 @@
 @using Net4Courier.Masters.Entities
 @using Net4Courier.Infrastructure.Data
 @using Net4Courier.Kernel.Enums
-@inject ApplicationDbContext DbContext
+@inject IDbContextFactory<ApplicationDbContext> DbFactory
 @inject IDialogService DialogService
 @inject ISnackbar Snackbar
 @inject NavigationManager Navigation
@@ -128,7 +128,8 @@
         _loading = true;
         try
         {
-            var query = DbContext.RateCards
+            await using var dbContext = await DbFactory.CreateDbContextAsync();
+            var query = dbContext.RateCards
                 .Include(r => r.RateCardZones)
                 .Where(r => !r.IsDeleted)
                 .AsQueryable();
@@ -214,6 +215,7 @@
 
         if (result != null && !result.Canceled)
         {
+            await using var dbContext = await DbFactory.CreateDbContextAsync();
             var newRateCard = new RateCard
             {
                 RateCardName = $"{original.RateCardName} (Copy)",
@@ -231,8 +233,8 @@
                 IsActive = true
             };
 
-            DbContext.RateCards.Add(newRateCard);
-            await DbContext.SaveChangesAsync();
+            dbContext.RateCards.Add(newRateCard);
+            await dbContext.SaveChangesAsync();
 
             Snackbar.Add("Rate card duplicated successfully", Severity.Success);
             await LoadRateCards();
@@ -253,9 +255,14 @@
 
         if (result != null && !result.Canceled)
         {
-            rateCard.IsDeleted = true;
-            rateCard.ModifiedAt = DateTime.UtcNow;
-            await DbContext.SaveChangesAsync();
+            await using var dbContext = await DbFactory.CreateDbContextAsync();
+            var entity = await dbContext.RateCards.FindAsync(rateCard.Id);
+            if (entity != null)
+            {
+                entity.IsDeleted = true;
+                entity.ModifiedAt = DateTime.UtcNow;
+                await dbContext.SaveChangesAsync();
+            }
 
             Snackbar.Add("Rate card deleted", Severity.Success);
             await LoadRateCards();
@@ -269,7 +276,8 @@
 
     private async Task OpenImportDialog()
     {
-        var company = await DbContext.Companies.FirstOrDefaultAsync(c => c.IsActive && !c.IsDeleted);
+        await using var dbContext = await DbFactory.CreateDbContextAsync();
+        var company = await dbContext.Companies.FirstOrDefaultAsync(c => c.IsActive && !c.IsDeleted);
         var parameters = new DialogParameters<RateCardImportDialog>
         {
             { x => x.CompanyId, company?.Id ?? 0 }

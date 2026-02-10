@@ -4,7 +4,7 @@
 @using Net4Courier.Masters.Entities
 @using Net4Courier.Infrastructure.Data
 @using Net4Courier.Kernel.Enums
-@inject ApplicationDbContext DbContext
+@inject IDbContextFactory<ApplicationDbContext> DbFactory
 @inject IDialogService DialogService
 @inject ISnackbar Snackbar
 @inject NavigationManager Navigation
@@ -275,12 +275,13 @@
 
     private async Task LoadDropdowns()
     {
-        _serviceTypes = await DbContext.ServiceTypes
+        await using var dbContext = await DbFactory.CreateDbContextAsync();
+        _serviceTypes = await dbContext.ServiceTypes
             .Where(s => s.IsActive && !s.IsDeleted)
             .OrderBy(s => s.SortOrder)
             .ToListAsync();
             
-        _shipmentModes = await DbContext.ShipmentModes
+        _shipmentModes = await dbContext.ShipmentModes
             .Where(s => s.IsActive && !s.IsDeleted)
             .OrderBy(s => s.SortOrder)
             .ToListAsync();
@@ -288,20 +289,21 @@
 
     private async Task LoadRateCard()
     {
-        _rateCard = await DbContext.RateCards
+        await using var dbContext = await DbFactory.CreateDbContextAsync();
+        _rateCard = await dbContext.RateCards
             .FirstOrDefaultAsync(r => r.Id == Id) ?? new RateCard();
 
         _validFromDate = _rateCard.ValidFrom.ToLocalTime().Date;
         _validToDate = _rateCard.ValidTo?.ToLocalTime().Date;
 
-        _rateCardZones = await DbContext.RateCardZones
+        _rateCardZones = await dbContext.RateCardZones
             .Include(z => z.ZoneMatrix)
             .Include(z => z.SlabRules)
             .Where(z => z.RateCardId == Id && !z.IsDeleted)
             .OrderBy(z => z.ZoneMatrix!.SortOrder)
             .ToListAsync();
 
-        _customerAssignments = await DbContext.CustomerRateAssignments
+        _customerAssignments = await dbContext.CustomerRateAssignments
             .Where(c => c.RateCardId == Id && !c.IsDeleted && c.IsActive)
             .OrderBy(c => c.Priority)
             .ToListAsync();
@@ -309,14 +311,14 @@
         var customerIds = _customerAssignments.Select(c => c.CustomerId).Distinct().ToList();
         if (customerIds.Any())
         {
-            _customerNames = await DbContext.Parties
+            _customerNames = await dbContext.Parties
                 .Where(p => customerIds.Contains(p.Id))
                 .ToDictionaryAsync(p => p.Id, p => p.Name);
         }
 
         if (_rateCard.ForwardingAgentId.HasValue)
         {
-            _selectedAgent = await DbContext.Parties.FindAsync(_rateCard.ForwardingAgentId.Value);
+            _selectedAgent = await dbContext.Parties.FindAsync(_rateCard.ForwardingAgentId.Value);
         }
     }
 
@@ -331,6 +333,7 @@
         _saving = true;
         try
         {
+            await using var dbContext = await DbFactory.CreateDbContextAsync();
             _rateCard.ValidFrom = DateTime.SpecifyKind(_validFromDate?.Date ?? DateTime.Today, DateTimeKind.Utc);
             _rateCard.ValidTo = _validToDate.HasValue 
                 ? DateTime.SpecifyKind(_validToDate.Value.Date, DateTimeKind.Utc) 
@@ -341,14 +344,15 @@
             {
                 _rateCard.CreatedAt = DateTime.UtcNow;
                 _rateCard.IsActive = true;
-                DbContext.RateCards.Add(_rateCard);
+                dbContext.RateCards.Add(_rateCard);
             }
             else
             {
                 _rateCard.ModifiedAt = DateTime.UtcNow;
+                dbContext.RateCards.Update(_rateCard);
             }
 
-            await DbContext.SaveChangesAsync();
+            await dbContext.SaveChangesAsync();
             Snackbar.Add("Rate card saved successfully", Severity.Success);
 
             if (_isNew)
@@ -364,7 +368,8 @@
 
     private async Task<IEnumerable<Party>> SearchAgents(string value, CancellationToken cancellationToken)
     {
-        var query = DbContext.Parties
+        await using var dbContext = await DbFactory.CreateDbContextAsync();
+        var query = dbContext.Parties
             .Where(p => p.PartyType == PartyType.ForwardingAgent && !p.IsDeleted && p.IsActive);
 
         if (!string.IsNullOrWhiteSpace(value))
@@ -419,8 +424,10 @@
 
         if (result != null && !result.Canceled)
         {
+            await using var dbContext = await DbFactory.CreateDbContextAsync();
             zone.IsDeleted = true;
-            await DbContext.SaveChangesAsync();
+            dbContext.RateCardZones.Update(zone);
+            await dbContext.SaveChangesAsync();
             Snackbar.Add("Zone pricing deleted", Severity.Success);
             await LoadRateCard();
         }
@@ -466,9 +473,11 @@
 
         if (result != null && !result.Canceled)
         {
+            await using var dbContext = await DbFactory.CreateDbContextAsync();
             assignment.IsDeleted = true;
             assignment.IsActive = false;
-            await DbContext.SaveChangesAsync();
+            dbContext.CustomerRateAssignments.Update(assignment);
+            await dbContext.SaveChangesAsync();
             Snackbar.Add("Customer assignment removed", Severity.Success);
             await LoadRateCard();
         }
@@ -479,13 +488,15 @@
         var index = _customerAssignments.IndexOf(assignment);
         if (index > 0)
         {
+            await using var dbContext = await DbFactory.CreateDbContextAsync();
             var prev = _customerAssignments[index - 1];
             var tempPriority = prev.Priority;
             prev.Priority = assignment.Priority;
             assignment.Priority = tempPriority;
             prev.ModifiedAt = DateTime.UtcNow;
             assignment.ModifiedAt = DateTime.UtcNow;
-            await DbContext.SaveChangesAsync();
+            dbContext.CustomerRateAssignments.UpdateRange(prev, assignment);
+            await dbContext.SaveChangesAsync();
             _customerAssignments = _customerAssignments.OrderBy(a => a.Priority).ToList();
             StateHasChanged();
         }
@@ -496,13 +507,15 @@
         var index = _customerAssignments.IndexOf(assignment);
         if (index < _customerAssignments.Count - 1)
         {
+            await using var dbContext = await DbFactory.CreateDbContextAsync();
             var next = _customerAssignments[index + 1];
             var tempPriority = next.Priority;
             next.Priority = assignment.Priority;
             assignment.Priority = tempPriority;
             next.ModifiedAt = DateTime.UtcNow;
             assignment.ModifiedAt = DateTime.UtcNow;
-            await DbContext.SaveChangesAsync();
+            dbContext.CustomerRateAssignments.UpdateRange(next, assignment);
+            await dbContext.SaveChangesAsync();
             _customerAssignments = _customerAssignments.OrderBy(a => a.Priority).ToList();
             StateHasChanged();
         }
@@ -541,7 +554,10 @@
                 zone.ModifiedAt = DateTime.UtcNow;
             }
 
-            await DbContext.SaveChangesAsync();
+            await using var dbContext = await DbFactory.CreateDbContextAsync();
+            foreach (var z in _selectedZones)
+                dbContext.RateCardZones.Update(z);
+            await dbContext.SaveChangesAsync();
             _selectedZones.Clear();
             Snackbar.Add($"Bulk settings applied to {zoneCount} zones", Severity.Success);
             StateHasChanged();
@@ -569,6 +585,7 @@
         {
             try
             {
+                await using var dbContext = await DbFactory.CreateDbContextAsync();
                 var clone = new RateCard
                 {
                     RateCardName = $"{_rateCard.RateCardName} (Copy)",
@@ -588,8 +605,8 @@
                     CreatedAt = DateTime.UtcNow
                 };
 
-                DbContext.RateCards.Add(clone);
-                await DbContext.SaveChangesAsync();
+                dbContext.RateCards.Add(clone);
+                await dbContext.SaveChangesAsync();
 
                 foreach (var zone in _rateCardZones.Where(z => !z.IsDeleted))
                 {
@@ -607,16 +624,16 @@
                         IsActive = true,
                         CreatedAt = DateTime.UtcNow
                     };
-                    DbContext.RateCardZones.Add(cloneZone);
-                    await DbContext.SaveChangesAsync();
+                    dbContext.RateCardZones.Add(cloneZone);
+                    await dbContext.SaveChangesAsync();
 
-                    var slabRules = await DbContext.RateCardSlabRules
+                    var slabRules = await dbContext.RateCardSlabRules
                         .Where(s => s.RateCardZoneId == zone.Id && !s.IsDeleted)
                         .ToListAsync();
 
                     foreach (var slab in slabRules)
                     {
-                        DbContext.RateCardSlabRules.Add(new RateCardSlabRule
+                        dbContext.RateCardSlabRules.Add(new RateCardSlabRule
                         {
                             RateCardZoneId = cloneZone.Id,
                             FromWeight = slab.FromWeight,
@@ -629,7 +646,7 @@
                             CreatedAt = DateTime.UtcNow
                         });
                     }
-                    await DbContext.SaveChangesAsync();
+                    await dbContext.SaveChangesAsync();
                 }
 
                 Snackbar.Add($"Rate card cloned successfully", Severity.Success);

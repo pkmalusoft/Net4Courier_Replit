@@ -5,7 +5,7 @@
 @using Net4Courier.Masters.Entities
 @using Net4Courier.Kernel.Enums
 @using Microsoft.EntityFrameworkCore
-@inject ApplicationDbContext DbContext
+@inject IDbContextFactory<ApplicationDbContext> DbFactory
 @inject NavigationManager NavigationManager
 @inject ISnackbar Snackbar
 
@@ -142,11 +142,12 @@
 
     protected override async Task OnInitializedAsync()
     {
-        customers = await DbContext.Parties.Where(p => p.IsActive).ToListAsync();
+        await using var dbContext = await DbFactory.CreateDbContextAsync();
+        customers = await dbContext.Parties.Where(p => p.IsActive).ToListAsync();
 
         if (Id.HasValue)
         {
-            var existing = await DbContext.Receipts
+            var existing = await dbContext.Receipts
                 .Include(r => r.Allocations)
                 .FirstOrDefaultAsync(r => r.Id == Id.Value);
 
@@ -155,7 +156,7 @@
                 receipt = existing;
                 receiptDate = existing.ReceiptDate;
                 chequeDate = existing.ChequeDate;
-                selectedCustomer = await DbContext.Parties.FindAsync(existing.CustomerId);
+                selectedCustomer = await dbContext.Parties.FindAsync(existing.CustomerId);
                 if (selectedCustomer != null)
                     await LoadPendingInvoices();
             }
@@ -163,14 +164,14 @@
         else
         {
             receiptDate = DateTime.Today;
-            receipt.ReceiptNo = await GenerateReceiptNo();
+            receipt.ReceiptNo = await GenerateReceiptNo(dbContext);
         }
     }
 
-    private async Task<string> GenerateReceiptNo()
+    private async Task<string> GenerateReceiptNo(ApplicationDbContext dbContext)
     {
         var prefix = $"RCP-{DateTime.Today:yyMM}-";
-        var lastReceipt = await DbContext.Receipts
+        var lastReceipt = await dbContext.Receipts
             .Where(r => r.ReceiptNo.StartsWith(prefix))
             .OrderByDescending(r => r.ReceiptNo)
             .FirstOrDefaultAsync();
@@ -208,7 +209,8 @@
     {
         if (selectedCustomer == null) return;
 
-        pendingInvoices = await DbContext.Invoices
+        await using var dbContext = await DbFactory.CreateDbContextAsync();
+        pendingInvoices = await dbContext.Invoices
             .Where(i => i.CustomerId == selectedCustomer.Id)
             .Where(i => i.Status != InvoiceStatus.Cancelled && i.Status != InvoiceStatus.Paid)
             .Where(i => i.BalanceAmount > 0)
@@ -244,24 +246,25 @@
         isSaving = true;
         try
         {
+            await using var dbContext = await DbFactory.CreateDbContextAsync();
             receipt.ReceiptDate = receiptDate ?? DateTime.Today;
             receipt.ChequeDate = chequeDate;
             receipt.IsAllocated = receipt.Allocations.Any();
 
             if (Id.HasValue)
             {
-                DbContext.Receipts.Update(receipt);
+                dbContext.Receipts.Update(receipt);
             }
             else
             {
-                DbContext.Receipts.Add(receipt);
+                dbContext.Receipts.Add(receipt);
             }
 
-            await DbContext.SaveChangesAsync();
+            await dbContext.SaveChangesAsync();
 
             foreach (var allocation in receipt.Allocations)
             {
-                var invoice = await DbContext.Invoices.FindAsync(allocation.InvoiceId);
+                var invoice = await dbContext.Invoices.FindAsync(allocation.InvoiceId);
                 if (invoice != null)
                 {
                     invoice.PaidAmount = (invoice.PaidAmount ?? 0) + (allocation.AllocatedAmount ?? 0);
@@ -272,7 +275,7 @@
                         invoice.Status = InvoiceStatus.PartiallyPaid;
                 }
             }
-            await DbContext.SaveChangesAsync();
+            await dbContext.SaveChangesAsync();
 
             Snackbar.Add("Receipt saved successfully", Severity.Success);
             NavigationManager.NavigateTo("/receipts");

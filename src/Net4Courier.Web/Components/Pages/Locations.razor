@@ -2,7 +2,7 @@
 @using Microsoft.EntityFrameworkCore
 @using Net4Courier.Infrastructure.Data
 @using Net4Courier.Masters.Entities
-@inject ApplicationDbContext DbContext
+@inject IDbContextFactory<ApplicationDbContext> DbFactory
 @inject IDialogService DialogService
 @inject ISnackbar Snackbar
 
@@ -82,10 +82,11 @@
 
     private async Task LoadData()
     {
+        await using var dbContext = await DbFactory.CreateDbContextAsync();
         _loading = true;
-        _cities = await DbContext.Cities.Where(c => c.IsActive && !c.IsDeleted).OrderBy(c => c.Name).ToListAsync();
-        _branches = await DbContext.Branches.Where(b => b.IsActive && !b.IsDeleted).OrderBy(b => b.Name).ToListAsync();
-        _locations = await DbContext.Locations
+        _cities = await dbContext.Cities.Where(c => c.IsActive && !c.IsDeleted).OrderBy(c => c.Name).ToListAsync();
+        _branches = await dbContext.Branches.Where(b => b.IsActive && !b.IsDeleted).OrderBy(b => b.Name).ToListAsync();
+        _locations = await dbContext.Locations
             .Include(l => l.City)
             .Include(l => l.Branch)
             .Where(l => !l.IsDeleted)
@@ -164,6 +165,7 @@
 
     private async Task DeleteLocation(Location location)
     {
+        await using var dbContext = await DbFactory.CreateDbContextAsync();
         var confirm = await DialogService.ShowMessageBox(
             "Confirm Delete",
             $"Are you sure you want to delete '{location.Name}'?",
@@ -172,7 +174,7 @@
         if (confirm == true)
         {
             location.IsDeleted = true;
-            await DbContext.SaveChangesAsync();
+            await dbContext.SaveChangesAsync();
             await LoadData();
             Snackbar.Add("Location deleted successfully", Severity.Success);
         }

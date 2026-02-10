@@ -5,7 +5,7 @@
 @using Net4Courier.Masters.Entities
 @using Net4Courier.Web.Services
 @using Microsoft.JSInterop
-@inject ApplicationDbContext DbContext
+@inject IDbContextFactory<ApplicationDbContext> DbFactory
 @inject ReportExportService ExportService
 @inject IGmailEmailService EmailService
 @inject IJSRuntime JS
@@ -129,12 +129,13 @@
 
     protected override async Task OnInitializedAsync()
     {
-        _suppliers = await DbContext.Parties
+        await using var dbContext = await DbFactory.CreateDbContextAsync();
+        _suppliers = await dbContext.Parties
             .Where(p => p.IsActive && p.AccountNature == PartyAccountNature.Payable)
             .OrderBy(p => p.Name)
             .ToListAsync();
         
-        _currentBranch = await DbContext.Branches.FirstOrDefaultAsync(b => b.IsActive && !b.IsDeleted);
+        _currentBranch = await dbContext.Branches.FirstOrDefaultAsync(b => b.IsActive && !b.IsDeleted);
     }
 
     private async Task LoadData()
@@ -145,6 +146,8 @@
             return;
         }
 
+        await using var dbContext = await DbFactory.CreateDbContextAsync();
+
         _isLoading = true;
         _data.Clear();
 
@@ -153,10 +156,10 @@
             var fromUtc = _fromDate.HasValue ? DateTime.SpecifyKind(_fromDate.Value.Date, DateTimeKind.Utc) : DateTime.MinValue;
             var toUtc = _toDate.HasValue ? DateTime.SpecifyKind(_toDate.Value.Date.AddDays(1).AddTicks(-1), DateTimeKind.Utc) : DateTime.MaxValue;
 
-            var supplier = await DbContext.Parties.FindAsync(_supplierId.Value);
+            var supplier = await dbContext.Parties.FindAsync(_supplierId.Value);
             _openingBalance = 0; // Opening balance calculated from prior period
 
-            var entries = await DbContext.Journals
+            var entries = await dbContext.Journals
                 .Include(j => j.Entries)
                 .Where(j => j.VoucherDate >= fromUtc && j.VoucherDate <= toUtc)
                 .Where(j => j.Entries.Any(e => e.PartyId == _supplierId))

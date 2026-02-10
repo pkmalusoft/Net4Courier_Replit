@@ -5,7 +5,7 @@
 @using Net4Courier.Masters.Entities
 @using Net4Courier.Web.Services
 @using Microsoft.JSInterop
-@inject ApplicationDbContext DbContext
+@inject IDbContextFactory<ApplicationDbContext> DbFactory
 @inject ReportExportService ExportService
 @inject IJSRuntime JS
 @inject ISnackbar Snackbar
@@ -120,7 +120,8 @@
 
     protected override async Task OnInitializedAsync()
     {
-        _suppliers = await DbContext.Parties
+        await using var dbContext = await DbFactory.CreateDbContextAsync();
+        _suppliers = await dbContext.Parties
             .Where(p => p.IsActive && p.AccountNature == PartyAccountNature.Payable)
             .OrderBy(p => p.Name)
             .ToListAsync();
@@ -128,6 +129,7 @@
 
     private async Task LoadData()
     {
+        await using var dbContext = await DbFactory.CreateDbContextAsync();
         _isLoading = true;
         _data.Clear();
 
@@ -136,7 +138,7 @@
             var fromUtc = _fromDate.HasValue ? DateTime.SpecifyKind(_fromDate.Value.Date, DateTimeKind.Utc) : DateTime.MinValue;
             var toUtc = _toDate.HasValue ? DateTime.SpecifyKind(_toDate.Value.Date.AddDays(1).AddTicks(-1), DateTimeKind.Utc) : DateTime.MaxValue;
 
-            var query = DbContext.Journals
+            var query = dbContext.Journals
                 .Include(j => j.Entries)
                 .Where(j => j.VoucherDate >= fromUtc && j.VoucherDate <= toUtc)
                 .Where(j => j.VoucherType == "Purchase" || j.VoucherType == "Expense");
@@ -146,7 +148,7 @@
 
             var journals = await query.OrderByDescending(j => j.VoucherDate).ThenByDescending(j => j.VoucherNo).ToListAsync();
 
-            var suppliers = await DbContext.Parties.Where(p => p.AccountNature == PartyAccountNature.Payable).ToListAsync();
+            var suppliers = await dbContext.Parties.Where(p => p.AccountNature == PartyAccountNature.Payable).ToListAsync();
 
             _data = journals.Select(j =>
             {

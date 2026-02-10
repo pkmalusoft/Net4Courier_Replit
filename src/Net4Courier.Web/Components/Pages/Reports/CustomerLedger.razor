@@ -3,7 +3,7 @@
 @using Net4Courier.Infrastructure.Data
 @using Net4Courier.Finance.Entities
 @using Net4Courier.Masters.Entities
-@inject ApplicationDbContext DbContext
+@inject IDbContextFactory<ApplicationDbContext> DbFactory
 @inject ISnackbar Snackbar
 
 <PageTitle>Customer Ledger</PageTitle>
@@ -116,15 +116,17 @@
 
     protected override async Task OnInitializedAsync()
     {
-        _branches = await DbContext.Branches.Where(b => b.IsActive).OrderBy(b => b.Name).ToListAsync();
+        await using var dbContext = await DbFactory.CreateDbContextAsync();
+        _branches = await dbContext.Branches.Where(b => b.IsActive).OrderBy(b => b.Name).ToListAsync();
     }
 
     private async Task<IEnumerable<Party>> SearchCustomers(string value, CancellationToken cancellationToken)
     {
+        await using var dbContext = await DbFactory.CreateDbContextAsync();
         if (string.IsNullOrEmpty(value))
-            return await DbContext.Parties.Where(p => p.IsActive).Take(10).ToListAsync();
+            return await dbContext.Parties.Where(p => p.IsActive).Take(10).ToListAsync();
 
-        return await DbContext.Parties
+        return await dbContext.Parties
             .Where(p => p.IsActive && (p.Name.Contains(value) || (p.Code != null && p.Code.Contains(value))))
             .Take(20)
             .ToListAsync();
@@ -144,6 +146,8 @@
             return;
         }
 
+        await using var dbContext = await DbFactory.CreateDbContextAsync();
+
         _isLoading = true;
         _transactions.Clear();
         StateHasChanged();
@@ -153,7 +157,7 @@
             var fromDateUtc = DateTime.SpecifyKind(_fromDate.Value.Date, DateTimeKind.Utc);
             var toDateUtc = DateTime.SpecifyKind(_toDate.Value.Date.AddDays(1).AddTicks(-1), DateTimeKind.Utc);
 
-            var journalsQuery = DbContext.Journals
+            var journalsQuery = dbContext.Journals
                 .Include(j => j.Entries)
                 .Where(j => j.Entries.Any(e => e.PartyId == _selectedCustomer.Id));
 

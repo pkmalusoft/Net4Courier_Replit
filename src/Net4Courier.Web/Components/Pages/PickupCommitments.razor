@@ -1,5 +1,5 @@
 @page "/pickup-commitments"
-@inject ApplicationDbContext DbContext
+@inject IDbContextFactory<ApplicationDbContext> DbFactory
 @inject ISnackbar Snackbar
 @inject IDialogService DialogService
 @using Microsoft.EntityFrameworkCore
@@ -212,7 +212,8 @@
 
     private async Task LoadCouriers()
     {
-        _courierEmployees = await DbContext.Parties
+        await using var dbContext = await DbFactory.CreateDbContextAsync();
+        _courierEmployees = await dbContext.Parties
             .Where(p => p.PartyType == PartyType.DeliveryAgent && p.IsActive && !p.IsDeleted)
             .OrderBy(p => p.Name)
             .Select(p => new ValueTuple<long, string>(p.Id, p.Name))
@@ -221,10 +222,11 @@
 
     private async Task LoadData()
     {
+        await using var dbContext = await DbFactory.CreateDbContextAsync();
         _isLoading = true;
         try
         {
-            var service = new PickupCommitmentService(DbContext);
+            var service = new PickupCommitmentService(dbContext);
             
             await service.ExpireOldCommitmentsAsync();
             
@@ -238,7 +240,7 @@
             }
             else
             {
-                _myCommitments = await DbContext.PickupCommitments
+                _myCommitments = await dbContext.PickupCommitments
                     .Include(c => c.PickupRequest)
                     .Where(c => (c.Status == PickupCommitmentStatus.Active || c.Status == PickupCommitmentStatus.Confirmed) && c.ExpiresAt > DateTime.UtcNow)
                     .OrderBy(c => c.ExpiresAt)
@@ -265,9 +267,10 @@
 
     private async Task CommitToPickup(PickupRequest pickup)
     {
+        await using var dbContext = await DbFactory.CreateDbContextAsync();
         try
         {
-            var service = new PickupCommitmentService(DbContext);
+            var service = new PickupCommitmentService(dbContext);
             var commitment = await service.CommitToPickupAsync(pickup.Id, _currentCourierId, "Current Courier", 30);
             
             if (commitment != null)
@@ -288,9 +291,10 @@
 
     private async Task ConfirmCommitment(PickupCommitment commitment)
     {
+        await using var dbContext = await DbFactory.CreateDbContextAsync();
         try
         {
-            var service = new PickupCommitmentService(DbContext);
+            var service = new PickupCommitmentService(dbContext);
             var success = await service.ConfirmCommitmentAsync(commitment.Id);
             
             if (success)
@@ -311,6 +315,7 @@
 
     private async Task ReleaseCommitment(PickupCommitment commitment)
     {
+        await using var dbContext = await DbFactory.CreateDbContextAsync();
         var result = await DialogService.ShowMessageBox(
             "Release Commitment",
             "Are you sure you want to release this pickup commitment?",
@@ -320,7 +325,7 @@
         {
             try
             {
-                var service = new PickupCommitmentService(DbContext);
+                var service = new PickupCommitmentService(dbContext);
                 var success = await service.ReleaseCommitmentAsync(commitment.Id, "Released by courier");
                 
                 if (success)
@@ -338,9 +343,10 @@
 
     private async Task ExtendCommitment(PickupCommitment commitment)
     {
+        await using var dbContext = await DbFactory.CreateDbContextAsync();
         try
         {
-            var service = new PickupCommitmentService(DbContext);
+            var service = new PickupCommitmentService(dbContext);
             var success = await service.ExtendCommitmentAsync(commitment.Id, 15);
             
             if (success)

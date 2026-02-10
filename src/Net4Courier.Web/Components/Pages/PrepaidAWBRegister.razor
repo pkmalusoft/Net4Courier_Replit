@@ -1,5 +1,5 @@
 @page "/prepaid-awb-register"
-@inject ApplicationDbContext DbContext
+@inject IDbContextFactory<ApplicationDbContext> DbFactory
 @inject ISnackbar Snackbar
 @inject IJSRuntime JS
 @using Microsoft.EntityFrameworkCore
@@ -111,7 +111,8 @@
 
     private async Task LoadCustomers()
     {
-        _customers = await DbContext.Parties
+        await using var dbContext = await DbFactory.CreateDbContextAsync();
+        _customers = await dbContext.Parties
             .Where(p => p.PartyType == PartyType.Customer && !p.IsDeleted && p.IsActive)
             .OrderBy(p => p.Name)
             .ToListAsync();
@@ -133,8 +134,9 @@
                 ? DateTime.SpecifyKind(_toDate.Value.AddDays(1).AddSeconds(-1), DateTimeKind.Utc)
                 : DateTime.MaxValue;
 
-            var query = from awb in DbContext.PrepaidAWBs
-                        join doc in DbContext.PrepaidDocuments on awb.PrepaidDocumentId equals doc.Id
+            await using var dbContext = await DbFactory.CreateDbContextAsync();
+            var query = from awb in dbContext.PrepaidAWBs
+                        join doc in dbContext.PrepaidDocuments on awb.PrepaidDocumentId equals doc.Id
                         where !awb.IsDeleted && !doc.IsDeleted
                               && doc.DocumentDate >= fromDate
                               && doc.DocumentDate <= toDate

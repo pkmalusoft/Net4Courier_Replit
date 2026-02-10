@@ -1,4 +1,4 @@
-@inject ApplicationDbContext DbContext
+@inject IDbContextFactory<ApplicationDbContext> DbFactory
 @inject ISnackbar Snackbar
 @using Microsoft.EntityFrameworkCore
 @using Net4Courier.Infrastructure.Data
@@ -98,8 +98,9 @@
 
     protected override async Task OnInitializedAsync()
     {
-        _countries = await DbContext.Countries.Where(c => c.IsActive && !c.IsDeleted).OrderBy(c => c.Name).ToListAsync();
-        _addresses = await DbContext.PartyAddresses
+        await using var dbContext = await DbFactory.CreateDbContextAsync();
+        _countries = await dbContext.Countries.Where(c => c.IsActive && !c.IsDeleted).OrderBy(c => c.Name).ToListAsync();
+        _addresses = await dbContext.PartyAddresses
             .Where(a => a.PartyId == Party.Id && !a.IsDeleted)
             .ToListAsync();
 
@@ -111,18 +112,19 @@
 
     private async Task LoadGeographyForAddress(int index, PartyAddress address)
     {
+        await using var dbContext = await DbFactory.CreateDbContextAsync();
         var country = _countries.FirstOrDefault(c => c.Name == address.Country);
         if (country != null)
         {
             _countryIds[index] = country.Id;
-            var cities = await DbContext.Cities.Where(c => c.CountryId == country.Id && c.IsActive && !c.IsDeleted).OrderBy(c => c.Name).ToListAsync();
+            var cities = await dbContext.Cities.Where(c => c.CountryId == country.Id && c.IsActive && !c.IsDeleted).OrderBy(c => c.Name).ToListAsync();
             _citiesPerAddress[index] = cities;
 
             var city = cities.FirstOrDefault(c => c.Name == address.City);
             if (city != null)
             {
                 _cityIds[index] = city.Id;
-                _locationsPerAddress[index] = await DbContext.Locations.Where(l => l.CityId == city.Id && l.IsActive && !l.IsDeleted).OrderBy(l => l.Name).ToListAsync();
+                _locationsPerAddress[index] = await dbContext.Locations.Where(l => l.CityId == city.Id && l.IsActive && !l.IsDeleted).OrderBy(l => l.Name).ToListAsync();
             }
         }
     }
@@ -134,6 +136,7 @@
 
     private async Task OnCountryChanged(int index, long? countryId)
     {
+        await using var dbContext = await DbFactory.CreateDbContextAsync();
         _countryIds[index] = countryId;
         _cityIds[index] = null;
         _citiesPerAddress[index] = new();
@@ -147,7 +150,7 @@
         {
             var country = _countries.FirstOrDefault(c => c.Id == countryId);
             address.Country = country?.Name;
-            _citiesPerAddress[index] = await DbContext.Cities.Where(c => c.CountryId == countryId && c.IsActive && !c.IsDeleted).OrderBy(c => c.Name).ToListAsync();
+            _citiesPerAddress[index] = await dbContext.Cities.Where(c => c.CountryId == countryId && c.IsActive && !c.IsDeleted).OrderBy(c => c.Name).ToListAsync();
         }
         else
         {
@@ -158,6 +161,7 @@
 
     private async Task OnCityChanged(int index, long? cityId)
     {
+        await using var dbContext = await DbFactory.CreateDbContextAsync();
         _cityIds[index] = cityId;
         _locationsPerAddress[index] = new();
         
@@ -169,7 +173,7 @@
             var cities = GetCities(index);
             var city = cities.FirstOrDefault(c => c.Id == cityId);
             address.City = city?.Name;
-            _locationsPerAddress[index] = await DbContext.Locations.Where(l => l.CityId == cityId && l.IsActive && !l.IsDeleted).OrderBy(l => l.Name).ToListAsync();
+            _locationsPerAddress[index] = await dbContext.Locations.Where(l => l.CityId == cityId && l.IsActive && !l.IsDeleted).OrderBy(l => l.Name).ToListAsync();
         }
         else
         {
@@ -202,7 +206,8 @@
             _countryIds[newIndex] = india.Id;
             Task.Run(async () =>
             {
-                _citiesPerAddress[newIndex] = await DbContext.Cities.Where(c => c.CountryId == india.Id && c.IsActive && !c.IsDeleted).OrderBy(c => c.Name).ToListAsync();
+                await using var dbContext = await DbFactory.CreateDbContextAsync();
+                _citiesPerAddress[newIndex] = await dbContext.Cities.Where(c => c.CountryId == india.Id && c.IsActive && !c.IsDeleted).OrderBy(c => c.Name).ToListAsync();
                 await InvokeAsync(StateHasChanged);
             });
         }
@@ -222,21 +227,22 @@
 
     private async Task Save()
     {
+        await using var dbContext = await DbFactory.CreateDbContextAsync();
         foreach (var address in _addresses)
         {
             if (address.Id == 0)
             {
                 address.CreatedAt = DateTime.UtcNow;
-                DbContext.PartyAddresses.Add(address);
+                dbContext.PartyAddresses.Add(address);
             }
             else
             {
                 address.ModifiedAt = DateTime.UtcNow;
-                DbContext.PartyAddresses.Update(address);
+                dbContext.PartyAddresses.Update(address);
             }
         }
 
-        await DbContext.SaveChangesAsync();
+        await dbContext.SaveChangesAsync();
         Snackbar.Add("Addresses saved successfully", Severity.Success);
         MudDialog.Close(DialogResult.Ok(true));
     }

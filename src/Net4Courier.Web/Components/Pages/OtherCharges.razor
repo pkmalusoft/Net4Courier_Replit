@@ -1,5 +1,5 @@
 @page "/other-charges"
-@inject ApplicationDbContext DbContext
+@inject IDbContextFactory<ApplicationDbContext> DbFactory
 @inject IDialogService DialogService
 @inject ISnackbar Snackbar
 @using Microsoft.EntityFrameworkCore
@@ -73,8 +73,9 @@
 
     private async Task LoadData()
     {
+        await using var dbContext = await DbFactory.CreateDbContextAsync();
         _loading = true;
-        _chargeTypes = await DbContext.OtherChargeTypes
+        _chargeTypes = await dbContext.OtherChargeTypes
             .Where(c => !c.IsDeleted)
             .OrderBy(c => c.SortOrder)
             .ThenBy(c => c.Name)
@@ -123,6 +124,7 @@
 
     private async Task Delete(OtherChargeType chargeType)
     {
+        await using var dbContext = await DbFactory.CreateDbContextAsync();
         var confirm = await DialogService.ShowMessageBox(
             "Confirm Delete",
             $"Are you sure you want to delete '{chargeType.Name}'?",
@@ -132,7 +134,7 @@
         {
             chargeType.IsDeleted = true;
             chargeType.ModifiedAt = DateTime.UtcNow;
-            await DbContext.SaveChangesAsync();
+            await dbContext.SaveChangesAsync();
             await LoadData();
             Snackbar.Add("Charge type deleted successfully", Severity.Success);
         }

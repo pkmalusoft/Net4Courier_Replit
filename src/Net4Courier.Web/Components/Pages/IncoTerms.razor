@@ -1,5 +1,5 @@
 @page "/inco-terms"
-@inject ApplicationDbContext DbContext
+@inject IDbContextFactory<ApplicationDbContext> DbFactory
 @inject ISnackbar Snackbar
 @inject IDialogService DialogService
 @using Microsoft.EntityFrameworkCore
@@ -93,8 +93,9 @@
 
     private async Task LoadData()
     {
+        await using var dbContext = await DbFactory.CreateDbContextAsync();
         _loading = true;
-        _incoTerms = await DbContext.IncoTerms
+        _incoTerms = await dbContext.IncoTerms
             .Where(t => !t.IsDeleted)
             .OrderBy(t => t.SortOrder)
             .ThenBy(t => t.Name)
@@ -129,6 +130,7 @@
 
     private async Task SaveTerm()
     {
+        await using var dbContext = await DbFactory.CreateDbContextAsync();
         if (string.IsNullOrWhiteSpace(_editingTerm.Code) || string.IsNullOrWhiteSpace(_editingTerm.Name))
         {
             Snackbar.Add("Code and Name are required", Severity.Warning);
@@ -139,7 +141,7 @@
         {
             if (_editingTerm.Id == 0)
             {
-                var exists = await DbContext.IncoTerms.AnyAsync(t => t.Code == _editingTerm.Code && !t.IsDeleted);
+                var exists = await dbContext.IncoTerms.AnyAsync(t => t.Code == _editingTerm.Code && !t.IsDeleted);
                 if (exists)
                 {
                     Snackbar.Add("An Inco Term with this code already exists", Severity.Warning);
@@ -147,13 +149,13 @@
                 }
 
                 _editingTerm.CreatedAt = DateTime.UtcNow;
-                DbContext.IncoTerms.Add(_editingTerm);
-                await DbContext.SaveChangesAsync();
+                dbContext.IncoTerms.Add(_editingTerm);
+                await dbContext.SaveChangesAsync();
                 Snackbar.Add("Inco Term added successfully", Severity.Success);
             }
             else
             {
-                var existing = await DbContext.IncoTerms.FindAsync(_editingTerm.Id);
+                var existing = await dbContext.IncoTerms.FindAsync(_editingTerm.Id);
                 if (existing != null)
                 {
                     existing.Code = _editingTerm.Code;
@@ -162,7 +164,7 @@
                     existing.SortOrder = _editingTerm.SortOrder;
                     existing.IsActive = _editingTerm.IsActive;
                     existing.ModifiedAt = DateTime.UtcNow;
-                    await DbContext.SaveChangesAsync();
+                    await dbContext.SaveChangesAsync();
                     Snackbar.Add("Inco Term updated successfully", Severity.Success);
                 }
             }
@@ -178,6 +180,7 @@
 
     private async Task DeleteTerm(IncoTerm term)
     {
+        await using var dbContext = await DbFactory.CreateDbContextAsync();
         var confirm = await DialogService.ShowMessageBox(
             "Confirm Delete",
             $"Are you sure you want to delete the Inco Term '{term.Name}'?",
@@ -189,7 +192,7 @@
             {
                 term.IsDeleted = true;
                 term.ModifiedAt = DateTime.UtcNow;
-                await DbContext.SaveChangesAsync();
+                await dbContext.SaveChangesAsync();
                 Snackbar.Add("Inco Term deleted", Severity.Success);
                 await LoadData();
             }

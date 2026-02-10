@@ -1,4 +1,4 @@
-@inject ApplicationDbContext DbContext
+@inject IDbContextFactory<ApplicationDbContext> DbFactory
 @inject IWebHostEnvironment Environment
 @inject ISnackbar Snackbar
 @inject IDialogService DialogService
@@ -281,9 +281,10 @@
 
     protected override async Task OnInitializedAsync()
     {
-        _companies = await DbContext.Companies.Where(c => c.IsActive && !c.IsDeleted).OrderBy(c => c.Name).ToListAsync();
-        _countries = await DbContext.Countries.Where(c => c.IsActive && !c.IsDeleted).OrderBy(c => c.Name).ToListAsync();
-        _accountTypes = await DbContext.AccountTypes.Where(a => a.IsActive && !a.IsDeleted).OrderBy(a => a.SortOrder).ToListAsync();
+        await using var dbContext = await DbFactory.CreateDbContextAsync();
+        _companies = await dbContext.Companies.Where(c => c.IsActive && !c.IsDeleted).OrderBy(c => c.Name).ToListAsync();
+        _countries = await dbContext.Countries.Where(c => c.IsActive && !c.IsDeleted).OrderBy(c => c.Name).ToListAsync();
+        _accountTypes = await dbContext.AccountTypes.Where(a => a.IsActive && !a.IsDeleted).OrderBy(a => a.SortOrder).ToListAsync();
 
         if (IsNew)
         {
@@ -294,7 +295,7 @@
             if (india != null)
             {
                 _countryId = india.Id;
-                _cities = await DbContext.Cities.Where(c => c.CountryId == india.Id && c.IsActive && !c.IsDeleted).OrderBy(c => c.Name).ToListAsync();
+                _cities = await dbContext.Cities.Where(c => c.CountryId == india.Id && c.IsActive && !c.IsDeleted).OrderBy(c => c.Name).ToListAsync();
             }
             
             _autoGenerateAccountNo = true;
@@ -314,7 +315,8 @@
 
     private async Task LoadBranches()
     {
-        _branches = await DbContext.CustomerBranches
+        await using var dbContext = await DbFactory.CreateDbContextAsync();
+        _branches = await dbContext.CustomerBranches
             .Where(b => b.PartyId == Party.Id && !b.IsDeleted && b.IsActive)
             .OrderByDescending(b => b.IsHeadOffice)
             .ThenBy(b => b.Name)
@@ -323,9 +325,10 @@
     
     private async Task GenerateNextAccountNo()
     {
+        await using var dbContext = await DbFactory.CreateDbContextAsync();
         if (Party.PartyType != PartyType.Customer) return;
         
-        var maxAccountNo = await DbContext.Parties
+        var maxAccountNo = await dbContext.Parties
             .Where(p => p.PartyType == PartyType.Customer && !p.IsDeleted && p.CustomerAccountNo != null)
             .Select(p => p.CustomerAccountNo)
             .ToListAsync();
@@ -368,7 +371,8 @@
 
     private async Task LoadExistingPartyAddress()
     {
-        var primaryAddress = await DbContext.PartyAddresses
+        await using var dbContext = await DbFactory.CreateDbContextAsync();
+        var primaryAddress = await dbContext.PartyAddresses
             .Where(a => a.PartyId == Party.Id && !a.IsDeleted)
             .OrderByDescending(a => a.IsDefault)
             .FirstOrDefaultAsync();
@@ -379,13 +383,13 @@
             if (country != null)
             {
                 _countryId = country.Id;
-                _cities = await DbContext.Cities.Where(c => c.CountryId == country.Id && c.IsActive && !c.IsDeleted).OrderBy(c => c.Name).ToListAsync();
+                _cities = await dbContext.Cities.Where(c => c.CountryId == country.Id && c.IsActive && !c.IsDeleted).OrderBy(c => c.Name).ToListAsync();
 
                 var city = _cities.FirstOrDefault(c => c.Name == primaryAddress.City);
                 if (city != null)
                 {
                     _cityId = city.Id;
-                    _locations = await DbContext.Locations.Where(l => l.CityId == city.Id && l.IsActive && !l.IsDeleted).OrderBy(l => l.Name).ToListAsync();
+                    _locations = await dbContext.Locations.Where(l => l.CityId == city.Id && l.IsActive && !l.IsDeleted).OrderBy(l => l.Name).ToListAsync();
                     _location = primaryAddress.Landmark;
                 }
             }
@@ -394,6 +398,7 @@
 
     private async Task OnCountryChanged(long? countryId)
     {
+        await using var dbContext = await DbFactory.CreateDbContextAsync();
         _countryId = countryId;
         _cityId = null;
         _location = null;
@@ -402,20 +407,21 @@
 
         if (countryId.HasValue)
         {
-            _cities = await DbContext.Cities.Where(c => c.CountryId == countryId && c.IsActive && !c.IsDeleted).OrderBy(c => c.Name).ToListAsync();
+            _cities = await dbContext.Cities.Where(c => c.CountryId == countryId && c.IsActive && !c.IsDeleted).OrderBy(c => c.Name).ToListAsync();
         }
         StateHasChanged();
     }
 
     private async Task OnCityChanged(long? cityId)
     {
+        await using var dbContext = await DbFactory.CreateDbContextAsync();
         _cityId = cityId;
         _location = null;
         _locations.Clear();
 
         if (cityId.HasValue)
         {
-            _locations = await DbContext.Locations.Where(l => l.CityId == cityId && l.IsActive && !l.IsDeleted).OrderBy(l => l.Name).ToListAsync();
+            _locations = await dbContext.Locations.Where(l => l.CityId == cityId && l.IsActive && !l.IsDeleted).OrderBy(l => l.Name).ToListAsync();
         }
         StateHasChanged();
     }
@@ -510,16 +516,18 @@
 
     private async Task DeleteBranch(CustomerBranch branch)
     {
+        await using var dbContext = await DbFactory.CreateDbContextAsync();
         branch.IsDeleted = true;
         branch.ModifiedAt = DateTime.UtcNow;
-        DbContext.CustomerBranches.Update(branch);
-        await DbContext.SaveChangesAsync();
+        dbContext.CustomerBranches.Update(branch);
+        await dbContext.SaveChangesAsync();
         await LoadBranches();
         Snackbar.Add("Branch deleted", Severity.Success);
     }
 
     private async Task Save()
     {
+        await using var dbContext = await DbFactory.CreateDbContextAsync();
         await _form.Validate();
         if (!_formIsValid) return;
 
@@ -541,8 +549,8 @@
                 Party.CreditApprovalStatus = CreditApprovalStatus.NotApplicable;
             }
             
-            DbContext.Parties.Add(Party);
-            await DbContext.SaveChangesAsync();
+            dbContext.Parties.Add(Party);
+            await dbContext.SaveChangesAsync();
 
             if (_countryId.HasValue || _cityId.HasValue || !string.IsNullOrEmpty(_location))
             {
@@ -556,8 +564,8 @@
                     Landmark = _location,
                     CreatedAt = DateTime.UtcNow
                 };
-                DbContext.PartyAddresses.Add(address);
-                await DbContext.SaveChangesAsync();
+                dbContext.PartyAddresses.Add(address);
+                await dbContext.SaveChangesAsync();
             }
         }
         else
@@ -578,9 +586,9 @@
                 }
             }
             
-            DbContext.Parties.Update(Party);
+            dbContext.Parties.Update(Party);
 
-            var primaryAddress = await DbContext.PartyAddresses
+            var primaryAddress = await dbContext.PartyAddresses
                 .Where(a => a.PartyId == Party.Id && !a.IsDeleted)
                 .OrderByDescending(a => a.IsDefault)
                 .FirstOrDefaultAsync();
@@ -591,7 +599,7 @@
                 primaryAddress.City = _cities.FirstOrDefault(c => c.Id == _cityId)?.Name;
                 primaryAddress.Landmark = _location;
                 primaryAddress.ModifiedAt = DateTime.UtcNow;
-                DbContext.PartyAddresses.Update(primaryAddress);
+                dbContext.PartyAddresses.Update(primaryAddress);
             }
             else if (_countryId.HasValue || _cityId.HasValue || !string.IsNullOrEmpty(_location))
             {
@@ -605,10 +613,10 @@
                     Landmark = _location,
                     CreatedAt = DateTime.UtcNow
                 };
-                DbContext.PartyAddresses.Add(address);
+                dbContext.PartyAddresses.Add(address);
             }
 
-            await DbContext.SaveChangesAsync();
+            await dbContext.SaveChangesAsync();
         }
 
         MudDialog.Close(DialogResult.Ok(Party));

@@ -1,4 +1,4 @@
-@inject ApplicationDbContext DbContext
+@inject IDbContextFactory<ApplicationDbContext> DbFactory
 @inject ISnackbar Snackbar
 @inject IBankStatementImportService ImportService
 @using Microsoft.EntityFrameworkCore
@@ -184,6 +184,7 @@
         _isImporting = true;
         try
         {
+            await using var dbContext = await DbFactory.CreateDbContextAsync();
             var mapping = new Dictionary<string, string>
             {
                 ["TransactionDate"] = _columnMapping.TransactionDate,
@@ -206,18 +207,18 @@
                 ColumnMapping = JsonSerializer.Serialize(mapping)
             };
 
-            DbContext.BankStatementImports.Add(import);
-            await DbContext.SaveChangesAsync();
+            dbContext.BankStatementImports.Add(import);
+            await dbContext.SaveChangesAsync();
 
             var (lines, fileHash) = await ImportService.ParseCsvStatement(_fileContent, mapping, import.Id);
 
-            var existingHash = await DbContext.BankStatementImports
+            var existingHash = await dbContext.BankStatementImports
                 .AnyAsync(i => i.FileHash == fileHash && i.Id != import.Id);
 
             if (existingHash)
             {
-                DbContext.BankStatementImports.Remove(import);
-                await DbContext.SaveChangesAsync();
+                dbContext.BankStatementImports.Remove(import);
+                await dbContext.SaveChangesAsync();
                 Snackbar.Add("This statement has already been imported", Severity.Warning);
                 return;
             }
@@ -227,8 +228,8 @@
             import.ImportedLines = lines.Count;
             import.SkippedLines = 0;
 
-            DbContext.BankStatementLines.AddRange(lines);
-            await DbContext.SaveChangesAsync();
+            dbContext.BankStatementLines.AddRange(lines);
+            await dbContext.SaveChangesAsync();
 
             _importedCount = lines.Count;
             _step = 2;

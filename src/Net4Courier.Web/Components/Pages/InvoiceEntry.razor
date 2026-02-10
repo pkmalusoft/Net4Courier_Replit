@@ -5,7 +5,7 @@
 @using Net4Courier.Masters.Entities
 @using Net4Courier.Kernel.Enums
 @using Microsoft.EntityFrameworkCore
-@inject ApplicationDbContext DbContext
+@inject IDbContextFactory<ApplicationDbContext> DbFactory
 @inject NavigationManager NavigationManager
 @inject ISnackbar Snackbar
 
@@ -160,11 +160,12 @@
 
     protected override async Task OnInitializedAsync()
     {
-        customers = await DbContext.Parties.Where(p => p.IsActive).ToListAsync();
+        await using var dbContext = await DbFactory.CreateDbContextAsync();
+        customers = await dbContext.Parties.Where(p => p.IsActive).ToListAsync();
 
         if (Id.HasValue)
         {
-            var existing = await DbContext.Invoices
+            var existing = await dbContext.Invoices
                 .Include(i => i.Details)
                 .FirstOrDefaultAsync(i => i.Id == Id.Value);
 
@@ -175,21 +176,21 @@
                 dueDate = existing.DueDate;
                 periodFrom = existing.PeriodFrom;
                 periodTo = existing.PeriodTo;
-                selectedCustomer = await DbContext.Parties.FindAsync(existing.CustomerId);
+                selectedCustomer = await dbContext.Parties.FindAsync(existing.CustomerId);
             }
         }
         else
         {
             invoiceDate = DateTime.Today;
             dueDate = DateTime.Today.AddDays(30);
-            invoice.InvoiceNo = await GenerateInvoiceNo();
+            invoice.InvoiceNo = await GenerateInvoiceNo(dbContext);
         }
     }
 
-    private async Task<string> GenerateInvoiceNo()
+    private async Task<string> GenerateInvoiceNo(ApplicationDbContext dbContext)
     {
         var prefix = $"INV-{DateTime.Today:yyMM}-";
-        var lastInvoice = await DbContext.Invoices
+        var lastInvoice = await dbContext.Invoices
             .Where(i => i.InvoiceNo.StartsWith(prefix))
             .OrderByDescending(i => i.InvoiceNo)
             .FirstOrDefaultAsync();
@@ -227,10 +228,11 @@
     {
         if (selectedCustomer == null) return;
 
-        var unbilledAwbs = await DbContext.InscanMasters
+        await using var dbContext = await DbFactory.CreateDbContextAsync();
+        var unbilledAwbs = await dbContext.InscanMasters
             .Where(a => a.CustomerId == selectedCustomer.Id)
             .Where(a => a.CourierStatusId >= CourierStatus.Delivered)
-            .Where(a => !DbContext.Set<InvoiceDetail>().Any(d => d.InscanId == a.Id))
+            .Where(a => !dbContext.Set<InvoiceDetail>().Any(d => d.InscanId == a.Id))
             .OrderBy(a => a.TransactionDate)
             .Take(50)
             .ToListAsync();
@@ -278,6 +280,7 @@
         isSaving = true;
         try
         {
+            await using var dbContext = await DbFactory.CreateDbContextAsync();
             invoice.InvoiceDate = invoiceDate.HasValue 
                 ? DateTime.SpecifyKind(invoiceDate.Value.Date, DateTimeKind.Utc) 
                 : DateTime.UtcNow.Date;
@@ -295,14 +298,14 @@
 
             if (Id.HasValue)
             {
-                DbContext.Invoices.Update(invoice);
+                dbContext.Invoices.Update(invoice);
             }
             else
             {
-                DbContext.Invoices.Add(invoice);
+                dbContext.Invoices.Add(invoice);
             }
 
-            await DbContext.SaveChangesAsync();
+            await dbContext.SaveChangesAsync();
             Snackbar.Add("Invoice saved successfully", Severity.Success);
             NavigationManager.NavigateTo("/invoices");
         }

@@ -5,7 +5,7 @@
 @using Net4Courier.Infrastructure.Data
 @using Net4Courier.Operations.Entities
 @using Net4Courier.Kernel.Enums
-@inject ApplicationDbContext DbContext
+@inject IDbContextFactory<ApplicationDbContext> DbFactory
 @inject ISnackbar Snackbar
 @inject NavigationManager Navigation
 @inject IJSRuntime JS
@@ -284,6 +284,7 @@
 
     private async Task SearchAwb()
     {
+        await using var dbContext = await DbFactory.CreateDbContextAsync();
         if (string.IsNullOrWhiteSpace(_searchAwb)) return;
 
         _loading = true;
@@ -292,7 +293,7 @@
 
         try
         {
-            _selectedAwb = await DbContext.InscanMasters
+            _selectedAwb = await dbContext.InscanMasters
                 .FirstOrDefaultAsync(i => i.AWBNo == _searchAwb.Trim() && !i.IsDeleted);
 
             if (_selectedAwb == null)
@@ -425,6 +426,7 @@
 
     private async Task SubmitPOD()
     {
+        await using var dbContext = await DbFactory.CreateDbContextAsync();
         if (!IsFormValid()) return;
 
         _saving = true;
@@ -454,12 +456,12 @@
                 IsPublic = true
             };
 
-            DbContext.AWBTrackings.Add(tracking);
+            dbContext.AWBTrackings.Add(tracking);
 
             _selectedAwb.CourierStatusId = tracking.StatusId;
             _selectedAwb.ModifiedAt = DateTime.UtcNow;
 
-            await DbContext.SaveChangesAsync();
+            await dbContext.SaveChangesAsync();
 
             // Apply POD_ENTRY status via mapping (configurable)
             await StatusEventMappingService.ApplyEventStatus(

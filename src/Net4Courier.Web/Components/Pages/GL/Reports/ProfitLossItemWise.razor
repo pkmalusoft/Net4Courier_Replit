@@ -3,7 +3,7 @@
 @using Net4Courier.Infrastructure.Data
 @using Net4Courier.Finance.Entities
 @using Net4Courier.Masters.Entities
-@inject ApplicationDbContext DbContext
+@inject IDbContextFactory<ApplicationDbContext> DbFactory
 @inject ISnackbar Snackbar
 
 <PageTitle>Profit & Loss - Item Wise</PageTitle>
@@ -140,7 +140,8 @@
 
     protected override async Task OnInitializedAsync()
     {
-        _branches = await DbContext.Branches.Where(b => b.IsActive).OrderBy(b => b.Name).ToListAsync();
+        await using var dbContext = await DbFactory.CreateDbContextAsync();
+        _branches = await dbContext.Branches.Where(b => b.IsActive).OrderBy(b => b.Name).ToListAsync();
     }
 
     private async Task LoadReport()
@@ -158,16 +159,17 @@
 
         try
         {
+            await using var dbContext = await DbFactory.CreateDbContextAsync();
             var fromDateUtc = DateTime.SpecifyKind(_fromDate.Value.Date, DateTimeKind.Utc);
             var toDateUtc = DateTime.SpecifyKind(_toDate.Value.Date.AddDays(1).AddTicks(-1), DateTimeKind.Utc);
 
-            var accountHeads = await DbContext.AccountHeads
+            var accountHeads = await dbContext.AccountHeads
                 .Where(a => a.IsActive && 
                     (a.Classification == AccountClassification.Income || a.Classification == AccountClassification.Expenditure))
                 .OrderBy(a => a.Code)
                 .ToListAsync();
 
-            var journalsQuery = DbContext.Journals
+            var journalsQuery = dbContext.Journals
                 .Include(j => j.Entries)
                 .Where(j => j.VoucherDate >= fromDateUtc && j.VoucherDate <= toDateUtc);
 

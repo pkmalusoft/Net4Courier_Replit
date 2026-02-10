@@ -1,5 +1,5 @@
 @page "/pickup-incentives"
-@inject ApplicationDbContext DbContext
+@inject IDbContextFactory<ApplicationDbContext> DbFactory
 @inject ISnackbar Snackbar
 @inject IDialogService DialogService
 @using Microsoft.EntityFrameworkCore
@@ -177,10 +177,11 @@
 
     private async Task LoadData()
     {
+        await using var dbContext = await DbFactory.CreateDbContextAsync();
         _isLoading = true;
         try
         {
-            var service = new PickupIncentiveService(DbContext);
+            var service = new PickupIncentiveService(dbContext);
             _schedules = await service.GetSchedulesAsync(activeOnly: false);
             await LoadAwards();
         }
@@ -193,9 +194,10 @@
 
     private async Task LoadAwards()
     {
+        await using var dbContext = await DbFactory.CreateDbContextAsync();
         try
         {
-            var service = new PickupIncentiveService(DbContext);
+            var service = new PickupIncentiveService(dbContext);
             _awards = await service.GetAwardsAsync(
                 fromDate: _filterFromDate,
                 toDate: _filterToDate,
@@ -219,10 +221,11 @@
 
     private async Task ToggleScheduleActive(IncentiveSchedule schedule, bool active)
     {
+        await using var dbContext = await DbFactory.CreateDbContextAsync();
         try
         {
             schedule.IsActive = active;
-            var service = new PickupIncentiveService(DbContext);
+            var service = new PickupIncentiveService(dbContext);
             await service.UpdateScheduleAsync(schedule);
             Snackbar.Add($"Schedule {(active ? "activated" : "deactivated")}", Severity.Success);
         }
@@ -257,6 +260,7 @@
 
     private async Task DeleteSchedule(IncentiveSchedule schedule)
     {
+        await using var dbContext = await DbFactory.CreateDbContextAsync();
         var confirm = await DialogService.ShowMessageBox(
             "Delete Schedule",
             $"Are you sure you want to delete '{schedule.Name}'?",
@@ -266,7 +270,7 @@
         {
             try
             {
-                var service = new PickupIncentiveService(DbContext);
+                var service = new PickupIncentiveService(dbContext);
                 await service.DeleteScheduleAsync(schedule.Id);
                 Snackbar.Add("Schedule deleted", Severity.Success);
                 await LoadData();
@@ -280,6 +284,7 @@
 
     private async Task ApproveSelectedAwards()
     {
+        await using var dbContext = await DbFactory.CreateDbContextAsync();
         var pendingIds = _selectedAwards
             .Where(a => a.Status == IncentiveAwardStatus.Pending)
             .Select(a => a.Id)
@@ -289,7 +294,7 @@
         {
             try
             {
-                var service = new PickupIncentiveService(DbContext);
+                var service = new PickupIncentiveService(dbContext);
                 await service.ApproveAwardsAsync(pendingIds, 1, "Admin");
                 Snackbar.Add($"{pendingIds.Count} awards approved", Severity.Success);
                 await LoadAwards();
@@ -304,6 +309,7 @@
 
     private async Task MarkSelectedAsPaid()
     {
+        await using var dbContext = await DbFactory.CreateDbContextAsync();
         var approvedIds = _selectedAwards
             .Where(a => a.Status == IncentiveAwardStatus.Approved)
             .Select(a => a.Id)
@@ -313,7 +319,7 @@
         {
             try
             {
-                var service = new PickupIncentiveService(DbContext);
+                var service = new PickupIncentiveService(dbContext);
                 await service.MarkAwardsPaidAsync(approvedIds, $"PAY-{DateTime.UtcNow:yyyyMMdd-HHmmss}");
                 Snackbar.Add($"{approvedIds.Count} awards marked as paid", Severity.Success);
                 await LoadAwards();

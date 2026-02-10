@@ -3,7 +3,7 @@
 @using Net4Courier.Infrastructure.Data
 @using Net4Courier.Finance.Entities
 @using Net4Courier.Masters.Entities
-@inject ApplicationDbContext DbContext
+@inject IDbContextFactory<ApplicationDbContext> DbFactory
 @inject ISnackbar Snackbar
 
 <PageTitle>Customer Aging Report</PageTitle>
@@ -126,7 +126,8 @@
 
     protected override async Task OnInitializedAsync()
     {
-        _branches = await DbContext.Branches.Where(b => b.IsActive).OrderBy(b => b.Name).ToListAsync();
+        await using var dbContext = await DbFactory.CreateDbContextAsync();
+        _branches = await dbContext.Branches.Where(b => b.IsActive).OrderBy(b => b.Name).ToListAsync();
     }
 
     private async Task LoadReport()
@@ -137,6 +138,8 @@
             return;
         }
 
+        await using var dbContext = await DbFactory.CreateDbContextAsync();
+
         _isLoading = true;
         _reportData.Clear();
         StateHasChanged();
@@ -145,11 +148,11 @@
         {
             var asOnDateUtc = DateTime.SpecifyKind(_asOnDate.Value.Date.AddDays(1).AddTicks(-1), DateTimeKind.Utc);
 
-            var customers = await DbContext.Parties
+            var customers = await dbContext.Parties
                 .Where(p => p.IsActive && p.AccountNature == PartyAccountNature.Receivable)
                 .ToListAsync();
 
-            var journalsQuery = DbContext.Journals
+            var journalsQuery = dbContext.Journals
                 .Include(j => j.Entries)
                 .Where(j => j.VoucherDate <= asOnDateUtc);
 

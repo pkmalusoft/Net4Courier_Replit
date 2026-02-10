@@ -1,4 +1,4 @@
-@inject ApplicationDbContext DbContext
+@inject IDbContextFactory<ApplicationDbContext> DbFactory
 @inject ISnackbar Snackbar
 @using Microsoft.EntityFrameworkCore
 @using MudBlazor
@@ -108,7 +108,8 @@
 
     protected override async Task OnInitializedAsync()
     {
-        var customers = await DbContext.Parties.Where(p => p.IsActive).ToListAsync();
+        await using var dbContext = await DbFactory.CreateDbContextAsync();
+        var customers = await dbContext.Parties.Where(p => p.IsActive).ToListAsync();
         _customerNames = customers.ToDictionary(c => c.Id, c => c.Name);
 
         if (Schedule != null)
@@ -151,6 +152,7 @@
         _isSaving = true;
         try
         {
+            await using var dbContext = await DbFactory.CreateDbContextAsync();
             _schedule.EffectiveFrom = DateTime.SpecifyKind(_effectiveFromDate ?? DateTime.Today, DateTimeKind.Utc);
             _schedule.EffectiveTo = _effectiveToDate.HasValue 
                 ? DateTime.SpecifyKind(_effectiveToDate.Value, DateTimeKind.Utc) 
@@ -159,7 +161,7 @@
             if (_schedule.CustomerId.HasValue && _customerNames.ContainsKey(_schedule.CustomerId.Value))
                 _schedule.CustomerName = _customerNames[_schedule.CustomerId.Value];
 
-            var service = new PickupIncentiveService(DbContext);
+            var service = new PickupIncentiveService(dbContext);
             if (_isEdit)
             {
                 await service.UpdateScheduleAsync(_schedule);

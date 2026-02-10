@@ -1,5 +1,5 @@
 @page "/parties"
-@inject ApplicationDbContext DbContext
+@inject IDbContextFactory<ApplicationDbContext> DbFactory
 @inject IDialogService DialogService
 @inject ISnackbar Snackbar
 @inject IJSRuntime JSRuntime
@@ -83,8 +83,9 @@
 
     private async Task LoadParties()
     {
+        await using var dbContext = await DbFactory.CreateDbContextAsync();
         _loading = true;
-        _parties = await DbContext.Parties
+        _parties = await dbContext.Parties
             .Include(p => p.Company)
             .Where(p => p.PartyType == PartyType.Customer && !p.IsDeleted)
             .OrderBy(p => p.Name)
@@ -147,12 +148,13 @@
 
     private async Task DeleteParty(Party party)
     {
+        await using var dbContext = await DbFactory.CreateDbContextAsync();
         var confirm = await DialogService.ShowMessageBox("Confirm Delete", $"Are you sure you want to delete {party.Name}?", yesText: "Delete", cancelText: "Cancel");
         
         if (confirm == true)
         {
             party.IsDeleted = true;
-            await DbContext.SaveChangesAsync();
+            await dbContext.SaveChangesAsync();
             await LoadParties();
             Snackbar.Add("Party deleted successfully", Severity.Success);
         }

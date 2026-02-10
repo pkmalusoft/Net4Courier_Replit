@@ -1,5 +1,5 @@
 @page "/ports"
-@inject ApplicationDbContext DbContext
+@inject IDbContextFactory<ApplicationDbContext> DbFactory
 @inject ISnackbar Snackbar
 @inject IDialogService DialogService
 @using Microsoft.EntityFrameworkCore
@@ -164,8 +164,9 @@
 
     private async Task LoadData()
     {
+        await using var dbContext = await DbFactory.CreateDbContextAsync();
         _loading = true;
-        _ports = await DbContext.Ports
+        _ports = await dbContext.Ports
             .Where(p => !p.IsDeleted)
             .OrderBy(p => p.SortOrder)
             .ThenBy(p => p.Name)
@@ -232,6 +233,7 @@
 
     private async Task SavePort()
     {
+        await using var dbContext = await DbFactory.CreateDbContextAsync();
         if (string.IsNullOrWhiteSpace(_editingPort.Code) || string.IsNullOrWhiteSpace(_editingPort.Name))
         {
             Snackbar.Add("Code and Name are required", Severity.Warning);
@@ -240,7 +242,7 @@
 
         try
         {
-            var duplicateCode = await DbContext.Ports
+            var duplicateCode = await dbContext.Ports
                 .AnyAsync(p => p.Code == _editingPort.Code && p.Id != _editingPort.Id && !p.IsDeleted);
             
             if (duplicateCode)
@@ -252,11 +254,11 @@
             if (_editingPort.Id == 0)
             {
                 _editingPort.CreatedAt = DateTime.UtcNow;
-                DbContext.Ports.Add(_editingPort);
+                dbContext.Ports.Add(_editingPort);
             }
             else
             {
-                var existing = await DbContext.Ports.FindAsync(_editingPort.Id);
+                var existing = await dbContext.Ports.FindAsync(_editingPort.Id);
                 if (existing != null)
                 {
                     existing.Code = _editingPort.Code;
@@ -279,7 +281,7 @@
                 }
             }
 
-            await DbContext.SaveChangesAsync();
+            await dbContext.SaveChangesAsync();
             Snackbar.Add("Port saved successfully", Severity.Success);
             _dialogVisible = false;
             await LoadData();
@@ -292,6 +294,7 @@
 
     private async Task DeletePort(Port port)
     {
+        await using var dbContext = await DbFactory.CreateDbContextAsync();
         var confirmed = await DialogService.ShowMessageBox(
             "Confirm Delete",
             $"Are you sure you want to delete '{port.Name}'?",
@@ -303,7 +306,7 @@
             {
                 port.IsDeleted = true;
                 port.ModifiedAt = DateTime.UtcNow;
-                await DbContext.SaveChangesAsync();
+                await dbContext.SaveChangesAsync();
                 Snackbar.Add("Port deleted", Severity.Success);
                 await LoadData();
             }
