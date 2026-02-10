@@ -1,28 +1,500 @@
 @page "/bank-reconciliation"
+@rendermode InteractiveServer
+@using Net4Courier.Finance.Entities
+@using Net4Courier.Infrastructure.Data
+@using Microsoft.EntityFrameworkCore
+@using ClosedXML.Excel
+@inject ApplicationDbContext DbContext
 @inject ISnackbar Snackbar
 @inject NavigationManager Navigation
+@inject IJSRuntime JS
+@inject IDialogService DialogService
+
+<PageTitle>Bank Reconciliation - Net4Courier</PageTitle>
 
 <MudContainer MaxWidth="MaxWidth.ExtraLarge" Class="mt-4">
-    <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center" Class="mb-4">
-        <MudText Typo="Typo.h4">Bank Reconciliation</MudText>
+    <MudStack Row="true" AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween" Class="mb-4">
+        <MudText Typo="Typo.h5">Bank Reconciliation</MudText>
     </MudStack>
 
-    <MudAlert Severity="Severity.Info" Class="mb-4">
-        Bank Reconciliation module is under development. This feature will be available after TrueBooks GL integration is complete.
-    </MudAlert>
+    <MudTabs Elevation="2" Rounded="true" ApplyEffectsToContainer="true" PanelClass="pa-4">
+        <MudTabPanel Text="Reconciliation Sessions" Icon="@Icons.Material.Filled.AccountBalance">
+            <MudStack Row="true" AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween" Class="mb-4">
+                <MudStack Row="true" Spacing="3" AlignItems="AlignItems.Center">
+                    <MudSelect T="ReconciliationStatus?" @bind-Value="filterStatus" Label="Status" Clearable="true" Style="min-width:150px;">
+                        <MudSelectItem T="ReconciliationStatus?" Value="@((ReconciliationStatus?)ReconciliationStatus.Draft)">Draft</MudSelectItem>
+                        <MudSelectItem T="ReconciliationStatus?" Value="@((ReconciliationStatus?)ReconciliationStatus.InProgress)">In Progress</MudSelectItem>
+                        <MudSelectItem T="ReconciliationStatus?" Value="@((ReconciliationStatus?)ReconciliationStatus.Completed)">Completed</MudSelectItem>
+                        <MudSelectItem T="ReconciliationStatus?" Value="@((ReconciliationStatus?)ReconciliationStatus.Locked)">Locked</MudSelectItem>
+                    </MudSelect>
+                    <MudTextField @bind-Value="searchText" Label="Search" Immediate="true"
+                                  Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Filled.Search" Style="min-width:200px;" />
+                    <MudButton Variant="Variant.Outlined" Color="Color.Primary" OnClick="LoadReconciliations" StartIcon="@Icons.Material.Filled.FilterList">Filter</MudButton>
+                </MudStack>
+                <MudStack Row="true" Spacing="2">
+                    <MudButton Variant="Variant.Filled" Color="Color.Success" StartIcon="@Icons.Material.Filled.Download"
+                               OnClick="DownloadExcel" Disabled="@(reconciliations.Count == 0)">Download Excel</MudButton>
+                    <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add"
+                               OnClick="OpenNewReconciliationDialog">New Reconciliation</MudButton>
+                </MudStack>
+            </MudStack>
 
-    <MudPaper Class="pa-4" Elevation="2">
-        <MudText Typo="Typo.body1">
-            The Bank Reconciliation module will allow you to:
-        </MudText>
-        <MudList T="string" Dense="true" Class="mt-2">
-            <MudListItem Icon="@Icons.Material.Filled.CheckCircle">Match bank statement entries with book entries</MudListItem>
-            <MudListItem Icon="@Icons.Material.Filled.CheckCircle">Import bank statements from CSV/Excel files</MudListItem>
-            <MudListItem Icon="@Icons.Material.Filled.CheckCircle">Track unreconciled transactions</MudListItem>
-            <MudListItem Icon="@Icons.Material.Filled.CheckCircle">Generate reconciliation reports</MudListItem>
-        </MudList>
-    </MudPaper>
+            <MudTable Items="@reconciliations" Hover="true" Striped="true" Dense="true" Loading="@isLoading"
+                      OnRowClick="OnRowClick" T="ReconciliationListItem" RowStyle="cursor:pointer;">
+                <HeaderContent>
+                    <MudTh>Reconciliation No</MudTh>
+                    <MudTh>Bank Account</MudTh>
+                    <MudTh>Statement Date</MudTh>
+                    <MudTh>Status</MudTh>
+                    <MudTh Style="text-align:right">Opening Bal</MudTh>
+                    <MudTh Style="text-align:right">Closing Bal</MudTh>
+                    <MudTh Style="text-align:right">Difference</MudTh>
+                    <MudTh Style="width:120px">Actions</MudTh>
+                </HeaderContent>
+                <RowTemplate>
+                    <MudTd DataLabel="Reconciliation No">@context.ReconciliationNumber</MudTd>
+                    <MudTd DataLabel="Bank Account">@context.BankAccountName</MudTd>
+                    <MudTd DataLabel="Statement Date">@context.StatementDate.ToString("dd-MMM-yyyy")</MudTd>
+                    <MudTd DataLabel="Status">
+                        <MudChip T="string" Size="Size.Small" Color="@GetStatusColor(context.Status)">@context.Status.ToString()</MudChip>
+                    </MudTd>
+                    <MudTd DataLabel="Opening Bal" Style="text-align:right">@context.StatementOpeningBalance.ToString("N2")</MudTd>
+                    <MudTd DataLabel="Closing Bal" Style="text-align:right">@context.StatementClosingBalance.ToString("N2")</MudTd>
+                    <MudTd DataLabel="Difference" Style="text-align:right">
+                        <MudText Color="@(context.DifferenceAmount == 0 ? Color.Success : Color.Error)">@context.DifferenceAmount.ToString("N2")</MudText>
+                    </MudTd>
+                    <MudTd DataLabel="Actions">
+                        <MudIconButton Icon="@Icons.Material.Filled.Visibility" Size="Size.Small" Color="Color.Primary"
+                                       OnClick="@(() => NavigateToDetail(context.Id))" Title="View Details" />
+                        <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" Color="Color.Error"
+                                       OnClick="@(() => DeleteReconciliation(context.Id))" Title="Delete"
+                                       Disabled="@(context.Status == ReconciliationStatus.Locked || context.Status == ReconciliationStatus.Completed)" />
+                    </MudTd>
+                </RowTemplate>
+                <NoRecordsContent>
+                    <MudText>No reconciliation sessions found</MudText>
+                </NoRecordsContent>
+            </MudTable>
+        </MudTabPanel>
+
+        <MudTabPanel Text="Quick Upload" Icon="@Icons.Material.Filled.CloudUpload">
+            <MudPaper Class="pa-6" Elevation="0">
+                <MudStack Spacing="4" AlignItems="AlignItems.Center" Justify="Justify.Center" Style="min-height:300px;">
+                    <MudIcon Icon="@Icons.Material.Filled.CloudUpload" Size="Size.Large" Color="Color.Primary" Style="font-size:80px;" />
+                    <MudText Typo="Typo.h5" Align="Align.Center">Bank Statement Upload</MudText>
+                    <MudText Typo="Typo.body1" Align="Align.Center" Color="Color.Secondary" Style="max-width:600px;">
+                        To upload a bank statement, please create a reconciliation session first. Once created, you can upload your CSV or Excel bank statement file within the reconciliation detail page.
+                    </MudText>
+                    <MudStack Spacing="2" Style="max-width:500px; width:100%;">
+                        <MudAlert Severity="Severity.Info" Dense="true">
+                            <strong>Step 1:</strong> Click "New Reconciliation" in the Sessions tab to create a reconciliation session.
+                        </MudAlert>
+                        <MudAlert Severity="Severity.Info" Dense="true">
+                            <strong>Step 2:</strong> Open the reconciliation session by clicking on the row.
+                        </MudAlert>
+                        <MudAlert Severity="Severity.Info" Dense="true">
+                            <strong>Step 3:</strong> Upload your bank statement file (CSV/Excel) in the detail page.
+                        </MudAlert>
+                        <MudAlert Severity="Severity.Info" Dense="true">
+                            <strong>Step 4:</strong> Match statement lines with book entries and reconcile.
+                        </MudAlert>
+                    </MudStack>
+                    <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add"
+                               OnClick="OpenNewReconciliationDialog" Class="mt-2">
+                        Create New Reconciliation Session
+                    </MudButton>
+                </MudStack>
+            </MudPaper>
+        </MudTabPanel>
+    </MudTabs>
 </MudContainer>
 
+<MudDialog @bind-Visible="showNewDialog" Options="dialogOptions">
+    <TitleContent>
+        <MudText Typo="Typo.h6">
+            <MudIcon Icon="@Icons.Material.Filled.Add" Class="mr-2" />
+            New Reconciliation Session
+        </MudText>
+    </TitleContent>
+    <DialogContent>
+        <MudStack Spacing="3" Class="mt-2">
+            <MudAutocomplete T="BankAccount" Label="Bank Account" @bind-Value="selectedBankAccount"
+                             SearchFunc="SearchBankAccounts" ToStringFunc="@(ba => ba == null ? "" : $"{ba.BankName} - {ba.AccountName} ({ba.AccountNumber})")"
+                             Required="true" RequiredError="Bank Account is required"
+                             Variant="Variant.Outlined" Dense="true" />
+            <MudDatePicker @bind-Date="newStatementDate" Label="Statement Date" DateFormat="dd-MMM-yyyy"
+                           Required="true" RequiredError="Statement Date is required"
+                           Variant="Variant.Outlined" />
+            <MudNumericField @bind-Value="newStatementOpeningBalance" Label="Statement Opening Balance"
+                             Format="N2" Variant="Variant.Outlined" />
+            <MudNumericField @bind-Value="newStatementClosingBalance" Label="Statement Closing Balance"
+                             Format="N2" Variant="Variant.Outlined" />
+            <MudTextField @bind-Value="newNotes" Label="Notes" Lines="3" Variant="Variant.Outlined" />
+
+            @if (selectedBankAccount != null)
+            {
+                <MudAlert Severity="Severity.Info" Dense="true">
+                    <strong>Book Opening Balance:</strong> @calculatedBookOpeningBalance.ToString("N2")
+                </MudAlert>
+            }
+        </MudStack>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="CloseNewDialog">Cancel</MudButton>
+        <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="CreateReconciliation"
+                   Disabled="@isSaving">
+            @if (isSaving)
+            {
+                <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" />
+            }
+            Create
+        </MudButton>
+    </DialogActions>
+</MudDialog>
+
 @code {
+    private List<ReconciliationListItem> reconciliations = new();
+    private bool isLoading = true;
+    private bool isSaving = false;
+    private ReconciliationStatus? filterStatus;
+    private string searchText = "";
+
+    private bool showNewDialog = false;
+    private DialogOptions dialogOptions = new() { MaxWidth = MaxWidth.Small, FullWidth = true, CloseOnEscapeKey = true };
+
+    private BankAccount? selectedBankAccount;
+    private DateTime? newStatementDate = DateTime.Today;
+    private decimal newStatementOpeningBalance;
+    private decimal newStatementClosingBalance;
+    private string? newNotes;
+    private decimal calculatedBookOpeningBalance;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadReconciliations();
+    }
+
+    private async Task LoadReconciliations()
+    {
+        isLoading = true;
+        try
+        {
+            var query = from r in DbContext.BankReconciliations.AsNoTracking()
+                        join ba in DbContext.BankAccounts.AsNoTracking() on r.BankAccountId equals ba.Id into baJoin
+                        from ba in baJoin.DefaultIfEmpty()
+                        where !r.IsDeleted
+                        select new ReconciliationListItem
+                        {
+                            Id = r.Id,
+                            ReconciliationNumber = r.ReconciliationNumber,
+                            BankAccountName = ba != null ? $"{ba.BankName} - {ba.AccountName}" : "Unknown",
+                            StatementDate = r.StatementDate,
+                            Status = r.Status,
+                            StatementOpeningBalance = r.StatementOpeningBalance,
+                            StatementClosingBalance = r.StatementClosingBalance,
+                            BookOpeningBalance = r.BookOpeningBalance,
+                            BookClosingBalance = r.BookClosingBalance,
+                            DifferenceAmount = r.DifferenceAmount,
+                            Notes = r.Notes
+                        };
+
+            if (filterStatus.HasValue)
+                query = query.Where(r => r.Status == filterStatus.Value);
+
+            if (!string.IsNullOrWhiteSpace(searchText))
+            {
+                var search = searchText.ToLower();
+                query = query.Where(r =>
+                    r.ReconciliationNumber.ToLower().Contains(search) ||
+                    r.BankAccountName.ToLower().Contains(search));
+            }
+
+            reconciliations = await query.OrderByDescending(r => r.StatementDate)
+                                          .ThenByDescending(r => r.Id)
+                                          .Take(200)
+                                          .ToListAsync();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error loading reconciliations: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private async Task<IEnumerable<BankAccount>> SearchBankAccounts(string value, CancellationToken token)
+    {
+        var query = DbContext.BankAccounts.AsNoTracking().Where(ba => ba.IsActive);
+
+        if (!string.IsNullOrWhiteSpace(value))
+        {
+            var search = value.ToLower();
+            query = query.Where(ba =>
+                ba.BankName.ToLower().Contains(search) ||
+                ba.AccountName.ToLower().Contains(search) ||
+                ba.AccountNumber.ToLower().Contains(search));
+        }
+
+        var results = await query.OrderBy(ba => ba.BankName).ThenBy(ba => ba.AccountName).Take(20).ToListAsync(token);
+
+        if (selectedBankAccount != null && results.Count > 0)
+        {
+            await CalculateBookOpeningBalance();
+        }
+
+        return results;
+    }
+
+    private async Task CalculateBookOpeningBalance()
+    {
+        if (selectedBankAccount == null) return;
+
+        try
+        {
+            var totalReceipts = await DbContext.CashBankTransactions
+                .AsNoTracking()
+                .Where(t => t.BankAccountId == selectedBankAccount.Id
+                    && t.TransactionType == TransactionType.Bank
+                    && t.RecPayType == RecPayType.Receipt
+                    && t.Status == CashBankStatus.Posted
+                    && !t.IsDeleted)
+                .SumAsync(t => t.TotalAmount);
+
+            var totalPayments = await DbContext.CashBankTransactions
+                .AsNoTracking()
+                .Where(t => t.BankAccountId == selectedBankAccount.Id
+                    && t.TransactionType == TransactionType.Bank
+                    && t.RecPayType == RecPayType.Payment
+                    && t.Status == CashBankStatus.Posted
+                    && !t.IsDeleted)
+                .SumAsync(t => t.TotalAmount);
+
+            calculatedBookOpeningBalance = selectedBankAccount.OpeningBalance + totalReceipts - totalPayments;
+        }
+        catch
+        {
+            calculatedBookOpeningBalance = selectedBankAccount.OpeningBalance;
+        }
+    }
+
+    private void OpenNewReconciliationDialog()
+    {
+        selectedBankAccount = null;
+        newStatementDate = DateTime.Today;
+        newStatementOpeningBalance = 0;
+        newStatementClosingBalance = 0;
+        newNotes = null;
+        calculatedBookOpeningBalance = 0;
+        showNewDialog = true;
+    }
+
+    private void CloseNewDialog()
+    {
+        showNewDialog = false;
+    }
+
+    private async Task CreateReconciliation()
+    {
+        if (selectedBankAccount == null)
+        {
+            Snackbar.Add("Please select a bank account", Severity.Warning);
+            return;
+        }
+        if (!newStatementDate.HasValue)
+        {
+            Snackbar.Add("Please select a statement date", Severity.Warning);
+            return;
+        }
+
+        isSaving = true;
+        try
+        {
+            await CalculateBookOpeningBalance();
+
+            var recNumber = await GenerateReconciliationNumber();
+
+            var reconciliation = new Finance.Entities.BankReconciliation
+            {
+                CompanyId = selectedBankAccount.CompanyId,
+                BranchId = selectedBankAccount.BranchId,
+                BankAccountId = selectedBankAccount.Id,
+                ReconciliationNumber = recNumber,
+                StatementDate = DateTime.SpecifyKind(newStatementDate.Value.Date, DateTimeKind.Utc),
+                StatementOpeningBalance = newStatementOpeningBalance,
+                StatementClosingBalance = newStatementClosingBalance,
+                BookOpeningBalance = calculatedBookOpeningBalance,
+                BookClosingBalance = calculatedBookOpeningBalance,
+                DifferenceAmount = newStatementClosingBalance - calculatedBookOpeningBalance,
+                Status = ReconciliationStatus.Draft,
+                Notes = newNotes,
+                CreatedAt = DateTime.UtcNow
+            };
+
+            DbContext.BankReconciliations.Add(reconciliation);
+            await DbContext.SaveChangesAsync();
+
+            Snackbar.Add($"Reconciliation {recNumber} created successfully", Severity.Success);
+            showNewDialog = false;
+            await LoadReconciliations();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error creating reconciliation: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            isSaving = false;
+        }
+    }
+
+    private async Task<string> GenerateReconciliationNumber()
+    {
+        var prefix = $"REC-{DateTime.Now:yyMM}-";
+        var lastRec = await DbContext.BankReconciliations
+            .AsNoTracking()
+            .Where(r => r.ReconciliationNumber.StartsWith(prefix))
+            .OrderByDescending(r => r.ReconciliationNumber)
+            .Select(r => r.ReconciliationNumber)
+            .FirstOrDefaultAsync();
+
+        int nextNumber = 1;
+        if (lastRec != null)
+        {
+            var parts = lastRec.Split('-');
+            if (parts.Length >= 3 && int.TryParse(parts[2], out int lastNum))
+                nextNumber = lastNum + 1;
+        }
+
+        return $"{prefix}{nextNumber:D4}";
+    }
+
+    private void OnRowClick(TableRowClickEventArgs<ReconciliationListItem> args)
+    {
+        if (args.Item != null)
+            NavigateToDetail(args.Item.Id);
+    }
+
+    private void NavigateToDetail(long id)
+    {
+        Navigation.NavigateTo($"/bank-reconciliation/{id}");
+    }
+
+    private async Task DeleteReconciliation(long id)
+    {
+        var rec = await DbContext.BankReconciliations.FindAsync(id);
+        if (rec == null)
+        {
+            Snackbar.Add("Reconciliation not found", Severity.Warning);
+            return;
+        }
+
+        if (rec.Status == ReconciliationStatus.Locked || rec.Status == ReconciliationStatus.Completed)
+        {
+            Snackbar.Add("Cannot delete a completed or locked reconciliation", Severity.Warning);
+            return;
+        }
+
+        bool? confirm = await DialogService.ShowMessageBox(
+            "Confirm Delete",
+            $"Are you sure you want to delete reconciliation {rec.ReconciliationNumber}?",
+            yesText: "Delete", cancelText: "Cancel");
+
+        if (confirm == true)
+        {
+            try
+            {
+                rec.IsDeleted = true;
+                rec.ModifiedAt = DateTime.UtcNow;
+                await DbContext.SaveChangesAsync();
+                Snackbar.Add("Reconciliation deleted successfully", Severity.Success);
+                await LoadReconciliations();
+            }
+            catch (Exception ex)
+            {
+                Snackbar.Add($"Error deleting reconciliation: {ex.Message}", Severity.Error);
+            }
+        }
+    }
+
+    private Color GetStatusColor(ReconciliationStatus status)
+    {
+        return status switch
+        {
+            ReconciliationStatus.Draft => Color.Default,
+            ReconciliationStatus.InProgress => Color.Info,
+            ReconciliationStatus.Completed => Color.Success,
+            ReconciliationStatus.Locked => Color.Warning,
+            _ => Color.Default
+        };
+    }
+
+    private async Task DownloadExcel()
+    {
+        if (reconciliations.Count == 0)
+        {
+            Snackbar.Add("No reconciliations to export", Severity.Warning);
+            return;
+        }
+
+        try
+        {
+            using var workbook = new XLWorkbook();
+            var worksheet = workbook.Worksheets.Add("Bank Reconciliations");
+
+            var headers = new[] { "Reconciliation No", "Bank Account", "Statement Date", "Status", "Opening Balance", "Closing Balance", "Book Opening", "Book Closing", "Difference", "Notes" };
+            for (int i = 0; i < headers.Length; i++)
+            {
+                worksheet.Cell(1, i + 1).Value = headers[i];
+                worksheet.Cell(1, i + 1).Style.Font.Bold = true;
+                worksheet.Cell(1, i + 1).Style.Fill.BackgroundColor = XLColor.LightBlue;
+            }
+
+            int row = 2;
+            foreach (var rec in reconciliations)
+            {
+                worksheet.Cell(row, 1).Value = rec.ReconciliationNumber;
+                worksheet.Cell(row, 2).Value = rec.BankAccountName;
+                worksheet.Cell(row, 3).Value = rec.StatementDate.ToString("dd-MMM-yyyy");
+                worksheet.Cell(row, 4).Value = rec.Status.ToString();
+                worksheet.Cell(row, 5).Value = rec.StatementOpeningBalance;
+                worksheet.Cell(row, 6).Value = rec.StatementClosingBalance;
+                worksheet.Cell(row, 7).Value = rec.BookOpeningBalance;
+                worksheet.Cell(row, 8).Value = rec.BookClosingBalance;
+                worksheet.Cell(row, 9).Value = rec.DifferenceAmount;
+                worksheet.Cell(row, 10).Value = rec.Notes ?? "";
+                row++;
+            }
+
+            worksheet.Columns().AdjustToContents();
+
+            using var stream = new MemoryStream();
+            workbook.SaveAs(stream);
+            var content = stream.ToArray();
+            var fileName = $"BankReconciliations_{DateTime.Now:yyyyMMdd_HHmmss}.xlsx";
+
+            await JS.InvokeVoidAsync("downloadFileFromStream", fileName, Convert.ToBase64String(content));
+            Snackbar.Add($"Downloaded {reconciliations.Count} reconciliations", Severity.Success);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error exporting: {ex.Message}", Severity.Error);
+        }
+    }
+
+    private class ReconciliationListItem
+    {
+        public long Id { get; set; }
+        public string ReconciliationNumber { get; set; } = "";
+        public string BankAccountName { get; set; } = "";
+        public DateTime StatementDate { get; set; }
+        public ReconciliationStatus Status { get; set; }
+        public decimal StatementOpeningBalance { get; set; }
+        public decimal StatementClosingBalance { get; set; }
+        public decimal BookOpeningBalance { get; set; }
+        public decimal BookClosingBalance { get; set; }
+        public decimal DifferenceAmount { get; set; }
+        public string? Notes { get; set; }
+    }
 }

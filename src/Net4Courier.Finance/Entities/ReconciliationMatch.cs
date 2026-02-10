@@ -14,6 +14,7 @@ public class ReconciliationMatch : BaseEntity
     public long BankReconciliationId { get; set; }
     public long BankStatementLineId { get; set; }
     public long? JournalId { get; set; }
+    public long? CashBankTransactionId { get; set; }
     
     public decimal MatchedAmount { get; set; }
     public MatchType MatchType { get; set; } = MatchType.Manual;

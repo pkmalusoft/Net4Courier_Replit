@@ -1,0 +1,1462 @@
+@page "/bank-reconciliation/{Id:long}"
+@rendermode InteractiveServer
+@using Net4Courier.Finance.Entities
+@using Net4Courier.Infrastructure.Data
+@using Microsoft.EntityFrameworkCore
+@using ClosedXML.Excel
+@using BankRecon = Net4Courier.Finance.Entities.BankReconciliation
+@inject ApplicationDbContext DbContext
+@inject ISnackbar Snackbar
+@inject NavigationManager Navigation
+@inject IJSRuntime JS
+
+<PageTitle>Bank Reconciliation Detail - Net4Courier</PageTitle>
+
+@if (reconciliation == null)
+{
+    <MudContainer MaxWidth="MaxWidth.ExtraLarge" Class="mt-4">
+        <MudProgressLinear Indeterminate="true" Color="Color.Primary" />
+        <MudText Typo="Typo.body1" Class="mt-2">Loading reconciliation...</MudText>
+    </MudContainer>
+}
+else
+{
+    <MudContainer MaxWidth="MaxWidth.ExtraLarge" Class="mt-4">
+        <MudStack Row="true" AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween" Class="mb-4">
+            <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="3">
+                <MudIconButton Icon="@Icons.Material.Filled.ArrowBack" OnClick="GoBack" />
+                <MudText Typo="Typo.h5">@reconciliation.ReconciliationNumber</MudText>
+                <MudText Typo="Typo.subtitle1" Color="Color.Secondary">@bankAccountName</MudText>
+                <MudChip T="string" Size="Size.Small" Color="@GetStatusColor(reconciliation.Status)">@reconciliation.Status.ToString()</MudChip>
+            </MudStack>
+            <MudText Typo="Typo.subtitle1">Statement Date: @reconciliation.StatementDate.ToString("dd-MMM-yyyy")</MudText>
+        </MudStack>
+
+        <MudTabs Elevation="2" Rounded="true" ApplyEffectsToContainer="true" PanelClass="pa-4" @bind-ActivePanelIndex="activeTab">
+            <MudTabPanel Text="Manual Reconciliation" Icon="@Icons.Material.Filled.CompareArrows">
+                @RenderManualReconciliationTab()
+            </MudTabPanel>
+            <MudTabPanel Text="Statement Upload" Icon="@Icons.Material.Filled.CloudUpload">
+                @RenderStatementUploadTab()
+            </MudTabPanel>
+            <MudTabPanel Text="Auto-Reconcile" Icon="@Icons.Material.Filled.AutoFixHigh">
+                @RenderAutoReconcileTab()
+            </MudTabPanel>
+            <MudTabPanel Text="Summary & Adjustments" Icon="@Icons.Material.Filled.Summarize">
+                @RenderSummaryTab()
+            </MudTabPanel>
+        </MudTabs>
+    </MudContainer>
+}
+
+<MudDialog @bind-Visible="showAdjustmentDialog" Options="dialogOptions">
+    <TitleContent>
+        <MudText Typo="Typo.h6">
+            <MudIcon Icon="@(editingAdjustmentId.HasValue ? Icons.Material.Filled.Edit : Icons.Material.Filled.Add)" Class="mr-2" />
+            @(editingAdjustmentId.HasValue ? "Edit" : "Add") Adjustment
+        </MudText>
+    </TitleContent>
+    <DialogContent>
+        <MudStack Spacing="3" Class="mt-2">
+            <MudSelect T="ReconciliationAdjustmentType" @bind-Value="adjType" Label="Adjustment Type" Variant="Variant.Outlined" Required="true">
+                <MudSelectItem Value="ReconciliationAdjustmentType.BankFee">Bank Fee</MudSelectItem>
+                <MudSelectItem Value="ReconciliationAdjustmentType.BankInterest">Bank Interest</MudSelectItem>
+                <MudSelectItem Value="ReconciliationAdjustmentType.BankCharge">Bank Charge</MudSelectItem>
+                <MudSelectItem Value="ReconciliationAdjustmentType.UnrecordedDeposit">Unrecorded Deposit</MudSelectItem>
+                <MudSelectItem Value="ReconciliationAdjustmentType.UnrecordedWithdrawal">Unrecorded Withdrawal</MudSelectItem>
+                <MudSelectItem Value="ReconciliationAdjustmentType.Error">Error</MudSelectItem>
+                <MudSelectItem Value="ReconciliationAdjustmentType.Other">Other</MudSelectItem>
+            </MudSelect>
+            <MudTextField @bind-Value="adjDescription" Label="Description" Required="true" Variant="Variant.Outlined" />
+            <MudNumericField @bind-Value="adjAmount" Label="Amount" Format="N2" Variant="Variant.Outlined" Required="true" />
+            <MudDatePicker @bind-Date="adjDate" Label="Date" DateFormat="dd-MMM-yyyy" Variant="Variant.Outlined" Required="true" />
+            <MudTextField @bind-Value="adjNotes" Label="Notes" Lines="3" Variant="Variant.Outlined" />
+        </MudStack>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="CloseAdjustmentDialog">Cancel</MudButton>
+        <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="SaveAdjustment">Save</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [Parameter] public long Id { get; set; }
+
+    private BankRecon? reconciliation;
+    private string bankAccountName = "";
+    private int activeTab = 0;
+    private bool isReadOnly => reconciliation?.Status == ReconciliationStatus.Completed || reconciliation?.Status == ReconciliationStatus.Locked;
+    private bool isLocked => reconciliation?.Status == ReconciliationStatus.Locked;
+    private DialogOptions dialogOptions = new() { MaxWidth = MaxWidth.Small, FullWidth = true, CloseOnEscapeKey = true };
+
+    private List<BookEntryItem> unmatchedBookEntries = new();
+    private List<BankStatementLine> unmatchedStatementLines = new();
+    private List<MatchedPairItem> matchedPairs = new();
+    private HashSet<long> selectedBookEntryIds = new();
+    private HashSet<long> selectedStatementLineIds = new();
+    private HashSet<long> matchedJournalIds = new();
+    private HashSet<long> matchedCbtIds = new();
+
+    private IBrowserFile? uploadedFile;
+    private List<string[]> previewRows = new();
+    private List<string> fileHeaders = new();
+    private int? colDate, colDescription, colDebit, colCredit, colReference, colCheque, colBalance;
+    private bool isImporting = false;
+    private string importResult = "";
+    private List<BankStatementImport> existingImports = new();
+    private List<string[]> allParsedRows = new();
+
+    private int autoDateTolerance = 3;
+    private bool autoMatchByReference = true;
+    private bool autoMatchByCheque = true;
+    private bool autoMatchExactAmount = false;
+    private List<AutoMatchProposal> autoProposals = new();
+    private HashSet<int> selectedProposalIndexes = new();
+    private bool isAutoRunning = false;
+
+    private List<ReconciliationAdjustment> adjustments = new();
+    private bool showAdjustmentDialog = false;
+    private long? editingAdjustmentId;
+    private ReconciliationAdjustmentType adjType = ReconciliationAdjustmentType.BankFee;
+    private string adjDescription = "";
+    private decimal adjAmount;
+    private DateTime? adjDate = DateTime.Today;
+    private string? adjNotes;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadReconciliation();
+    }
+
+    private async Task LoadReconciliation()
+    {
+        reconciliation = await DbContext.BankReconciliations.FindAsync(Id);
+        if (reconciliation == null)
+        {
+            Snackbar.Add("Reconciliation not found", Severity.Error);
+            Navigation.NavigateTo("/bank-reconciliation");
+            return;
+        }
+
+        var ba = await DbContext.BankAccounts.AsNoTracking().FirstOrDefaultAsync(b => b.Id == reconciliation.BankAccountId);
+        bankAccountName = ba != null ? $"{ba.BankName} - {ba.AccountName} ({ba.AccountNumber})" : "Unknown";
+
+        await LoadMatchedData();
+        await LoadUnmatchedBookEntries();
+        await LoadUnmatchedStatementLines();
+        await LoadExistingImports();
+        await LoadAdjustments();
+    }
+
+    private async Task LoadMatchedData()
+    {
+        var matches = await DbContext.ReconciliationMatches
+            .AsNoTracking()
+            .Where(m => m.BankReconciliationId == Id && !m.IsReversed)
+            .ToListAsync();
+
+        matchedJournalIds = matches.Where(m => m.JournalId.HasValue).Select(m => m.JournalId!.Value).ToHashSet();
+        matchedCbtIds = matches
+            .Where(m => m.CashBankTransactionId.HasValue)
+            .Select(m => m.CashBankTransactionId!.Value)
+            .ToHashSet();
+
+        var statementLineIds = matches.Select(m => m.BankStatementLineId).Distinct().ToList();
+        var statementLines = await DbContext.BankStatementLines
+            .AsNoTracking()
+            .Where(sl => statementLineIds.Contains(sl.Id))
+            .ToDictionaryAsync(sl => sl.Id);
+
+        matchedPairs = new List<MatchedPairItem>();
+        foreach (var match in matches)
+        {
+            var pair = new MatchedPairItem
+            {
+                MatchId = match.Id,
+                MatchType = match.MatchType,
+                MatchedAmount = match.MatchedAmount,
+                MatchedAt = match.MatchedAt
+            };
+
+            if (statementLines.TryGetValue(match.BankStatementLineId, out var sl))
+            {
+                pair.StatementDate = sl.TransactionDate;
+                pair.StatementDescription = sl.Description ?? "";
+                pair.StatementAmount = sl.CreditAmount > 0 ? sl.CreditAmount : -sl.DebitAmount;
+            }
+
+            if (match.CashBankTransactionId.HasValue)
+            {
+                var cbt = await DbContext.CashBankTransactions.AsNoTracking().FirstOrDefaultAsync(t => t.Id == match.CashBankTransactionId.Value);
+                if (cbt != null)
+                {
+                    pair.BookDate = cbt.VoucherDate;
+                    pair.BookVoucher = cbt.VoucherNo;
+                    pair.BookAmount = cbt.RecPayType == RecPayType.Receipt ? cbt.TotalAmount : -cbt.TotalAmount;
+                }
+            }
+            else if (match.JournalId.HasValue)
+            {
+                var cbt = await DbContext.CashBankTransactions.AsNoTracking().FirstOrDefaultAsync(t => t.JournalId == match.JournalId);
+                if (cbt != null)
+                {
+                    pair.BookDate = cbt.VoucherDate;
+                    pair.BookVoucher = cbt.VoucherNo;
+                    pair.BookAmount = cbt.RecPayType == RecPayType.Receipt ? cbt.TotalAmount : -cbt.TotalAmount;
+                }
+            }
+
+            matchedPairs.Add(pair);
+        }
+    }
+
+    private async Task LoadUnmatchedBookEntries()
+    {
+        if (reconciliation == null) return;
+
+        var allBookEntries = await DbContext.CashBankTransactions
+            .AsNoTracking()
+            .Where(t => t.BankAccountId == reconciliation.BankAccountId
+                && t.Status == CashBankStatus.Posted
+                && t.TransactionType == TransactionType.Bank
+                && !t.IsDeleted)
+            .OrderByDescending(t => t.VoucherDate)
+            .ToListAsync();
+
+        unmatchedBookEntries = allBookEntries
+            .Where(t => !matchedCbtIds.Contains(t.Id) && (!t.JournalId.HasValue || !matchedJournalIds.Contains(t.JournalId.Value)))
+            .Select(t => new BookEntryItem
+            {
+                Id = t.Id,
+                JournalId = t.JournalId,
+                VoucherDate = t.VoucherDate,
+                VoucherNo = t.VoucherNo,
+                Narration = t.Narration ?? "",
+                RecPayType = t.RecPayType,
+                TotalAmount = t.TotalAmount,
+                ReferenceNo = t.ReferenceNo,
+                ChequeNo = t.ChequeNo
+            })
+            .ToList();
+    }
+
+    private async Task LoadUnmatchedStatementLines()
+    {
+        if (reconciliation == null) return;
+
+        var importIds = await DbContext.BankStatementImports
+            .AsNoTracking()
+            .Where(i => i.BankReconciliationId == Id)
+            .Select(i => i.Id)
+            .ToListAsync();
+
+        unmatchedStatementLines = await DbContext.BankStatementLines
+            .AsNoTracking()
+            .Where(sl => importIds.Contains(sl.BankStatementImportId) && !sl.IsMatched)
+            .OrderByDescending(sl => sl.TransactionDate)
+            .ToListAsync();
+    }
+
+    private async Task LoadExistingImports()
+    {
+        existingImports = await DbContext.BankStatementImports
+            .AsNoTracking()
+            .Where(i => i.BankReconciliationId == Id)
+            .OrderByDescending(i => i.ImportedAt)
+            .ToListAsync();
+    }
+
+    private async Task LoadAdjustments()
+    {
+        adjustments = await DbContext.ReconciliationAdjustments
+            .AsNoTracking()
+            .Where(a => a.BankReconciliationId == Id && !a.IsDeleted)
+            .OrderByDescending(a => a.AdjustmentDate)
+            .ToListAsync();
+    }
+
+    private RenderFragment RenderManualReconciliationTab() => __builder =>
+    {
+        <MudGrid>
+            <MudItem xs="12" md="5">
+                <MudPaper Class="pa-3" Elevation="1">
+                    <MudText Typo="Typo.h6" Class="mb-2">Book Entries (Unmatched: @unmatchedBookEntries.Count)</MudText>
+                    <MudTable Items="@unmatchedBookEntries" Hover="true" Dense="true" Striped="true" FixedHeader="true" Height="400px" T="BookEntryItem">
+                        <HeaderContent>
+                            <MudTh Style="width:40px"><MudCheckBox T="bool" Value="@(selectedBookEntryIds.Count > 0 && selectedBookEntryIds.Count == unmatchedBookEntries.Count)" ValueChanged="@(v => ToggleAllBookEntries(v))" Disabled="@isReadOnly" /></MudTh>
+                            <MudTh>Date</MudTh>
+                            <MudTh>Voucher</MudTh>
+                            <MudTh>Description</MudTh>
+                            <MudTh Style="text-align:right">Debit</MudTh>
+                            <MudTh Style="text-align:right">Credit</MudTh>
+                        </HeaderContent>
+                        <RowTemplate>
+                            <MudTd><MudCheckBox T="bool" Value="@selectedBookEntryIds.Contains(context.Id)" ValueChanged="@(v => ToggleBookEntry(context.Id, v))" Disabled="@isReadOnly" /></MudTd>
+                            <MudTd>@context.VoucherDate.ToString("dd-MMM-yyyy")</MudTd>
+                            <MudTd>@context.VoucherNo</MudTd>
+                            <MudTd><MudText Typo="Typo.body2" Style="max-width:150px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">@context.Narration</MudText></MudTd>
+                            <MudTd Style="text-align:right">@(context.RecPayType == RecPayType.Payment ? context.TotalAmount.ToString("N2") : "")</MudTd>
+                            <MudTd Style="text-align:right">@(context.RecPayType == RecPayType.Receipt ? context.TotalAmount.ToString("N2") : "")</MudTd>
+                        </RowTemplate>
+                        <NoRecordsContent>
+                            <MudText>No unmatched book entries</MudText>
+                        </NoRecordsContent>
+                    </MudTable>
+                </MudPaper>
+            </MudItem>
+
+            <MudItem xs="12" md="2">
+                <MudStack AlignItems="AlignItems.Center" Justify="Justify.Center" Style="height:100%; min-height:200px;" Spacing="2">
+                    <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Link"
+                               OnClick="MatchSelected" Disabled="@(isReadOnly || selectedBookEntryIds.Count == 0 || selectedStatementLineIds.Count == 0)">
+                        Match Selected
+                    </MudButton>
+                    <MudButton Variant="Variant.Outlined" Color="Color.Default" StartIcon="@Icons.Material.Filled.Clear"
+                               OnClick="ClearSelection" Disabled="@isReadOnly">
+                        Clear Selection
+                    </MudButton>
+                    <MudText Typo="Typo.caption" Align="Align.Center" Color="Color.Secondary">
+                        Book: @selectedBookEntryIds.Count selected<br />
+                        Statement: @selectedStatementLineIds.Count selected
+                    </MudText>
+                </MudStack>
+            </MudItem>
+
+            <MudItem xs="12" md="5">
+                <MudPaper Class="pa-3" Elevation="1">
+                    <MudText Typo="Typo.h6" Class="mb-2">Statement Lines (Unmatched: @unmatchedStatementLines.Count)</MudText>
+                    <MudTable Items="@unmatchedStatementLines" Hover="true" Dense="true" Striped="true" FixedHeader="true" Height="400px" T="BankStatementLine">
+                        <HeaderContent>
+                            <MudTh Style="width:40px"><MudCheckBox T="bool" Value="@(selectedStatementLineIds.Count > 0 && selectedStatementLineIds.Count == unmatchedStatementLines.Count)" ValueChanged="@(v => ToggleAllStatementLines(v))" Disabled="@isReadOnly" /></MudTh>
+                            <MudTh>Date</MudTh>
+                            <MudTh>Description</MudTh>
+                            <MudTh>Reference</MudTh>
+                            <MudTh Style="text-align:right">Debit</MudTh>
+                            <MudTh Style="text-align:right">Credit</MudTh>
+                        </HeaderContent>
+                        <RowTemplate>
+                            <MudTd><MudCheckBox T="bool" Value="@selectedStatementLineIds.Contains(context.Id)" ValueChanged="@(v => ToggleStatementLine(context.Id, v))" Disabled="@isReadOnly" /></MudTd>
+                            <MudTd>@context.TransactionDate.ToString("dd-MMM-yyyy")</MudTd>
+                            <MudTd><MudText Typo="Typo.body2" Style="max-width:150px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">@context.Description</MudText></MudTd>
+                            <MudTd>@context.ReferenceNumber</MudTd>
+                            <MudTd Style="text-align:right">@(context.DebitAmount > 0 ? context.DebitAmount.ToString("N2") : "")</MudTd>
+                            <MudTd Style="text-align:right">@(context.CreditAmount > 0 ? context.CreditAmount.ToString("N2") : "")</MudTd>
+                        </RowTemplate>
+                        <NoRecordsContent>
+                            <MudText>No unmatched statement lines</MudText>
+                        </NoRecordsContent>
+                    </MudTable>
+                </MudPaper>
+            </MudItem>
+
+            <MudItem xs="12">
+                <MudPaper Class="pa-3 mt-4" Elevation="1">
+                    <MudText Typo="Typo.h6" Class="mb-2">Matched Pairs (@matchedPairs.Count)</MudText>
+                    <MudTable Items="@matchedPairs" Hover="true" Dense="true" Striped="true" T="MatchedPairItem">
+                        <HeaderContent>
+                            <MudTh>Statement Date</MudTh>
+                            <MudTh>Statement Description</MudTh>
+                            <MudTh Style="text-align:right">Statement Amount</MudTh>
+                            <MudTh>Book Date</MudTh>
+                            <MudTh>Book Voucher</MudTh>
+                            <MudTh Style="text-align:right">Book Amount</MudTh>
+                            <MudTh>Match Type</MudTh>
+                            <MudTh Style="width:100px">Actions</MudTh>
+                        </HeaderContent>
+                        <RowTemplate>
+                            <MudTd>@context.StatementDate?.ToString("dd-MMM-yyyy")</MudTd>
+                            <MudTd>@context.StatementDescription</MudTd>
+                            <MudTd Style="text-align:right">@context.StatementAmount.ToString("N2")</MudTd>
+                            <MudTd>@context.BookDate?.ToString("dd-MMM-yyyy")</MudTd>
+                            <MudTd>@context.BookVoucher</MudTd>
+                            <MudTd Style="text-align:right">@context.BookAmount.ToString("N2")</MudTd>
+                            <MudTd><MudChip T="string" Size="Size.Small" Color="@(context.MatchType == MatchType.Automatic ? Color.Info : Color.Default)">@context.MatchType.ToString()</MudChip></MudTd>
+                            <MudTd>
+                                <MudIconButton Icon="@Icons.Material.Filled.LinkOff" Size="Size.Small" Color="Color.Error"
+                                               OnClick="@(() => UnmatchPair(context.MatchId))" Title="Unmatch" Disabled="@isReadOnly" />
+                            </MudTd>
+                        </RowTemplate>
+                        <NoRecordsContent>
+                            <MudText>No matched pairs yet</MudText>
+                        </NoRecordsContent>
+                    </MudTable>
+                </MudPaper>
+            </MudItem>
+        </MudGrid>
+    };
+
+    private RenderFragment RenderStatementUploadTab() => __builder =>
+    {
+        <MudGrid>
+            <MudItem xs="12">
+                <MudPaper Class="pa-4" Elevation="1">
+                    <MudText Typo="Typo.h6" Class="mb-3">Upload Bank Statement</MudText>
+                    @if (!isReadOnly)
+                    {
+                        <MudFileUpload T="IBrowserFile" Accept=".csv,.xlsx" FilesChanged="OnFileSelected" MaximumFileCount="1">
+                            <ActivatorContent>
+                                <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.CloudUpload">
+                                    Select File (.csv or .xlsx)
+                                </MudButton>
+                            </ActivatorContent>
+                        </MudFileUpload>
+
+                        @if (uploadedFile != null)
+                        {
+                            <MudAlert Severity="Severity.Info" Class="mt-2">File: @uploadedFile.Name (@(uploadedFile.Size / 1024) KB)</MudAlert>
+                        }
+
+                        @if (fileHeaders.Count > 0)
+                        {
+                            <MudText Typo="Typo.subtitle1" Class="mt-4 mb-2">Column Mapping</MudText>
+                            <MudGrid>
+                                <MudItem xs="6" md="3">
+                                    <MudSelect T="int?" @bind-Value="colDate" Label="Transaction Date *" Variant="Variant.Outlined" Dense="true" Clearable="true">
+                                        @for (int i = 0; i < fileHeaders.Count; i++)
+                                        {
+                                            var idx = i;
+                                            <MudSelectItem T="int?" Value="@idx">@fileHeaders[idx]</MudSelectItem>
+                                        }
+                                    </MudSelect>
+                                </MudItem>
+                                <MudItem xs="6" md="3">
+                                    <MudSelect T="int?" @bind-Value="colDescription" Label="Description *" Variant="Variant.Outlined" Dense="true" Clearable="true">
+                                        @for (int i = 0; i < fileHeaders.Count; i++)
+                                        {
+                                            var idx = i;
+                                            <MudSelectItem T="int?" Value="@idx">@fileHeaders[idx]</MudSelectItem>
+                                        }
+                                    </MudSelect>
+                                </MudItem>
+                                <MudItem xs="6" md="3">
+                                    <MudSelect T="int?" @bind-Value="colDebit" Label="Debit Amount *" Variant="Variant.Outlined" Dense="true" Clearable="true">
+                                        @for (int i = 0; i < fileHeaders.Count; i++)
+                                        {
+                                            var idx = i;
+                                            <MudSelectItem T="int?" Value="@idx">@fileHeaders[idx]</MudSelectItem>
+                                        }
+                                    </MudSelect>
+                                </MudItem>
+                                <MudItem xs="6" md="3">
+                                    <MudSelect T="int?" @bind-Value="colCredit" Label="Credit Amount *" Variant="Variant.Outlined" Dense="true" Clearable="true">
+                                        @for (int i = 0; i < fileHeaders.Count; i++)
+                                        {
+                                            var idx = i;
+                                            <MudSelectItem T="int?" Value="@idx">@fileHeaders[idx]</MudSelectItem>
+                                        }
+                                    </MudSelect>
+                                </MudItem>
+                                <MudItem xs="6" md="3">
+                                    <MudSelect T="int?" @bind-Value="colReference" Label="Reference Number" Variant="Variant.Outlined" Dense="true" Clearable="true">
+                                        @for (int i = 0; i < fileHeaders.Count; i++)
+                                        {
+                                            var idx = i;
+                                            <MudSelectItem T="int?" Value="@idx">@fileHeaders[idx]</MudSelectItem>
+                                        }
+                                    </MudSelect>
+                                </MudItem>
+                                <MudItem xs="6" md="3">
+                                    <MudSelect T="int?" @bind-Value="colCheque" Label="Cheque Number" Variant="Variant.Outlined" Dense="true" Clearable="true">
+                                        @for (int i = 0; i < fileHeaders.Count; i++)
+                                        {
+                                            var idx = i;
+                                            <MudSelectItem T="int?" Value="@idx">@fileHeaders[idx]</MudSelectItem>
+                                        }
+                                    </MudSelect>
+                                </MudItem>
+                                <MudItem xs="6" md="3">
+                                    <MudSelect T="int?" @bind-Value="colBalance" Label="Balance" Variant="Variant.Outlined" Dense="true" Clearable="true">
+                                        @for (int i = 0; i < fileHeaders.Count; i++)
+                                        {
+                                            var idx = i;
+                                            <MudSelectItem T="int?" Value="@idx">@fileHeaders[idx]</MudSelectItem>
+                                        }
+                                    </MudSelect>
+                                </MudItem>
+                            </MudGrid>
+
+                            @if (previewRows.Count > 0)
+                            {
+                                <MudText Typo="Typo.subtitle1" Class="mt-4 mb-2">Preview (first @previewRows.Count rows)</MudText>
+                                <MudSimpleTable Dense="true" Striped="true" Hover="true" Style="overflow-x:auto;">
+                                    <thead>
+                                        <tr>
+                                            @foreach (var h in fileHeaders)
+                                            {
+                                                <th>@h</th>
+                                            }
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        @foreach (var row in previewRows)
+                                        {
+                                            <tr>
+                                                @foreach (var cell in row)
+                                                {
+                                                    <td>@cell</td>
+                                                }
+                                            </tr>
+                                        }
+                                    </tbody>
+                                </MudSimpleTable>
+                            }
+
+                            <MudStack Row="true" Class="mt-4" Spacing="2">
+                                <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="ImportStatement"
+                                           Disabled="@(isImporting || !colDate.HasValue || !colDescription.HasValue || !colDebit.HasValue || !colCredit.HasValue)"
+                                           StartIcon="@Icons.Material.Filled.ImportExport">
+                                    @if (isImporting)
+                                    {
+                                        <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" />
+                                    }
+                                    Import @(allParsedRows.Count) Lines
+                                </MudButton>
+                                <MudButton Variant="Variant.Outlined" OnClick="ClearUpload">Clear</MudButton>
+                            </MudStack>
+
+                            @if (!string.IsNullOrEmpty(importResult))
+                            {
+                                <MudAlert Severity="Severity.Success" Class="mt-2">@importResult</MudAlert>
+                            }
+                        }
+                    }
+                    else
+                    {
+                        <MudAlert Severity="Severity.Info">This reconciliation is read-only. No further uploads are allowed.</MudAlert>
+                    }
+                </MudPaper>
+            </MudItem>
+
+            <MudItem xs="12">
+                <MudPaper Class="pa-4 mt-2" Elevation="1">
+                    <MudText Typo="Typo.h6" Class="mb-3">Already Imported (@existingImports.Count)</MudText>
+                    <MudTable Items="@existingImports" Hover="true" Dense="true" Striped="true" T="BankStatementImport">
+                        <HeaderContent>
+                            <MudTh>File Name</MudTh>
+                            <MudTh>Format</MudTh>
+                            <MudTh>Imported At</MudTh>
+                            <MudTh Style="text-align:right">Total Lines</MudTh>
+                            <MudTh Style="text-align:right">Imported</MudTh>
+                            <MudTh Style="text-align:right">Skipped</MudTh>
+                        </HeaderContent>
+                        <RowTemplate>
+                            <MudTd>@context.FileName</MudTd>
+                            <MudTd>@context.Format.ToString()</MudTd>
+                            <MudTd>@context.ImportedAt.ToString("dd-MMM-yyyy HH:mm")</MudTd>
+                            <MudTd Style="text-align:right">@context.TotalLines</MudTd>
+                            <MudTd Style="text-align:right">@context.ImportedLines</MudTd>
+                            <MudTd Style="text-align:right">@context.SkippedLines</MudTd>
+                        </RowTemplate>
+                        <NoRecordsContent>
+                            <MudText>No imports yet</MudText>
+                        </NoRecordsContent>
+                    </MudTable>
+                </MudPaper>
+            </MudItem>
+        </MudGrid>
+    };
+
+    private RenderFragment RenderAutoReconcileTab() => __builder =>
+    {
+        <MudPaper Class="pa-4" Elevation="1">
+            <MudText Typo="Typo.h6" Class="mb-3">Auto-Reconcile Configuration</MudText>
+            @if (isReadOnly)
+            {
+                <MudAlert Severity="Severity.Info" Class="mb-3">This reconciliation is read-only.</MudAlert>
+            }
+            <MudGrid>
+                <MudItem xs="12" md="3">
+                    <MudNumericField @bind-Value="autoDateTolerance" Label="Date Tolerance (days)" Min="0" Max="30" Variant="Variant.Outlined" Disabled="@isReadOnly" />
+                </MudItem>
+                <MudItem xs="12" md="3">
+                    <MudSwitch @bind-Value="autoMatchByReference" Label="Match by Reference Number" Color="Color.Primary" Disabled="@isReadOnly" />
+                </MudItem>
+                <MudItem xs="12" md="3">
+                    <MudSwitch @bind-Value="autoMatchByCheque" Label="Match by Cheque Number" Color="Color.Primary" Disabled="@isReadOnly" />
+                </MudItem>
+                <MudItem xs="12" md="3">
+                    <MudSwitch @bind-Value="autoMatchExactAmount" Label="Exact Amount Only" Color="Color.Primary" Disabled="@isReadOnly" />
+                </MudItem>
+            </MudGrid>
+
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" Class="mt-3"
+                       OnClick="RunAutoReconcile" Disabled="@(isReadOnly || isAutoRunning)"
+                       StartIcon="@Icons.Material.Filled.PlayArrow">
+                @if (isAutoRunning)
+                {
+                    <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" />
+                }
+                Run Auto-Reconcile
+            </MudButton>
+
+            @if (autoProposals.Count > 0)
+            {
+                <MudText Typo="Typo.h6" Class="mt-4 mb-2">Proposed Matches (@autoProposals.Count)</MudText>
+                <MudTable Items="@autoProposals" Hover="true" Dense="true" Striped="true" T="AutoMatchProposal">
+                    <HeaderContent>
+                        <MudTh Style="width:40px"><MudCheckBox T="bool" Value="@(selectedProposalIndexes.Count == autoProposals.Count)" ValueChanged="@(v => ToggleAllProposals(v))" /></MudTh>
+                        <MudTh>Statement Date</MudTh>
+                        <MudTh>Statement Desc</MudTh>
+                        <MudTh Style="text-align:right">Stmt Amount</MudTh>
+                        <MudTh>Book Date</MudTh>
+                        <MudTh>Book Voucher</MudTh>
+                        <MudTh Style="text-align:right">Book Amount</MudTh>
+                        <MudTh>Confidence</MudTh>
+                    </HeaderContent>
+                    <RowTemplate>
+                        <MudTd><MudCheckBox T="bool" Value="@selectedProposalIndexes.Contains(autoProposals.IndexOf(context))" ValueChanged="@(v => ToggleProposal(autoProposals.IndexOf(context), v))" /></MudTd>
+                        <MudTd>@context.StatementLine.TransactionDate.ToString("dd-MMM-yyyy")</MudTd>
+                        <MudTd><MudText Typo="Typo.body2" Style="max-width:120px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">@context.StatementLine.Description</MudText></MudTd>
+                        <MudTd Style="text-align:right">@((context.StatementLine.CreditAmount > 0 ? context.StatementLine.CreditAmount : -context.StatementLine.DebitAmount).ToString("N2"))</MudTd>
+                        <MudTd>@context.BookEntry.VoucherDate.ToString("dd-MMM-yyyy")</MudTd>
+                        <MudTd>@context.BookEntry.VoucherNo</MudTd>
+                        <MudTd Style="text-align:right">@((context.BookEntry.RecPayType == RecPayType.Receipt ? context.BookEntry.TotalAmount : -context.BookEntry.TotalAmount).ToString("N2"))</MudTd>
+                        <MudTd>
+                            <MudChip T="string" Size="Size.Small" Color="@(context.Confidence == "High" ? Color.Success : context.Confidence == "Medium" ? Color.Warning : Color.Default)">@context.Confidence</MudChip>
+                        </MudTd>
+                    </RowTemplate>
+                </MudTable>
+
+                <MudStack Row="true" Class="mt-3" Spacing="2">
+                    <MudButton Variant="Variant.Filled" Color="Color.Success" OnClick="ConfirmAllProposals"
+                               StartIcon="@Icons.Material.Filled.DoneAll">Confirm All (@autoProposals.Count)</MudButton>
+                    <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="ConfirmSelectedProposals"
+                               Disabled="@(selectedProposalIndexes.Count == 0)"
+                               StartIcon="@Icons.Material.Filled.Done">Confirm Selected (@selectedProposalIndexes.Count)</MudButton>
+                    <MudButton Variant="Variant.Outlined" OnClick="@(() => { autoProposals.Clear(); selectedProposalIndexes.Clear(); })">Clear</MudButton>
+                </MudStack>
+            }
+        </MudPaper>
+    };
+
+    private RenderFragment RenderSummaryTab() => __builder =>
+    {
+        <MudGrid>
+            <MudItem xs="12" md="6">
+                <MudPaper Class="pa-4" Elevation="1">
+                    <MudText Typo="Typo.h6" Class="mb-3">Reconciliation Summary</MudText>
+                    <MudSimpleTable Dense="true" Hover="true">
+                        <tbody>
+                            <tr><td><strong>Statement Opening Balance</strong></td><td style="text-align:right">@reconciliation!.StatementOpeningBalance.ToString("N2")</td></tr>
+                            <tr><td><strong>Statement Closing Balance</strong></td><td style="text-align:right">@reconciliation.StatementClosingBalance.ToString("N2")</td></tr>
+                            <tr><td><strong>Book Opening Balance</strong></td><td style="text-align:right">@reconciliation.BookOpeningBalance.ToString("N2")</td></tr>
+                            <tr><td><strong>Book Closing Balance</strong></td><td style="text-align:right">@reconciliation.BookClosingBalance.ToString("N2")</td></tr>
+                            <tr><td><strong>Total Matched</strong></td><td style="text-align:right">@matchedPairs.Count items / @matchedPairs.Sum(m => Math.Abs(m.StatementAmount)).ToString("N2")</td></tr>
+                            <tr><td><strong>Unmatched Statement Lines</strong></td><td style="text-align:right">@unmatchedStatementLines.Count items / @unmatchedStatementLines.Sum(s => s.DebitAmount + s.CreditAmount).ToString("N2")</td></tr>
+                            <tr><td><strong>Unmatched Book Entries</strong></td><td style="text-align:right">@unmatchedBookEntries.Count items / @unmatchedBookEntries.Sum(b => b.TotalAmount).ToString("N2")</td></tr>
+                            <tr><td><strong>Adjustments Total</strong></td><td style="text-align:right">@adjustments.Sum(a => a.Amount).ToString("N2")</td></tr>
+                            <tr style="background-color: rgba(0,0,0,0.04);">
+                                <td><strong>Difference</strong></td>
+                                <td style="text-align:right">
+                                    @{
+                                        var diff = reconciliation.StatementClosingBalance - reconciliation.BookClosingBalance - adjustments.Sum(a => a.Amount);
+                                    }
+                                    <MudText Color="@(diff == 0 ? Color.Success : Color.Error)" Typo="Typo.body1"><strong>@diff.ToString("N2")</strong></MudText>
+                                </td>
+                            </tr>
+                        </tbody>
+                    </MudSimpleTable>
+
+                    <MudStack Row="true" Class="mt-4" Spacing="2">
+                        @if (reconciliation.Status == ReconciliationStatus.Draft || reconciliation.Status == ReconciliationStatus.InProgress)
+                        {
+                            <MudButton Variant="Variant.Filled" Color="Color.Success" OnClick="MarkAsCompleted"
+                                       StartIcon="@Icons.Material.Filled.CheckCircle">Mark as Completed</MudButton>
+                        }
+                        @if (reconciliation.Status == ReconciliationStatus.Completed)
+                        {
+                            <MudButton Variant="Variant.Filled" Color="Color.Warning" OnClick="LockReconciliation"
+                                       StartIcon="@Icons.Material.Filled.Lock">Lock Reconciliation</MudButton>
+                            <MudButton Variant="Variant.Outlined" Color="Color.Info" OnClick="ReopenReconciliation"
+                                       StartIcon="@Icons.Material.Filled.LockOpen">Reopen</MudButton>
+                        }
+                    </MudStack>
+                </MudPaper>
+            </MudItem>
+
+            <MudItem xs="12" md="6">
+                <MudPaper Class="pa-4" Elevation="1">
+                    <MudStack Row="true" AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween" Class="mb-3">
+                        <MudText Typo="Typo.h6">Adjustments (@adjustments.Count)</MudText>
+                        @if (!isReadOnly)
+                        {
+                            <MudButton Variant="Variant.Filled" Color="Color.Primary" Size="Size.Small"
+                                       StartIcon="@Icons.Material.Filled.Add" OnClick="OpenAddAdjustment">Add Adjustment</MudButton>
+                        }
+                    </MudStack>
+                    <MudTable Items="@adjustments" Hover="true" Dense="true" Striped="true" T="ReconciliationAdjustment">
+                        <HeaderContent>
+                            <MudTh>Type</MudTh>
+                            <MudTh>Description</MudTh>
+                            <MudTh>Date</MudTh>
+                            <MudTh Style="text-align:right">Amount</MudTh>
+                            <MudTh Style="width:100px">Actions</MudTh>
+                        </HeaderContent>
+                        <RowTemplate>
+                            <MudTd>@context.AdjustmentType.ToString()</MudTd>
+                            <MudTd>@context.Description</MudTd>
+                            <MudTd>@context.AdjustmentDate.ToString("dd-MMM-yyyy")</MudTd>
+                            <MudTd Style="text-align:right">@context.Amount.ToString("N2")</MudTd>
+                            <MudTd>
+                                @if (!isReadOnly)
+                                {
+                                    <MudIconButton Icon="@Icons.Material.Filled.Edit" Size="Size.Small" OnClick="@(() => OpenEditAdjustment(context))" />
+                                    <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" Color="Color.Error" OnClick="@(() => DeleteAdjustment(context.Id))" />
+                                }
+                            </MudTd>
+                        </RowTemplate>
+                        <NoRecordsContent>
+                            <MudText>No adjustments</MudText>
+                        </NoRecordsContent>
+                    </MudTable>
+                </MudPaper>
+            </MudItem>
+        </MudGrid>
+    };
+
+    private void GoBack() => Navigation.NavigateTo("/bank-reconciliation");
+
+    private Color GetStatusColor(ReconciliationStatus status) => status switch
+    {
+        ReconciliationStatus.Draft => Color.Default,
+        ReconciliationStatus.InProgress => Color.Info,
+        ReconciliationStatus.Completed => Color.Success,
+        ReconciliationStatus.Locked => Color.Warning,
+        _ => Color.Default
+    };
+
+    private void ToggleBookEntry(long id, bool selected)
+    {
+        if (selected) selectedBookEntryIds.Add(id);
+        else selectedBookEntryIds.Remove(id);
+    }
+
+    private void ToggleAllBookEntries(bool selectAll)
+    {
+        if (selectAll) selectedBookEntryIds = unmatchedBookEntries.Select(b => b.Id).ToHashSet();
+        else selectedBookEntryIds.Clear();
+    }
+
+    private void ToggleStatementLine(long id, bool selected)
+    {
+        if (selected) selectedStatementLineIds.Add(id);
+        else selectedStatementLineIds.Remove(id);
+    }
+
+    private void ToggleAllStatementLines(bool selectAll)
+    {
+        if (selectAll) selectedStatementLineIds = unmatchedStatementLines.Select(s => s.Id).ToHashSet();
+        else selectedStatementLineIds.Clear();
+    }
+
+    private void ClearSelection()
+    {
+        selectedBookEntryIds.Clear();
+        selectedStatementLineIds.Clear();
+    }
+
+    private async Task MatchSelected()
+    {
+        if (selectedBookEntryIds.Count == 0 || selectedStatementLineIds.Count == 0)
+        {
+            Snackbar.Add("Please select at least one book entry and one statement line", Severity.Warning);
+            return;
+        }
+
+        try
+        {
+            var selectedBooks = unmatchedBookEntries.Where(b => selectedBookEntryIds.Contains(b.Id)).ToList();
+            var selectedStatements = unmatchedStatementLines.Where(s => selectedStatementLineIds.Contains(s.Id)).ToList();
+
+            int matchCount = Math.Min(selectedBooks.Count, selectedStatements.Count);
+
+            for (int i = 0; i < matchCount; i++)
+            {
+                var book = selectedBooks[i];
+                var stmt = selectedStatements[i];
+
+                var matchedAmount = stmt.CreditAmount > 0 ? stmt.CreditAmount : stmt.DebitAmount;
+
+                var match = new ReconciliationMatch
+                {
+                    BankReconciliationId = Id,
+                    BankStatementLineId = stmt.Id,
+                    JournalId = book.JournalId,
+                    CashBankTransactionId = book.Id,
+                    MatchedAmount = matchedAmount,
+                    MatchType = MatchType.Manual,
+                    MatchedAt = DateTime.UtcNow
+                };
+                DbContext.ReconciliationMatches.Add(match);
+
+                var stmtEntity = await DbContext.BankStatementLines.FindAsync(stmt.Id);
+                if (stmtEntity != null)
+                    stmtEntity.IsMatched = true;
+            }
+
+            if (reconciliation!.Status == ReconciliationStatus.Draft)
+            {
+                reconciliation.Status = ReconciliationStatus.InProgress;
+                reconciliation.ModifiedAt = DateTime.UtcNow;
+            }
+
+            await DbContext.SaveChangesAsync();
+            Snackbar.Add($"{matchCount} pair(s) matched successfully", Severity.Success);
+
+            ClearSelection();
+            await LoadMatchedData();
+            await LoadUnmatchedBookEntries();
+            await LoadUnmatchedStatementLines();
+            await UpdateReconciliationBalances();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error matching: {ex.Message}", Severity.Error);
+        }
+    }
+
+    private async Task UnmatchPair(long matchId)
+    {
+        try
+        {
+            var match = await DbContext.ReconciliationMatches.FindAsync(matchId);
+            if (match == null) return;
+
+            match.IsReversed = true;
+            match.ReversedAt = DateTime.UtcNow;
+
+            var stmtLine = await DbContext.BankStatementLines.FindAsync(match.BankStatementLineId);
+            if (stmtLine != null)
+                stmtLine.IsMatched = false;
+
+            await DbContext.SaveChangesAsync();
+            Snackbar.Add("Match reversed", Severity.Success);
+
+            await LoadMatchedData();
+            await LoadUnmatchedBookEntries();
+            await LoadUnmatchedStatementLines();
+            await UpdateReconciliationBalances();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error unmatching: {ex.Message}", Severity.Error);
+        }
+    }
+
+    private async Task UpdateReconciliationBalances()
+    {
+        if (reconciliation == null) return;
+        try
+        {
+            var rec = await DbContext.BankReconciliations.FindAsync(Id);
+            if (rec == null) return;
+
+            var totalReceipts = await DbContext.CashBankTransactions.AsNoTracking()
+                .Where(t => t.BankAccountId == rec.BankAccountId && t.TransactionType == TransactionType.Bank
+                    && t.RecPayType == RecPayType.Receipt && t.Status == CashBankStatus.Posted && !t.IsDeleted)
+                .SumAsync(t => t.TotalAmount);
+            var totalPayments = await DbContext.CashBankTransactions.AsNoTracking()
+                .Where(t => t.BankAccountId == rec.BankAccountId && t.TransactionType == TransactionType.Bank
+                    && t.RecPayType == RecPayType.Payment && t.Status == CashBankStatus.Posted && !t.IsDeleted)
+                .SumAsync(t => t.TotalAmount);
+
+            var ba = await DbContext.BankAccounts.AsNoTracking().FirstOrDefaultAsync(b => b.Id == rec.BankAccountId);
+            var openBal = ba?.OpeningBalance ?? 0;
+
+            rec.BookClosingBalance = openBal + totalReceipts - totalPayments;
+            rec.DifferenceAmount = rec.StatementClosingBalance - rec.BookClosingBalance;
+            rec.ModifiedAt = DateTime.UtcNow;
+            await DbContext.SaveChangesAsync();
+
+            reconciliation = rec;
+        }
+        catch { }
+    }
+
+    private async Task OnFileSelected(IBrowserFile file)
+    {
+        uploadedFile = file;
+        previewRows.Clear();
+        fileHeaders.Clear();
+        allParsedRows.Clear();
+        importResult = "";
+        colDate = colDescription = colDebit = colCredit = colReference = colCheque = colBalance = null;
+
+        try
+        {
+            using var ms = new MemoryStream();
+            await file.OpenReadStream(maxAllowedSize: 10 * 1024 * 1024).CopyToAsync(ms);
+            ms.Position = 0;
+
+            if (file.Name.EndsWith(".csv", StringComparison.OrdinalIgnoreCase))
+            {
+                using var reader = new StreamReader(ms);
+                var content = await reader.ReadToEndAsync();
+                var lines = content.Split(new[] { "\r\n", "\n" }, StringSplitOptions.RemoveEmptyEntries);
+                if (lines.Length == 0) return;
+
+                fileHeaders = ParseCsvLine(lines[0]).ToList();
+
+                for (int i = 1; i < lines.Length; i++)
+                {
+                    var row = ParseCsvLine(lines[i]);
+                    allParsedRows.Add(row);
+                    if (i <= 10) previewRows.Add(row);
+                }
+            }
+            else if (file.Name.EndsWith(".xlsx", StringComparison.OrdinalIgnoreCase))
+            {
+                using var workbook = new XLWorkbook(ms);
+                var worksheet = workbook.Worksheet(1);
+                var lastRow = worksheet.LastRowUsed()?.RowNumber() ?? 0;
+                var lastCol = worksheet.LastColumnUsed()?.ColumnNumber() ?? 0;
+                if (lastRow == 0 || lastCol == 0) return;
+
+                for (int c = 1; c <= lastCol; c++)
+                    fileHeaders.Add(worksheet.Cell(1, c).GetString());
+
+                for (int r = 2; r <= lastRow; r++)
+                {
+                    var row = new string[lastCol];
+                    for (int c = 1; c <= lastCol; c++)
+                        row[c - 1] = worksheet.Cell(r, c).GetString();
+                    allParsedRows.Add(row);
+                    if (r - 1 <= 10) previewRows.Add(row);
+                }
+            }
+
+            AutoDetectColumns();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error reading file: {ex.Message}", Severity.Error);
+        }
+    }
+
+    private string[] ParseCsvLine(string line)
+    {
+        var result = new List<string>();
+        bool inQuotes = false;
+        var current = new System.Text.StringBuilder();
+
+        for (int i = 0; i < line.Length; i++)
+        {
+            char c = line[i];
+            if (c == '"')
+            {
+                inQuotes = !inQuotes;
+            }
+            else if (c == ',' && !inQuotes)
+            {
+                result.Add(current.ToString().Trim());
+                current.Clear();
+            }
+            else
+            {
+                current.Append(c);
+            }
+        }
+        result.Add(current.ToString().Trim());
+        return result.ToArray();
+    }
+
+    private void AutoDetectColumns()
+    {
+        for (int i = 0; i < fileHeaders.Count; i++)
+        {
+            var h = fileHeaders[i].ToLower().Trim();
+            if (!colDate.HasValue && (h.Contains("date") && (h.Contains("transaction") || h.Contains("trans") || h.Contains("value") || h == "date")))
+                colDate = i;
+            else if (!colDescription.HasValue && (h.Contains("description") || h.Contains("narration") || h.Contains("particular") || h.Contains("detail")))
+                colDescription = i;
+            else if (!colDebit.HasValue && (h.Contains("debit") || h.Contains("withdrawal") || h.Contains("dr")))
+                colDebit = i;
+            else if (!colCredit.HasValue && (h.Contains("credit") || h.Contains("deposit") || h.Contains("cr")))
+                colCredit = i;
+            else if (!colReference.HasValue && (h.Contains("reference") || h.Contains("ref")))
+                colReference = i;
+            else if (!colCheque.HasValue && (h.Contains("cheque") || h.Contains("check") || h.Contains("chq")))
+                colCheque = i;
+            else if (!colBalance.HasValue && h.Contains("balance"))
+                colBalance = i;
+        }
+
+        if (!colDate.HasValue)
+        {
+            for (int i = 0; i < fileHeaders.Count; i++)
+            {
+                if (fileHeaders[i].ToLower().Trim().Contains("date")) { colDate = i; break; }
+            }
+        }
+    }
+
+    private void ClearUpload()
+    {
+        uploadedFile = null;
+        previewRows.Clear();
+        fileHeaders.Clear();
+        allParsedRows.Clear();
+        importResult = "";
+        colDate = colDescription = colDebit = colCredit = colReference = colCheque = colBalance = null;
+    }
+
+    private async Task ImportStatement()
+    {
+        if (!colDate.HasValue || !colDescription.HasValue || !colDebit.HasValue || !colCredit.HasValue)
+        {
+            Snackbar.Add("Please map required columns: Date, Description, Debit, Credit", Severity.Warning);
+            return;
+        }
+
+        isImporting = true;
+        importResult = "";
+        int imported = 0, skipped = 0, errors = 0;
+
+        try
+        {
+            var import = new BankStatementImport
+            {
+                BankReconciliationId = Id,
+                FileName = uploadedFile?.Name ?? "Unknown",
+                Format = uploadedFile?.Name.EndsWith(".xlsx", StringComparison.OrdinalIgnoreCase) == true ? ImportFormat.Excel : ImportFormat.CSV,
+                TotalLines = allParsedRows.Count,
+                ImportedAt = DateTime.UtcNow,
+                ImportedByUserId = 0
+            };
+            DbContext.BankStatementImports.Add(import);
+            await DbContext.SaveChangesAsync();
+
+            var errorLog = new System.Text.StringBuilder();
+
+            foreach (var row in allParsedRows)
+            {
+                try
+                {
+                    var dateStr = colDate.Value < row.Length ? row[colDate.Value] : "";
+                    var descStr = colDescription.Value < row.Length ? row[colDescription.Value] : "";
+                    var debitStr = colDebit.Value < row.Length ? row[colDebit.Value] : "0";
+                    var creditStr = colCredit.Value < row.Length ? row[colCredit.Value] : "0";
+
+                    if (string.IsNullOrWhiteSpace(dateStr) || !DateTime.TryParse(dateStr, out var txnDate))
+                    {
+                        skipped++;
+                        errorLog.AppendLine($"Row skipped: invalid date '{dateStr}'");
+                        continue;
+                    }
+
+                    decimal.TryParse(debitStr.Replace(",", "").Replace("(", "").Replace(")", ""), out var debit);
+                    decimal.TryParse(creditStr.Replace(",", "").Replace("(", "").Replace(")", ""), out var credit);
+
+                    if (debit == 0 && credit == 0)
+                    {
+                        skipped++;
+                        continue;
+                    }
+
+                    var line = new BankStatementLine
+                    {
+                        BankStatementImportId = import.Id,
+                        TransactionDate = DateTime.SpecifyKind(txnDate.Date, DateTimeKind.Utc),
+                        Description = descStr,
+                        DebitAmount = Math.Abs(debit),
+                        CreditAmount = Math.Abs(credit),
+                        ReferenceNumber = colReference.HasValue && colReference.Value < row.Length ? row[colReference.Value] : null,
+                        ChequeNumber = colCheque.HasValue && colCheque.Value < row.Length ? row[colCheque.Value] : null,
+                        Balance = colBalance.HasValue && colBalance.Value < row.Length && decimal.TryParse(row[colBalance.Value].Replace(",", ""), out var bal) ? bal : 0
+                    };
+                    DbContext.BankStatementLines.Add(line);
+                    imported++;
+                }
+                catch
+                {
+                    errors++;
+                }
+            }
+
+            import.ImportedLines = imported;
+            import.SkippedLines = skipped;
+            import.ErrorLog = errorLog.Length > 0 ? errorLog.ToString() : null;
+
+            if (reconciliation!.Status == ReconciliationStatus.Draft)
+            {
+                reconciliation.Status = ReconciliationStatus.InProgress;
+                reconciliation.ModifiedAt = DateTime.UtcNow;
+            }
+
+            await DbContext.SaveChangesAsync();
+
+            importResult = $"{imported} lines imported, {skipped} skipped, {errors} errors";
+            Snackbar.Add(importResult, Severity.Success);
+
+            await LoadUnmatchedStatementLines();
+            await LoadExistingImports();
+            ClearUpload();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Import error: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            isImporting = false;
+        }
+    }
+
+    private async Task RunAutoReconcile()
+    {
+        isAutoRunning = true;
+        autoProposals.Clear();
+        selectedProposalIndexes.Clear();
+
+        try
+        {
+            await LoadUnmatchedBookEntries();
+            await LoadUnmatchedStatementLines();
+
+            var usedBookIds = new HashSet<long>();
+
+            foreach (var stmt in unmatchedStatementLines)
+            {
+                var candidates = new List<(BookEntryItem book, string confidence, int score)>();
+
+                foreach (var book in unmatchedBookEntries)
+                {
+                    if (usedBookIds.Contains(book.Id)) continue;
+
+                    bool amountMatch = false;
+                    if (stmt.CreditAmount > 0 && book.RecPayType == RecPayType.Receipt)
+                        amountMatch = stmt.CreditAmount == book.TotalAmount;
+                    else if (stmt.DebitAmount > 0 && book.RecPayType == RecPayType.Payment)
+                        amountMatch = stmt.DebitAmount == book.TotalAmount;
+
+                    if (!amountMatch) continue;
+
+                    int score = 1;
+                    bool refMatch = false, chequeMatch = false, dateMatch = false;
+
+                    if (autoMatchByReference && !string.IsNullOrWhiteSpace(stmt.ReferenceNumber) && !string.IsNullOrWhiteSpace(book.ReferenceNo))
+                    {
+                        if (stmt.ReferenceNumber.Trim().Equals(book.ReferenceNo.Trim(), StringComparison.OrdinalIgnoreCase)
+                            || stmt.ReferenceNumber.Trim().Contains(book.ReferenceNo.Trim(), StringComparison.OrdinalIgnoreCase)
+                            || book.ReferenceNo.Trim().Contains(stmt.ReferenceNumber.Trim(), StringComparison.OrdinalIgnoreCase))
+                        {
+                            refMatch = true;
+                            score += 3;
+                        }
+                    }
+
+                    if (autoMatchByCheque && !string.IsNullOrWhiteSpace(stmt.ChequeNumber) && !string.IsNullOrWhiteSpace(book.ChequeNo))
+                    {
+                        if (stmt.ChequeNumber.Trim().Equals(book.ChequeNo.Trim(), StringComparison.OrdinalIgnoreCase))
+                        {
+                            chequeMatch = true;
+                            score += 3;
+                        }
+                    }
+
+                    var daysDiff = Math.Abs((stmt.TransactionDate.Date - book.VoucherDate.Date).TotalDays);
+                    if (daysDiff <= autoDateTolerance)
+                    {
+                        dateMatch = true;
+                        score += 2;
+                    }
+
+                    string confidence;
+                    if (refMatch || chequeMatch)
+                        confidence = "High";
+                    else if (dateMatch)
+                        confidence = "Medium";
+                    else
+                        confidence = "Low";
+
+                    candidates.Add((book, confidence, score));
+                }
+
+                if (candidates.Count > 0)
+                {
+                    var best = candidates.OrderByDescending(c => c.score)
+                        .ThenBy(c => Math.Abs((stmt.TransactionDate.Date - c.book.VoucherDate.Date).TotalDays))
+                        .First();
+
+                    autoProposals.Add(new AutoMatchProposal
+                    {
+                        StatementLine = stmt,
+                        BookEntry = best.book,
+                        Confidence = best.confidence
+                    });
+                    usedBookIds.Add(best.book.Id);
+                }
+            }
+
+            if (autoProposals.Count == 0)
+                Snackbar.Add("No automatic matches found", Severity.Info);
+            else
+                Snackbar.Add($"{autoProposals.Count} proposed match(es) found", Severity.Success);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Auto-reconcile error: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            isAutoRunning = false;
+        }
+    }
+
+    private void ToggleProposal(int index, bool selected)
+    {
+        if (selected) selectedProposalIndexes.Add(index);
+        else selectedProposalIndexes.Remove(index);
+    }
+
+    private void ToggleAllProposals(bool selectAll)
+    {
+        if (selectAll)
+            selectedProposalIndexes = Enumerable.Range(0, autoProposals.Count).ToHashSet();
+        else
+            selectedProposalIndexes.Clear();
+    }
+
+    private async Task ConfirmAllProposals()
+    {
+        selectedProposalIndexes = Enumerable.Range(0, autoProposals.Count).ToHashSet();
+        await ConfirmSelectedProposals();
+    }
+
+    private async Task ConfirmSelectedProposals()
+    {
+        if (selectedProposalIndexes.Count == 0) return;
+
+        try
+        {
+            var toConfirm = selectedProposalIndexes.OrderByDescending(i => i).Select(i => autoProposals[i]).ToList();
+
+            foreach (var proposal in toConfirm)
+            {
+                var matchedAmount = proposal.StatementLine.CreditAmount > 0 ? proposal.StatementLine.CreditAmount : proposal.StatementLine.DebitAmount;
+
+                var match = new ReconciliationMatch
+                {
+                    BankReconciliationId = Id,
+                    BankStatementLineId = proposal.StatementLine.Id,
+                    JournalId = proposal.BookEntry.JournalId,
+                    CashBankTransactionId = proposal.BookEntry.Id,
+                    MatchedAmount = matchedAmount,
+                    MatchType = MatchType.Automatic,
+                    MatchedAt = DateTime.UtcNow
+                };
+                DbContext.ReconciliationMatches.Add(match);
+
+                var stmtEntity = await DbContext.BankStatementLines.FindAsync(proposal.StatementLine.Id);
+                if (stmtEntity != null)
+                    stmtEntity.IsMatched = true;
+            }
+
+            if (reconciliation!.Status == ReconciliationStatus.Draft)
+            {
+                reconciliation.Status = ReconciliationStatus.InProgress;
+                reconciliation.ModifiedAt = DateTime.UtcNow;
+            }
+
+            await DbContext.SaveChangesAsync();
+            Snackbar.Add($"{toConfirm.Count} match(es) confirmed", Severity.Success);
+
+            autoProposals.Clear();
+            selectedProposalIndexes.Clear();
+            await LoadMatchedData();
+            await LoadUnmatchedBookEntries();
+            await LoadUnmatchedStatementLines();
+            await UpdateReconciliationBalances();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error confirming: {ex.Message}", Severity.Error);
+        }
+    }
+
+    private void OpenAddAdjustment()
+    {
+        editingAdjustmentId = null;
+        adjType = ReconciliationAdjustmentType.BankFee;
+        adjDescription = "";
+        adjAmount = 0;
+        adjDate = DateTime.Today;
+        adjNotes = null;
+        showAdjustmentDialog = true;
+    }
+
+    private void OpenEditAdjustment(ReconciliationAdjustment adj)
+    {
+        editingAdjustmentId = adj.Id;
+        adjType = adj.AdjustmentType;
+        adjDescription = adj.Description;
+        adjAmount = adj.Amount;
+        adjDate = adj.AdjustmentDate;
+        adjNotes = adj.Notes;
+        showAdjustmentDialog = true;
+    }
+
+    private void CloseAdjustmentDialog() => showAdjustmentDialog = false;
+
+    private async Task SaveAdjustment()
+    {
+        if (string.IsNullOrWhiteSpace(adjDescription))
+        {
+            Snackbar.Add("Description is required", Severity.Warning);
+            return;
+        }
+
+        try
+        {
+            if (editingAdjustmentId.HasValue)
+            {
+                var adj = await DbContext.ReconciliationAdjustments.FindAsync(editingAdjustmentId.Value);
+                if (adj != null)
+                {
+                    adj.AdjustmentType = adjType;
+                    adj.Description = adjDescription;
+                    adj.Amount = adjAmount;
+                    adj.AdjustmentDate = adjDate.HasValue ? DateTime.SpecifyKind(adjDate.Value.Date, DateTimeKind.Utc) : DateTime.UtcNow.Date;
+                    adj.Notes = adjNotes;
+                    adj.ModifiedAt = DateTime.UtcNow;
+                }
+            }
+            else
+            {
+                var adj = new ReconciliationAdjustment
+                {
+                    BankReconciliationId = Id,
+                    AdjustmentType = adjType,
+                    Description = adjDescription,
+                    Amount = adjAmount,
+                    AdjustmentDate = adjDate.HasValue ? DateTime.SpecifyKind(adjDate.Value.Date, DateTimeKind.Utc) : DateTime.UtcNow.Date,
+                    Notes = adjNotes,
+                    CreatedAt = DateTime.UtcNow
+                };
+                DbContext.ReconciliationAdjustments.Add(adj);
+            }
+
+            await DbContext.SaveChangesAsync();
+            Snackbar.Add("Adjustment saved", Severity.Success);
+            showAdjustmentDialog = false;
+            await LoadAdjustments();
+            await UpdateReconciliationBalances();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error saving adjustment: {ex.Message}", Severity.Error);
+        }
+    }
+
+    private async Task DeleteAdjustment(long id)
+    {
+        try
+        {
+            var adj = await DbContext.ReconciliationAdjustments.FindAsync(id);
+            if (adj != null)
+            {
+                adj.IsDeleted = true;
+                adj.ModifiedAt = DateTime.UtcNow;
+                await DbContext.SaveChangesAsync();
+                Snackbar.Add("Adjustment deleted", Severity.Success);
+                await LoadAdjustments();
+                await UpdateReconciliationBalances();
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error deleting adjustment: {ex.Message}", Severity.Error);
+        }
+    }
+
+    private async Task MarkAsCompleted()
+    {
+        try
+        {
+            var rec = await DbContext.BankReconciliations.FindAsync(Id);
+            if (rec == null) return;
+            rec.Status = ReconciliationStatus.Completed;
+            rec.CompletedDate = DateTime.UtcNow;
+            rec.ModifiedAt = DateTime.UtcNow;
+            await DbContext.SaveChangesAsync();
+            reconciliation = rec;
+            Snackbar.Add("Reconciliation marked as completed", Severity.Success);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error: {ex.Message}", Severity.Error);
+        }
+    }
+
+    private async Task LockReconciliation()
+    {
+        try
+        {
+            var rec = await DbContext.BankReconciliations.FindAsync(Id);
+            if (rec == null) return;
+            rec.Status = ReconciliationStatus.Locked;
+            rec.LockedAt = DateTime.UtcNow;
+            rec.ModifiedAt = DateTime.UtcNow;
+            await DbContext.SaveChangesAsync();
+            reconciliation = rec;
+            Snackbar.Add("Reconciliation locked", Severity.Success);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error: {ex.Message}", Severity.Error);
+        }
+    }
+
+    private async Task ReopenReconciliation()
+    {
+        try
+        {
+            var rec = await DbContext.BankReconciliations.FindAsync(Id);
+            if (rec == null) return;
+            rec.Status = ReconciliationStatus.InProgress;
+            rec.CompletedDate = null;
+            rec.ModifiedAt = DateTime.UtcNow;
+            await DbContext.SaveChangesAsync();
+            reconciliation = rec;
+            Snackbar.Add("Reconciliation reopened", Severity.Success);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error: {ex.Message}", Severity.Error);
+        }
+    }
+
+    private class BookEntryItem
+    {
+        public long Id { get; set; }
+        public long? JournalId { get; set; }
+        public DateTime VoucherDate { get; set; }
+        public string VoucherNo { get; set; } = "";
+        public string Narration { get; set; } = "";
+        public RecPayType RecPayType { get; set; }
+        public decimal TotalAmount { get; set; }
+        public string? ReferenceNo { get; set; }
+        public string? ChequeNo { get; set; }
+    }
+
+    private class MatchedPairItem
+    {
+        public long MatchId { get; set; }
+        public decimal MatchedAmount { get; set; }
+        public DateTime? StatementDate { get; set; }
+        public string StatementDescription { get; set; } = "";
+        public decimal StatementAmount { get; set; }
+        public DateTime? BookDate { get; set; }
+        public string? BookVoucher { get; set; }
+        public decimal BookAmount { get; set; }
+        public MatchType MatchType { get; set; }
+        public DateTime MatchedAt { get; set; }
+    }
+
+    private class AutoMatchProposal
+    {
+        public BankStatementLine StatementLine { get; set; } = null!;
+        public BookEntryItem BookEntry { get; set; } = null!;
+        public string Confidence { get; set; } = "Low";
+    }
+}
