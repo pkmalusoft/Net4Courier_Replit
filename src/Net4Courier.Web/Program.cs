@@ -283,6 +283,19 @@ var app = builder.Build();
 
 app.UseForwardedHeaders();
 
+app.Use(async (context, next) =>
+{
+    var path = context.Request.Path.Value?.ToLower();
+    if (path == "/health" || path == "/healthz")
+    {
+        context.Response.StatusCode = 200;
+        context.Response.ContentType = "application/json";
+        await context.Response.WriteAsync($"{{\"status\":\"Healthy\",\"timestamp\":\"{DateTime.UtcNow:O}\"}}");
+        return;
+    }
+    await next();
+});
+
 // Global error handling middleware for detailed error tracking
 app.Use(async (context, next) =>
 {
@@ -1612,7 +1625,7 @@ public class DatabaseInitializationService : BackgroundService
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        await Task.Delay(1000, stoppingToken);
+        await Task.Delay(5000, stoppingToken);
         
         // Check if database is configured before attempting initialization
         var databaseUrl = Environment.GetEnvironmentVariable("DATABASE_URL");
