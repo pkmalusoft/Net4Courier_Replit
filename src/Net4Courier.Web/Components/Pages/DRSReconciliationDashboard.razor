@@ -5,8 +5,7 @@
 @using Net4Courier.Web.Services
 @using Microsoft.EntityFrameworkCore
 @using ClosedXML.Excel
-@inject ApplicationDbContext Context
-@inject DRSReconciliationService ReconciliationService
+@inject IDbContextFactory<ApplicationDbContext> DbFactory
 @inject NavigationManager Navigation
 @inject IJSRuntime JSRuntime
 @rendermode InteractiveServer
@@ -223,17 +222,19 @@
 
         try
         {
+            await using var context = await DbFactory.CreateDbContextAsync();
+            var reconciliationService = new DRSReconciliationService(context);
             var today = DateTime.UtcNow.Date;
 
-            _openCount = await Context.DRSs.CountAsync(d => d.Status == DRSStatus.Open);
-            _submittedCount = await Context.DRSs.CountAsync(d => d.Status == DRSStatus.Submitted);
-            _partialCount = await Context.DRSs.CountAsync(d => d.Status == DRSStatus.PartiallyReconciled);
-            _reconciledCount = await Context.DRSs.CountAsync(d => d.Status == DRSStatus.Reconciled && d.ReconciledAt.HasValue && d.ReconciledAt.Value.Date == today);
+            _openCount = await context.DRSs.CountAsync(d => d.Status == DRSStatus.Open);
+            _submittedCount = await context.DRSs.CountAsync(d => d.Status == DRSStatus.Submitted);
+            _partialCount = await context.DRSs.CountAsync(d => d.Status == DRSStatus.PartiallyReconciled);
+            _reconciledCount = await context.DRSs.CountAsync(d => d.Status == DRSStatus.Reconciled && d.ReconciledAt.HasValue && d.ReconciledAt.Value.Date == today);
 
-            _pendingExpenses = await Context.CourierExpenses.CountAsync(e => e.Status == ExpenseStatus.Pending);
-            _pendingReceipts = await Context.CourierCashSubmissions.CountAsync(c => !c.IsAcknowledged);
+            _pendingExpenses = await context.CourierExpenses.CountAsync(e => e.Status == ExpenseStatus.Pending);
+            _pendingReceipts = await context.CourierCashSubmissions.CountAsync(c => !c.IsAcknowledged);
 
-            var query = Context.DRSs.AsQueryable();
+            var query = context.DRSs.AsQueryable();
 
             if (_statusFilter.HasValue)
             {
@@ -248,7 +249,7 @@
 
             _drsList = await query.OrderByDescending(d => d.DRSDate).Take(50).ToListAsync();
 
-            _courierBalances = await ReconciliationService.GetCourierBalances();
+            _courierBalances = await reconciliationService.GetCourierBalances();
         }
         finally
         {
