@@ -522,6 +522,92 @@ app.MapGet("/api/report/awb/{id:long}", async (long id, bool? inline, Applicatio
     }
 });
 
+app.MapGet("/api/report/awb-duplex/{id:long}", async (long id, bool? inline, ApplicationDbContext db, AWBPrintService printService, BarcodeService barcodeService, IWebHostEnvironment env, ILogger<Program> logger) =>
+{
+    try
+    {
+        var awb = await db.InscanMasters.FindAsync(id);
+        if (awb == null) return Results.NotFound("AWB not found");
+        if (awb.BarcodeImage == null && !string.IsNullOrEmpty(awb.AWBNo))
+        {
+            var (h, v) = barcodeService.GenerateBothBarcodes(awb.AWBNo);
+            awb.BarcodeImage = h;
+            awb.BarcodeImageVertical = v;
+        }
+        byte[]? logoData = null;
+        string? companyName = null;
+        string? website = null;
+        string? branchCurrency = null;
+        if (awb.BranchId.HasValue)
+        {
+            var branch = await db.Branches.Include(b => b.Company).Include(b => b.Currency).FirstOrDefaultAsync(b => b.Id == awb.BranchId);
+            logoData = ResolveLogoBytes(branch?.Company?.Logo, env.WebRootPath);
+            companyName = branch?.Company?.Name;
+            website = branch?.Company?.Website;
+            branchCurrency = branch?.Currency?.Code;
+        }
+        if (logoData == null)
+        {
+            var company = await db.Companies.FirstOrDefaultAsync(c => !c.IsDeleted);
+            logoData = ResolveLogoBytes(company?.Logo, env.WebRootPath);
+            companyName ??= company?.Name;
+            website ??= company?.Website;
+        }
+        await ResolveLocationCodes(awb, db);
+        var pdf = printService.GenerateA4DuplexAWB(awb, companyName, logoData, website, branchCurrency);
+        var fileName = inline == true ? null : $"AWB-Duplex-{awb.AWBNo}.pdf";
+        return Results.File(pdf, "application/pdf", fileName);
+    }
+    catch (Exception ex)
+    {
+        logger.LogError(ex, "Error generating duplex AWB print for ID {Id}", id);
+        return Results.Problem($"Error generating duplex AWB print: {ex.Message}");
+    }
+});
+
+app.MapGet("/api/report/awb-duplex-by-awbno/{awbNo}", async (string awbNo, bool? inline, ApplicationDbContext db, AWBPrintService printService, BarcodeService barcodeService, IWebHostEnvironment env, ILogger<Program> logger) =>
+{
+    try
+    {
+        var awb = await db.InscanMasters.FirstOrDefaultAsync(i => i.AWBNo == awbNo);
+        if (awb == null) return Results.NotFound("AWB not found");
+        if (awb.BarcodeImage == null && !string.IsNullOrEmpty(awb.AWBNo))
+        {
+            var (h, v) = barcodeService.GenerateBothBarcodes(awb.AWBNo);
+            awb.BarcodeImage = h;
+            awb.BarcodeImageVertical = v;
+        }
+        byte[]? logoData = null;
+        string? companyName = null;
+        string? website = null;
+        string? branchCurrency = null;
+        if (awb.BranchId.HasValue)
+        {
+            var branch = await db.Branches.Include(b => b.Company).Include(b => b.Currency).FirstOrDefaultAsync(b => b.Id == awb.BranchId);
+            logoData = ResolveLogoBytes(branch?.Company?.Logo, env.WebRootPath);
+            companyName = branch?.Company?.Name;
+            website = branch?.Company?.Website;
+            branchCurrency = branch?.Currency?.Code;
+        }
+        if (logoData == null)
+        {
+            var company = await db.Companies.FirstOrDefaultAsync(c => !c.IsDeleted);
+            logoData = ResolveLogoBytes(company?.Logo, env.WebRootPath);
+            companyName ??= company?.Name;
+            website ??= company?.Website;
+        }
+        await ResolveLocationCodes(awb, db);
+        var pdf = printService.GenerateA4DuplexAWB(awb, companyName, logoData, website, branchCurrency);
+        var fileName = inline == true ? null : $"AWB-Duplex-{awb.AWBNo}.pdf";
+        return Results.File(pdf, "application/pdf", fileName);
+    }
+    catch (Exception ex)
+    {
+        logger.LogError(ex, "Error generating duplex AWB print for AWBNo {AWBNo}", awbNo);
+        return Results.Problem($"Error generating duplex AWB print: {ex.Message}");
+    }
+});
+
 app.MapGet("/api/report/awb-label/{id:long}", async (long id, bool? inline, ApplicationDbContext db, AWBPrintService printService, BarcodeService barcodeService, IWebHostEnvironment env, ILogger<Program> logger) =>
 {
     try

@@ -47,6 +47,51 @@ public class AWBPrintService
         return document.GeneratePdf();
     }
 
+    public byte[] GenerateA4DuplexAWB(InscanMaster shipment, string? companyName = null, byte[]? logoData = null, string? website = null, string? branchCurrency = null)
+    {
+        var effectiveLogo = logoData ?? _logoData;
+        var currency = branchCurrency ?? shipment.Currency ?? "AED";
+        var effectiveCompany = companyName ?? "Net4Courier";
+
+        var document = Document.Create(container =>
+        {
+            container.Page(page =>
+            {
+                page.Size(PageSizes.A4);
+                page.MarginHorizontal(12);
+                page.MarginVertical(8);
+                page.DefaultTextStyle(x => x.FontSize(7.5f).FontFamily("Arial"));
+
+                page.Content().Column(outer =>
+                {
+                    outer.Item().Height(405).Border(0.5f).BorderColor("#cccccc").Padding(10).Column(copy1 =>
+                    {
+                        copy1.Item().PaddingBottom(2).Text("CUSTOMER COPY").Bold().FontSize(7).FontColor("#1e3a5f");
+                        copy1.Spacing(0);
+                        A5Header(copy1, shipment, effectiveCompany, effectiveLogo);
+                        A5InfoRow(copy1, shipment);
+                        A5MiddleSection(copy1, shipment, currency);
+                        A5PodFooter(copy1, shipment, website);
+                    });
+
+                    outer.Item().Height(6);
+
+                    outer.Item().Height(405).Border(0.5f).BorderColor("#cccccc").Padding(10).Column(copy2 =>
+                    {
+                        copy2.Item().PaddingBottom(2).Text("COURIER COPY").Bold().FontSize(7).FontColor("#1e3a5f");
+                        copy2.Spacing(0);
+                        A5Header(copy2, shipment, effectiveCompany, effectiveLogo);
+                        A5InfoRow(copy2, shipment);
+                        A5MiddleSection(copy2, shipment, currency);
+                        A5PodFooter(copy2, shipment, website);
+                    });
+                });
+            });
+        });
+
+        return document.GeneratePdf();
+    }
+
     private void A5Header(ColumnDescriptor column, InscanMaster shipment, string companyName, byte[]? logoData)
     {
         var effectiveLogo = logoData ?? _logoData;
