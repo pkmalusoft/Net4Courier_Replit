@@ -25,36 +25,101 @@
     else
     {
         <div class="ld-stats-row">
-            <div class="ld-stat-pill" style="background: #eef2ff; color: #556ee6;">
+            <div class="ld-stat-pill" style="background: #eef2ff; color: #556ee6;" @onclick='() => Navigation.NavigateTo("/linkdel/pickups")'>
                 <MudIcon Icon="@Icons.Material.Filled.LocalShipping" Size="Size.Small" />
                 <span>@_pendingPickups Pickups</span>
             </div>
-            <div class="ld-stat-pill" style="background: #ecfdf5; color: #059669;">
+            <div class="ld-stat-pill" style="background: #ecfdf5; color: #059669;" @onclick='() => Navigation.NavigateTo("/linkdel/deliveries")'>
                 <MudIcon Icon="@Icons.Material.Filled.DeliveryDining" Size="Size.Small" />
-                <span>@_todayDeliveries Deliveries</span>
+                <span>@_pendingDeliveryAwbs Deliveries</span>
             </div>
             <div class="ld-stat-pill" style="background: #fffbeb; color: #d97706;">
                 <MudIcon Icon="@Icons.Material.Filled.Payments" Size="Size.Small" />
-                <span>@_codCollected.ToString("N0")</span>
+                <span>@_totalCod.ToString("N0") COD</span>
             </div>
         </div>
 
-        <div class="ld-section-header">
-            <MudText Typo="Typo.subtitle1" Style="font-weight: 700; color: #1e293b;">
-                Assigned Pickups
-                @if (_assignedPickups.Any())
-                {
-                    <span class="ld-count-badge">@_assignedPickups.Count</span>
-                }
-            </MudText>
-        </div>
+        @if (_pendingDeliveryItems.Any())
+        {
+            <div class="ld-section-header">
+                <MudText Typo="Typo.subtitle1" Style="font-weight: 700; color: #1e293b;">
+                    Pending Deliveries
+                    <span class="ld-count-badge" style="background: #059669;">@_pendingDeliveryItems.Count</span>
+                </MudText>
+                <MudButton Size="Size.Small" Variant="Variant.Text" Color="Color.Primary"
+                           OnClick='() => Navigation.NavigateTo("/linkdel/deliveries")'>View All</MudButton>
+            </div>
+
+            @foreach (var d in _pendingDeliveryItems)
+            {
+                <MudPaper Elevation="0" Class="ld-card ld-delivery-card" @onclick="() => OpenDelivery(d.DetailId)">
+                    <div class="ld-card-top">
+                        <div style="flex: 1; min-width: 0;">
+                            <MudText Typo="Typo.subtitle2" Style="font-weight: 700; color: #1e293b;">@d.AWBNo</MudText>
+                            <MudText Typo="Typo.caption" Style="color: #64748b;">@d.DRSNo</MudText>
+                        </div>
+                        @if (d.IsCOD && d.CODAmount > 0)
+                        {
+                            <MudChip T="string" Size="Size.Small" Style="background: #fef3c7; color: #92400e;">
+                                COD @d.CODAmount.ToString("N0")
+                            </MudChip>
+                        }
+                        else
+                        {
+                            <MudChip T="string" Size="Size.Small" Style="background: #ecfdf5; color: #059669;">
+                                @(string.IsNullOrEmpty(d.Status) || d.Status == "Pending" ? "Pending" : d.Status)
+                            </MudChip>
+                        }
+                    </div>
+                    <div class="ld-card-details">
+                        <div class="ld-detail-row">
+                            <MudIcon Icon="@Icons.Material.Filled.Person" Size="Size.Small" Style="color: #94a3b8;" />
+                            <MudText Typo="Typo.caption" Style="color: #64748b;">@(d.Consignee ?? "N/A")</MudText>
+                        </div>
+                        @if (!string.IsNullOrWhiteSpace(d.Address))
+                        {
+                            <div class="ld-detail-row">
+                                <MudIcon Icon="@Icons.Material.Filled.LocationOn" Size="Size.Small" Style="color: #94a3b8;" />
+                                <MudText Typo="Typo.caption" Style="color: #64748b;">@TruncateText(d.Address, 60)</MudText>
+                            </div>
+                        }
+                        @if (d.Pieces > 0 || d.Weight > 0)
+                        {
+                            <div class="ld-detail-row">
+                                <MudIcon Icon="@Icons.Material.Filled.Inventory2" Size="Size.Small" Style="color: #94a3b8;" />
+                                <MudText Typo="Typo.caption" Style="color: #64748b;">
+                                    @if (d.Pieces > 0) { <span>@d.Pieces pcs</span> }
+                                    @if (d.Weight > 0) { <span> / @d.Weight.Value.ToString("N1") kg</span> }
+                                </MudText>
+                            </div>
+                        }
+                    </div>
+                    <div class="ld-card-action">
+                        <MudButton Size="Size.Small" Variant="Variant.Filled" Color="Color.Success"
+                                   Style="border-radius: 8px; flex: 1; font-weight: 600;"
+                                   OnClick="() => OpenDelivery(d.DetailId)" OnClickStopPropagation="true">
+                            Deliver
+                        </MudButton>
+                    </div>
+                </MudPaper>
+            }
+        }
 
         @if (_assignedPickups.Any())
         {
+            <div class="ld-section-header" style="margin-top: @(_pendingDeliveryItems.Any() ? "24px" : "0");">
+                <MudText Typo="Typo.subtitle1" Style="font-weight: 700; color: #1e293b;">
+                    Assigned Pickups
+                    <span class="ld-count-badge">@_assignedPickups.Count</span>
+                </MudText>
+                <MudButton Size="Size.Small" Variant="Variant.Text" Color="Color.Primary"
+                           OnClick='() => Navigation.NavigateTo("/linkdel/pickups")'>View All</MudButton>
+            </div>
+
             @foreach (var p in _assignedPickups)
             {
-                <MudPaper Elevation="0" Class="ld-pickup-card" @onclick="() => OpenPickup(p.Id)">
-                    <div class="ld-pickup-top">
+                <MudPaper Elevation="0" Class="ld-card ld-pickup-card" @onclick="() => OpenPickup(p.Id)">
+                    <div class="ld-card-top">
                         <div style="flex: 1; min-width: 0;">
                             <MudText Typo="Typo.subtitle2" Style="font-weight: 700; color: #1e293b;">@p.PickupNo</MudText>
                             <MudText Typo="Typo.caption" Style="color: #64748b;">@p.CustomerName</MudText>
@@ -64,7 +129,7 @@
                         </MudChip>
                     </div>
 
-                    <div class="ld-pickup-details">
+                    <div class="ld-card-details">
                         @if (!string.IsNullOrWhiteSpace(p.PickupAddress))
                         {
                             <div class="ld-detail-row">
@@ -91,15 +156,11 @@
                                 @(p.ScheduledDate?.ToString("dd MMM yyyy") ?? p.RequestDate.ToString("dd MMM yyyy"))
                                 @if (p.ScheduledTimeFrom.HasValue)
                                 {
-                                    <span> @p.ScheduledTimeFrom.Value.ToString("hh:mm tt")</span>
+                                    <span> @p.ScheduledTimeFrom.Value.ToString("hh\\:mm")</span>
                                 }
                                 @if (p.EstimatedPieces > 0)
                                 {
                                     <span> &bull; ~@p.EstimatedPieces pcs</span>
-                                }
-                                @if (p.EstimatedWeight > 0)
-                                {
-                                    <span> / @p.EstimatedWeight.Value.ToString("N1") kg</span>
                                 }
                             </MudText>
                         </div>
@@ -112,7 +173,7 @@
                         }
                     </div>
 
-                    <div class="ld-pickup-action">
+                    <div class="ld-card-action">
                         <MudButton Size="Size.Small" Variant="Variant.Filled" Color="Color.Primary"
                                    Style="border-radius: 8px; flex: 1; font-weight: 600;"
                                    OnClick="() => OpenPickup(p.Id)" OnClickStopPropagation="true">
@@ -129,15 +190,16 @@
                 </MudPaper>
             }
         }
-        else
+
+        @if (!_pendingDeliveryItems.Any() && !_assignedPickups.Any())
         {
             <MudPaper Elevation="0" Style="border-radius: 12px; padding: 40px 24px; text-align: center;">
                 <MudIcon Icon="@Icons.Material.Filled.CheckCircle" Style="font-size: 3rem; color: #34c38f;" />
                 <MudText Typo="Typo.body1" Style="color: #64748b; margin-top: 12px; font-weight: 500;">
-                    No assigned pickups right now
+                    No pending tasks right now
                 </MudText>
                 <MudText Typo="Typo.caption" Style="color: #94a3b8; margin-top: 4px;">
-                    New assignments will appear here automatically
+                    New pickups and deliveries will appear here automatically
                 </MudText>
             </MudPaper>
         }
@@ -180,6 +242,8 @@
         font-weight: 600;
         white-space: nowrap;
         flex-shrink: 0;
+        cursor: pointer;
+        -webkit-tap-highlight-color: transparent;
     }
 
     .ld-section-header {
@@ -205,28 +269,35 @@
         vertical-align: middle;
     }
 
-    .ld-pickup-card {
+    .ld-card {
         padding: 16px;
         border-radius: 12px;
         margin-bottom: 12px;
         cursor: pointer;
         transition: transform 0.1s;
         -webkit-tap-highlight-color: transparent;
-        border-left: 4px solid #556ee6;
     }
 
-    .ld-pickup-card:active {
+    .ld-card:active {
         transform: scale(0.98);
     }
 
-    .ld-pickup-top {
+    .ld-delivery-card {
+        border-left: 4px solid #059669;
+    }
+
+    .ld-pickup-card {
+        border-left: 4px solid #556ee6;
+    }
+
+    .ld-card-top {
         display: flex;
         justify-content: space-between;
         align-items: flex-start;
         margin-bottom: 10px;
     }
 
-    .ld-pickup-details {
+    .ld-card-details {
         display: flex;
         flex-direction: column;
         gap: 6px;
@@ -238,7 +309,7 @@
         gap: 6px;
     }
 
-    .ld-pickup-action {
+    .ld-card-action {
         display: flex;
         gap: 8px;
         margin-top: 12px;
@@ -254,10 +325,28 @@
     private string _errorMessage = "";
 
     private int _pendingPickups;
-    private int _todayDeliveries;
-    private decimal _codCollected;
+    private int _pendingDeliveryAwbs;
+    private decimal _totalCod;
 
     private List<PickupRequest> _assignedPickups = new();
+    private List<DeliveryItem> _pendingDeliveryItems = new();
+
+    private class DeliveryItem
+    {
+        public long DetailId { get; set; }
+        public long DRSId { get; set; }
+        public string DRSNo { get; set; } = "";
+        public string AWBNo { get; set; } = "";
+        public string? Consignee { get; set; }
+        public string? ConsigneePhone { get; set; }
+        public string? Address { get; set; }
+        public string? City { get; set; }
+        public int? Pieces { get; set; }
+        public decimal? Weight { get; set; }
+        public bool IsCOD { get; set; }
+        public decimal CODAmount { get; set; }
+        public string? Status { get; set; }
+    }
 
     protected override async Task OnInitializedAsync()
     {
@@ -278,7 +367,50 @@
         try
         {
             await using var db = await DbFactory.CreateDbContextAsync();
-            var today = DateTime.UtcNow.Date;
+
+            var openDrsList = await db.DRSs
+                .Where(d => d.DeliveryEmployeeId == (int)_userId && !d.IsDeleted
+                    && d.Status != DRSStatus.Closed)
+                .OrderByDescending(d => d.DRSDate)
+                .Take(20)
+                .ToListAsync();
+
+            if (openDrsList.Any())
+            {
+                var drsIds = openDrsList.Select(d => d.Id).ToList();
+
+                var details = await db.DRSDetails
+                    .Include(dd => dd.Inscan)
+                    .Include(dd => dd.DRS)
+                    .Where(dd => drsIds.Contains(dd.DRSId) && !dd.IsDeleted)
+                    .OrderBy(dd => dd.Sequence)
+                    .ToListAsync();
+
+                _pendingDeliveryItems = details
+                    .Where(dd => string.IsNullOrEmpty(dd.Status) || dd.Status == "Pending" || dd.Status == "Out for Delivery")
+                    .Select(dd => new DeliveryItem
+                    {
+                        DetailId = dd.Id,
+                        DRSId = dd.DRSId,
+                        DRSNo = dd.DRS?.DRSNo ?? "",
+                        AWBNo = dd.Inscan?.AWBNo ?? $"AWB-{dd.InscanId}",
+                        Consignee = dd.Inscan?.Consignee ?? "N/A",
+                        ConsigneePhone = dd.Inscan?.ConsigneePhone ?? dd.Inscan?.ConsigneeMobile,
+                        Address = BuildDeliveryAddress(dd.Inscan),
+                        City = dd.Inscan?.ConsigneeCity,
+                        Pieces = dd.Inscan?.Pieces,
+                        Weight = dd.Inscan?.Weight,
+                        IsCOD = dd.Inscan?.IsCOD ?? false,
+                        CODAmount = dd.CODAmount ?? dd.Inscan?.CODAmount ?? 0,
+                        Status = dd.Status
+                    })
+                    .ToList();
+
+                _pendingDeliveryAwbs = _pendingDeliveryItems.Count;
+                _totalCod = details
+                    .Where(dd => dd.CollectedAmount.HasValue)
+                    .Sum(dd => dd.CollectedAmount ?? 0);
+            }
 
             _assignedPickups = await db.PickupRequests
                 .Where(p => p.CourierId == _userId && !p.IsDeleted &&
@@ -293,18 +425,6 @@
 
             _pendingPickups = _assignedPickups.Count(p =>
                 p.Status == PickupStatus.PickupRequest || p.Status == PickupStatus.AssignedForCollection);
-
-            _todayDeliveries = await db.DRSs
-                .Where(d => d.DeliveryEmployeeId == (int)_userId && d.DRSDate.Date == today && !d.IsDeleted)
-                .SelectMany(d => d.Details)
-                .Where(dd => !dd.IsDeleted)
-                .CountAsync();
-
-            _codCollected = await db.DRSs
-                .Where(d => d.DeliveryEmployeeId == (int)_userId && d.DRSDate.Date == today && !d.IsDeleted)
-                .SelectMany(d => d.Details)
-                .Where(dd => !dd.IsDeleted && dd.CollectedAmount.HasValue)
-                .SumAsync(dd => dd.CollectedAmount ?? 0);
         }
         catch (Exception ex)
         {
@@ -317,9 +437,23 @@
         }
     }
 
+    private void OpenDelivery(long detailId)
+    {
+        Navigation.NavigateTo($"/linkdel/deliveries/{detailId}");
+    }
+
     private void OpenPickup(long pickupId)
     {
         Navigation.NavigateTo($"/linkdel/pickups/{pickupId}");
+    }
+
+    private string? BuildDeliveryAddress(InscanMaster? inscan)
+    {
+        if (inscan == null) return null;
+        var parts = new List<string>();
+        if (!string.IsNullOrWhiteSpace(inscan.ConsigneeAddress1)) parts.Add(inscan.ConsigneeAddress1);
+        if (!string.IsNullOrWhiteSpace(inscan.ConsigneeCity)) parts.Add(inscan.ConsigneeCity);
+        return parts.Any() ? string.Join(", ", parts) : null;
     }
 
     private string BuildPickupAddress(PickupRequest p)
