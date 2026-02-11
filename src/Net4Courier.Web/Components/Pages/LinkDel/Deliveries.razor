@@ -19,10 +19,17 @@
             }
         </div>
         <div class="ld-tab @(_activeTab == 1 ? "active" : "")" @onclick="() => SetTab(1)">Delivered</div>
-        <div class="ld-tab @(_activeTab == 2 ? "active" : "")" @onclick="() => SetTab(2)">All</div>
+        <div class="ld-tab @(_activeTab == 2 ? "active" : "")" @onclick="() => SetTab(2)">
+            Assigned
+            @if (_assignedPickups.Any())
+            {
+                <span class="ld-badge">@_assignedPickups.Count</span>
+            }
+        </div>
+        <div class="ld-tab @(_activeTab == 3 ? "active" : "")" @onclick="() => SetTab(3)">All</div>
     </div>
 
-    @if (!string.IsNullOrEmpty(_activeDrsNo))
+    @if (!string.IsNullOrEmpty(_activeDrsNo) && _activeTab != 2)
     {
         <MudPaper Elevation="0" Style="border-radius: 10px; padding: 10px 14px; margin-bottom: 12px; display: flex; align-items: center; gap: 8px; background: #eef2ff;">
             <MudIcon Icon="@Icons.Material.Filled.Route" Size="Size.Small" Style="color: #556ee6;" />
@@ -37,6 +44,86 @@
         <div style="display: flex; justify-content: center; padding: 40px 0;">
             <MudProgressCircular Indeterminate="true" Color="Color.Primary" />
         </div>
+    }
+    else if (_activeTab == 2)
+    {
+        @if (!_assignedPickups.Any())
+        {
+            <div style="text-align: center; padding: 48px 24px;">
+                <MudIcon Icon="@Icons.Material.Filled.AssignmentInd" Style="font-size: 3.5rem; color: #cbd5e1;" />
+                <MudText Typo="Typo.body1" Style="color: #94a3b8; margin-top: 12px; font-weight: 500;">
+                    No assigned pickups
+                </MudText>
+            </div>
+        }
+        else
+        {
+            @foreach (var p in _assignedPickups)
+            {
+                <MudPaper Elevation="0" Class="ld-delivery-card ld-assigned-card" @onclick="() => NavigateToPickup(p.Id)">
+                    <div class="ld-delivery-header">
+                        <div style="flex: 1; min-width: 0;">
+                            <MudText Typo="Typo.subtitle2" Style="font-weight: 700; color: #1e293b;">@p.PickupNo</MudText>
+                            <MudText Typo="Typo.caption" Style="color: #94a3b8;">@p.CustomerName</MudText>
+                        </div>
+                        <MudChip T="string" Size="Size.Small" Style="@GetPickupStatusStyle(p.Status)">
+                            @GetPickupStatusLabel(p.Status)
+                        </MudChip>
+                    </div>
+
+                    <div class="ld-delivery-info">
+                        @if (!string.IsNullOrWhiteSpace(p.PickupAddress))
+                        {
+                            <div class="ld-delivery-info-row">
+                                <MudIcon Icon="@Icons.Material.Filled.LocationOn" Size="Size.Small" Style="color: #94a3b8;" />
+                                <MudText Typo="Typo.caption" Style="color: #64748b;">@TruncateText(p.PickupAddress, 50)</MudText>
+                            </div>
+                        }
+                        <div class="ld-delivery-info-row">
+                            <MudIcon Icon="@Icons.Material.Filled.Schedule" Size="Size.Small" Style="color: #94a3b8;" />
+                            <MudText Typo="Typo.caption" Style="color: #64748b;">
+                                @(p.RequestDate.ToString("dd MMM yyyy"))
+                                @if (p.EstimatedPieces > 0)
+                                {
+                                    <span> &bull; @p.EstimatedPieces pcs</span>
+                                }
+                            </MudText>
+                        </div>
+                        @if (!string.IsNullOrWhiteSpace(p.ContactPerson))
+                        {
+                            <div class="ld-delivery-info-row">
+                                <MudIcon Icon="@Icons.Material.Filled.Person" Size="Size.Small" Style="color: #94a3b8;" />
+                                <MudText Typo="Typo.caption" Style="color: #64748b;">
+                                    @p.ContactPerson
+                                    @if (!string.IsNullOrWhiteSpace(p.Phone))
+                                    {
+                                        <span> &bull; @p.Phone</span>
+                                    }
+                                </MudText>
+                            </div>
+                        }
+                        @if (!string.IsNullOrWhiteSpace(p.Remarks))
+                        {
+                            <div class="ld-delivery-info-row">
+                                <MudIcon Icon="@Icons.Material.Filled.Notes" Size="Size.Small" Style="color: #94a3b8;" />
+                                <MudText Typo="Typo.caption" Style="color: #64748b;">@TruncateText(p.Remarks, 60)</MudText>
+                            </div>
+                        }
+                    </div>
+
+                    @if (p.Status == PickupStatus.AssignedForCollection || p.Status == PickupStatus.PickupRequest)
+                    {
+                        <div class="ld-delivery-actions">
+                            <MudButton Size="Size.Small" Variant="Variant.Filled" Color="Color.Primary"
+                                       Style="border-radius: 8px; flex: 1; font-weight: 600;"
+                                       OnClick="() => NavigateToPickup(p.Id)" OnClickStopPropagation="true">
+                                View Pickup
+                            </MudButton>
+                        </div>
+                    }
+                </MudPaper>
+            }
+        }
     }
     else
     {
@@ -176,6 +263,10 @@
         transform: scale(0.98);
     }
 
+    .ld-assigned-card {
+        border-left: 4px solid #8b5cf6;
+    }
+
     .ld-delivery-header {
         display: flex;
         justify-content: space-between;
@@ -212,6 +303,7 @@
     private string? _activeDrsNo;
     private string? _activeDrsDate;
     private List<DeliveryItem> _items = new();
+    private List<PickupRequest> _assignedPickups = new();
 
     protected override async Task OnInitializedAsync()
     {
@@ -277,6 +369,15 @@
             }).ToList();
 
             _pendingCount = _items.Count(i => string.IsNullOrEmpty(i.Status) || i.Status == "Pending" || i.Status == "Out for Delivery");
+
+            _assignedPickups = await db.PickupRequests
+                .Where(p => p.CourierId == _userId && !p.IsDeleted
+                    && (p.Status == PickupStatus.PickupRequest
+                        || p.Status == PickupStatus.AssignedForCollection
+                        || p.Status == PickupStatus.Attempted))
+                .OrderByDescending(p => p.RequestDate)
+                .Take(50)
+                .ToListAsync();
 
             try
             {
@@ -374,6 +475,11 @@
         Navigation.NavigateTo($"/linkdel/deliveries/{detailId}");
     }
 
+    private void NavigateToPickup(long pickupId)
+    {
+        Navigation.NavigateTo($"/linkdel/pickups/{pickupId}");
+    }
+
     private string BuildAddress(InscanMaster? inscan)
     {
         if (inscan == null) return "No address";
@@ -396,6 +502,26 @@
         "Attempted" or "Failed" => "background: #fee2e2; color: #991b1b;",
         "RTS" or "Returned" => "background: #fef3c7; color: #92400e;",
         _ => "background: #dbeafe; color: #1d4ed8;"
+    };
+
+    private string GetPickupStatusStyle(PickupStatus status) => status switch
+    {
+        PickupStatus.PickupRequest => "background: #fef3c7; color: #92400e;",
+        PickupStatus.AssignedForCollection => "background: #dbeafe; color: #1d4ed8;",
+        PickupStatus.Attempted => "background: #fee2e2; color: #991b1b;",
+        PickupStatus.ShipmentCollected => "background: #d1fae5; color: #065f46;",
+        _ => "background: #f1f5f9; color: #64748b;"
+    };
+
+    private string GetPickupStatusLabel(PickupStatus status) => status switch
+    {
+        PickupStatus.PickupRequest => "Requested",
+        PickupStatus.AssignedForCollection => "Assigned",
+        PickupStatus.Attempted => "Attempted",
+        PickupStatus.ShipmentCollected => "Collected",
+        PickupStatus.Inscanned => "Inscanned",
+        PickupStatus.Cancelled => "Cancelled",
+        _ => status.ToString()
     };
 
     private class DeliveryItem
