@@ -5,6 +5,7 @@
 @using Net4Courier.Infrastructure.Data
 @using Net4Courier.Operations.Entities
 @using Net4Courier.Kernel.Enums
+@using Net4Courier.Masters.Entities
 @inject AuthenticationStateProvider AuthStateProvider
 @inject IDbContextFactory<ApplicationDbContext> DbFactory
 @inject NavigationManager Navigation
@@ -328,6 +329,7 @@
     private bool _isLoading = true;
     private bool _isSaving;
     private long _userId;
+    private long _employeeId;
 
     private string? _awbNo;
     private string? _drsNo;
@@ -370,11 +372,18 @@
         try
         {
             await using var db = await DbFactory.CreateDbContextAsync();
+
+            var employee = await db.Employees
+                .Where(e => e.UserId == _userId && !e.IsDeleted && e.IsActive)
+                .Select(e => new { e.Id })
+                .FirstOrDefaultAsync();
+            _employeeId = employee?.Id ?? _userId;
+
             _detail = await db.DRSDetails
                 .Include(dd => dd.DRS)
                 .Include(dd => dd.Inscan)
                 .FirstOrDefaultAsync(dd => dd.Id == Id && !dd.IsDeleted
-                    && dd.DRS.DeliveryEmployeeId == (int)_userId);
+                    && dd.DRS.DeliveryEmployeeId == (int)_employeeId);
 
             if (_detail != null)
             {
@@ -451,7 +460,7 @@
             var detail = await db.DRSDetails
                 .Include(dd => dd.DRS)
                 .FirstOrDefaultAsync(dd => dd.Id == Id && !dd.IsDeleted
-                    && dd.DRS.DeliveryEmployeeId == (int)_userId);
+                    && dd.DRS.DeliveryEmployeeId == (int)_employeeId);
 
             if (detail != null)
             {
@@ -519,7 +528,7 @@
             var detail = await db.DRSDetails
                 .Include(dd => dd.DRS)
                 .FirstOrDefaultAsync(dd => dd.Id == Id && !dd.IsDeleted
-                    && dd.DRS.DeliveryEmployeeId == (int)_userId);
+                    && dd.DRS.DeliveryEmployeeId == (int)_employeeId);
 
             if (detail != null)
             {

@@ -5,6 +5,7 @@
 @using Net4Courier.Infrastructure.Data
 @using Net4Courier.Operations.Entities
 @using Net4Courier.Kernel.Enums
+@using Net4Courier.Masters.Entities
 @inject AuthenticationStateProvider AuthStateProvider
 @inject IDbContextFactory<ApplicationDbContext> DbFactory
 
@@ -109,6 +110,7 @@
 
 @code {
     private long _userId;
+    private long _employeeId;
     private bool _isLoading = true;
     private DateTime _selectedDate = DateTime.UtcNow.Date;
 
@@ -168,14 +170,20 @@
             var date = _selectedDate.Date;
             var nextDate = date.AddDays(1);
 
+            var employee = await db.Employees
+                .Where(e => e.UserId == _userId && !e.IsDeleted && e.IsActive)
+                .Select(e => new { e.Id })
+                .FirstOrDefaultAsync();
+            _employeeId = employee?.Id ?? _userId;
+
             _pickupsCompleted = await db.PickupRequests
-                .Where(p => p.CourierId == _userId && !p.IsDeleted
+                .Where(p => p.CourierId == _employeeId && !p.IsDeleted
                     && p.Status == PickupStatus.ShipmentCollected
                     && p.CollectedAt.HasValue && p.CollectedAt.Value >= date && p.CollectedAt.Value < nextDate)
                 .CountAsync();
 
             var drsIds = await db.DRSs
-                .Where(d => d.DeliveryEmployeeId == (int)_userId && !d.IsDeleted && d.DRSDate.Date == date)
+                .Where(d => d.DeliveryEmployeeId == (int)_employeeId && !d.IsDeleted && d.DRSDate.Date == date)
                 .Select(d => d.Id)
                 .ToListAsync();
 
@@ -208,7 +216,7 @@
             _cashInHand = _codCollected - _cashSubmitted;
 
             var expenses = await db.CourierExpenses
-                .Where(e => e.CourierId == (int)_userId && !e.IsDeleted
+                .Where(e => e.CourierId == (int)_employeeId && !e.IsDeleted
                     && e.ExpenseDate >= date && e.ExpenseDate < nextDate)
                 .ToListAsync();
 

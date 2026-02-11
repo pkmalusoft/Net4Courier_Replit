@@ -5,6 +5,7 @@
 @using Net4Courier.Infrastructure.Data
 @using Net4Courier.Operations.Entities
 @using Net4Courier.Kernel.Enums
+@using Net4Courier.Masters.Entities
 @inject AuthenticationStateProvider AuthStateProvider
 @inject IDbContextFactory<ApplicationDbContext> DbFactory
 @inject NavigationManager Navigation
@@ -136,6 +137,7 @@
 
 @code {
     private long _userId;
+    private long _employeeId;
     private bool _isLoading = true;
     private bool _isSaving;
     private List<DRSCashInfo> _drsList = new();
@@ -179,8 +181,14 @@
             await using var db = await DbFactory.CreateDbContextAsync();
             var sevenDaysAgo = DateTime.UtcNow.Date.AddDays(-7);
 
+            var employee = await db.Employees
+                .Where(e => e.UserId == _userId && !e.IsDeleted && e.IsActive)
+                .Select(e => new { e.Id })
+                .FirstOrDefaultAsync();
+            _employeeId = employee?.Id ?? _userId;
+
             var drsList = await db.DRSs
-                .Where(d => d.DeliveryEmployeeId == (int)_userId && !d.IsDeleted
+                .Where(d => d.DeliveryEmployeeId == (int)_employeeId && !d.IsDeleted
                     && d.DRSDate >= sevenDaysAgo
                     && d.Status != DRSStatus.Closed)
                 .OrderByDescending(d => d.DRSDate)
@@ -249,7 +257,7 @@
             await using var db = await DbFactory.CreateDbContextAsync();
 
             var dbDrs = await db.DRSs
-                .Where(d => d.Id == drs.Id && d.DeliveryEmployeeId == (int)_userId && !d.IsDeleted)
+                .Where(d => d.Id == drs.Id && d.DeliveryEmployeeId == (int)_employeeId && !d.IsDeleted)
                 .FirstOrDefaultAsync();
 
             if (dbDrs == null)
@@ -277,7 +285,7 @@
             var submission = new CourierCashSubmission
             {
                 DRSId = drs.Id,
-                CourierId = (int)_userId,
+                CourierId = (int)_employeeId,
                 CourierName = courierName,
                 SubmissionDate = DateTime.UtcNow,
                 CashSubmittedAmount = _submitAmount,

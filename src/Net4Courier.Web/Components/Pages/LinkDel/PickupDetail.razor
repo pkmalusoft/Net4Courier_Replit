@@ -4,6 +4,7 @@
 @using Microsoft.EntityFrameworkCore
 @using Net4Courier.Infrastructure.Data
 @using Net4Courier.Operations.Entities
+@using Net4Courier.Masters.Entities
 @inject AuthenticationStateProvider AuthStateProvider
 @inject IDbContextFactory<ApplicationDbContext> DbFactory
 @inject NavigationManager Navigation
@@ -337,6 +338,7 @@
     private bool _isLoading = true;
     private bool _isSaving;
     private long _userId;
+    private long _employeeId;
     private string? _userName;
 
     private bool _showCollectForm;
@@ -367,8 +369,15 @@
         try
         {
             await using var db = await DbFactory.CreateDbContextAsync();
+
+            var employee = await db.Employees
+                .Where(e => e.UserId == _userId && !e.IsDeleted && e.IsActive)
+                .Select(e => new { e.Id })
+                .FirstOrDefaultAsync();
+            _employeeId = employee?.Id ?? _userId;
+
             _pickup = await db.PickupRequests
-                .FirstOrDefaultAsync(p => p.Id == Id && p.CourierId == _userId && !p.IsDeleted);
+                .FirstOrDefaultAsync(p => p.Id == Id && p.CourierId == _employeeId && !p.IsDeleted);
 
             if (_pickup != null)
             {
@@ -411,7 +420,7 @@
         {
             await using var db = await DbFactory.CreateDbContextAsync();
             var pickup = await db.PickupRequests.FindAsync(Id);
-            if (pickup != null && pickup.CourierId == _userId && pickup.Status == PickupStatus.PickupRequest)
+            if (pickup != null && pickup.CourierId == _employeeId && pickup.Status == PickupStatus.PickupRequest)
             {
                 pickup.Status = PickupStatus.AssignedForCollection;
                 pickup.AssignedAt = DateTime.UtcNow;
@@ -436,7 +445,7 @@
         {
             await using var db = await DbFactory.CreateDbContextAsync();
             var pickup = await db.PickupRequests.FindAsync(Id);
-            if (pickup != null && pickup.CourierId == _userId)
+            if (pickup != null && pickup.CourierId == _employeeId)
             {
                 pickup.Status = PickupStatus.ShipmentCollected;
                 pickup.CollectedAt = DateTime.UtcNow;
@@ -497,7 +506,7 @@
         {
             await using var db = await DbFactory.CreateDbContextAsync();
             var pickup = await db.PickupRequests.FindAsync(Id);
-            if (pickup != null && pickup.CourierId == _userId)
+            if (pickup != null && pickup.CourierId == _employeeId)
             {
                 pickup.Status = PickupStatus.Attempted;
                 pickup.AttemptedAt = DateTime.UtcNow;

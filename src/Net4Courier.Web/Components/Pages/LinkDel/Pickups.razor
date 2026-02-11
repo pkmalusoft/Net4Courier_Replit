@@ -4,6 +4,7 @@
 @using Microsoft.EntityFrameworkCore
 @using Net4Courier.Infrastructure.Data
 @using Net4Courier.Operations.Entities
+@using Net4Courier.Masters.Entities
 @inject AuthenticationStateProvider AuthStateProvider
 @inject IDbContextFactory<ApplicationDbContext> DbFactory
 @inject NavigationManager Navigation
@@ -224,6 +225,7 @@
     private int _activeTab = 0;
     private bool _isLoading = true;
     private long _userId;
+    private long _employeeId;
     private int _pendingCount;
     private List<PickupRequest> _pickups = new();
 
@@ -243,8 +245,15 @@
         try
         {
             await using var db = await DbFactory.CreateDbContextAsync();
+
+            var employee = await db.Employees
+                .Where(e => e.UserId == _userId && !e.IsDeleted && e.IsActive)
+                .Select(e => new { e.Id })
+                .FirstOrDefaultAsync();
+            _employeeId = employee?.Id ?? _userId;
+
             _pickups = await db.PickupRequests
-                .Where(p => p.CourierId == _userId && !p.IsDeleted)
+                .Where(p => p.CourierId == _employeeId && !p.IsDeleted)
                 .OrderByDescending(p => p.RequestDate)
                 .Take(100)
                 .ToListAsync();

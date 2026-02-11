@@ -5,6 +5,7 @@
 @using Net4Courier.Infrastructure.Data
 @using Net4Courier.Operations.Entities
 @using Net4Courier.Kernel.Enums
+@using Net4Courier.Masters.Entities
 @inject AuthenticationStateProvider AuthStateProvider
 @inject IDbContextFactory<ApplicationDbContext> DbFactory
 @inject ISnackbar Snackbar
@@ -188,6 +189,7 @@
 
 @code {
     private long _userId;
+    private long _employeeId;
     private bool _isLoading = true;
     private int _activeTab;
     private int _todayCount;
@@ -239,9 +241,16 @@
         try
         {
             await using var db = await DbFactory.CreateDbContextAsync();
+
+            var employee = await db.Employees
+                .Where(e => e.UserId == _userId && !e.IsDeleted && e.IsActive)
+                .Select(e => new { e.Id })
+                .FirstOrDefaultAsync();
+            _employeeId = employee?.Id ?? _userId;
+
             var expenses = await db.CourierExpenses
                 .Include(e => e.DRS)
-                .Where(e => e.CourierId == (int)_userId && !e.IsDeleted)
+                .Where(e => e.CourierId == (int)_employeeId && !e.IsDeleted)
                 .OrderByDescending(e => e.ExpenseDate)
                 .ThenByDescending(e => e.CreatedAt)
                 .Take(200)
@@ -351,7 +360,7 @@
         {
             await using var db = await DbFactory.CreateDbContextAsync();
             _availableDRS = await db.DRSs
-                .Where(d => d.DeliveryEmployeeId == (int)_userId && !d.IsDeleted
+                .Where(d => d.DeliveryEmployeeId == (int)_employeeId && !d.IsDeleted
                     && d.Status != DRSStatus.Reconciled && d.Status != DRSStatus.Closed)
                 .OrderByDescending(d => d.DRSDate)
                 .Take(20)
@@ -394,7 +403,7 @@
             var expense = new CourierExpense
             {
                 DRSId = _selectedDRSId.Value,
-                CourierId = (int)_userId,
+                CourierId = (int)_employeeId,
                 CourierName = courierName,
                 ExpenseDate = DateTime.UtcNow,
                 ExpenseType = _expenseType,
