@@ -8,6 +8,7 @@
 @using Net4Courier.Kernel.Enums
 @using Net4Courier.Operations.Enums
 @using Net4Courier.Masters.Entities
+@using Microsoft.AspNetCore.Components.Forms
 @inject IDbContextFactory<ApplicationDbContext> DbContextFactory
 @inject ShipmentStatusService StatusService
 @inject IDialogService DialogService
@@ -262,6 +263,16 @@
                                     @if ((result.Shipment.DutyVatAmount ?? 0) > 0 || ((result.Shipment.OtherCharge ?? 0) > 0 && result.Shipment.MovementTypeId == Net4Courier.Kernel.Enums.MovementType.InternationalImport))
                                     {
                                         <MudIconButton Icon="@Icons.Material.Filled.ReceiptLong" Size="Size.Small" Color="Color.Warning" OnClick="@(() => PrintDutyReceipt(result.Shipment.Id))" Title="Duty Receipt" />
+                                    }
+                                    @if (result.DocumentCount > 0)
+                                    {
+                                        <MudBadge Content="@result.DocumentCount" Color="Color.Error" Overlap="true" Bordered="true">
+                                            <MudIconButton Icon="@Icons.Material.Filled.Folder" Size="Size.Small" Color="Color.Success" OnClick="@(() => OpenDocumentsView(result))" Title="Documents & POD" />
+                                        </MudBadge>
+                                    }
+                                    else
+                                    {
+                                        <MudIconButton Icon="@Icons.Material.Filled.Folder" Size="Size.Small" Color="Color.Success" OnClick="@(() => OpenDocumentsView(result))" Title="Documents & POD" />
                                     }
                                     <MudButton Variant="Variant.Outlined" 
                                                Color="Color.Primary" 
@@ -679,6 +690,185 @@
             </MudAlert>
         }
     }
+
+    @if (_docViewShipment != null)
+    {
+        <MudPaper Class="pa-4 mb-6" Elevation="2">
+            <div class="d-flex align-center gap-3 mb-4">
+                <MudButton Variant="Variant.Outlined" Color="Color.Primary" StartIcon="@Icons.Material.Filled.ArrowBack" OnClick="CloseDocumentsView">
+                    Back to Tracking
+                </MudButton>
+                <MudText Typo="Typo.h6" Style="font-weight: 600;">
+                    <MudIcon Icon="@Icons.Material.Filled.Folder" Class="mr-1" Style="vertical-align: middle;" />
+                    Documents & POD — @_docViewShipment.Shipment.AWBNo
+                </MudText>
+            </div>
+
+            @if (_docViewShipment.Shipment.CourierStatusId == CourierStatus.Delivered)
+            {
+                <MudPaper Class="pa-4 mb-4" Elevation="0" Style="background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 8px;">
+                    <MudText Typo="Typo.subtitle1" Style="font-weight: 600; color: #166534;" Class="mb-3">
+                        <MudIcon Icon="@Icons.Material.Filled.CheckCircle" Style="vertical-align: middle; margin-right: 6px;" />
+                        Proof of Delivery
+                    </MudText>
+                    <MudGrid>
+                        <MudItem xs="6" sm="3">
+                            <MudText Typo="Typo.caption" Style="color: #6b7280;">Delivered To</MudText>
+                            <MudText Typo="Typo.body1" Style="font-weight: 500;">@(_docViewShipment.Shipment.DeliveredTo ?? "-")</MudText>
+                        </MudItem>
+                        <MudItem xs="6" sm="3">
+                            <MudText Typo="Typo.caption" Style="color: #6b7280;">Delivered Date</MudText>
+                            <MudText Typo="Typo.body1" Style="font-weight: 500;">@(_docViewShipment.Shipment.DeliveredDate.HasValue ? DateTimeService.FormatDateTime(_docViewShipment.Shipment.DeliveredDate, "dd MMM yyyy, HH:mm") : "-")</MudText>
+                        </MudItem>
+                        @if (_podTracking != null)
+                        {
+                            <MudItem xs="6" sm="3">
+                                <MudText Typo="Typo.caption" Style="color: #6b7280;">Received By</MudText>
+                                <MudText Typo="Typo.body1" Style="font-weight: 500;">@(_podTracking.ReceivedBy ?? "-")</MudText>
+                            </MudItem>
+                            <MudItem xs="6" sm="3">
+                                <MudText Typo="Typo.caption" Style="color: #6b7280;">Relation</MudText>
+                                <MudText Typo="Typo.body1" Style="font-weight: 500;">@(_podTracking.Relation ?? "-")</MudText>
+                            </MudItem>
+                        }
+                    </MudGrid>
+
+                    @if (_podTracking != null)
+                    {
+                        <MudGrid Class="mt-3">
+                            @if (!string.IsNullOrEmpty(_podTracking.SignatureImage))
+                            {
+                                <MudItem xs="12" sm="4">
+                                    <MudText Typo="Typo.caption" Style="color: #6b7280;" Class="mb-1">Signature</MudText>
+                                    <MudPaper Elevation="0" Style="border: 1px solid #e5e7eb; border-radius: 8px; padding: 8px; background: white;">
+                                        <img src="@_podTracking.SignatureImage" alt="Signature" style="max-width: 100%; max-height: 120px;" />
+                                    </MudPaper>
+                                </MudItem>
+                            }
+                            @if (!string.IsNullOrEmpty(_podTracking.PODImage))
+                            {
+                                <MudItem xs="12" sm="4">
+                                    <MudText Typo="Typo.caption" Style="color: #6b7280;" Class="mb-1">POD Photo</MudText>
+                                    <MudPaper Elevation="0" Style="border: 1px solid #e5e7eb; border-radius: 8px; padding: 8px; background: white;">
+                                        <img src="@_podTracking.PODImage" alt="POD" style="max-width: 100%; max-height: 200px; cursor: pointer;" @onclick="@(() => PreviewImage(_podTracking.PODImage!))" />
+                                    </MudPaper>
+                                </MudItem>
+                            }
+                            @if (!string.IsNullOrEmpty(_podTracking.PODImage2))
+                            {
+                                <MudItem xs="12" sm="4">
+                                    <MudText Typo="Typo.caption" Style="color: #6b7280;" Class="mb-1">POD Photo 2</MudText>
+                                    <MudPaper Elevation="0" Style="border: 1px solid #e5e7eb; border-radius: 8px; padding: 8px; background: white;">
+                                        <img src="@_podTracking.PODImage2" alt="POD 2" style="max-width: 100%; max-height: 200px; cursor: pointer;" @onclick="@(() => PreviewImage(_podTracking.PODImage2!))" />
+                                    </MudPaper>
+                                </MudItem>
+                            }
+                            @if (!string.IsNullOrEmpty(_podTracking.PODImage3))
+                            {
+                                <MudItem xs="12" sm="4">
+                                    <MudText Typo="Typo.caption" Style="color: #6b7280;" Class="mb-1">POD Photo 3</MudText>
+                                    <MudPaper Elevation="0" Style="border: 1px solid #e5e7eb; border-radius: 8px; padding: 8px; background: white;">
+                                        <img src="@_podTracking.PODImage3" alt="POD 3" style="max-width: 100%; max-height: 200px; cursor: pointer;" @onclick="@(() => PreviewImage(_podTracking.PODImage3!))" />
+                                    </MudPaper>
+                                </MudItem>
+                            }
+                        </MudGrid>
+                    }
+                </MudPaper>
+            }
+
+            <MudDivider Class="my-4" />
+
+            <MudText Typo="Typo.subtitle1" Style="font-weight: 600;" Class="mb-3">
+                <MudIcon Icon="@Icons.Material.Filled.CloudUpload" Style="vertical-align: middle; margin-right: 6px;" />
+                Upload New Document
+            </MudText>
+            <MudGrid>
+                <MudItem xs="12" sm="4">
+                    <MudSelect T="string" @bind-Value="_docType" Label="Document Type" Variant="Variant.Outlined" Margin="Margin.Dense" Required="true">
+                        <MudSelectItem Value="@("Commercial Invoice")">Commercial Invoice</MudSelectItem>
+                        <MudSelectItem Value="@("Packing List")">Packing List</MudSelectItem>
+                        <MudSelectItem Value="@("Bill of Lading")">Bill of Lading</MudSelectItem>
+                        <MudSelectItem Value="@("Customs Declaration")">Customs Declaration</MudSelectItem>
+                        <MudSelectItem Value="@("Certificate of Origin")">Certificate of Origin</MudSelectItem>
+                        <MudSelectItem Value="@("Proof of Delivery")">Proof of Delivery</MudSelectItem>
+                        <MudSelectItem Value="@("ID Proof")">ID Proof</MudSelectItem>
+                        <MudSelectItem Value="@("Other")">Other</MudSelectItem>
+                    </MudSelect>
+                </MudItem>
+                <MudItem xs="12" sm="4">
+                    <MudTextField @bind-Value="_docDescription" Label="Description (Optional)" Variant="Variant.Outlined" Margin="Margin.Dense" />
+                </MudItem>
+                <MudItem xs="12" sm="2">
+                    <InputFile id="docFileInput" OnChange="OnDocFileSelected" accept=".pdf,.jpg,.jpeg,.png,.doc,.docx" hidden />
+                    <MudButton HtmlTag="label" Variant="Variant.Outlined" Color="Color.Primary"
+                               StartIcon="@Icons.Material.Filled.AttachFile" for="docFileInput" FullWidth="true"
+                               Style="height: 40px; text-overflow: ellipsis; overflow: hidden; white-space: nowrap;">
+                        @(_docFile != null ? _docFile.Name : "Choose File...")
+                    </MudButton>
+                </MudItem>
+                <MudItem xs="12" sm="2" Class="d-flex align-end">
+                    <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="UploadDocument"
+                               Disabled="@(_docUploading || _docFile == null || string.IsNullOrEmpty(_docType))"
+                               StartIcon="@Icons.Material.Filled.Upload" FullWidth="true">
+                        @if (_docUploading)
+                        {
+                            <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" />
+                        }
+                        Upload
+                    </MudButton>
+                </MudItem>
+            </MudGrid>
+
+            <MudDivider Class="my-4" />
+
+            <MudText Typo="Typo.subtitle1" Style="font-weight: 600;" Class="mb-3">
+                <MudIcon Icon="@Icons.Material.Filled.Description" Style="vertical-align: middle; margin-right: 6px;" />
+                Uploaded Documents (@_docList.Count)
+            </MudText>
+
+            @if (_docLoading)
+            {
+                <MudProgressLinear Indeterminate="true" Color="Color.Primary" />
+            }
+            else if (!_docList.Any())
+            {
+                <MudAlert Severity="Severity.Info" Variant="Variant.Text">
+                    No documents uploaded yet for this shipment.
+                </MudAlert>
+            }
+            else
+            {
+                <MudTable Items="@_docList" Hover="true" Dense="true" Striped="true">
+                    <HeaderContent>
+                        <MudTh>Type</MudTh>
+                        <MudTh>File Name</MudTh>
+                        <MudTh>Size</MudTh>
+                        <MudTh>Uploaded</MudTh>
+                        <MudTh>Description</MudTh>
+                        <MudTh Style="width: 120px;">Actions</MudTh>
+                    </HeaderContent>
+                    <RowTemplate>
+                        <MudTd DataLabel="Type">
+                            <MudChip T="string" Size="Size.Small" Color="Color.Primary" Variant="Variant.Text">@context.DocumentType</MudChip>
+                        </MudTd>
+                        <MudTd DataLabel="File Name">@context.FileName</MudTd>
+                        <MudTd DataLabel="Size">@FormatFileSize(context.FileSize)</MudTd>
+                        <MudTd DataLabel="Uploaded">@DateTimeService.FormatDateTime(context.CreatedAt, "dd/MM/yyyy HH:mm")</MudTd>
+                        <MudTd DataLabel="Description">@(context.Description ?? "-")</MudTd>
+                        <MudTd>
+                            @if (IsPreviewable(context.ContentType))
+                            {
+                                <MudIconButton Icon="@Icons.Material.Filled.Visibility" Size="Size.Small" Color="Color.Info" OnClick="@(() => PreviewDocument(context))" Title="Preview" />
+                            }
+                            <MudIconButton Icon="@Icons.Material.Filled.Download" Size="Size.Small" Color="Color.Primary" OnClick="@(() => DownloadDocument(context))" Title="Download" />
+                            <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" Color="Color.Error" OnClick="@(() => DeleteDocument(context))" Title="Delete" />
+                        </MudTd>
+                    </RowTemplate>
+                </MudTable>
+            }
+        </MudPaper>
+    }
 </MudContainer>
 
 @code {
@@ -695,6 +885,15 @@
     private List<ImportTrackingResult> _importTrackingResults = new();
     private List<string> _notFoundAwbs = new();
 
+    private ShipmentTrackingResult? _docViewShipment;
+    private AWBTracking? _podTracking;
+    private List<ShipmentDocument> _docList = new();
+    private bool _docLoading;
+    private bool _docUploading;
+    private string _docType = "";
+    private string _docDescription = "";
+    private IBrowserFile? _docFile;
+
     private class ShipmentTrackingResult
     {
         public InscanMaster Shipment { get; set; } = null!;
@@ -702,6 +901,7 @@
         public string? ServiceTypeName { get; set; }
         public List<ImportTimelineEvent> ImportTimelineEvents { get; set; } = new();
         public ImportShipment? LinkedImportShipment { get; set; }
+        public int DocumentCount { get; set; }
     }
 
     private class ImportTrackingResult
@@ -801,6 +1001,9 @@
                             ServiceTypeName = serviceTypeName ?? "Standard"
                         };
 
+                        trackingResult.DocumentCount = await dbContext.ShipmentDocuments
+                            .CountAsync(d => d.InscanMasterId == shipment.Id && !d.IsDeleted);
+
                         var linkedImport = importShipments.FirstOrDefault(i => i.LinkedInscanMasterId == shipment.Id);
                         if (linkedImport != null)
                         {
@@ -846,11 +1049,14 @@
                             ? (await dbContext.ShipmentModes.FindAsync(shipment.ShipmentModeId.Value))?.Name 
                             : null;
 
+                        var docCount = await dbContext.ShipmentDocuments
+                            .CountAsync(d => d.InscanMasterId == shipment.Id && !d.IsDeleted);
                         _shipmentResults.Add(new ShipmentTrackingResult
                         {
                             Shipment = shipment,
                             Timeline = timeline,
-                            ServiceTypeName = serviceTypeName ?? "Standard"
+                            ServiceTypeName = serviceTypeName ?? "Standard",
+                            DocumentCount = docCount
                         });
                         found = true;
                     }
@@ -875,11 +1081,14 @@
                             ? (await dbContext.ShipmentModes.FindAsync(shipment.ShipmentModeId.Value))?.Name 
                             : null;
 
+                        var refDocCount = await dbContext.ShipmentDocuments
+                            .CountAsync(d => d.InscanMasterId == shipment.Id && !d.IsDeleted);
                         var trackingResult = new ShipmentTrackingResult
                         {
                             Shipment = shipment,
                             Timeline = timeline,
-                            ServiceTypeName = serviceTypeName ?? "Standard"
+                            ServiceTypeName = serviceTypeName ?? "Standard",
+                            DocumentCount = refDocCount
                         };
 
                         var linkedImport = await dbContext.ImportShipments
@@ -1260,5 +1469,190 @@
         {
             await OpenPdfPreview($"/api/report/tracking/{result.ImportShipment.AWBNo}", "Tracking Details");
         }
+    }
+
+    private async Task OpenDocumentsView(ShipmentTrackingResult result)
+    {
+        _docViewShipment = result;
+        _docLoading = true;
+        _docFile = null;
+        _docType = "";
+        _docDescription = "";
+        StateHasChanged();
+
+        try
+        {
+            await using var dbContext = await DbContextFactory.CreateDbContextAsync();
+
+            _docList = await dbContext.ShipmentDocuments
+                .Where(d => d.InscanMasterId == result.Shipment.Id && !d.IsDeleted)
+                .OrderByDescending(d => d.CreatedAt)
+                .ToListAsync();
+
+            if (result.Shipment.CourierStatusId == CourierStatus.Delivered)
+            {
+                _podTracking = await dbContext.AWBTrackings
+                    .Where(t => t.InscanId == result.Shipment.Id && t.IsPODCaptured)
+                    .OrderByDescending(t => t.EventDateTime)
+                    .FirstOrDefaultAsync();
+            }
+            else
+            {
+                _podTracking = null;
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error loading documents: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _docLoading = false;
+            StateHasChanged();
+        }
+    }
+
+    private void CloseDocumentsView()
+    {
+        _docViewShipment = null;
+        _podTracking = null;
+        _docList.Clear();
+        _docFile = null;
+        StateHasChanged();
+    }
+
+    private void OnDocFileSelected(InputFileChangeEventArgs e)
+    {
+        _docFile = e.File;
+        StateHasChanged();
+    }
+
+    private async Task UploadDocument()
+    {
+        if (_docFile == null || string.IsNullOrEmpty(_docType) || _docViewShipment == null)
+            return;
+
+        _docUploading = true;
+        StateHasChanged();
+
+        try
+        {
+            const long maxSize = 10 * 1024 * 1024;
+            using var stream = _docFile.OpenReadStream(maxSize);
+            using var ms = new MemoryStream();
+            await stream.CopyToAsync(ms);
+
+            var doc = new ShipmentDocument
+            {
+                InscanMasterId = _docViewShipment.Shipment.Id,
+                DocumentType = _docType,
+                FileName = _docFile.Name,
+                ContentType = _docFile.ContentType,
+                FileData = ms.ToArray(),
+                FileSize = _docFile.Size,
+                Description = string.IsNullOrWhiteSpace(_docDescription) ? null : _docDescription.Trim()
+            };
+
+            await using var dbContext = await DbContextFactory.CreateDbContextAsync();
+            dbContext.ShipmentDocuments.Add(doc);
+            await dbContext.SaveChangesAsync();
+
+            _docList.Insert(0, doc);
+            _docViewShipment.DocumentCount++;
+            _docFile = null;
+            _docType = "";
+            _docDescription = "";
+            Snackbar.Add("Document uploaded successfully", Severity.Success);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Upload failed: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _docUploading = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task DownloadDocument(ShipmentDocument doc)
+    {
+        try
+        {
+            var base64 = Convert.ToBase64String(doc.FileData);
+            await JSRuntime.InvokeVoidAsync("downloadFile", doc.FileName, base64, doc.ContentType);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Download failed: {ex.Message}", Severity.Error);
+        }
+    }
+
+    private async Task PreviewDocument(ShipmentDocument doc)
+    {
+        try
+        {
+            var base64 = Convert.ToBase64String(doc.FileData);
+            var dataUrl = $"data:{doc.ContentType};base64,{base64}";
+            await JSRuntime.InvokeVoidAsync("open", dataUrl, "_blank");
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Preview failed: {ex.Message}", Severity.Error);
+        }
+    }
+
+    private async Task PreviewImage(string imageUrl)
+    {
+        try
+        {
+            await JSRuntime.InvokeVoidAsync("open", imageUrl, "_blank");
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Preview failed: {ex.Message}", Severity.Error);
+        }
+    }
+
+    private async Task DeleteDocument(ShipmentDocument doc)
+    {
+        var confirmed = await DialogService.ShowMessageBox(
+            "Delete Document",
+            $"Are you sure you want to delete '{doc.FileName}'?",
+            yesText: "Delete", cancelText: "Cancel");
+
+        if (confirmed != true)
+            return;
+
+        try
+        {
+            await using var dbContext = await DbContextFactory.CreateDbContextAsync();
+            var entity = await dbContext.ShipmentDocuments.FindAsync(doc.Id);
+            if (entity != null)
+            {
+                entity.IsDeleted = true;
+                await dbContext.SaveChangesAsync();
+                _docList.Remove(doc);
+                if (_docViewShipment != null)
+                    _docViewShipment.DocumentCount--;
+                Snackbar.Add("Document deleted", Severity.Success);
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Delete failed: {ex.Message}", Severity.Error);
+        }
+    }
+
+    private bool IsPreviewable(string contentType) =>
+        contentType.StartsWith("image/") || contentType == "application/pdf";
+
+    private string FormatFileSize(long bytes)
+    {
+        if (bytes >= 1048576)
+            return $"{bytes / 1048576.0:F1} MB";
+        if (bytes >= 1024)
+            return $"{bytes / 1024.0:F1} KB";
+        return $"{bytes} B";
     }
 }
