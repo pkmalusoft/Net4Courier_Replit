@@ -1006,7 +1006,8 @@
                         trackingResult.DocumentCount = await dbContext.ShipmentDocuments
                             .CountAsync(d => d.InscanMasterId == shipment.Id && !d.IsDeleted);
 
-                        var linkedImport = importShipments.FirstOrDefault(i => i.LinkedInscanMasterId == shipment.Id);
+                        var linkedImport = importShipments.FirstOrDefault(i => i.LinkedInscanMasterId == shipment.Id)
+                                        ?? importShipments.FirstOrDefault();
                         if (linkedImport != null)
                         {
                             trackingResult.ImportTimelineEvents = BuildImportTimeline(linkedImport);
@@ -1016,16 +1017,13 @@
                         _shipmentResults.Add(trackingResult);
                         found = true;
                     }
-
-                    foreach (var importShipment in importShipments)
+                    else if (importShipments.Any())
                     {
-                        if (importShipment.LinkedInscanMasterId.HasValue && shipment != null && importShipment.LinkedInscanMasterId == shipment.Id)
-                            continue;
-
+                        var primaryImport = importShipments.First();
                         _importTrackingResults.Add(new ImportTrackingResult
                         {
-                            ImportShipment = importShipment,
-                            Timeline = BuildImportTimeline(importShipment)
+                            ImportShipment = primaryImport,
+                            Timeline = BuildImportTimeline(primaryImport)
                         });
                         found = true;
                     }
@@ -1116,6 +1114,14 @@
                     {
                         if (importShipment.LinkedInscanMasterId.HasValue && linkedInscanIds.Contains(importShipment.LinkedInscanMasterId.Value))
                             continue;
+
+                        var matchingDomestic = _shipmentResults.FirstOrDefault(r => r.Shipment.AWBNo == importShipment.AWBNo);
+                        if (matchingDomestic != null)
+                        {
+                            matchingDomestic.ImportTimelineEvents = BuildImportTimeline(importShipment);
+                            matchingDomestic.LinkedImportShipment = importShipment;
+                            continue;
+                        }
 
                         _importTrackingResults.Add(new ImportTrackingResult
                         {
