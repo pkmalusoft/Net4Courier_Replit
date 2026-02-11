@@ -412,9 +412,11 @@
                             
                             <div class="timeline-content">
                                 @{
+                                    var synthesizedEvents = BuildSynthesizedTimeline(result.Shipment, result.Timeline);
                                     var combinedEvents = result.Timeline
                                         .Select(t => new { Timestamp = t.ChangedAt, Label = t.Status?.Name ?? t.EventType, Remarks = t.Remarks, Location = t.LocationName, IsImport = false, Color = GetEventColor(t) })
                                         .Concat(result.ImportTimelineEvents.Select(ie => new { Timestamp = ie.Timestamp, Label = ie.EventType, Remarks = (string?)ie.UserName != null ? $"By: {ie.UserName}" : (string?)null, Location = (string?)null, IsImport = true, Color = GetImportEventColor(ie.EventType) }))
+                                        .Concat(synthesizedEvents.Select(se => new { Timestamp = se.Timestamp, Label = se.EventType, Remarks = (string?)null, Location = (string?)null, IsImport = false, Color = GetSynthesizedEventColor(se.EventType) }))
                                         .OrderByDescending(e => e.Timestamp)
                                         .ToList();
                                 }
@@ -1450,6 +1452,65 @@
         if (!string.IsNullOrEmpty(shipment.ConsigneeCountry)) parts.Add(shipment.ConsigneeCountry);
         return parts.Any() ? string.Join(", ", parts) : "N/A";
     }
+
+    private List<ImportTimelineEvent> BuildSynthesizedTimeline(InscanMaster shipment, List<ShipmentStatusHistory> existingHistory)
+    {
+        var synthesized = new List<ImportTimelineEvent>();
+        var existingLabels = existingHistory
+            .Select(h => (h.Status?.Name ?? h.EventType ?? "").ToLowerInvariant())
+            .ToHashSet();
+
+        if (!existingLabels.Any(l => l.Contains("booked") || l.Contains("created") || l.Contains("awb entry")))
+        {
+            var bookedDate = shipment.TransactionDate != default ? shipment.TransactionDate : shipment.CreatedAt;
+            if (bookedDate != default)
+            {
+                synthesized.Add(new ImportTimelineEvent
+                {
+                    EventType = "Booked",
+                    Timestamp = bookedDate
+                });
+            }
+        }
+
+        if (shipment.PickedUpDate.HasValue && !existingLabels.Any(l => l.Contains("picked") || l.Contains("pickup")))
+        {
+            synthesized.Add(new ImportTimelineEvent
+            {
+                EventType = "Picked Up",
+                Timestamp = shipment.PickedUpDate.Value
+            });
+        }
+
+        if (shipment.BaggedAt.HasValue && !existingLabels.Any(l => l.Contains("bagged") || l.Contains("outscan") || l.Contains("manifest")))
+        {
+            synthesized.Add(new ImportTimelineEvent
+            {
+                EventType = "Outscanned / Bagged",
+                Timestamp = shipment.BaggedAt.Value
+            });
+        }
+
+        if (shipment.DeliveredDate.HasValue && !existingLabels.Any(l => l.Contains("delivered")))
+        {
+            synthesized.Add(new ImportTimelineEvent
+            {
+                EventType = "Delivered",
+                Timestamp = shipment.DeliveredDate.Value
+            });
+        }
+
+        return synthesized;
+    }
+
+    private Color GetSynthesizedEventColor(string eventType) => eventType switch
+    {
+        "Booked" => Color.Default,
+        "Picked Up" => Color.Success,
+        "Outscanned / Bagged" => Color.Warning,
+        "Delivered" => Color.Success,
+        _ => Color.Default
+    };
 
     private Color GetImportEventColor(string eventType) => eventType switch
     {
