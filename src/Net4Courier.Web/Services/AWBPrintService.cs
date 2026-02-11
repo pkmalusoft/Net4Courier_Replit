@@ -459,6 +459,7 @@ public class AWBPrintService
                         LabelMetrics(column, shipment);
                         LabelFooter(column, shipment);
                         LabelDescription(column, shipment);
+                        LabelSpecialInstructions(column, shipment);
                     });
                 });
             }
@@ -489,6 +490,7 @@ public class AWBPrintService
                     LabelMetrics(column, shipment);
                     LabelFooter(column, shipment);
                     LabelDescription(column, shipment);
+                    LabelSpecialInstructions(column, shipment);
                 });
             });
         });
@@ -722,6 +724,18 @@ public class AWBPrintService
             row.RelativeItem();
             row.AutoItem().Background("#e2e8f0").PaddingHorizontal(6).PaddingVertical(2)
                 .Text(Truncate(description, 40)).Bold().FontSize(7);
+        });
+    }
+
+    private void LabelSpecialInstructions(ColumnDescriptor column, InscanMaster shipment)
+    {
+        var instructions = shipment.SpecialInstructions;
+        if (string.IsNullOrWhiteSpace(instructions)) return;
+
+        column.Item().PaddingHorizontal(6).PaddingVertical(2).Row(row =>
+        {
+            row.AutoItem().Text("Instructions: ").Bold().FontSize(5).FontColor("#92400e");
+            row.RelativeItem().Text(Truncate(instructions, 80)).Italic().FontSize(5).FontColor("#92400e");
         });
     }
 
