@@ -8,6 +8,7 @@
 @inject AuthenticationStateProvider AuthStateProvider
 @inject IDbContextFactory<ApplicationDbContext> DbFactory
 @inject ILogger<MainLayout> Logger
+@inject GlobalSearchService SearchService
 
 <MudThemeProvider @bind-IsDarkMode="@_isDarkMode" Theme="_theme" />
 <MudPopoverProvider />
@@ -17,6 +18,58 @@
 <MudLayout>
     <MudAppBar Elevation="1" Color="Color.Primary">
         <MudText Typo="Typo.h5" Class="ml-3">Net4Courier</MudText>
+        <AuthorizeView>
+            <Authorized>
+                <div class="header-search-container">
+                    <MudAutocomplete T="SearchResult"
+                                     @ref="_searchField"
+                                     Value="_selectedSearchResult"
+                                     ValueChanged="OnSearchResultSelected"
+                                     SearchFunc="SearchAsync"
+                                     Placeholder="Search by AWB, Customer, or Invoice..."
+                                     Variant="Variant.Text"
+                                     Margin="Margin.Dense"
+                                     Adornment="Adornment.Start"
+                                     AdornmentIcon="@Icons.Material.Filled.Search"
+                                     Class="header-search-field"
+                                     Immediate="true"
+                                     DebounceInterval="300"
+                                     MinCharacters="2"
+                                     MaxItems="15"
+                                     Dense="true"
+                                     ResetValueOnEmptyText="true"
+                                     CoerceText="false"
+                                     CoerceValue="false"
+                                     ToStringFunc="@(r => r?.Title ?? "")">
+                        <ItemTemplate Context="searchItem">
+                            <div class="d-flex align-center gap-3 py-1">
+                                <MudIcon Icon="@GetSearchResultIcon(searchItem)" Size="Size.Small" Color="@GetSearchResultColor(searchItem)" />
+                                <div class="flex-grow-1">
+                                    <MudText Typo="Typo.body2" Style="font-weight: 500;">@searchItem.Title</MudText>
+                                    <MudText Typo="Typo.caption" Color="Color.Secondary">@searchItem.Subtitle</MudText>
+                                </div>
+                                @if (!string.IsNullOrEmpty(searchItem.Status))
+                                {
+                                    <MudChip T="string" Size="Size.Small" Variant="Variant.Outlined" Color="@GetSearchStatusChipColor(searchItem.Status)" Style="font-size: 0.65rem;">
+                                        @searchItem.Status
+                                    </MudChip>
+                                }
+                            </div>
+                        </ItemTemplate>
+                        <NoItemsTemplate>
+                            <div class="pa-4 text-center">
+                                <MudText Typo="Typo.body2" Color="Color.Secondary">No results found</MudText>
+                            </div>
+                        </NoItemsTemplate>
+                        <MoreItemsTemplate>
+                            <div class="pa-2 text-center">
+                                <MudText Typo="Typo.caption" Color="Color.Primary">Type more to refine results...</MudText>
+                            </div>
+                        </MoreItemsTemplate>
+                    </MudAutocomplete>
+                </div>
+            </Authorized>
+        </AuthorizeView>
         <MudSpacer />
         <AuthorizeView>
             <Authorized>
@@ -173,6 +226,61 @@
     .user-menu-trigger {
         cursor: pointer;
     }
+
+    .header-search-container {
+        flex: 1;
+        max-width: 380px;
+        margin-left: 20px;
+    }
+
+    .header-search-field .mud-input-root {
+        background: rgba(255, 255, 255, 0.12) !important;
+        border-radius: 8px !important;
+        border: 1px solid rgba(255, 255, 255, 0.15) !important;
+        color: white !important;
+        transition: all 0.2s ease;
+    }
+
+    .header-search-field .mud-input-root:hover {
+        background: rgba(255, 255, 255, 0.18) !important;
+        border-color: rgba(255, 255, 255, 0.25) !important;
+    }
+
+    .header-search-field .mud-input-root:focus-within {
+        background: rgba(255, 255, 255, 0.22) !important;
+        border-color: rgba(255, 255, 255, 0.4) !important;
+        box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.1) !important;
+    }
+
+    .header-search-field .mud-input-root input {
+        color: white !important;
+    }
+
+    .header-search-field .mud-input-root input::placeholder {
+        color: rgba(255, 255, 255, 0.55) !important;
+        opacity: 1 !important;
+    }
+
+    .header-search-field .mud-input-adornment-start .mud-icon-root {
+        color: rgba(255, 255, 255, 0.6) !important;
+    }
+
+    .header-search-field .mud-input-root:focus-within .mud-input-adornment-start .mud-icon-root {
+        color: rgba(255, 255, 255, 0.9) !important;
+    }
+
+    @@media (max-width: 768px) {
+        .header-search-container {
+            max-width: 200px;
+            margin-left: 12px;
+        }
+    }
+
+    @@media (max-width: 600px) {
+        .header-search-container {
+            display: none;
+        }
+    }
 </style>
 
 @code {
@@ -185,6 +293,8 @@
     private string _userInitial = "U";
     private int _notificationCount = 0;
     private Microsoft.AspNetCore.Components.Web.ErrorBoundary? _errorBoundary;
+    private MudAutocomplete<SearchResult>? _searchField;
+    private SearchResult? _selectedSearchResult;
 
     private void RecoverFromError()
     {
@@ -365,5 +475,64 @@
     {
         _userMenuOpen = false;
         HandleLogout();
+    }
+
+    private async Task<IEnumerable<SearchResult>> SearchAsync(string query, CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(query) || query.Length < 2)
+            return Enumerable.Empty<SearchResult>();
+        try
+        {
+            return await SearchService.SearchAsync(query);
+        }
+        catch
+        {
+            return Enumerable.Empty<SearchResult>();
+        }
+    }
+
+    private void OnSearchResultSelected(SearchResult? result)
+    {
+        _selectedSearchResult = result;
+        if (result != null)
+        {
+            var url = result.NavigateUrl;
+            _selectedSearchResult = null;
+            StateHasChanged();
+            NavigationManager.NavigateTo(url);
+        }
+    }
+
+    private string GetSearchResultIcon(SearchResult result) => result.Type switch
+    {
+        SearchResultType.AWB => Icons.Material.Filled.LocalShipping,
+        SearchResultType.Customer => Icons.Material.Filled.Person,
+        SearchResultType.Invoice => Icons.Material.Filled.Receipt,
+        _ => Icons.Material.Filled.Search
+    };
+
+    private Color GetSearchResultColor(SearchResult result) => result.Type switch
+    {
+        SearchResultType.AWB => Color.Primary,
+        SearchResultType.Customer => Color.Success,
+        SearchResultType.Invoice => Color.Warning,
+        _ => Color.Default
+    };
+
+    private Color GetSearchStatusChipColor(string status)
+    {
+        if (Enum.TryParse<Net4Courier.Kernel.Enums.CourierStatus>(status, out var courierStatus))
+        {
+            return courierStatus switch
+            {
+                Net4Courier.Kernel.Enums.CourierStatus.Delivered => Color.Success,
+                Net4Courier.Kernel.Enums.CourierStatus.InTransit => Color.Primary,
+                Net4Courier.Kernel.Enums.CourierStatus.OutForDelivery => Color.Info,
+                Net4Courier.Kernel.Enums.CourierStatus.Pending => Color.Warning,
+                Net4Courier.Kernel.Enums.CourierStatus.Returned => Color.Error,
+                _ => Color.Default
+            };
+        }
+        return Color.Default;
     }
 }
