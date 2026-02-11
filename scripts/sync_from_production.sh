@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/bash  bash scripts/sync_from_production.sh
 set -e
 
 echo "============================================="
