@@ -147,7 +147,7 @@ try
         var username = userInfo[0];
         var password = userInfo.Length > 1 ? userInfo[1] : "";
         
-        connectionString = $"Host={host};Port={port};Database={database};Username={username};Password={password}";
+        connectionString = $"Host={host};Port={port};Database={database};Username={username};Password={password};Timeout=30;Command Timeout=60";
         Console.WriteLine($"[{DateTime.UtcNow:O}] Database connection configured: Host={host}, Database={database}");
     }
     else if (!string.IsNullOrEmpty(databaseUrl))
