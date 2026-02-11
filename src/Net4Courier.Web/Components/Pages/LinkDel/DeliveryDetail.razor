@@ -519,6 +519,44 @@
                     drs.ModifiedAt = DateTime.UtcNow;
                 }
 
+                var inscanId = detail.InscanId;
+                var deliveredStatus = await db.ShipmentStatuses
+                    .Include(s => s.StatusGroup)
+                    .FirstOrDefaultAsync(s => s.Code == "DELIVERED" && s.IsActive);
+                if (deliveredStatus != null)
+                {
+                    var userName = (await db.Users.Where(u => u.Id == _userId).Select(u => u.FullName ?? u.Username).FirstOrDefaultAsync()) ?? "Courier";
+                    db.ShipmentStatusHistories.Add(new ShipmentStatusHistory
+                    {
+                        InscanMasterId = inscanId,
+                        StatusId = deliveredStatus.Id,
+                        StatusGroupId = deliveredStatus.StatusGroupId,
+                        EventType = "DELIVERY_CONFIRMED",
+                        EventRefId = detail.DRSId,
+                        EventRefType = "DRS",
+                        BranchId = detail.DRS?.BranchId,
+                        UserId = _userId,
+                        UserName = userName,
+                        Remarks = $"Received by: {_receivedBy}" + (!string.IsNullOrWhiteSpace(_relation) ? $" ({_relation})" : "") + (!string.IsNullOrWhiteSpace(_deliverRemarks) ? $" - {_deliverRemarks}" : ""),
+                        ChangedAt = DateTime.UtcNow,
+                        IsAutomatic = false,
+                        Latitude = _latitude,
+                        Longitude = _longitude,
+                        DeviceInfo = "LinkDel PWA",
+                        CreatedAt = DateTime.UtcNow
+                    });
+
+                    var inscan = await db.InscanMasters.FindAsync(inscanId);
+                    if (inscan != null)
+                    {
+                        if (deliveredStatus.MapsToCourierStatus.HasValue)
+                            inscan.CourierStatusId = deliveredStatus.MapsToCourierStatus.Value;
+                        inscan.DeliveredDate = DateTime.UtcNow;
+                        inscan.DeliveredTo = _receivedBy;
+                        inscan.ModifiedAt = DateTime.UtcNow;
+                    }
+                }
+
                 await db.SaveChangesAsync();
                 try { await JS.InvokeVoidAsync("linkdel.vibrate", new object[] { new[] { 100, 50, 100 } }); } catch { }
                 Snackbar.Add("Delivery confirmed!", Severity.Success);
@@ -585,6 +623,42 @@
                     if (prevStatus != "Attempted")
                         drs.PendingCount = Math.Max(0, (drs.PendingCount ?? 0) - 1);
                     drs.ModifiedAt = DateTime.UtcNow;
+                }
+
+                var inscanId = detail.InscanId;
+                var statusCode = _markRTS ? "DELIVERY_FAILED" : "DELIVERY_ATTEMPTED";
+                var status = await db.ShipmentStatuses
+                    .Include(s => s.StatusGroup)
+                    .FirstOrDefaultAsync(s => s.Code == statusCode && s.IsActive);
+                if (status != null)
+                {
+                    var userName = (await db.Users.Where(u => u.Id == _userId).Select(u => u.FullName ?? u.Username).FirstOrDefaultAsync()) ?? "Courier";
+                    db.ShipmentStatusHistories.Add(new ShipmentStatusHistory
+                    {
+                        InscanMasterId = inscanId,
+                        StatusId = status.Id,
+                        StatusGroupId = status.StatusGroupId,
+                        EventType = _markRTS ? "RTS_MARKED" : "DELIVERY_ATTEMPT",
+                        EventRefId = detail.DRSId,
+                        EventRefType = "DRS",
+                        BranchId = detail.DRS?.BranchId,
+                        UserId = _userId,
+                        UserName = userName,
+                        Remarks = remarks,
+                        ChangedAt = DateTime.UtcNow,
+                        IsAutomatic = false,
+                        Latitude = _latitude,
+                        Longitude = _longitude,
+                        DeviceInfo = "LinkDel PWA",
+                        CreatedAt = DateTime.UtcNow
+                    });
+
+                    var inscan = await db.InscanMasters.FindAsync(inscanId);
+                    if (inscan != null && status.MapsToCourierStatus.HasValue)
+                    {
+                        inscan.CourierStatusId = status.MapsToCourierStatus.Value;
+                        inscan.ModifiedAt = DateTime.UtcNow;
+                    }
                 }
 
                 await db.SaveChangesAsync();

@@ -29,7 +29,14 @@ public class GlobalSearchService
         var invoiceResults = await SearchInvoicesAsync(context, query, maxResults / 4 + 2);
 
         results.AddRange(awbResults);
-        results.AddRange(importResults);
+
+        var existingAwbTitles = new HashSet<string>(awbResults.Where(r => r.Type == SearchResultType.AWB).Select(r => r.Title), StringComparer.OrdinalIgnoreCase);
+        foreach (var imp in importResults)
+        {
+            if (!existingAwbTitles.Contains(imp.Title))
+                results.Add(imp);
+        }
+
         results.AddRange(customerResults);
         results.AddRange(invoiceResults);
 
