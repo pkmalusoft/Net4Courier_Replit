@@ -355,25 +355,51 @@
                 .OrderBy(dd => dd.Sequence)
                 .ToListAsync();
 
-            _items = details.Select(dd => new DeliveryItem
+            var awbNos = details
+                .Where(dd => dd.Inscan?.AWBNo != null)
+                .Select(dd => dd.Inscan!.AWBNo)
+                .Distinct()
+                .ToList();
+
+            var importCharges = await db.ImportShipments
+                .Where(imp => awbNos.Contains(imp.AWBNo) && !imp.IsDeleted)
+                .Select(imp => new { imp.AWBNo, imp.DutyAmount, imp.VATAmount, imp.OtherCharges, imp.CODAmount })
+                .ToListAsync();
+
+            var importChargesMap = importCharges
+                .GroupBy(x => x.AWBNo)
+                .ToDictionary(g => g.Key, g => g.First());
+
+            _items = details.Select(dd =>
             {
-                DetailId = dd.Id,
-                DRSId = dd.DRSId,
-                DRSNo = dd.DRS?.DRSNo ?? "",
-                InscanId = dd.InscanId,
-                AWBNo = dd.Inscan?.AWBNo ?? $"AWB-{dd.InscanId}",
-                Consignee = dd.Inscan?.Consignee ?? "N/A",
-                ConsigneePhone = dd.Inscan?.ConsigneePhone ?? dd.Inscan?.ConsigneeMobile,
-                Address = BuildAddress(dd.Inscan),
-                City = dd.Inscan?.ConsigneeCity,
-                Pieces = dd.Inscan?.Pieces,
-                Weight = dd.Inscan?.Weight,
-                IsCOD = dd.Inscan?.IsCOD ?? false,
-                CODAmount = dd.CODAmount ?? dd.Inscan?.CODAmount ?? 0,
-                Status = dd.Status,
-                AttemptNo = dd.AttemptNo,
-                CollectedAmount = dd.CollectedAmount,
-                ReceivedBy = dd.ReceivedBy
+                var awb = dd.Inscan?.AWBNo ?? "";
+                var codAmt = dd.CODAmount ?? dd.Inscan?.CODAmount ?? 0;
+                var isCod = dd.Inscan?.IsCOD ?? false;
+                if (codAmt == 0 && !string.IsNullOrEmpty(awb) && importChargesMap.TryGetValue(awb, out var imp))
+                {
+                    codAmt = (imp.DutyAmount ?? 0) + (imp.VATAmount ?? 0) + (imp.OtherCharges ?? 0) + (imp.CODAmount ?? 0);
+                    if (codAmt > 0) isCod = true;
+                }
+                return new DeliveryItem
+                {
+                    DetailId = dd.Id,
+                    DRSId = dd.DRSId,
+                    DRSNo = dd.DRS?.DRSNo ?? "",
+                    InscanId = dd.InscanId,
+                    AWBNo = awb.Length > 0 ? awb : $"AWB-{dd.InscanId}",
+                    Consignee = dd.Inscan?.Consignee ?? "N/A",
+                    ConsigneePhone = dd.Inscan?.ConsigneePhone ?? dd.Inscan?.ConsigneeMobile,
+                    Address = BuildAddress(dd.Inscan),
+                    City = dd.Inscan?.ConsigneeCity,
+                    Pieces = dd.Inscan?.Pieces,
+                    Weight = dd.Inscan?.Weight,
+                    IsCOD = isCod,
+                    CODAmount = codAmt,
+                    Status = dd.Status,
+                    AttemptNo = dd.AttemptNo,
+                    CollectedAmount = dd.CollectedAmount,
+                    ReceivedBy = dd.ReceivedBy
+                };
             }).ToList();
 
             _pendingCount = _items.Count(i => string.IsNullOrEmpty(i.Status) || i.Status == "Pending" || i.Status == "Out for Delivery");

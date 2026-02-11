@@ -59,10 +59,10 @@
                             <MudText Typo="Typo.subtitle2" Style="font-weight: 700; color: #1e293b;">@d.AWBNo</MudText>
                             <MudText Typo="Typo.caption" Style="color: #64748b;">@d.DRSNo</MudText>
                         </div>
-                        @if (d.IsCOD && d.CODAmount > 0)
+                        @if (d.CODAmount > 0)
                         {
                             <MudChip T="string" Size="Size.Small" Style="background: #fef3c7; color: #92400e;">
-                                COD @d.CODAmount.ToString("N0")
+                                COD @d.CODAmount.ToString("N2")
                             </MudChip>
                         }
                         else
@@ -416,23 +416,49 @@
                     .OrderBy(dd => dd.Sequence)
                     .ToListAsync();
 
+                var awbNos = details
+                    .Where(dd => dd.Inscan?.AWBNo != null)
+                    .Select(dd => dd.Inscan!.AWBNo)
+                    .Distinct()
+                    .ToList();
+
+                var importCharges = await db.ImportShipments
+                    .Where(imp => awbNos.Contains(imp.AWBNo) && !imp.IsDeleted)
+                    .Select(imp => new { imp.AWBNo, imp.DutyAmount, imp.VATAmount, imp.OtherCharges, imp.CODAmount })
+                    .ToListAsync();
+
+                var importChargesMap = importCharges
+                    .GroupBy(x => x.AWBNo)
+                    .ToDictionary(g => g.Key, g => g.First());
+
                 _pendingDeliveryItems = details
                     .Where(dd => string.IsNullOrEmpty(dd.Status) || dd.Status == "Pending" || dd.Status == "Out for Delivery")
-                    .Select(dd => new DeliveryItem
+                    .Select(dd =>
                     {
-                        DetailId = dd.Id,
-                        DRSId = dd.DRSId,
-                        DRSNo = dd.DRS?.DRSNo ?? "",
-                        AWBNo = dd.Inscan?.AWBNo ?? $"AWB-{dd.InscanId}",
-                        Consignee = dd.Inscan?.Consignee ?? "N/A",
-                        ConsigneePhone = dd.Inscan?.ConsigneePhone ?? dd.Inscan?.ConsigneeMobile,
-                        Address = BuildDeliveryAddress(dd.Inscan),
-                        City = dd.Inscan?.ConsigneeCity,
-                        Pieces = dd.Inscan?.Pieces,
-                        Weight = dd.Inscan?.Weight,
-                        IsCOD = dd.Inscan?.IsCOD ?? false,
-                        CODAmount = dd.CODAmount ?? dd.Inscan?.CODAmount ?? 0,
-                        Status = dd.Status
+                        var awb = dd.Inscan?.AWBNo ?? "";
+                        var codAmt = dd.CODAmount ?? dd.Inscan?.CODAmount ?? 0;
+                        var isCod = dd.Inscan?.IsCOD ?? false;
+                        if (codAmt == 0 && !string.IsNullOrEmpty(awb) && importChargesMap.TryGetValue(awb, out var imp))
+                        {
+                            codAmt = (imp.DutyAmount ?? 0) + (imp.VATAmount ?? 0) + (imp.OtherCharges ?? 0) + (imp.CODAmount ?? 0);
+                            if (codAmt > 0) isCod = true;
+                        }
+                        return new DeliveryItem
+                        {
+                            DetailId = dd.Id,
+                            DRSId = dd.DRSId,
+                            DRSNo = dd.DRS?.DRSNo ?? "",
+                            AWBNo = awb.Length > 0 ? awb : $"AWB-{dd.InscanId}",
+                            Consignee = dd.Inscan?.Consignee ?? "N/A",
+                            ConsigneePhone = dd.Inscan?.ConsigneePhone ?? dd.Inscan?.ConsigneeMobile,
+                            Address = BuildDeliveryAddress(dd.Inscan),
+                            City = dd.Inscan?.ConsigneeCity,
+                            Pieces = dd.Inscan?.Pieces,
+                            Weight = dd.Inscan?.Weight,
+                            IsCOD = isCod,
+                            CODAmount = codAmt,
+                            Status = dd.Status
+                        };
                     })
                     .ToList();
 
