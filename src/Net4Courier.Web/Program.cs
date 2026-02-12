@@ -1032,6 +1032,40 @@ app.MapGet("/api/report/tracking/{awbNo}", async (string awbNo, bool? inline, Ap
                 .Where(h => h.InscanMasterId == awb.Id)
                 .OrderByDescending(h => h.ChangedAt)
                 .ToListAsync();
+
+            var existingLabels = timeline
+                .Select(h => (h.Status?.Name ?? h.EventType ?? "").ToLowerInvariant())
+                .ToHashSet();
+
+            if (!existingLabels.Any(l => l.Contains("booked") || l.Contains("created") || l.Contains("awb entry")))
+            {
+                var bookedDate = awb.TransactionDate != default ? awb.TransactionDate : awb.CreatedAt;
+                if (bookedDate != default)
+                    timeline.Add(new ShipmentStatusHistory { EventType = "Booked", ChangedAt = bookedDate, InscanMasterId = awb.Id });
+            }
+            if (awb.PickedUpDate.HasValue && !existingLabels.Any(l => l.Contains("picked") || l.Contains("pickup")))
+                timeline.Add(new ShipmentStatusHistory { EventType = "Picked Up", ChangedAt = awb.PickedUpDate.Value, InscanMasterId = awb.Id });
+            if (awb.BaggedAt.HasValue && !existingLabels.Any(l => l.Contains("bagged") || l.Contains("outscan") || l.Contains("manifest")))
+                timeline.Add(new ShipmentStatusHistory { EventType = "Outscanned / Bagged", ChangedAt = awb.BaggedAt.Value, InscanMasterId = awb.Id });
+            if (awb.DeliveredDate.HasValue && !existingLabels.Any(l => l.Contains("delivered")))
+                timeline.Add(new ShipmentStatusHistory { EventType = "Delivered", ChangedAt = awb.DeliveredDate.Value, InscanMasterId = awb.Id });
+
+            var linkedImport = await db.ImportShipments
+                .FirstOrDefaultAsync(i => i.AWBNo == awb.AWBNo && !i.IsDeleted);
+            if (linkedImport != null)
+            {
+                timeline.Add(new ShipmentStatusHistory { EventType = "Import Shipment Created", ChangedAt = linkedImport.CreatedAt, InscanMasterId = awb.Id });
+                if (linkedImport.InscannedAt.HasValue)
+                    timeline.Add(new ShipmentStatusHistory { EventType = "Import Inscanned", ChangedAt = linkedImport.InscannedAt.Value, Remarks = linkedImport.InscannedByUserName != null ? $"By: {linkedImport.InscannedByUserName}" : null, InscanMasterId = awb.Id });
+                if (linkedImport.CustomsClearedAt.HasValue)
+                    timeline.Add(new ShipmentStatusHistory { EventType = "Customs Cleared", ChangedAt = linkedImport.CustomsClearedAt.Value, Remarks = linkedImport.CustomsClearedByUserName != null ? $"By: {linkedImport.CustomsClearedByUserName}" : null, InscanMasterId = awb.Id });
+                if (linkedImport.ReleasedAt.HasValue)
+                    timeline.Add(new ShipmentStatusHistory { EventType = "Released", ChangedAt = linkedImport.ReleasedAt.Value, Remarks = linkedImport.ReleasedByUserName != null ? $"By: {linkedImport.ReleasedByUserName}" : null, InscanMasterId = awb.Id });
+                if (linkedImport.HandedOverAt.HasValue)
+                    timeline.Add(new ShipmentStatusHistory { EventType = "Handed Over", ChangedAt = linkedImport.HandedOverAt.Value, Remarks = linkedImport.HandedOverToUserName != null ? $"By: {linkedImport.HandedOverToUserName}" : null, InscanMasterId = awb.Id });
+            }
+
+            timeline = timeline.OrderByDescending(t => t.ChangedAt).ToList();
             
             string? serviceTypeName = null;
             if (awb.ShipmentModeId.HasValue)
