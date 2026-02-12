@@ -704,14 +704,19 @@
         _ => "UNKNOWN"
     };
     
-    // NetTotal calculation:
-    // For International Import with Declaration Value > 0: Total = Duty/VAT + COD + calculated Import VAT
-    // Otherwise: Freight charges with tax, minus discount, plus Duty/VAT, COD
-    private decimal NetTotal => IsImportWithDeclaration
-        ? ((_inscan.DutyVatAmount ?? 0) + (_inscan.CODAmount ?? 0) + CalculatedImportVAT)
-        : (((_inscan.CourierCharge ?? 0) + (_inscan.OtherCharge ?? 0) + (_inscan.FuelSurcharge ?? 0)) 
-            * (1 + (_inscan.TaxPercent ?? 0) / 100) - (_inscan.Discount ?? 0)
-            + (_inscan.DutyVatAmount ?? 0) + (_inscan.CODAmount ?? 0));
+    // NetTotal calculation: All charges included for both import and non-import shipments
+    // Base = (Freight + ODA/Other + Fuel Surcharge) * (1 + Tax%) - Discount + Duty/VAT + COD
+    // For import with declaration: also add calculated Import VAT
+    private decimal NetTotal {
+        get {
+            var baseCharges = ((_inscan.CourierCharge ?? 0) + (_inscan.OtherCharge ?? 0) + (_inscan.FuelSurcharge ?? 0))
+                * (1 + (_inscan.TaxPercent ?? 0) / 100) - (_inscan.Discount ?? 0)
+                + (_inscan.DutyVatAmount ?? 0) + (_inscan.CODAmount ?? 0);
+            if (IsImportWithDeclaration)
+                baseCharges += CalculatedImportVAT;
+            return baseCharges;
+        }
+    }
     
     private bool CanProceedWithDetails => ((_autoGenerateAWB && Id == 0) || !string.IsNullOrWhiteSpace(_inscan.AWBNo)) && 
                                            _inscan.PaymentModeId != default && 
