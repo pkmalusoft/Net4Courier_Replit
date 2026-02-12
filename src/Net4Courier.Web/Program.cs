@@ -359,6 +359,18 @@ else
     startupLogger.LogWarning("WebRoot directory does not exist: {Path}", webRootPath);
 }
 
+app.Use(async (context, next) =>
+{
+    if (context.Request.Path == "/health")
+    {
+        context.Response.StatusCode = 200;
+        context.Response.ContentType = "application/json";
+        await context.Response.WriteAsync($"{{\"status\":\"Healthy\",\"timestamp\":\"{DateTime.UtcNow:O}\"}}");
+        return;
+    }
+    await next();
+});
+
 if (!app.Environment.IsDevelopment())
 {
     app.UseExceptionHandler("/Error", createScopeForErrors: true);
