@@ -178,6 +178,39 @@
                 <MudTextField T="string" Label="Remarks" @bind-Value="_deliverRemarks"
                               Variant="Variant.Outlined" Lines="2" Class="mb-3" />
 
+                <MudText Typo="Typo.body2" Style="font-weight: 600; color: #475569; margin-bottom: 8px;">POD Photos (optional, max 3)</MudText>
+                <div style="display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 12px;">
+                    @for (int i = 0; i < _podImages.Count; i++)
+                    {
+                        var idx = i;
+                        <div style="position: relative; width: 80px; height: 80px; border-radius: 8px; overflow: hidden; border: 1px solid #e2e8f0;">
+                            <img src="@_podImages[idx]" style="width: 100%; height: 100%; object-fit: cover;" />
+                            <MudIconButton Icon="@Icons.Material.Filled.Close" Size="Size.Small"
+                                           Style="position: absolute; top: 0; right: 0; background: rgba(0,0,0,0.5); color: white; padding: 2px;"
+                                           OnClick="() => RemovePodImage(idx)" />
+                        </div>
+                    }
+                    @if (_podImages.Count < 3)
+                    {
+                        <div style="display: flex; gap: 6px;">
+                            <MudButton Variant="Variant.Outlined" Color="Color.Primary" Size="Size.Small"
+                                       StartIcon="@Icons.Material.Filled.CameraAlt"
+                                       Style="border-radius: 8px; height: 80px; min-width: 80px; flex-direction: column; font-size: 0.7rem;"
+                                       OnClick="CapturePodPhoto">
+                                Camera
+                            </MudButton>
+                            <MudButton Variant="Variant.Outlined" Color="Color.Secondary" Size="Size.Small"
+                                       StartIcon="@Icons.Material.Filled.Photo"
+                                       Style="border-radius: 8px; height: 80px; min-width: 80px; flex-direction: column; font-size: 0.7rem;"
+                                       OnClick="UploadPodPhoto">
+                                Upload
+                            </MudButton>
+                        </div>
+                    }
+                </div>
+                <input type="file" id="podCameraInput" accept="image/*" capture="environment" style="display:none;" @onchange="OnPodCameraFileSelected" />
+                <input type="file" id="podUploadInput" accept="image/*" style="display:none;" @onchange="OnPodUploadFileSelected" />
+
                 @if (_gpsLocation != null)
                 {
                     <MudAlert Severity="Severity.Success" Dense="true" Class="mb-3" Style="border-radius: 8px;">
@@ -360,6 +393,7 @@
     private string? _relation;
     private decimal? _collectedAmount;
     private string? _deliverRemarks;
+    private List<string> _podImages = new();
     private string? _attemptReason;
     private string? _attemptRemarks;
     private bool _markRTS;
@@ -464,6 +498,54 @@
         _gpsLocation = null;
     }
 
+    private async Task CapturePodPhoto()
+    {
+        await JS.InvokeVoidAsync("linkdel.triggerFileInput", "podCameraInput");
+    }
+
+    private async Task UploadPodPhoto()
+    {
+        await JS.InvokeVoidAsync("linkdel.triggerFileInput", "podUploadInput");
+    }
+
+    private async Task OnPodCameraFileSelected()
+    {
+        await ProcessPodFile("podCameraInput");
+    }
+
+    private async Task OnPodUploadFileSelected()
+    {
+        await ProcessPodFile("podUploadInput");
+    }
+
+    private async Task ProcessPodFile(string inputId)
+    {
+        try
+        {
+            var base64 = await JS.InvokeAsync<string?>("linkdel.readFileAsBase64", inputId);
+            if (string.IsNullOrEmpty(base64)) return;
+            var compressed = await JS.InvokeAsync<string>("linkdel.compressImage", base64, 1024, 1024, 0.7);
+            if (_podImages.Count < 3)
+            {
+                _podImages.Add(compressed);
+                StateHasChanged();
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[LinkDel] Photo error: {ex.Message}");
+            Snackbar.Add("Failed to process photo", Severity.Error);
+        }
+    }
+
+    private void RemovePodImage(int index)
+    {
+        if (index >= 0 && index < _podImages.Count)
+        {
+            _podImages.RemoveAt(index);
+        }
+    }
+
     private async Task ConfirmDelivery()
     {
         if (_isSaving) return;
@@ -557,10 +639,39 @@
                     }
                 }
 
+                if (_podImages.Any())
+                {
+                    var tracking = new AWBTracking
+                    {
+                        InscanId = inscanId,
+                        EventDateTime = DateTime.UtcNow,
+                        StatusId = Net4Courier.Kernel.Enums.CourierStatus.Delivered,
+                        Location = detail.DRS?.BranchId?.ToString(),
+                        Remarks = $"POD captured via LinkDel",
+                        ReceivedBy = _receivedBy,
+                        Relation = _relation,
+                        DeliveryDateTime = DateTime.UtcNow,
+                        
+                        IsPODCaptured = true,
+                        Latitude = _latitude,
+                        Longitude = _longitude,
+                        DeviceId = "LinkDel PWA",
+                        BranchId = detail.DRS?.BranchId,
+                        UpdatedByName = (await db.Users.Where(u => u.Id == _userId).Select(u => u.FullName ?? u.Username).FirstOrDefaultAsync()) ?? "Courier",
+                        CreatedAt = DateTime.UtcNow,
+                        IsPublic = true
+                    };
+                    if (_podImages.Count > 0) tracking.PODImage = _podImages[0];
+                    if (_podImages.Count > 1) tracking.PODImage2 = _podImages[1];
+                    if (_podImages.Count > 2) tracking.PODImage3 = _podImages[2];
+                    db.AWBTrackings.Add(tracking);
+                }
+
                 await db.SaveChangesAsync();
                 try { await JS.InvokeVoidAsync("linkdel.vibrate", new object[] { new[] { 100, 50, 100 } }); } catch { }
                 Snackbar.Add("Delivery confirmed!", Severity.Success);
                 _showDeliverForm = false;
+                _podImages.Clear();
                 await LoadDetail();
             }
         }

@@ -128,6 +128,48 @@ window.linkdel = {
     }
   },
 
+  compressImage: function (base64Data, maxWidth, maxHeight, quality) {
+    maxWidth = maxWidth || 1024;
+    maxHeight = maxHeight || 1024;
+    quality = quality || 0.7;
+    return new Promise((resolve) => {
+      var img = new Image();
+      img.onload = function () {
+        var w = img.width, h = img.height;
+        if (w > maxWidth || h > maxHeight) {
+          var ratio = Math.min(maxWidth / w, maxHeight / h);
+          w = Math.round(w * ratio);
+          h = Math.round(h * ratio);
+        }
+        var canvas = document.createElement('canvas');
+        canvas.width = w;
+        canvas.height = h;
+        var ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0, w, h);
+        var compressed = canvas.toDataURL('image/jpeg', quality);
+        resolve(compressed);
+      };
+      img.onerror = function () { resolve(base64Data); };
+      img.src = base64Data;
+    });
+  },
+
+  readFileAsBase64: function (inputId) {
+    return new Promise((resolve) => {
+      var el = document.getElementById(inputId);
+      if (!el || !el.files || !el.files.length) { resolve(null); return; }
+      var reader = new FileReader();
+      reader.onload = function (e) { resolve(e.target.result); };
+      reader.onerror = function () { resolve(null); };
+      reader.readAsDataURL(el.files[0]);
+    });
+  },
+
+  triggerFileInput: function (inputId) {
+    var el = document.getElementById(inputId);
+    if (el) { el.value = ''; el.click(); }
+  },
+
   _urlBase64ToUint8Array: function (base64String) {
     const padding = '='.repeat((4 - base64String.length % 4) % 4);
     const base64 = (base64String + padding).replace(/\-/g, '+').replace(/_/g, '/');
