@@ -1,0 +1,136 @@
+@using MudBlazor
+@using Microsoft.EntityFrameworkCore
+@using Net4Courier.Infrastructure.Data
+@using Net4Courier.Operations.Entities
+@inject IDbContextFactory<ApplicationDbContext> DbFactory
+
+<MudDialog>
+    <TitleContent>
+        <MudText Typo="Typo.h6">
+            <MudIcon Icon="@Icons.Material.Filled.Timeline" Class="mr-2" />
+            Status History - @PickupNo
+        </MudText>
+    </TitleContent>
+    <DialogContent>
+        @if (_loading)
+        {
+            <MudProgressLinear Indeterminate="true" Color="Color.Primary" />
+        }
+        else if (!_history.Any())
+        {
+            <MudAlert Severity="Severity.Info" Class="mb-2">No status history recorded yet.</MudAlert>
+        }
+        else
+        {
+            <MudTimeline TimelinePosition="TimelinePosition.Start">
+                @foreach (var entry in _history)
+                {
+                    <MudTimelineItem Color="@GetEventColor(entry.EventType)" Size="Size.Small" TimelineAlign="TimelineAlign.End">
+                        <ItemContent>
+                            <MudCard Outlined="true" Class="mb-2">
+                                <MudCardContent Class="pa-3">
+                                    <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Start">
+                                        <MudStack Spacing="0">
+                                            <MudText Typo="Typo.subtitle2">@FormatEventType(entry.EventType)</MudText>
+                                            <MudText Typo="Typo.caption" Color="Color.Secondary">
+                                                @entry.ChangedAt.ToString("dd MMM yyyy, HH:mm:ss")
+                                            </MudText>
+                                        </MudStack>
+                                        <MudChip T="string" Size="Size.Small" Variant="Variant.Outlined" Color="@GetDeviceColor(entry.DeviceInfo)">
+                                            @(entry.DeviceInfo ?? "System")
+                                        </MudChip>
+                                    </MudStack>
+                                    @if (!string.IsNullOrEmpty(entry.Remarks))
+                                    {
+                                        <MudText Typo="Typo.body2" Class="mt-1">@entry.Remarks</MudText>
+                                    }
+                                    <MudStack Row="true" Spacing="3" Class="mt-1">
+                                        @if (!string.IsNullOrEmpty(entry.UserName))
+                                        {
+                                            <MudText Typo="Typo.caption">
+                                                <MudIcon Icon="@Icons.Material.Filled.Person" Size="Size.Small" Class="mr-1" />
+                                                @entry.UserName
+                                            </MudText>
+                                        }
+                                        @if (!string.IsNullOrEmpty(entry.LocationName))
+                                        {
+                                            <MudText Typo="Typo.caption">
+                                                <MudIcon Icon="@Icons.Material.Filled.LocationOn" Size="Size.Small" Class="mr-1" />
+                                                @entry.LocationName
+                                            </MudText>
+                                        }
+                                        @if (entry.Latitude.HasValue && entry.Longitude.HasValue)
+                                        {
+                                            <MudText Typo="Typo.caption" Color="Color.Secondary">
+                                                <MudIcon Icon="@Icons.Material.Filled.GpsFixed" Size="Size.Small" Class="mr-1" />
+                                                @entry.Latitude.Value.ToString("F5"), @entry.Longitude.Value.ToString("F5")
+                                            </MudText>
+                                        }
+                                    </MudStack>
+                                </MudCardContent>
+                            </MudCard>
+                        </ItemContent>
+                    </MudTimelineItem>
+                }
+            </MudTimeline>
+        }
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Close" Variant="Variant.Text">Close</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter]
+    private MudDialogInstance MudDialog { get; set; } = null!;
+
+    [Parameter]
+    public long PickupRequestId { get; set; }
+
+    [Parameter]
+    public string PickupNo { get; set; } = string.Empty;
+
+    private List<PickupStatusHistory> _history = new();
+    private bool _loading = true;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await using var db = await DbFactory.CreateDbContextAsync();
+        _history = await db.PickupStatusHistories
+            .Where(h => h.PickupRequestId == PickupRequestId)
+            .OrderByDescending(h => h.ChangedAt)
+            .ToListAsync();
+        _loading = false;
+    }
+
+    private Color GetEventColor(string eventType) => eventType switch
+    {
+        "Accept" => Color.Info,
+        "ASSIGN_COURIER" => Color.Info,
+        "Collection" => Color.Success,
+        "Attempt" => Color.Warning,
+        "Void" => Color.Error,
+        "MANUAL_UPDATE" => Color.Primary,
+        _ => Color.Default
+    };
+
+    private Color GetDeviceColor(string? deviceInfo) => deviceInfo switch
+    {
+        "LinkDel PWA" => Color.Tertiary,
+        "Web" => Color.Primary,
+        _ => Color.Default
+    };
+
+    private string FormatEventType(string eventType) => eventType switch
+    {
+        "Accept" => "Accepted by Courier",
+        "ASSIGN_COURIER" => "Courier Assigned",
+        "Collection" => "Shipment Collected",
+        "Attempt" => "Pickup Attempted",
+        "Void" => "Voided",
+        "MANUAL_UPDATE" => "Status Updated",
+        _ => eventType
+    };
+
+    private void Close() => MudDialog.Cancel();
+}

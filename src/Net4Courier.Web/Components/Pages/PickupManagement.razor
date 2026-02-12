@@ -347,6 +347,10 @@
                     <MudIconButton Icon="@Icons.Material.Filled.Update" Size="Size.Small" Color="Color.Warning" 
                                    OnClick="@(() => OpenStatusChangeDialog(context))" />
                 </MudTooltip>
+                <MudTooltip Text="Status History">
+                    <MudIconButton Icon="@Icons.Material.Filled.Timeline" Size="Size.Small" Color="Color.Info" 
+                                   OnClick="@(() => OpenPickupHistoryDialog(context))" />
+                </MudTooltip>
                 @if (context.Status == PickupStatus.PickupRequest || context.Status == PickupStatus.AssignedForCollection || context.Status == PickupStatus.Attempted)
                 {
                     <MudTooltip Text="Void">
@@ -794,12 +798,35 @@
             var courier = _courierEmployees.FirstOrDefault(c => c.Id == courierId);
             if (courier != null)
             {
+                var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+                var userIdClaim = authState.User.FindFirst("UserId")?.Value;
+                var userName = authState.User.FindFirst("FullName")?.Value ?? authState.User.Identity?.Name ?? "System";
+                var userId = long.TryParse(userIdClaim, out var uid) ? uid : (long?)null;
+                var branchIdClaim = authState.User.FindFirst("BranchId")?.Value;
+                var branchId = long.TryParse(branchIdClaim, out var bid) ? bid : (long?)null;
+
                 dbContext.Attach(pickup);
                 pickup.CourierId = courierId;
                 pickup.CourierName = courier.Name;
                 pickup.CourierPhone = courier.Mobile ?? courier.Phone;
                 pickup.Status = PickupStatus.AssignedForCollection;
                 pickup.AssignedAt = DateTime.UtcNow;
+
+                dbContext.PickupStatusHistories.Add(new PickupStatusHistory
+                {
+                    PickupRequestId = pickup.Id,
+                    StatusId = pickup.StatusId ?? 0,
+                    StatusGroupId = pickup.StatusGroupId ?? 0,
+                    EventType = "ASSIGN_COURIER",
+                    BranchId = branchId ?? pickup.BranchId,
+                    UserId = userId,
+                    UserName = userName,
+                    Remarks = $"Assigned to courier: {courier.Name}",
+                    ChangedAt = DateTime.UtcNow,
+                    IsAutomatic = false,
+                    DeviceInfo = "Web"
+                });
+
                 await dbContext.SaveChangesAsync();
                 Snackbar.Add($"Pickup assigned to {courier.Name}", Severity.Success);
                 await Search();
@@ -815,6 +842,13 @@
             $"Mark pickup {pickup.PickupNo} as collected?", "Yes", "No");
         if (confirm == true)
         {
+            var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+            var userIdClaim = authState.User.FindFirst("UserId")?.Value;
+            var userName = authState.User.FindFirst("FullName")?.Value ?? authState.User.Identity?.Name ?? "System";
+            var userId = long.TryParse(userIdClaim, out var uid) ? uid : (long?)null;
+            var branchIdClaim = authState.User.FindFirst("BranchId")?.Value;
+            var branchId = long.TryParse(branchIdClaim, out var bid) ? bid : (long?)null;
+
             dbContext.Attach(pickup);
             pickup.Status = PickupStatus.ShipmentCollected;
             pickup.CollectedAt = DateTime.UtcNow;
@@ -824,6 +858,21 @@
             {
                 await CommitmentService.CompleteCommitmentAsync(commitment.Id);
             }
+
+            dbContext.PickupStatusHistories.Add(new PickupStatusHistory
+            {
+                PickupRequestId = pickup.Id,
+                StatusId = pickup.StatusId ?? 0,
+                StatusGroupId = pickup.StatusGroupId ?? 0,
+                EventType = "Collection",
+                BranchId = branchId ?? pickup.BranchId,
+                UserId = userId,
+                UserName = userName,
+                Remarks = "Shipment collected (from web)",
+                ChangedAt = DateTime.UtcNow,
+                IsAutomatic = false,
+                DeviceInfo = "Web"
+            });
 
             await dbContext.SaveChangesAsync();
             Snackbar.Add("Pickup marked as collected", Severity.Success);
@@ -850,13 +899,31 @@
             var authState = await AuthStateProvider.GetAuthenticationStateAsync();
             var userIdClaim = authState.User.FindFirst("UserId")?.Value;
             var userName = authState.User.FindFirst("FullName")?.Value ?? authState.User.Identity?.Name ?? "System";
+            var userId = long.TryParse(userIdClaim, out var uid) ? uid : (long?)null;
+            var branchIdClaim = authState.User.FindFirst("BranchId")?.Value;
+            var branchId = long.TryParse(branchIdClaim, out var bid) ? bid : (long?)null;
             
             dbContext.Attach(pickup);
             pickup.Status = PickupStatus.Attempted;
             pickup.AttemptedAt = DateTime.UtcNow;
-            pickup.AttemptedByUserId = long.TryParse(userIdClaim, out var uid) ? uid : null;
+            pickup.AttemptedByUserId = userId;
             pickup.AttemptedByUserName = userName;
             pickup.AttemptRemarks = remarks;
+
+            dbContext.PickupStatusHistories.Add(new PickupStatusHistory
+            {
+                PickupRequestId = pickup.Id,
+                StatusId = pickup.StatusId ?? 0,
+                StatusGroupId = pickup.StatusGroupId ?? 0,
+                EventType = "Attempt",
+                BranchId = branchId ?? pickup.BranchId,
+                UserId = userId,
+                UserName = userName,
+                Remarks = remarks,
+                ChangedAt = DateTime.UtcNow,
+                IsAutomatic = false,
+                DeviceInfo = "Web"
+            });
             
             await dbContext.SaveChangesAsync();
             Snackbar.Add("Pickup marked as attempted - can be reassigned", Severity.Warning);
@@ -884,17 +951,51 @@
         if (result != null && !result.Canceled)
         {
             var reason = result.Data?.ToString() ?? "";
+            var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+            var userIdClaim = authState.User.FindFirst("UserId")?.Value;
+            var userName = authState.User.FindFirst("FullName")?.Value ?? authState.User.Identity?.Name ?? "System";
+            var userId = long.TryParse(userIdClaim, out var uid) ? uid : (long?)null;
+            var branchIdClaim = authState.User.FindFirst("BranchId")?.Value;
+            var branchId = long.TryParse(branchIdClaim, out var bid) ? bid : (long?)null;
+
             await using var dbContext = await DbFactory.CreateDbContextAsync();
             dbContext.Attach(pickup);
             pickup.Status = PickupStatus.Cancelled;
             pickup.Remarks = string.IsNullOrEmpty(pickup.Remarks) 
                 ? $"Voided: {reason}" 
                 : $"{pickup.Remarks} | Voided: {reason}";
+
+            dbContext.PickupStatusHistories.Add(new PickupStatusHistory
+            {
+                PickupRequestId = pickup.Id,
+                StatusId = pickup.StatusId ?? 0,
+                StatusGroupId = pickup.StatusGroupId ?? 0,
+                EventType = "Void",
+                BranchId = branchId ?? pickup.BranchId,
+                UserId = userId,
+                UserName = userName,
+                Remarks = $"Voided: {reason}",
+                ChangedAt = DateTime.UtcNow,
+                IsAutomatic = false,
+                DeviceInfo = "Web"
+            });
+
             await dbContext.SaveChangesAsync();
             Snackbar.Add("Pickup voided successfully", Severity.Warning);
             await Search();
             await LoadStatusCounts();
         }
+    }
+
+    private async Task OpenPickupHistoryDialog(PickupRequest pickup)
+    {
+        var parameters = new DialogParameters<PickupHistoryDialog>
+        {
+            { x => x.PickupRequestId, pickup.Id },
+            { x => x.PickupNo, pickup.PickupNo }
+        };
+        var options = new DialogOptions { CloseButton = true, MaxWidth = MaxWidth.Medium, FullWidth = true };
+        await DialogService.ShowAsync<PickupHistoryDialog>("Pickup History", parameters, options);
     }
 
     private async Task OpenStatusChangeDialog(PickupRequest pickup)
