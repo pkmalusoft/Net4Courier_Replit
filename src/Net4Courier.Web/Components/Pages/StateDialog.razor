@@ -2,17 +2,24 @@
 @using Net4Courier.Infrastructure.Data
 @using Net4Courier.Masters.Entities
 @inject IDbContextFactory<ApplicationDbContext> DbFactory
+@inject IDialogService DialogService
 
 <MudDialog>
     <DialogContent>
         <MudForm @ref="_form" @bind-IsValid="@_isValid">
-            <MudSelect T="long" @bind-Value="State.CountryId" Label="Country" Required="true"
-                       RequiredError="Country is required" Variant="Variant.Outlined" Class="mb-3">
-                @foreach (var country in Countries)
-                {
-                    <MudSelectItem T="long" Value="@country.Id">@country.Name</MudSelectItem>
-                }
-            </MudSelect>
+            <MudStack Row="true" AlignItems="AlignItems.Center" Class="mb-3">
+                <MudSelect T="long" @bind-Value="State.CountryId" Label="Country" Required="true"
+                           RequiredError="Country is required" Variant="Variant.Outlined" Style="flex: 1;">
+                    @foreach (var country in Countries)
+                    {
+                        <MudSelectItem T="long" Value="@country.Id">@country.Name</MudSelectItem>
+                    }
+                </MudSelect>
+                <MudTooltip Text="Create new Country">
+                    <MudIconButton Icon="@Icons.Material.Filled.MoreHoriz" Color="Color.Primary" Size="Size.Medium"
+                                   OnClick="CreateCountryOnTheFly" Style="margin-top: 4px;" />
+                </MudTooltip>
+            </MudStack>
             <MudTextField @bind-Value="State.Name" Label="State Name" Required="true" 
                           RequiredError="Name is required" Variant="Variant.Outlined" Class="mb-3" />
             <MudTextField @bind-Value="State.Code" Label="State Code" 
@@ -36,6 +43,26 @@
 
     private MudForm? _form;
     private bool _isValid;
+
+    private async Task CreateCountryOnTheFly()
+    {
+        var newCountry = new Country { IsActive = true };
+        var parameters = new DialogParameters<CountryDialog>
+        {
+            { x => x.Country, newCountry },
+            { x => x.IsNew, true }
+        };
+        var options = new DialogOptions { CloseOnEscapeKey = true, MaxWidth = MaxWidth.Small, FullWidth = true };
+        var dialog = await DialogService.ShowAsync<CountryDialog>("Add Country", parameters, options);
+        var result = await dialog.Result;
+        if (result != null && !result.Canceled)
+        {
+            await using var dbContext = await DbFactory.CreateDbContextAsync();
+            Countries = await dbContext.Countries.Where(c => c.IsActive && !c.IsDeleted).OrderBy(c => c.Name).ToListAsync();
+            State.CountryId = newCountry.Id;
+            StateHasChanged();
+        }
+    }
 
     private async Task Save()
     {

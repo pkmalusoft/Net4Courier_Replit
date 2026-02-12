@@ -2,26 +2,39 @@
 @using Net4Courier.Infrastructure.Data
 @using Net4Courier.Masters.Entities
 @inject IDbContextFactory<ApplicationDbContext> DbFactory
+@inject IDialogService DialogService
 
 <MudDialog>
     <DialogContent>
         <MudForm @ref="_form" @bind-IsValid="@_isValid">
-            <MudSelect T="long?" Value="City.CountryId" Label="Country"
-                       Variant="Variant.Outlined" Class="mb-3" ValueChanged="OnCountryChanged">
-                <MudSelectItem T="long?" Value="@((long?)null)">-- Select Country --</MudSelectItem>
-                @foreach (var country in Countries)
-                {
-                    <MudSelectItem T="long?" Value="@country.Id">@country.Name</MudSelectItem>
-                }
-            </MudSelect>
-            <MudSelect T="long?" @bind-Value="City.StateId" Label="State"
-                       Variant="Variant.Outlined" Class="mb-3">
-                <MudSelectItem T="long?" Value="@((long?)null)">-- Select State --</MudSelectItem>
-                @foreach (var state in _filteredStates)
-                {
-                    <MudSelectItem T="long?" Value="@state.Id">@state.Name</MudSelectItem>
-                }
-            </MudSelect>
+            <MudStack Row="true" AlignItems="AlignItems.Center" Class="mb-3">
+                <MudSelect T="long?" Value="City.CountryId" Label="Country"
+                           Variant="Variant.Outlined" ValueChanged="OnCountryChanged" Style="flex: 1;">
+                    <MudSelectItem T="long?" Value="@((long?)null)">-- Select Country --</MudSelectItem>
+                    @foreach (var country in Countries)
+                    {
+                        <MudSelectItem T="long?" Value="@country.Id">@country.Name</MudSelectItem>
+                    }
+                </MudSelect>
+                <MudTooltip Text="Create new Country">
+                    <MudIconButton Icon="@Icons.Material.Filled.MoreHoriz" Color="Color.Primary" Size="Size.Medium"
+                                   OnClick="CreateCountryOnTheFly" Style="margin-top: 4px;" />
+                </MudTooltip>
+            </MudStack>
+            <MudStack Row="true" AlignItems="AlignItems.Center" Class="mb-3">
+                <MudSelect T="long?" @bind-Value="City.StateId" Label="State"
+                           Variant="Variant.Outlined" Style="flex: 1;">
+                    <MudSelectItem T="long?" Value="@((long?)null)">-- Select State --</MudSelectItem>
+                    @foreach (var state in _filteredStates)
+                    {
+                        <MudSelectItem T="long?" Value="@state.Id">@state.Name</MudSelectItem>
+                    }
+                </MudSelect>
+                <MudTooltip Text="Create new State">
+                    <MudIconButton Icon="@Icons.Material.Filled.MoreHoriz" Color="Color.Primary" Size="Size.Medium"
+                                   OnClick="CreateStateOnTheFly" Style="margin-top: 4px;" />
+                </MudTooltip>
+            </MudStack>
             <MudTextField @bind-Value="City.Name" Label="City Name" Required="true" 
                           RequiredError="Name is required" Variant="Variant.Outlined" Class="mb-3" />
             <MudTextField @bind-Value="City.Code" Label="City Code" 
@@ -66,6 +79,56 @@
         _filteredStates = City.CountryId.HasValue
             ? States.Where(s => s.CountryId == City.CountryId.Value).ToList()
             : States;
+    }
+
+    private async Task CreateCountryOnTheFly()
+    {
+        var newCountry = new Country { IsActive = true };
+        var parameters = new DialogParameters<CountryDialog>
+        {
+            { x => x.Country, newCountry },
+            { x => x.IsNew, true }
+        };
+        var options = new DialogOptions { CloseOnEscapeKey = true, MaxWidth = MaxWidth.Small, FullWidth = true };
+        var dialog = await DialogService.ShowAsync<CountryDialog>("Add Country", parameters, options);
+        var result = await dialog.Result;
+        if (result != null && !result.Canceled)
+        {
+            await using var dbContext = await DbFactory.CreateDbContextAsync();
+            Countries = await dbContext.Countries.Where(c => c.IsActive && !c.IsDeleted).OrderBy(c => c.Name).ToListAsync();
+            States = await dbContext.States.Include(s => s.Country).Where(s => s.IsActive && !s.IsDeleted).OrderBy(s => s.Name).ToListAsync();
+            City.CountryId = newCountry.Id;
+            City.StateId = null;
+            FilterStates();
+            StateHasChanged();
+        }
+    }
+
+    private async Task CreateStateOnTheFly()
+    {
+        var newState = new State { CountryId = City.CountryId.HasValue ? City.CountryId.Value : 0, IsActive = true };
+        var parameters = new DialogParameters<StateDialog>
+        {
+            { x => x.State, newState },
+            { x => x.IsNew, true },
+            { x => x.Countries, Countries }
+        };
+        var options = new DialogOptions { CloseOnEscapeKey = true, MaxWidth = MaxWidth.Small, FullWidth = true };
+        var dialog = await DialogService.ShowAsync<StateDialog>("Add State", parameters, options);
+        var result = await dialog.Result;
+        if (result != null && !result.Canceled)
+        {
+            await using var dbContext = await DbFactory.CreateDbContextAsync();
+            Countries = await dbContext.Countries.Where(c => c.IsActive && !c.IsDeleted).OrderBy(c => c.Name).ToListAsync();
+            States = await dbContext.States.Include(s => s.Country).Where(s => s.IsActive && !s.IsDeleted).OrderBy(s => s.Name).ToListAsync();
+            if (newState.CountryId > 0)
+            {
+                City.CountryId = newState.CountryId;
+            }
+            City.StateId = newState.Id;
+            FilterStates();
+            StateHasChanged();
+        }
     }
 
     private async Task Save()

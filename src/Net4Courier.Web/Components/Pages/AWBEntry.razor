@@ -196,10 +196,16 @@
                                       Variant="Variant.Outlined" Margin="Margin.Dense" />
                     </MudItem>
                     <MudItem xs="6">
-                        <MudAutocomplete T="City" Label="City" Value="_selectedConsignorCity"
-                                         SearchFunc="@SearchCities" ToStringFunc="@(c => c?.Name ?? "")"
-                                         Variant="Variant.Outlined" Margin="Margin.Dense" Dense="true"
-                                         ValueChanged="@OnConsignorCityChanged" />
+                        <MudStack Row="true" AlignItems="AlignItems.Center">
+                            <MudAutocomplete T="City" Label="City" Value="_selectedConsignorCity"
+                                             SearchFunc="@SearchCities" ToStringFunc="@(c => c?.Name ?? "")"
+                                             Variant="Variant.Outlined" Margin="Margin.Dense" Dense="true"
+                                             ValueChanged="@OnConsignorCityChanged" Style="flex: 1;" />
+                            <MudTooltip Text="Create new City">
+                                <MudIconButton Icon="@Icons.Material.Filled.MoreHoriz" Color="Color.Primary" Size="Size.Small"
+                                               OnClick="@(() => CreateCityOnTheFly(true))" />
+                            </MudTooltip>
+                        </MudStack>
                     </MudItem>
                     <MudItem xs="6">
                         <MudTextField @bind-Value="_inscan.ConsignorState" Label="State" 
@@ -252,10 +258,16 @@
                                       Variant="Variant.Outlined" Margin="Margin.Dense" />
                     </MudItem>
                     <MudItem xs="6">
-                        <MudAutocomplete T="City" Label="Destination City" Value="_selectedConsigneeCity"
-                                         SearchFunc="@SearchCities" ToStringFunc="@(c => c?.Name ?? "")"
-                                         Variant="Variant.Outlined" Margin="Margin.Dense" Dense="true"
-                                         ValueChanged="@OnConsigneeCityChanged" />
+                        <MudStack Row="true" AlignItems="AlignItems.Center">
+                            <MudAutocomplete T="City" Label="Destination City" Value="_selectedConsigneeCity"
+                                             SearchFunc="@SearchCities" ToStringFunc="@(c => c?.Name ?? "")"
+                                             Variant="Variant.Outlined" Margin="Margin.Dense" Dense="true"
+                                             ValueChanged="@OnConsigneeCityChanged" Style="flex: 1;" />
+                            <MudTooltip Text="Create new City">
+                                <MudIconButton Icon="@Icons.Material.Filled.MoreHoriz" Color="Color.Primary" Size="Size.Small"
+                                               OnClick="@(() => CreateCityOnTheFly(false))" />
+                            </MudTooltip>
+                        </MudStack>
                     </MudItem>
                     <MudItem xs="6">
                         <MudTextField @bind-Value="_inscan.ConsigneeState" Label="State" 
@@ -626,6 +638,8 @@
     private TimeSpan? _bookingTime = DateTime.Now.TimeOfDay;
     private List<Party> _customers = new();
     private List<City> _cities = new();
+    private List<State> _states = new();
+    private List<Country> _countries = new();
     private List<Net4Courier.Masters.Entities.ShipmentMode> _shipmentModes = new();
     private List<Net4Courier.Masters.Entities.ServiceType> _serviceTypes = new();
     private List<Port> _airports = new();
@@ -964,6 +978,8 @@
         _customers = await dbContext.Parties.Include(p => p.Addresses).Where(p => p.PartyType == PartyType.Customer && p.IsActive && !p.IsDeleted).OrderBy(p => p.Name).ToListAsync();
         _forwardingAgents = await dbContext.Parties.Where(p => p.PartyType == PartyType.ForwardingAgent && p.IsActive && !p.IsDeleted).OrderBy(p => p.Name).ToListAsync();
         _cities = await dbContext.Cities.Include(c => c.Country).Include(c => c.State).Where(c => c.IsActive).OrderBy(c => c.Name).ToListAsync();
+        _countries = await dbContext.Countries.Where(c => c.IsActive && !c.IsDeleted).OrderBy(c => c.Name).ToListAsync();
+        _states = await dbContext.States.Include(s => s.Country).Where(s => s.IsActive && !s.IsDeleted).OrderBy(s => s.Name).ToListAsync();
         _shipmentModes = await dbContext.ShipmentModes.Where(s => s.IsActive && !s.IsDeleted).OrderBy(s => s.SortOrder).ToListAsync();
         
         if (Id == 0 && !_inscan.ShipmentModeId.HasValue)
@@ -1118,6 +1134,44 @@
         
         var matches = _cities.Where(c => c.Name.Contains(value, StringComparison.OrdinalIgnoreCase)).Take(20);
         return Task.FromResult(matches.AsEnumerable());
+    }
+
+    private async Task CreateCityOnTheFly(bool isOrigin)
+    {
+        await using var dbContext = await DbFactory.CreateDbContextAsync();
+        var countries = await dbContext.Countries.Where(c => c.IsActive && !c.IsDeleted).OrderBy(c => c.Name).ToListAsync();
+        var states = await dbContext.States.Include(s => s.Country).Where(s => s.IsActive && !s.IsDeleted).OrderBy(s => s.Name).ToListAsync();
+
+        var newCity = new City { IsActive = true };
+        var parameters = new DialogParameters<CityDialog>
+        {
+            { x => x.City, newCity },
+            { x => x.IsNew, true },
+            { x => x.States, states },
+            { x => x.Countries, countries }
+        };
+        var options = new DialogOptions { CloseOnEscapeKey = true, MaxWidth = MaxWidth.Small, FullWidth = true };
+        var dialog = await DialogService.ShowAsync<CityDialog>("Add City", parameters, options);
+        var result = await dialog.Result;
+        if (result != null && !result.Canceled)
+        {
+            await using var dbContext2 = await DbFactory.CreateDbContextAsync();
+            _cities = await dbContext2.Cities.Include(c => c.Country).Include(c => c.State).Where(c => c.IsActive).OrderBy(c => c.Name).ToListAsync();
+
+            var createdCity = _cities.FirstOrDefault(c => c.Id == newCity.Id);
+            if (createdCity != null)
+            {
+                if (isOrigin)
+                {
+                    OnConsignorCityChanged(createdCity);
+                }
+                else
+                {
+                    await OnConsigneeCityChanged(createdCity);
+                }
+            }
+            StateHasChanged();
+        }
     }
 
     private Task<IEnumerable<Party>> SearchForwardingAgents(string? value, CancellationToken cancellationToken)
