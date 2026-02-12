@@ -368,6 +368,15 @@ app.Use(async (context, next) =>
         await context.Response.WriteAsync($"{{\"status\":\"Healthy\",\"timestamp\":\"{DateTime.UtcNow:O}\"}}");
         return;
     }
+    if (!DatabaseInitializationService.IsReady && context.Request.Path == "/" 
+        && !context.Request.Path.StartsWithSegments("/_blazor")
+        && !context.Request.Path.StartsWithSegments("/_framework"))
+    {
+        context.Response.StatusCode = 200;
+        context.Response.ContentType = "text/html; charset=utf-8";
+        await context.Response.WriteAsync("<!DOCTYPE html><html><head><meta charset='utf-8'><title>Net4Courier</title><meta http-equiv='refresh' content='5'><style>body{font-family:sans-serif;display:flex;justify-content:center;align-items:center;height:100vh;margin:0;background:#f5f5f5;}div{text-align:center;}h2{color:#333;}</style></head><body><div><h2>Net4Courier</h2><p>Application is starting up, please wait...</p></div></body></html>");
+        return;
+    }
     await next();
 });
 
@@ -1795,6 +1804,7 @@ public class DatabaseInitializationService : BackgroundService
 {
     private readonly IServiceProvider _serviceProvider;
     private readonly ILogger<DatabaseInitializationService> _logger;
+    public static bool IsReady { get; private set; } = false;
 
     public DatabaseInitializationService(IServiceProvider serviceProvider, ILogger<DatabaseInitializationService> logger)
     {
@@ -1804,13 +1814,14 @@ public class DatabaseInitializationService : BackgroundService
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        await Task.Delay(5000, stoppingToken);
+        await Task.Delay(2000, stoppingToken);
         
         // Check if database is configured before attempting initialization
         var databaseUrl = Environment.GetEnvironmentVariable("DATABASE_URL");
         if (string.IsNullOrEmpty(databaseUrl))
         {
             _logger.LogWarning("DATABASE_URL not set. Skipping database initialization. Application running in limited mode.");
+            IsReady = true;
             return;
         }
         
@@ -3428,10 +3439,12 @@ public class DatabaseInitializationService : BackgroundService
             }
 
             _logger.LogInformation("Database initialization completed successfully");
+            IsReady = true;
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Database initialization error");
+            IsReady = true;
         }
     }
 }
