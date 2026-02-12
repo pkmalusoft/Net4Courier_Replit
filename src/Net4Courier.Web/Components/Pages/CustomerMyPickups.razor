@@ -2,9 +2,12 @@
 @layout CustomerLayout
 @inject IDbContextFactory<ApplicationDbContext> DbFactory
 @inject ISnackbar Snackbar
+@inject IDialogService DialogService
+@inject Microsoft.AspNetCore.Components.Authorization.AuthenticationStateProvider AuthStateProvider
 @using Microsoft.EntityFrameworkCore
 @using Net4Courier.Infrastructure.Data
 @using Net4Courier.Operations.Entities
+@using Net4Courier.Masters.Entities
 
 <PageTitle>My Pickups - Net4Courier</PageTitle>
 
@@ -82,8 +85,20 @@
                                             <MudText Typo="Typo.caption">Status:</MudText>
                                             <MudText Typo="Typo.body2">Awaiting courier assignment</MudText>
                                         }
+                                        else if (pickup.Status == PickupStatus.Cancelled)
+                                        {
+                                            <MudText Typo="Typo.caption">Status:</MudText>
+                                            <MudText Typo="Typo.body2">Voided</MudText>
+                                        }
                                     </MudStack>
                                 </MudPaper>
+                                @if (pickup.Status == PickupStatus.PickupRequest || pickup.Status == PickupStatus.AssignedForCollection)
+                                {
+                                    <MudButton Variant="Variant.Outlined" Color="Color.Error" Size="Size.Small" Class="mt-2" FullWidth="true"
+                                               StartIcon="@Icons.Material.Filled.Block" OnClick="@(() => VoidPickup(pickup))">
+                                        Void Request
+                                    </MudButton>
+                                }
                             </MudItem>
                         </MudGrid>
                     </MudCardContent>
@@ -106,15 +121,74 @@
 
 @code {
     private List<PickupRequest> _pickups = new();
+    private long? _customerId;
 
     protected override async Task OnInitializedAsync()
     {
         await using var dbContext = await DbFactory.CreateDbContextAsync();
-        _pickups = await dbContext.PickupRequests
-            .Where(p => !p.IsDeleted)
+        
+        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+        var user = authState.User;
+        if (user.Identity?.IsAuthenticated == true)
+        {
+            var userIdClaim = user.FindFirst("UserId")?.Value;
+            if (long.TryParse(userIdClaim, out var userId))
+            {
+                var dbUser = await dbContext.Users.FindAsync(userId);
+                if (dbUser != null)
+                {
+                    var party = await dbContext.Parties
+                        .FirstOrDefaultAsync(p => p.Email == dbUser.Email && !p.IsDeleted);
+                    _customerId = party?.Id;
+                }
+            }
+        }
+        
+        var query = dbContext.PickupRequests.Where(p => !p.IsDeleted);
+        if (_customerId.HasValue)
+            query = query.Where(p => p.CustomerId == _customerId.Value);
+        
+        _pickups = await query
             .OrderByDescending(p => p.RequestDate)
             .Take(50)
             .ToListAsync();
+    }
+
+    private async Task VoidPickup(PickupRequest pickup)
+    {
+        if (_customerId.HasValue && pickup.CustomerId != _customerId.Value)
+        {
+            Snackbar.Add("You can only void your own pickup requests", Severity.Error);
+            return;
+        }
+        
+        var reasonParam = new DialogParameters<VoidReasonDialog>
+        {
+            { x => x.Title, "Void Pickup Request" },
+            { x => x.Message, $"Are you sure you want to void pickup {pickup.PickupNo}?" }
+        };
+        var options = new DialogOptions { CloseButton = true, MaxWidth = MaxWidth.Small, FullWidth = true };
+        var dialog = await DialogService.ShowAsync<VoidReasonDialog>("Void Pickup", reasonParam, options);
+        var result = await dialog.Result;
+        
+        if (result != null && !result.Canceled)
+        {
+            var reason = result.Data?.ToString() ?? "";
+            await using var dbContext = await DbFactory.CreateDbContextAsync();
+            var entity = await dbContext.PickupRequests.FindAsync(pickup.Id);
+            if (entity != null && (!_customerId.HasValue || entity.CustomerId == _customerId.Value))
+            {
+                entity.Status = PickupStatus.Cancelled;
+                entity.Remarks = string.IsNullOrEmpty(entity.Remarks) 
+                    ? $"Voided by customer: {reason}" 
+                    : $"{entity.Remarks} | Voided by customer: {reason}";
+                await dbContext.SaveChangesAsync();
+                pickup.Status = PickupStatus.Cancelled;
+                pickup.Remarks = entity.Remarks;
+                Snackbar.Add("Pickup voided successfully", Severity.Warning);
+                StateHasChanged();
+            }
+        }
     }
 
     private Color GetStatusColor(PickupStatus status) => status switch
@@ -133,7 +207,7 @@
         PickupStatus.AssignedForCollection => "Courier Assigned",
         PickupStatus.ShipmentCollected => "Collected",
         PickupStatus.Inscanned => "At Hub",
-        PickupStatus.Cancelled => "Cancelled",
+        PickupStatus.Cancelled => "Voided",
         _ => status.ToString()
     };
 
@@ -143,6 +217,7 @@
         PickupStatus.AssignedForCollection => "background-color: #e3f2fd;",
         PickupStatus.ShipmentCollected => "background-color: #e8f5e9;",
         PickupStatus.Inscanned => "background-color: #f3e5f5;",
+        PickupStatus.Cancelled => "background-color: #ffebee;",
         _ => "background-color: #f5f5f5;"
     };
 }

@@ -347,11 +347,11 @@
                     <MudIconButton Icon="@Icons.Material.Filled.Update" Size="Size.Small" Color="Color.Warning" 
                                    OnClick="@(() => OpenStatusChangeDialog(context))" />
                 </MudTooltip>
-                @if (context.Status == PickupStatus.PickupRequest)
+                @if (context.Status == PickupStatus.PickupRequest || context.Status == PickupStatus.AssignedForCollection || context.Status == PickupStatus.Attempted)
                 {
-                    <MudTooltip Text="Cancel">
-                        <MudIconButton Icon="@Icons.Material.Filled.Cancel" Size="Size.Small" Color="Color.Error" 
-                                       OnClick="@(() => CancelPickup(context))" />
+                    <MudTooltip Text="Void">
+                        <MudIconButton Icon="@Icons.Material.Filled.Block" Size="Size.Small" Color="Color.Error" 
+                                       OnClick="@(() => VoidPickup(context))" />
                     </MudTooltip>
                 }
             </MudTd>
@@ -870,17 +870,28 @@
         NavigationManager.NavigateTo($"/pickup-inscan?pickupId={pickup.Id}");
     }
 
-    private async Task CancelPickup(PickupRequest pickup)
+    private async Task VoidPickup(PickupRequest pickup)
     {
-        await using var dbContext = await DbFactory.CreateDbContextAsync();
-        var confirm = await DialogService.ShowMessageBox("Cancel Pickup", 
-            $"Are you sure you want to cancel pickup {pickup.PickupNo}?", "Yes, Cancel", "No");
-        if (confirm == true)
+        var reasonParam = new DialogParameters<VoidReasonDialog>
         {
+            { x => x.Title, "Void Pickup Request" },
+            { x => x.Message, $"Are you sure you want to void pickup {pickup.PickupNo}?" }
+        };
+        var options = new DialogOptions { CloseButton = true, MaxWidth = MaxWidth.Small, FullWidth = true };
+        var dialog = await DialogService.ShowAsync<VoidReasonDialog>("Void Pickup", reasonParam, options);
+        var result = await dialog.Result;
+        
+        if (result != null && !result.Canceled)
+        {
+            var reason = result.Data?.ToString() ?? "";
+            await using var dbContext = await DbFactory.CreateDbContextAsync();
             dbContext.Attach(pickup);
             pickup.Status = PickupStatus.Cancelled;
+            pickup.Remarks = string.IsNullOrEmpty(pickup.Remarks) 
+                ? $"Voided: {reason}" 
+                : $"{pickup.Remarks} | Voided: {reason}";
             await dbContext.SaveChangesAsync();
-            Snackbar.Add("Pickup cancelled", Severity.Warning);
+            Snackbar.Add("Pickup voided successfully", Severity.Warning);
             await Search();
             await LoadStatusCounts();
         }
