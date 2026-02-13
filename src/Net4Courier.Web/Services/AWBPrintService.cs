@@ -435,7 +435,7 @@ public class AWBPrintService
         return document.GeneratePdf();
     }
 
-    public byte[] GenerateBulkLabel(List<InscanMaster> shipments, string? companyName = null, byte[]? logoData = null)
+    public byte[] GenerateBulkLabel(List<InscanMaster> shipments, string? companyName = null, byte[]? logoData = null, string? branchCurrency = null)
     {
         var effectiveLogo = logoData ?? _logoData;
         var document = Document.Create(container =>
@@ -457,7 +457,7 @@ public class AWBPrintService
                         LabelShipper(column, shipment);
                         LabelReceiver(column, shipment);
                         LabelMetrics(column, shipment);
-                        LabelFooter(column, shipment);
+                        LabelFooter(column, shipment, branchCurrency);
                         LabelDescription(column, shipment);
                         LabelSpecialInstructions(column, shipment);
                     });
@@ -672,9 +672,9 @@ public class AWBPrintService
         });
     }
 
-    private void LabelFooter(ColumnDescriptor column, InscanMaster shipment)
+    private void LabelFooter(ColumnDescriptor column, InscanMaster shipment, string? branchCurrency = null)
     {
-        var currency = shipment.Currency ?? "AED";
+        var currency = branchCurrency ?? shipment.Currency ?? "AED";
         var codAmount = shipment.IsCOD ? (shipment.CODAmount ?? 0) : 0;
         var vatAmount = shipment.TaxAmount ?? 0;
         var dutyAmount = shipment.DutyVatAmount ?? 0;

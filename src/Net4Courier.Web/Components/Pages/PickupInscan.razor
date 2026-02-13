@@ -257,6 +257,7 @@
     private bool _processing;
     private int _pendingConversionCount;
     private string _currentUsername = "System";
+    private string _currentBranchCity = "";
 
     private enum InscanMode
     {
@@ -286,6 +287,13 @@
         if (user.Identity?.IsAuthenticated == true)
         {
             _currentUsername = user.Identity.Name ?? "System";
+            var branchIdClaim = user.FindFirst("BranchId")?.Value;
+            if (long.TryParse(branchIdClaim, out var branchId))
+            {
+                await using var context = await DbFactory.CreateDbContextAsync();
+                var branch = await context.Branches.Include(b => b.City).FirstOrDefaultAsync(b => b.Id == branchId);
+                _currentBranchCity = branch?.City?.Name ?? "";
+            }
         }
     }
 
@@ -444,7 +452,7 @@
             {
                 await ShipmentStatusService.SetStatus(
                     awbId, "INSCAN_ORIGIN", "PickupInscan", pickup.Id, "PickupRequest",
-                    null, pickup.City, null, null,
+                    null, !string.IsNullOrEmpty(_currentBranchCity) ? _currentBranchCity : pickup.City, null, null,
                     $"AWB received into warehouse via Pickup {pickup.PickupNo}", isAutomatic: true);
             }
             
@@ -483,7 +491,7 @@
                 
                 await ShipmentStatusService.SetStatus(
                     awb.Id, "INSCAN_ORIGIN", "PickupInscan", null, null,
-                    null, awb.ConsignorCity, null, null,
+                    null, !string.IsNullOrEmpty(_currentBranchCity) ? _currentBranchCity : awb.ConsignorCity, null, null,
                     $"AWB received into warehouse via direct scan", isAutomatic: true);
                 
                 _lastMessage = $"AWB {awbNo} received into warehouse! Status updated to InscanAtOrigin.";

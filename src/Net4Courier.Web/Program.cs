@@ -913,18 +913,25 @@ app.MapGet("/api/report/label-bulk/{ids}", async (string ids, bool? inline, Appl
 
         byte[]? logoData = null;
         string? companyName = null;
+        string? branchCurrency = null;
         var firstAwb = awbs.First();
         if (firstAwb.BranchId.HasValue)
         {
-            var branch = await db.Branches.Include(b => b.Company).FirstOrDefaultAsync(b => b.Id == firstAwb.BranchId);
+            var branch = await db.Branches.Include(b => b.Company).Include(b => b.Currency).FirstOrDefaultAsync(b => b.Id == firstAwb.BranchId);
             logoData = ResolveLogoBytes(branch?.Company?.Logo, env.WebRootPath);
             companyName = branch?.Company?.Name;
+            branchCurrency = branch?.Currency?.Code;
         }
         if (logoData == null)
         {
             var company = await db.Companies.FirstOrDefaultAsync(c => !c.IsDeleted);
             logoData = ResolveLogoBytes(company?.Logo, env.WebRootPath);
             companyName ??= company?.Name;
+        }
+        if (branchCurrency == null)
+        {
+            var defaultBranch = await db.Branches.Include(b => b.Currency).FirstOrDefaultAsync(b => !b.IsDeleted);
+            branchCurrency = defaultBranch?.Currency?.Code;
         }
 
         foreach (var awb in awbs)
@@ -938,7 +945,7 @@ app.MapGet("/api/report/label-bulk/{ids}", async (string ids, bool? inline, Appl
         }
 
         await ResolveLocationCodesBulk(awbs, db);
-        var combinedPdf = printService.GenerateBulkLabel(awbs, companyName, logoData);
+        var combinedPdf = printService.GenerateBulkLabel(awbs, companyName, logoData, branchCurrency);
         var fileName = inline == true ? null : $"BulkLabels-{DateTime.Now:yyyyMMdd_HHmmss}.pdf";
         return Results.File(combinedPdf, "application/pdf", fileName);
     }
@@ -972,18 +979,25 @@ app.MapGet("/api/report/label-bulk-by-awbno/{awbNos}", async (string awbNos, boo
 
         byte[]? logoData = null;
         string? companyName = null;
+        string? branchCurrency = null;
         var firstAwb = awbs.First();
         if (firstAwb.BranchId.HasValue)
         {
-            var branch = await db.Branches.Include(b => b.Company).FirstOrDefaultAsync(b => b.Id == firstAwb.BranchId);
+            var branch = await db.Branches.Include(b => b.Company).Include(b => b.Currency).FirstOrDefaultAsync(b => b.Id == firstAwb.BranchId);
             logoData = ResolveLogoBytes(branch?.Company?.Logo, env.WebRootPath);
             companyName = branch?.Company?.Name;
+            branchCurrency = branch?.Currency?.Code;
         }
         if (logoData == null)
         {
             var company = await db.Companies.FirstOrDefaultAsync(c => !c.IsDeleted);
             logoData = ResolveLogoBytes(company?.Logo, env.WebRootPath);
             companyName ??= company?.Name;
+        }
+        if (branchCurrency == null)
+        {
+            var defaultBranch = await db.Branches.Include(b => b.Currency).FirstOrDefaultAsync(b => !b.IsDeleted);
+            branchCurrency = defaultBranch?.Currency?.Code;
         }
 
         foreach (var awb in awbs)
@@ -997,7 +1011,7 @@ app.MapGet("/api/report/label-bulk-by-awbno/{awbNos}", async (string awbNos, boo
         }
 
         await ResolveLocationCodesBulk(awbs, db);
-        var combinedPdf = printService.GenerateBulkLabel(awbs, companyName, logoData);
+        var combinedPdf = printService.GenerateBulkLabel(awbs, companyName, logoData, branchCurrency);
         var fileName = inline == true ? null : $"BulkLabels-{DateTime.Now:yyyyMMdd_HHmmss}.pdf";
         return Results.File(combinedPdf, "application/pdf", fileName);
     }
