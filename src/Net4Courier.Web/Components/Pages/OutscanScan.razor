@@ -9,6 +9,7 @@
 @using Net4Courier.Infrastructure.Data
 @using Net4Courier.Operations.Entities
 @using Net4Courier.Kernel.Enums
+@using Net4Courier.Masters.Entities
 
 <PageTitle>Outscan - Scan AWBs - Net4Courier</PageTitle>
 
@@ -163,6 +164,7 @@ else
     private string _scanMessage = string.Empty;
     private Severity _scanSeverity = Severity.Info;
     private decimal _totalCOD;
+    private decimal _branchVatPercent;
 
     protected override async Task OnInitializedAsync()
     {
@@ -185,6 +187,13 @@ else
             .Where(d => d.DRSId == DrsId)
             .OrderBy(d => d.Sequence)
             .ToListAsync();
+
+        var branchId = _drsDetails.FirstOrDefault()?.Inscan?.BranchId;
+        if (branchId.HasValue)
+        {
+            var branch = await dbContext.Set<Branch>().FirstOrDefaultAsync(b => b.Id == branchId.Value);
+            _branchVatPercent = branch?.VatPercentage ?? 0;
+        }
 
         foreach (var detail in _drsDetails)
         {
@@ -611,15 +620,12 @@ else
         if (inscan == null) return 0;
         if (inscan.NetTotal.HasValue && inscan.NetTotal.Value > 0)
             return inscan.NetTotal.Value;
-        var freight = inscan.CourierCharge ?? 0;
-        var oda = inscan.OtherCharge ?? 0;
-        var fuel = inscan.FuelSurcharge ?? 0;
-        var taxPercent = inscan.TaxPercent ?? 0;
-        var subtotal = (freight + oda + fuel) * (1 + taxPercent / 100);
-        var discount = inscan.Discount ?? 0;
-        var duty = inscan.DutyVatAmount ?? 0;
-        var cod = inscan.CODAmount ?? 0;
+        var baseCharges = ((inscan.CourierCharge ?? 0) + (inscan.OtherCharge ?? 0) + (inscan.FuelSurcharge ?? 0))
+            * (1 + (inscan.TaxPercent ?? 0) / 100) - (inscan.Discount ?? 0)
+            + (inscan.DutyVatAmount ?? 0) + (inscan.CODAmount ?? 0);
         var importVat = inscan.TaxAmount ?? 0;
-        return subtotal - discount + duty + cod + importVat;
+        if (importVat == 0 && (inscan.CustomsValue ?? 0) > 0)
+            importVat = (inscan.CustomsValue ?? 0) * _branchVatPercent / 100;
+        return baseCharges + importVat;
     }
 }
