@@ -8,6 +8,7 @@
 @using Net4Courier.Infrastructure.Data
 @using Net4Courier.Operations.Entities
 @using Net4Courier.Masters.Entities
+@using Net4Courier.Kernel.Enums
 @using ClosedXML.Excel
 
 <PageTitle>Outscan / DRS Management - Net4Courier</PageTitle>
@@ -232,7 +233,26 @@
             .ThenByDescending(d => d.Id)
             .Take(100)
             .ToListAsync();
-            
+
+        var drsIds = _drsList.Select(d => d.Id).ToList();
+        var drsDetails = await dbContext.Set<DRSDetail>()
+            .Include(d => d.Inscan)
+            .Where(d => drsIds.Contains(d.DRSId))
+            .ToListAsync();
+
+        foreach (var drs in _drsList)
+        {
+            var details = drsDetails.Where(d => d.DRSId == drs.Id).ToList();
+            var recalcCOD = details.Sum(d =>
+            {
+                if (d.Inscan?.MovementTypeId == MovementType.InternationalImport)
+                    return d.Inscan?.NetTotal ?? 0;
+                return d.CODAmount ?? 0;
+            });
+            if (recalcCOD > 0)
+                drs.TotalCOD = recalcCOD;
+        }
+
         _loading = false;
     }
 
