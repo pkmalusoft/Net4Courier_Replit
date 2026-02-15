@@ -117,7 +117,7 @@ else
             <MudTd DataLabel="COD" Style="text-align: right;">
                 @if (context.Inscan?.MovementTypeId == MovementType.InternationalImport)
                 {
-                    <strong>@((context.Inscan?.NetTotal ?? 0).ToString("N2"))</strong>
+                    <strong>@GetImportTotalCharges(context.Inscan).ToString("N2")</strong>
                 }
                 else if (context.CODAmount > 0)
                 {
@@ -198,7 +198,7 @@ else
         _totalCOD = _drsDetails.Sum(d =>
         {
             if (d.Inscan?.MovementTypeId == MovementType.InternationalImport)
-                return d.Inscan?.NetTotal ?? 0;
+                return GetImportTotalCharges(d.Inscan);
             return d.CODAmount ?? 0;
         });
         
@@ -425,7 +425,7 @@ else
         _drs.TotalCOD = _drsDetails.Sum(d =>
         {
             if (d.Inscan?.MovementTypeId == MovementType.InternationalImport)
-                return d.Inscan?.NetTotal ?? 0;
+                return GetImportTotalCharges(d.Inscan);
             return d.CODAmount ?? 0;
         });
         _drs.CollectedCOD = _drsDetails.Where(d => d.Status == "Delivered").Sum(d => d.CollectedAmount ?? 0);
@@ -604,5 +604,22 @@ else
             await LoadData();
             await UpdateDRSCounts();
         }
+    }
+
+    private decimal GetImportTotalCharges(InscanMaster? inscan)
+    {
+        if (inscan == null) return 0;
+        if (inscan.NetTotal.HasValue && inscan.NetTotal.Value > 0)
+            return inscan.NetTotal.Value;
+        var freight = inscan.CourierCharge ?? 0;
+        var oda = inscan.OtherCharge ?? 0;
+        var fuel = inscan.FuelSurcharge ?? 0;
+        var taxPercent = inscan.TaxPercent ?? 0;
+        var subtotal = (freight + oda + fuel) * (1 + taxPercent / 100);
+        var discount = inscan.Discount ?? 0;
+        var duty = inscan.DutyVatAmount ?? 0;
+        var cod = inscan.CODAmount ?? 0;
+        var importVat = inscan.TaxAmount ?? 0;
+        return subtotal - discount + duty + cod + importVat;
     }
 }
