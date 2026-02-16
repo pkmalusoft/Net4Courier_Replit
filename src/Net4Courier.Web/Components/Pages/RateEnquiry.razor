@@ -7,7 +7,6 @@
 @inject IDbContextFactory<ApplicationDbContext> DbFactory
 @inject RatingEngineService RatingEngine
 @inject NavigationManager Navigation
-@inject AppAuthStateProvider AuthState
 @rendermode InteractiveServer
 
 <PageTitle>Rate Enquiry | Net4Courier</PageTitle>
@@ -20,31 +19,60 @@
                 
                 <MudStack Spacing="3">
                     <div>
-                        <MudText Typo="Typo.caption" Style="color: rgba(255,255,255,0.8);">I am sending from</MudText>
+                        <MudText Typo="Typo.caption" Style="color: rgba(255,255,255,0.8);">Origin Country</MudText>
+                        <MudSelect T="long?" Value="_originCountryId" 
+                                   Placeholder="Select country"
+                                   Variant="Variant.Filled" 
+                                   Margin="Margin.Dense"
+                                   AnchorOrigin="Origin.BottomCenter"
+                                   Style="background: rgba(255,255,255,0.95); border-radius: 8px;"
+                                   ValueChanged="OnOriginCountryChanged">
+                            @foreach (var country in _countries)
+                            {
+                                <MudSelectItem T="long?" Value="@((long?)country.Id)">@country.Name</MudSelectItem>
+                            }
+                        </MudSelect>
+                    </div>
+
+                    <div>
+                        <MudText Typo="Typo.caption" Style="color: rgba(255,255,255,0.8);">Origin City</MudText>
                         <MudAutocomplete T="City" @bind-Value="_originCity" 
-                                         SearchFunc="SearchCities" 
-                                         ToStringFunc="@(c => c != null ? $"{c.Name}, {GetCountryName(c.CountryId)}" : "")"
-                                         Placeholder="Select origin city"
+                                         SearchFunc="SearchOriginCities" 
+                                         ToStringFunc="@(c => c != null ? c.Name : "")"
+                                         Placeholder="@(_originCountryId.HasValue ? "Type to search city" : "Select country first")"
+                                         Disabled="@(!_originCountryId.HasValue)"
                                          Variant="Variant.Filled" 
                                          Margin="Margin.Dense"
                                          Style="background: rgba(255,255,255,0.95); border-radius: 8px;" />
                     </div>
 
                     <div>
-                        <MudText Typo="Typo.caption" Style="color: rgba(255,255,255,0.8);">to</MudText>
+                        <MudText Typo="Typo.caption" Style="color: rgba(255,255,255,0.8);">Destination Country</MudText>
+                        <MudSelect T="long?" Value="_destinationCountryId" 
+                                   Placeholder="Select country"
+                                   Variant="Variant.Filled" 
+                                   Margin="Margin.Dense"
+                                   AnchorOrigin="Origin.BottomCenter"
+                                   Style="background: rgba(255,255,255,0.95); border-radius: 8px;"
+                                   ValueChanged="OnDestinationCountryChanged">
+                            @foreach (var country in _countries)
+                            {
+                                <MudSelectItem T="long?" Value="@((long?)country.Id)">@country.Name</MudSelectItem>
+                            }
+                        </MudSelect>
+                    </div>
+
+                    <div>
+                        <MudText Typo="Typo.caption" Style="color: rgba(255,255,255,0.8);">Destination City</MudText>
                         <MudAutocomplete T="City" @bind-Value="_destinationCity" 
-                                         SearchFunc="SearchCities" 
-                                         ToStringFunc="@(c => c != null ? $"{c.Name}, {GetCountryName(c.CountryId)}" : "")"
-                                         Placeholder="Select destination city"
+                                         SearchFunc="SearchDestinationCities" 
+                                         ToStringFunc="@(c => c != null ? c.Name : "")"
+                                         Placeholder="@(_destinationCountryId.HasValue ? "Type to search city" : "Select country first")"
+                                         Disabled="@(!_destinationCountryId.HasValue)"
                                          Variant="Variant.Filled" 
                                          Margin="Margin.Dense"
                                          Style="background: rgba(255,255,255,0.95); border-radius: 8px;" />
                     </div>
-
-                    <MudCheckBox T="bool" @bind-Value="_isResidential" 
-                                 Label="I am shipping to a residence" 
-                                 Style="color: white;"
-                                 Color="Color.Primary" />
 
                     <MudGrid>
                         <MudItem xs="6">
@@ -236,9 +264,10 @@
 </MudContainer>
 
 @code {
+    private long? _originCountryId;
+    private long? _destinationCountryId;
     private City? _originCity;
     private City? _destinationCity;
-    private bool _isResidential = false;
     private string _packageType = "Parcel";
     private decimal _weight = 1.0m;
     private string _weightUnit = "KG";
@@ -250,33 +279,72 @@
     private bool _hasSearched = false;
     private string? _errorMessage;
     private List<RateQuote> _rateResults = new();
-    private Dictionary<long, string> _countryCache = new();
+    private List<Country> _countries = new();
+    private string _defaultCurrency = "AED";
 
     protected override async Task OnInitializedAsync()
     {
         await using var dbContext = await DbFactory.CreateDbContextAsync();
-        _countryCache = await dbContext.Countries
+        _countries = await dbContext.Countries
             .Where(c => c.IsActive && !c.IsDeleted)
-            .ToDictionaryAsync(c => c.Id, c => c.Name);
+            .OrderBy(c => c.Name)
+            .ToListAsync();
+
+        var branch = await dbContext.Branches
+            .Include(b => b.Currency)
+            .Where(b => !b.IsDeleted)
+            .FirstOrDefaultAsync();
+        if (branch?.Currency != null)
+            _defaultCurrency = branch.Currency.Code;
+        else
+        {
+            var company = await dbContext.Companies
+                .Include(c => c.Currency)
+                .Where(c => !c.IsDeleted)
+                .FirstOrDefaultAsync();
+            if (company?.Currency != null)
+                _defaultCurrency = company.Currency.Code;
+        }
     }
 
-    private string GetCountryName(long? countryId)
+    private void OnOriginCountryChanged(long? countryId)
     {
-        if (!countryId.HasValue) return "";
-        return _countryCache.TryGetValue(countryId.Value, out var name) ? name : "";
+        _originCountryId = countryId;
+        _originCity = null;
     }
 
-    private async Task<IEnumerable<City>> SearchCities(string value, CancellationToken cancellationToken)
+    private void OnDestinationCountryChanged(long? countryId)
     {
-        if (string.IsNullOrWhiteSpace(value) || value.Length < 2)
+        _destinationCountryId = countryId;
+        _destinationCity = null;
+    }
+
+    private async Task<IEnumerable<City>> SearchOriginCities(string value, CancellationToken cancellationToken)
+    {
+        return await SearchCitiesByCountry(value, _originCountryId, cancellationToken);
+    }
+
+    private async Task<IEnumerable<City>> SearchDestinationCities(string value, CancellationToken cancellationToken)
+    {
+        return await SearchCitiesByCountry(value, _destinationCountryId, cancellationToken);
+    }
+
+    private async Task<IEnumerable<City>> SearchCitiesByCountry(string value, long? countryId, CancellationToken cancellationToken)
+    {
+        if (!countryId.HasValue)
             return Enumerable.Empty<City>();
 
         await using var dbContext = await DbFactory.CreateDbContextAsync();
-        return await dbContext.Cities
-            .Where(c => c.IsActive && !c.IsDeleted && c.Name.ToLower().Contains(value.ToLower()))
+        var query = dbContext.Cities
+            .Where(c => c.IsActive && !c.IsDeleted && c.CountryId == countryId.Value);
+
+        if (!string.IsNullOrWhiteSpace(value) && value.Length >= 1)
+            query = query.Where(c => c.Name.ToLower().Contains(value.ToLower()));
+
+        return await query
             .OrderBy(c => c.Name)
-            .Take(20)
-            .ToListAsync();
+            .Take(30)
+            .ToListAsync(cancellationToken);
     }
 
     private async Task ShowRates()
@@ -284,9 +352,23 @@
         _errorMessage = null;
         _rateResults.Clear();
         
+        if (!_originCountryId.HasValue)
+        {
+            _errorMessage = "Please select origin country";
+            _hasSearched = true;
+            return;
+        }
+
         if (_originCity == null)
         {
             _errorMessage = "Please select origin city";
+            _hasSearched = true;
+            return;
+        }
+
+        if (!_destinationCountryId.HasValue)
+        {
+            _errorMessage = "Please select destination country";
             _hasSearched = true;
             return;
         }
@@ -316,7 +398,7 @@
             var widthInCm = _dimensionUnit == "IN" ? _width * 2.54m : _width;
             var heightInCm = _dimensionUnit == "IN" ? _height * 2.54m : _height;
 
-            var movementType = DetermineMovementType(_originCity.CountryId, _destinationCity.CountryId);
+            var movementType = DetermineMovementType(_originCountryId, _destinationCountryId);
 
             var request = new RatingRequest
             {
@@ -337,8 +419,6 @@
 
             if (result.Success)
             {
-                var currency = AuthState.CurrencyCode;
-
                 _rateResults.Add(new RateQuote
                 {
                     ServiceName = GetServiceName(movementType),
@@ -346,7 +426,7 @@
                     ZoneName = result.ZoneName,
                     ChargeableWeight = result.ChargeableWeight,
                     TotalCharge = result.TotalCharge,
-                    Currency = currency,
+                    Currency = _defaultCurrency,
                     RateCardId = result.RateCardId
                 });
             }
