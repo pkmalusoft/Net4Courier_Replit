@@ -77,9 +77,9 @@
                             <MudTd>@context.Destination</MudTd>
                             <MudTd>@context.Pieces</MudTd>
                             <MudTd>@context.Weight.ToString("N2")</MudTd>
-                            <MudTd Style="text-align:right">₹@context.CourierCharge.ToString("N2")</MudTd>
-                            <MudTd Style="text-align:right">₹@context.OtherCharge.ToString("N2")</MudTd>
-                            <MudTd Style="text-align:right"><strong>₹@context.Total.ToString("N2")</strong></MudTd>
+                            <MudTd Style="text-align:right">@_currencySymbol@context.CourierCharge.ToString("N2")</MudTd>
+                            <MudTd Style="text-align:right">@_currencySymbol@context.OtherCharge.ToString("N2")</MudTd>
+                            <MudTd Style="text-align:right"><strong>@_currencySymbol@context.Total.ToString("N2")</strong></MudTd>
                         </RowTemplate>
                         <NoRecordsContent>
                             <MudText>No unbilled AWBs found for the selected period</MudText>
@@ -110,11 +110,11 @@
 
                         <MudStack Row="true" Justify="Justify.SpaceBetween">
                             <MudText>Sub Total:</MudText>
-                            <MudText>₹@_preview.SubTotal.ToString("N2")</MudText>
+                            <MudText>@_currencySymbol@_preview.SubTotal.ToString("N2")</MudText>
                         </MudStack>
                         <MudStack Row="true" Justify="Justify.SpaceBetween">
                             <MudText>Tax (@_preview.TaxPercent%):</MudText>
-                            <MudText>₹@_preview.TaxAmount.ToString("N2")</MudText>
+                            <MudText>@_currencySymbol@_preview.TaxAmount.ToString("N2")</MudText>
                         </MudStack>
 
                         @if (_preview.SpecialCharges.Any())
@@ -127,13 +127,13 @@
                                 <MudPaper Class="pa-2" Elevation="0" Style="background-color: #e3f2fd;">
                                     <MudStack Row="true" Justify="Justify.SpaceBetween">
                                         <MudText Typo="Typo.body2">@charge.ChargeName</MudText>
-                                        <MudText Typo="Typo.body2">₹@charge.CalculatedAmount.ToString("N2")</MudText>
+                                        <MudText Typo="Typo.body2">@_currencySymbol@charge.CalculatedAmount.ToString("N2")</MudText>
                                     </MudStack>
                                     @if (charge.IsTaxApplicable)
                                     {
                                         <MudStack Row="true" Justify="Justify.SpaceBetween">
                                             <MudText Typo="Typo.caption" Color="Color.Secondary">Tax (@charge.TaxPercent%)</MudText>
-                                            <MudText Typo="Typo.caption" Color="Color.Secondary">₹@charge.TaxAmount.ToString("N2")</MudText>
+                                            <MudText Typo="Typo.caption" Color="Color.Secondary">@_currencySymbol@charge.TaxAmount.ToString("N2")</MudText>
                                         </MudStack>
                                     }
                                 </MudPaper>
@@ -141,7 +141,7 @@
 
                             <MudStack Row="true" Justify="Justify.SpaceBetween">
                                 <MudText>Special Charges Total:</MudText>
-                                <MudText>₹@((_preview.SpecialChargesTotal + _preview.SpecialChargesTax).ToString("N2"))</MudText>
+                                <MudText>@_currencySymbol@((_preview.SpecialChargesTotal + _preview.SpecialChargesTax).ToString("N2"))</MudText>
                             </MudStack>
                         }
 
@@ -149,7 +149,7 @@
 
                         <MudStack Row="true" Justify="Justify.SpaceBetween">
                             <MudText Typo="Typo.h6">Net Total:</MudText>
-                            <MudText Typo="Typo.h6" Color="Color.Primary">₹@_preview.NetTotal.ToString("N2")</MudText>
+                            <MudText Typo="Typo.h6" Color="Color.Primary">@_currencySymbol@_preview.NetTotal.ToString("N2")</MudText>
                         </MudStack>
                     </MudStack>
 
@@ -187,12 +187,25 @@
     private DateTime? _periodTo;
     private DateTime? _invoiceDate;
     private InvoicePreviewModel? _preview;
+    private Branch? _currentBranch;
+    private string _currencySymbol = "";
+    private decimal _branchTaxPercent = 5;
 
-    protected override void OnInitialized()
+    protected override async Task OnInitializedAsync()
     {
         _periodFrom = new DateTime(DateTime.Today.Year, DateTime.Today.Month, 1);
         _periodTo = DateTime.Today;
         _invoiceDate = DateTime.Today;
+
+        await using var dbContext = await DbFactory.CreateDbContextAsync();
+        _currentBranch = await dbContext.Branches
+            .Include(b => b.Currency)
+            .FirstOrDefaultAsync(b => !b.IsDeleted && b.IsActive);
+        if (_currentBranch != null)
+        {
+            _currencySymbol = _currentBranch.Currency?.Symbol ?? _currentBranch.Currency?.Code ?? "";
+            _branchTaxPercent = _currentBranch.VatPercentage ?? 5;
+        }
     }
 
     private async Task<IEnumerable<Party>> SearchCustomers(string value, CancellationToken cancellationToken)
@@ -247,7 +260,8 @@
                 fromDate,
                 toDate,
                 awbs,
-                specialCharges
+                specialCharges,
+                _branchTaxPercent
             );
 
             if (!awbs.Any())
@@ -281,7 +295,7 @@
 
         var confirmed = await DialogService.ShowMessageBox(
             "Generate Invoice",
-            $"Generate invoice for {_preview.Details.Count} AWBs totaling ₹{_preview.NetTotal:N2}?",
+            $"Generate invoice for {_preview.Details.Count} AWBs totaling {_currencySymbol}{_preview.NetTotal:N2}?",
             yesText: "Generate", cancelText: "Cancel");
 
         if (confirmed == true)
