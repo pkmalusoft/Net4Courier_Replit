@@ -1,0 +1,429 @@
+@page "/customer-tracking"
+@using Microsoft.EntityFrameworkCore
+@using Net4Courier.Operations.Entities
+@using Net4Courier.Masters.Entities
+@using Net4Courier.Infrastructure.Data
+@using Net4Courier.Kernel.Enums
+@inject IDbContextFactory<ApplicationDbContext> DbFactory
+@inject NavigationManager Navigation
+@rendermode InteractiveServer
+
+<PageTitle>Track Shipment | Net4Courier</PageTitle>
+
+<style>
+    .tracking-hero {
+        background: linear-gradient(135deg, #1a237e 0%, #3949ab 50%, #5c6bc0 100%);
+        border-radius: 16px;
+        padding: 32px;
+        margin-bottom: 24px;
+    }
+    .tracking-card {
+        border: 1px solid #e2e8f0;
+        border-radius: 12px;
+        transition: all 0.2s ease;
+        cursor: pointer;
+    }
+    .tracking-card:hover {
+        border-color: #3949ab;
+        box-shadow: 0 4px 12px rgba(57, 73, 171, 0.15);
+    }
+    .status-badge {
+        padding: 4px 12px;
+        border-radius: 20px;
+        font-size: 0.75rem;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+    }
+    .timeline-dot {
+        width: 12px;
+        height: 12px;
+        border-radius: 50%;
+        flex-shrink: 0;
+    }
+    .timeline-line-segment {
+        width: 2px;
+        background: #e2e8f0;
+        flex-grow: 1;
+        min-height: 20px;
+    }
+    .timeline-line-active {
+        background: #3949ab;
+    }
+    .empty-state-icon {
+        width: 80px;
+        height: 80px;
+        border-radius: 50%;
+        background: #f1f5f9;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        margin: 0 auto 16px auto;
+    }
+    .detail-label {
+        font-size: 0.7rem;
+        color: #94a3b8;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        font-weight: 600;
+    }
+    .detail-value {
+        font-size: 0.875rem;
+        font-weight: 600;
+        color: #1e293b;
+    }
+</style>
+
+<MudContainer MaxWidth="MaxWidth.Large" Class="mt-6 mb-8">
+    <div class="tracking-hero">
+        <MudText Typo="Typo.h4" Style="color: white; font-weight: 700;" Class="mb-1">Track Your Shipments</MudText>
+        <MudText Style="color: rgba(255,255,255,0.7); font-size: 0.9rem;" Class="mb-5">Enter up to 5 Airway Bill (AWB) numbers separated by commas or new lines.</MudText>
+
+        <MudTextField T="string" @bind-Value="_awbInput"
+                      Placeholder="e.g. AWB001, AWB002..."
+                      Variant="Variant.Filled"
+                      Lines="3"
+                      Style="background: rgba(255,255,255,0.95); border-radius: 12px;"
+                      Class="mb-4"
+                      Immediate="true"
+                      OnKeyUp="OnInputKeyUp" />
+
+        <MudButton Variant="Variant.Filled"
+                   Color="Color.Primary"
+                   Size="Size.Large"
+                   OnClick="HandleTrack"
+                   Disabled="_loading"
+                   Style="background: #1565c0; border-radius: 8px; text-transform: none; font-weight: 600; padding: 12px 32px;">
+            @if (_loading)
+            {
+                <MudProgressCircular Size="Size.Small" Color="Color.Surface" Indeterminate="true" Class="mr-2" />
+            }
+            Track Now
+        </MudButton>
+    </div>
+
+    @if (_hasSearched && _results.Any())
+    {
+        <MudText Typo="Typo.h6" Class="mb-4" Style="font-weight: 700;">
+            Active Shipments (@_results.Count)
+        </MudText>
+
+        <MudStack Spacing="3">
+            @foreach (var result in _results)
+            {
+                <MudPaper Class="tracking-card pa-4" Elevation="0" @onclick="() => OpenTimeline(result)">
+                    <MudGrid>
+                        <MudItem xs="12" sm="6" md="3">
+                            <div class="d-flex align-center gap-3">
+                                <MudAvatar Size="Size.Large" Style="@GetStatusAvatarStyle(result.Status)">
+                                    <MudIcon Icon="@GetStatusIcon(result.Status)" />
+                                </MudAvatar>
+                                <div>
+                                    <MudText Typo="Typo.subtitle1" Style="font-weight: 700;">@result.AWBNo</MudText>
+                                    <MudText Typo="Typo.caption" Style="color: #94a3b8;">@result.Origin → @result.Destination</MudText>
+                                </div>
+                            </div>
+                        </MudItem>
+                        <MudItem xs="6" sm="3" md="2">
+                            <div class="detail-label">Pieces</div>
+                            <div class="detail-value">@result.Pieces</div>
+                        </MudItem>
+                        <MudItem xs="6" sm="3" md="2">
+                            <div class="detail-label">Weight</div>
+                            <div class="detail-value">@result.Weight.ToString("F2") KG</div>
+                        </MudItem>
+                        <MudItem xs="6" sm="3" md="2">
+                            <div class="detail-label">Service Type</div>
+                            <div class="detail-value">@result.ServiceType</div>
+                        </MudItem>
+                        <MudItem xs="6" sm="3" md="3">
+                            <div class="d-flex flex-column align-end">
+                                <span class="status-badge" style="@GetStatusBadgeStyle(result.Status)">@GetStatusDisplay(result.Status)</span>
+                                <MudText Typo="Typo.caption" Style="color: #94a3b8;" Class="mt-1">@result.LastUpdate</MudText>
+                            </div>
+                        </MudItem>
+                    </MudGrid>
+                </MudPaper>
+            }
+        </MudStack>
+    }
+    else if (_hasSearched && _notFoundAwbs.Any())
+    {
+        <MudAlert Severity="Severity.Warning" Class="mb-4">
+            No shipments found for: @string.Join(", ", _notFoundAwbs)
+        </MudAlert>
+    }
+    else if (!_hasSearched)
+    {
+        <div style="text-align: center; padding: 60px 0;">
+            <div class="empty-state-icon">
+                <MudIcon Icon="@Icons.Material.Filled.Search" Style="font-size: 40px; color: #94a3b8;" />
+            </div>
+            <MudText Typo="Typo.h6" Style="font-weight: 600;">No shipments tracked yet</MudText>
+            <MudText Typo="Typo.body2" Style="color: #94a3b8; max-width: 320px; margin: 8px auto 0 auto;">Enter your tracking numbers above to see real-time updates and timelines.</MudText>
+        </div>
+    }
+
+    @if (_hasSearched && _results.Any() && _notFoundAwbs.Any())
+    {
+        <MudAlert Severity="Severity.Warning" Class="mt-4">
+            Not found: @string.Join(", ", _notFoundAwbs)
+        </MudAlert>
+    }
+</MudContainer>
+
+<MudDialog @bind-Visible="_timelineOpen" Options="new DialogOptions { MaxWidth = MaxWidth.Medium, FullWidth = true, CloseOnEscapeKey = true, CloseButton = true }">
+    <TitleContent>
+        <div>
+            <MudText Typo="Typo.caption" Style="color: #3949ab; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase;">@_selectedResult?.AWBNo</MudText>
+            <MudText Typo="Typo.h6" Style="font-weight: 700;">Shipment Timeline</MudText>
+        </div>
+    </TitleContent>
+    <DialogContent>
+        @if (_selectedResult != null)
+        {
+            <MudGrid Class="mb-4">
+                <MudItem xs="6" sm="3">
+                    <div class="detail-label">AWB Number</div>
+                    <div class="detail-value">@_selectedResult.AWBNo</div>
+                </MudItem>
+                <MudItem xs="6" sm="3">
+                    <div class="detail-label">Pieces</div>
+                    <div class="detail-value">@_selectedResult.Pieces</div>
+                </MudItem>
+                <MudItem xs="6" sm="3">
+                    <div class="detail-label">Weight</div>
+                    <div class="detail-value">@_selectedResult.Weight.ToString("F2") KG</div>
+                </MudItem>
+                <MudItem xs="6" sm="3">
+                    <div class="detail-label">Service Type</div>
+                    <div class="detail-value">@_selectedResult.ServiceType</div>
+                </MudItem>
+            </MudGrid>
+
+            <MudDivider Class="mb-4" />
+
+            @if (_timelineEvents.Any())
+            {
+                <div style="padding-left: 8px;">
+                    @for (int i = 0; i < _timelineEvents.Count; i++)
+                    {
+                        var evt = _timelineEvents[i];
+                        var isFirst = i == 0;
+                        var isLast = i == _timelineEvents.Count - 1;
+
+                        <div class="d-flex gap-3 mb-0">
+                            <div class="d-flex flex-column align-center">
+                                <div class="timeline-dot" style="background: @(isFirst ? "#3949ab" : "#cbd5e1"); margin-top: 4px;"></div>
+                                @if (!isLast)
+                                {
+                                    <div class="timeline-line-segment @(isFirst ? "timeline-line-active" : "")"></div>
+                                }
+                            </div>
+                            <div style="padding-bottom: 24px; flex: 1;">
+                                <MudText Style="@($"font-weight: 600; font-size: 0.875rem; color: {(isFirst ? "#1a237e" : "#475569")};")">@GetStatusDisplay(evt.StatusId)</MudText>
+                                <MudText Typo="Typo.caption" Style="color: #94a3b8;">@FormatEventDate(evt.EventDateTime)</MudText>
+                                @if (!string.IsNullOrWhiteSpace(evt.Location) || !string.IsNullOrWhiteSpace(evt.City))
+                                {
+                                    <MudText Typo="Typo.body2" Style="color: #64748b; margin-top: 2px;">
+                                        <MudIcon Icon="@Icons.Material.Filled.LocationOn" Size="Size.Small" Style="vertical-align: middle; color: #94a3b8;" />
+                                        @(evt.Location ?? evt.City ?? "")@(evt.City != null && evt.Location != null ? $", {evt.City}" : "")
+                                    </MudText>
+                                }
+                                @if (!string.IsNullOrWhiteSpace(evt.Remarks))
+                                {
+                                    <MudText Typo="Typo.body2" Style="color: #64748b; margin-top: 2px;">@evt.Remarks</MudText>
+                                }
+                            </div>
+                        </div>
+                    }
+                </div>
+            }
+            else
+            {
+                <MudText Typo="Typo.body2" Style="color: #94a3b8; text-align: center; padding: 24px 0;">No tracking events recorded yet.</MudText>
+            }
+        }
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="() => _timelineOpen = false" Variant="Variant.Filled" Color="Color.Dark" Style="text-transform: none;">Close</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    private string? _awbInput;
+    private bool _loading;
+    private bool _hasSearched;
+    private List<TrackingResult> _results = new();
+    private List<string> _notFoundAwbs = new();
+    private bool _timelineOpen;
+    private TrackingResult? _selectedResult;
+    private List<AWBTracking> _timelineEvents = new();
+
+    private async Task OnInputKeyUp(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter" && !string.IsNullOrWhiteSpace(_awbInput))
+            await HandleTrack();
+    }
+
+    private async Task HandleTrack()
+    {
+        if (string.IsNullOrWhiteSpace(_awbInput)) return;
+
+        _loading = true;
+        _hasSearched = true;
+        _results.Clear();
+        _notFoundAwbs.Clear();
+        StateHasChanged();
+
+        try
+        {
+            var awbNumbers = _awbInput
+                .Split(new[] { ',', '\n', '\r' }, StringSplitOptions.RemoveEmptyEntries)
+                .Select(s => s.Trim())
+                .Where(s => !string.IsNullOrEmpty(s))
+                .Distinct()
+                .Take(5)
+                .ToList();
+
+            await using var db = await DbFactory.CreateDbContextAsync();
+
+            var serviceTypes = await db.Set<ServiceType>().Where(s => !s.IsDeleted).ToListAsync();
+            var serviceTypeDict = serviceTypes.ToDictionary(s => s.Id, s => s.Name);
+
+            foreach (var awbNo in awbNumbers)
+            {
+                var awb = await db.InscanMasters
+                    .AsNoTracking()
+                    .FirstOrDefaultAsync(i => i.AWBNo == awbNo && !i.IsDeleted);
+
+                if (awb == null)
+                {
+                    _notFoundAwbs.Add(awbNo);
+                    continue;
+                }
+
+                var latestEvent = await db.AWBTrackings
+                    .AsNoTracking()
+                    .Where(t => t.InscanId == awb.Id && t.IsPublic)
+                    .OrderByDescending(t => t.EventDateTime)
+                    .FirstOrDefaultAsync();
+
+                var serviceTypeName = "Standard";
+                if (awb.ProductTypeId.HasValue && serviceTypeDict.TryGetValue(awb.ProductTypeId.Value, out var stName))
+                    serviceTypeName = stName;
+
+                _results.Add(new TrackingResult
+                {
+                    Id = awb.Id,
+                    AWBNo = awb.AWBNo,
+                    Pieces = awb.Pieces ?? 1,
+                    Weight = awb.ChargeableWeight ?? awb.Weight ?? 0,
+                    ServiceType = serviceTypeName,
+                    Status = awb.CourierStatusId,
+                    Origin = awb.ConsignorCity ?? "N/A",
+                    Destination = awb.ConsigneeCity ?? "N/A",
+                    LastUpdate = latestEvent != null ? FormatEventDate(latestEvent.EventDateTime) : FormatEventDate(awb.TransactionDate)
+                });
+            }
+        }
+        catch (Exception ex)
+        {
+            _notFoundAwbs.Add($"Error: {ex.Message}");
+        }
+        finally
+        {
+            _loading = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task OpenTimeline(TrackingResult result)
+    {
+        _selectedResult = result;
+
+        await using var db = await DbFactory.CreateDbContextAsync();
+        _timelineEvents = await db.AWBTrackings
+            .AsNoTracking()
+            .Where(t => t.InscanId == result.Id && t.IsPublic)
+            .OrderByDescending(t => t.EventDateTime)
+            .ToListAsync();
+
+        _timelineOpen = true;
+        StateHasChanged();
+    }
+
+    private string FormatEventDate(DateTime dt)
+    {
+        if (dt.Kind == DateTimeKind.Utc)
+            return dt.ToString("MMM dd, yyyy hh:mm tt") + " UTC";
+        return dt.ToString("MMM dd, yyyy hh:mm tt");
+    }
+
+    private string GetStatusDisplay(CourierStatus status) => status switch
+    {
+        CourierStatus.Pending => "Pending",
+        CourierStatus.AssignedToPickup => "Assigned to Pickup",
+        CourierStatus.PickedUp => "Picked Up",
+        CourierStatus.InscanAtOrigin => "Received at Origin",
+        CourierStatus.InTransit => "In Transit",
+        CourierStatus.InscanAtDestination => "Arrived at Destination",
+        CourierStatus.OutForDelivery => "Out for Delivery",
+        CourierStatus.Delivered => "Delivered",
+        CourierStatus.NotDelivered => "Delivery Attempted",
+        CourierStatus.ReturnToOrigin => "Return to Origin",
+        CourierStatus.Returned => "Returned",
+        CourierStatus.OnHold => "On Hold",
+        CourierStatus.Cancelled => "Cancelled",
+        _ => status.ToString()
+    };
+
+    private string GetStatusIcon(CourierStatus status) => status switch
+    {
+        CourierStatus.Delivered => Icons.Material.Filled.CheckCircle,
+        CourierStatus.OutForDelivery => Icons.Material.Filled.LocalShipping,
+        CourierStatus.InTransit => Icons.Material.Filled.Flight,
+        CourierStatus.InscanAtOrigin or CourierStatus.InscanAtDestination => Icons.Material.Filled.Warehouse,
+        CourierStatus.PickedUp or CourierStatus.AssignedToPickup => Icons.Material.Filled.Inventory,
+        CourierStatus.NotDelivered => Icons.Material.Filled.ErrorOutline,
+        CourierStatus.ReturnToOrigin or CourierStatus.Returned => Icons.Material.Filled.Undo,
+        CourierStatus.OnHold => Icons.Material.Filled.PauseCircle,
+        CourierStatus.Cancelled => Icons.Material.Filled.Cancel,
+        _ => Icons.Material.Filled.LocalShipping
+    };
+
+    private string GetStatusAvatarStyle(CourierStatus status) => status switch
+    {
+        CourierStatus.Delivered => "background: #d1fae5; color: #059669;",
+        CourierStatus.OutForDelivery => "background: #dbeafe; color: #2563eb;",
+        CourierStatus.InTransit => "background: #fef3c7; color: #d97706;",
+        CourierStatus.NotDelivered or CourierStatus.ReturnToOrigin or CourierStatus.Returned => "background: #fee2e2; color: #dc2626;",
+        CourierStatus.OnHold => "background: #fef3c7; color: #d97706;",
+        CourierStatus.Cancelled => "background: #f1f5f9; color: #64748b;",
+        _ => "background: #f1f5f9; color: #475569;"
+    };
+
+    private string GetStatusBadgeStyle(CourierStatus status) => status switch
+    {
+        CourierStatus.Delivered => "background: #d1fae5; color: #059669;",
+        CourierStatus.OutForDelivery => "background: #dbeafe; color: #2563eb;",
+        CourierStatus.InTransit => "background: #fef3c7; color: #d97706;",
+        CourierStatus.NotDelivered or CourierStatus.ReturnToOrigin or CourierStatus.Returned => "background: #fee2e2; color: #dc2626;",
+        CourierStatus.OnHold => "background: #fef3c7; color: #d97706;",
+        CourierStatus.Cancelled => "background: #f1f5f9; color: #64748b;",
+        _ => "background: #f1f5f9; color: #475569;"
+    };
+
+    private class TrackingResult
+    {
+        public long Id { get; set; }
+        public string AWBNo { get; set; } = "";
+        public int Pieces { get; set; }
+        public decimal Weight { get; set; }
+        public string ServiceType { get; set; } = "";
+        public CourierStatus Status { get; set; }
+        public string Origin { get; set; } = "";
+        public string Destination { get; set; } = "";
+        public string LastUpdate { get; set; } = "";
+    }
+}

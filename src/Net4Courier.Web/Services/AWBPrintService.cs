@@ -468,7 +468,7 @@ public class AWBPrintService
         return document.GeneratePdf();
     }
 
-    public byte[] GenerateLabel(InscanMaster shipment, string? companyName = null, byte[]? logoData = null)
+    public byte[] GenerateLabel(InscanMaster shipment, string? companyName = null, byte[]? logoData = null, string? branchCurrency = null)
     {
         var effectiveLogo = logoData ?? _logoData;
         var document = Document.Create(container =>
@@ -488,7 +488,7 @@ public class AWBPrintService
                     LabelShipper(column, shipment);
                     LabelReceiver(column, shipment);
                     LabelMetrics(column, shipment);
-                    LabelFooter(column, shipment);
+                    LabelFooter(column, shipment, branchCurrency);
                     LabelDescription(column, shipment);
                     LabelSpecialInstructions(column, shipment);
                 });
@@ -927,7 +927,7 @@ public class AWBPrintService
         });
     }
 
-    public byte[] GenerateShipmentInvoice(InscanMaster shipment, byte[]? branchLogoData = null, string invoiceNo = "")
+    public byte[] GenerateShipmentInvoice(InscanMaster shipment, byte[]? branchLogoData = null, string invoiceNo = "", string? branchCurrency = null)
     {
         var document = Document.Create(container =>
         {
@@ -943,7 +943,7 @@ public class AWBPrintService
                     
                     BuildShipmentInvoiceHeader(column, shipment, branchLogoData, invoiceNo);
                     BuildShipmentParties(column, shipment);
-                    BuildShipmentItemsTable(column, shipment);
+                    BuildShipmentItemsTable(column, shipment, branchCurrency);
                     BuildShipmentSummary(column, shipment);
                 });
             });
@@ -1067,8 +1067,9 @@ public class AWBPrintService
         });
     }
 
-    private void BuildShipmentItemsTable(ColumnDescriptor column, InscanMaster shipment)
+    private void BuildShipmentItemsTable(ColumnDescriptor column, InscanMaster shipment, string? branchCurrency = null)
     {
+        var currency = branchCurrency ?? shipment.Currency ?? "AED";
         column.Item().Table(table =>
         {
             table.ColumnsDefinition(cols =>
@@ -1087,8 +1088,8 @@ public class AWBPrintService
                 header.Cell().Border(1).Background(Colors.Grey.Lighten3).Padding(5).Text("HS CODE").Bold().FontSize(9);
                 header.Cell().Border(1).Background(Colors.Grey.Lighten3).Padding(5).AlignCenter().Text("Quantity").Bold().FontSize(9);
                 header.Cell().Border(1).Background(Colors.Grey.Lighten3).Padding(5).Text("Country of origin").Bold().FontSize(9);
-                header.Cell().Border(1).Background(Colors.Grey.Lighten3).Padding(5).AlignRight().Text($"Unit Value\n{shipment.Currency ?? "AED"}").Bold().FontSize(9);
-                header.Cell().Border(1).Background(Colors.Grey.Lighten3).Padding(5).AlignRight().Text($"Total value\n{shipment.Currency ?? "AED"}").Bold().FontSize(9);
+                header.Cell().Border(1).Background(Colors.Grey.Lighten3).Padding(5).AlignRight().Text($"Unit Value\n{currency}").Bold().FontSize(9);
+                header.Cell().Border(1).Background(Colors.Grey.Lighten3).Padding(5).AlignRight().Text($"Total value\n{currency}").Bold().FontSize(9);
             });
             
             var unitValue = (shipment.CustomsValue ?? 0) / (shipment.Pieces ?? 1);
@@ -1109,7 +1110,7 @@ public class AWBPrintService
                 table.Cell().Border(1).Padding(5).Height(18).Text("").FontSize(9);
             }
             
-            table.Cell().ColumnSpan(5).Border(1).Padding(5).AlignRight().Text($"Total value in {shipment.Currency ?? "AED"}").Bold().FontSize(9);
+            table.Cell().ColumnSpan(5).Border(1).Padding(5).AlignRight().Text($"Total value in {currency}").Bold().FontSize(9);
             table.Cell().Border(1).Padding(5).AlignRight().Text((shipment.CustomsValue ?? 0).ToString("F2")).Bold().FontSize(9);
         });
     }

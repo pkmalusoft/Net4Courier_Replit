@@ -658,11 +658,13 @@ app.MapGet("/api/report/awb-label/{id:long}", async (long id, bool? inline, Appl
         }
         byte[]? logoData = null;
         string? companyName = null;
+        string? branchCurrency = null;
         if (awb.BranchId.HasValue)
         {
-            var branch = await db.Branches.Include(b => b.Company).FirstOrDefaultAsync(b => b.Id == awb.BranchId);
+            var branch = await db.Branches.Include(b => b.Company).Include(b => b.Currency).FirstOrDefaultAsync(b => b.Id == awb.BranchId);
             logoData = ResolveLogoBytes(branch?.Company?.Logo, env.WebRootPath);
             companyName = branch?.Company?.Name;
+            branchCurrency = branch?.Currency?.Code;
         }
         if (logoData == null)
         {
@@ -670,8 +672,13 @@ app.MapGet("/api/report/awb-label/{id:long}", async (long id, bool? inline, Appl
             logoData = ResolveLogoBytes(company?.Logo, env.WebRootPath);
             companyName ??= company?.Name;
         }
+        if (branchCurrency == null)
+        {
+            var defaultBranch = await db.Branches.Include(b => b.Currency).FirstOrDefaultAsync(b => !b.IsDeleted);
+            branchCurrency = defaultBranch?.Currency?.Code;
+        }
         await ResolveLocationCodes(awb, db);
-        var pdf = printService.GenerateLabel(awb, companyName, logoData);
+        var pdf = printService.GenerateLabel(awb, companyName, logoData, branchCurrency);
         var fileName = inline == true ? null : $"Label-{awb.AWBNo}.pdf";
         return Results.File(pdf, "application/pdf", fileName);
     }
@@ -754,11 +761,13 @@ app.MapGet("/api/report/awb-label-by-awbno/{awbNo}", async (string awbNo, bool? 
         }
         byte[]? logoData = null;
         string? companyName = null;
+        string? branchCurrency = null;
         if (awb.BranchId.HasValue)
         {
-            var branch = await db.Branches.Include(b => b.Company).FirstOrDefaultAsync(b => b.Id == awb.BranchId);
+            var branch = await db.Branches.Include(b => b.Company).Include(b => b.Currency).FirstOrDefaultAsync(b => b.Id == awb.BranchId);
             logoData = ResolveLogoBytes(branch?.Company?.Logo, env.WebRootPath);
             companyName = branch?.Company?.Name;
+            branchCurrency = branch?.Currency?.Code;
         }
         if (logoData == null)
         {
@@ -766,8 +775,13 @@ app.MapGet("/api/report/awb-label-by-awbno/{awbNo}", async (string awbNo, bool? 
             logoData = ResolveLogoBytes(company?.Logo, env.WebRootPath);
             companyName ??= company?.Name;
         }
+        if (branchCurrency == null)
+        {
+            var defaultBranch = await db.Branches.Include(b => b.Currency).FirstOrDefaultAsync(b => !b.IsDeleted);
+            branchCurrency = defaultBranch?.Currency?.Code;
+        }
         await ResolveLocationCodes(awb, db);
-        var pdf = printService.GenerateLabel(awb, companyName, logoData);
+        var pdf = printService.GenerateLabel(awb, companyName, logoData, branchCurrency);
         var fileName = inline == true ? null : $"Label-{awb.AWBNo}.pdf";
         return Results.File(pdf, "application/pdf", fileName);
     }
@@ -1030,19 +1044,26 @@ app.MapGet("/api/report/shipment-invoice/{id:long}", async (long id, bool? inlin
         if (awb == null) return Results.NotFound("AWB not found");
         
         byte[]? logoData = null;
+        string? branchCurrency = null;
         if (awb.BranchId.HasValue)
         {
-            var branch = await db.Branches.Include(b => b.Company).FirstOrDefaultAsync(b => b.Id == awb.BranchId);
+            var branch = await db.Branches.Include(b => b.Company).Include(b => b.Currency).FirstOrDefaultAsync(b => b.Id == awb.BranchId);
             logoData = ResolveLogoBytes(branch?.Company?.Logo, env.WebRootPath);
+            branchCurrency = branch?.Currency?.Code;
         }
         if (logoData == null)
         {
             var company = await db.Companies.FirstOrDefaultAsync(c => !c.IsDeleted);
             logoData = ResolveLogoBytes(company?.Logo, env.WebRootPath);
         }
+        if (branchCurrency == null)
+        {
+            var defaultBranch = await db.Branches.Include(b => b.Currency).FirstOrDefaultAsync(b => !b.IsDeleted);
+            branchCurrency = defaultBranch?.Currency?.Code;
+        }
         
         await ResolveLocationCodes(awb, db);
-        var pdf = printService.GenerateShipmentInvoice(awb, logoData, $"INV-{awb.AWBNo}");
+        var pdf = printService.GenerateShipmentInvoice(awb, logoData, $"INV-{awb.AWBNo}", branchCurrency);
         var fileName = inline == true ? null : $"ShipmentInvoice-{awb.AWBNo}.pdf";
         return Results.File(pdf, "application/pdf", fileName);
     }
