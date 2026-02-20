@@ -10,6 +10,8 @@ public class AppAuthStateProvider : AuthenticationStateProvider
     private Branch? _currentBranch;
     private readonly ClaimsPrincipal _anonymous = new(new ClaimsIdentity());
 
+    private string? _clientIPAddress;
+
     public User? CurrentUser => _currentUser;
     public Branch? CurrentBranch => _currentBranch;
     public string CompanyName => _currentBranch?.Company?.Name ?? "";
@@ -17,6 +19,7 @@ public class AppAuthStateProvider : AuthenticationStateProvider
     public string UserFullName => _currentUser?.FullName ?? _currentUser?.Username ?? "";
     public string CurrencyCode => _currentBranch?.Currency?.Code ?? "";
     public string CurrencySymbol => _currentBranch?.Currency?.Symbol ?? "";
+    public string? ClientIPAddress => _clientIPAddress;
 
     public override Task<AuthenticationState> GetAuthenticationStateAsync()
     {
@@ -44,10 +47,11 @@ public class AppAuthStateProvider : AuthenticationStateProvider
         return Task.FromResult(new AuthenticationState(principal));
     }
 
-    public void Login(User user, Branch? branch = null)
+    public void Login(User user, Branch? branch = null, string? ipAddress = null)
     {
         _currentUser = user;
         _currentBranch = branch ?? user.Branch;
+        _clientIPAddress = ipAddress;
         NotifyAuthenticationStateChanged(GetAuthenticationStateAsync());
     }
     
