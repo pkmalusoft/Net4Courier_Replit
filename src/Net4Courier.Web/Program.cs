@@ -170,12 +170,17 @@ catch (Exception ex)
     databaseConfigured = false;
 }
 
-builder.Services.AddDbContext<ApplicationDbContext>(options =>
+builder.Services.AddScoped<IAuditContextProvider, AuditContextProvider>();
+builder.Services.AddScoped<AuditSaveChangesInterceptor>();
+
+builder.Services.AddDbContext<ApplicationDbContext>((sp, options) =>
     options.UseNpgsql(connectionString, npgsqlOptions =>
-        npgsqlOptions.EnableRetryOnFailure(maxRetryCount: 3, maxRetryDelay: TimeSpan.FromSeconds(5), errorCodesToAdd: null)));
-builder.Services.AddDbContextFactory<ApplicationDbContext>(options =>
+        npgsqlOptions.EnableRetryOnFailure(maxRetryCount: 3, maxRetryDelay: TimeSpan.FromSeconds(5), errorCodesToAdd: null))
+    .AddInterceptors(sp.GetRequiredService<AuditSaveChangesInterceptor>()));
+builder.Services.AddDbContextFactory<ApplicationDbContext>((sp, options) =>
     options.UseNpgsql(connectionString, npgsqlOptions =>
-        npgsqlOptions.EnableRetryOnFailure(maxRetryCount: 3, maxRetryDelay: TimeSpan.FromSeconds(5), errorCodesToAdd: null)), ServiceLifetime.Scoped);
+        npgsqlOptions.EnableRetryOnFailure(maxRetryCount: 3, maxRetryDelay: TimeSpan.FromSeconds(5), errorCodesToAdd: null))
+    .AddInterceptors(sp.GetRequiredService<AuditSaveChangesInterceptor>()), ServiceLifetime.Scoped);
 
 
 builder.Services.AddScoped<AuthService>();
