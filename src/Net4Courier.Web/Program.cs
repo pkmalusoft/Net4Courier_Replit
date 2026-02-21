@@ -1933,6 +1933,24 @@ public class DatabaseInitializationService : BackgroundService
                 }
             }
 
+            try
+            {
+                await dbContext.Database.ExecuteSqlRawAsync(@"
+                    DO $$
+                    BEGIN
+                        IF NOT EXISTS (SELECT 1 FROM pg_class WHERE relname = 'UserFavorites_Id_seq') THEN
+                            CREATE SEQUENCE ""UserFavorites_Id_seq"" OWNED BY ""UserFavorites"".""Id"";
+                            PERFORM setval('""UserFavorites_Id_seq""', COALESCE((SELECT MAX(""Id"") FROM ""UserFavorites""), 0) + 1, false);
+                            ALTER TABLE ""UserFavorites"" ALTER COLUMN ""Id"" SET DEFAULT nextval('""UserFavorites_Id_seq""');
+                        END IF;
+                    END $$;
+                ", stoppingToken);
+            }
+            catch (Exception seqEx)
+            {
+                _logger.LogWarning(seqEx, "UserFavorites sequence fix skipped");
+            }
+
             // Seed PlatformAdmin early - before GL tables and geographic data to ensure it always runs
             try
             {
