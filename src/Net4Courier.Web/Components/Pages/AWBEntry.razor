@@ -414,9 +414,12 @@
 
     <div @onclick="@(() => { if (!CanProceedWithDetails) TriggerProceedWarning(); })" style="@(!CanProceedWithDetails ? "cursor: not-allowed;" : "")">
     <MudPaper Class="pa-3 mt-3" Elevation="2" Style="@(!CanProceedWithDetails ? "opacity: 0.5; pointer-events: none;" : "")">
-        <MudText Typo="Typo.subtitle1" Color="Color.Primary" Class="mb-2">
-            <MudIcon Icon="@Icons.Material.Filled.Receipt" Size="Size.Small" Class="mr-1" />CHARGES
-        </MudText>
+        <MudStack Row="true" AlignItems="AlignItems.Center" Class="mb-2">
+            <MudText Typo="Typo.subtitle1" Color="Color.Primary">
+                <MudIcon Icon="@Icons.Material.Filled.Receipt" Size="Size.Small" Class="mr-1" />CHARGES
+            </MudText>
+            <MudCheckBox @bind-Value="_isTaxInclusive" Label="Including Tax" Dense="true" Size="Size.Small" Color="Color.Primary" Class="ml-4" />
+        </MudStack>
         <MudGrid Spacing="2">
             <MudItem xs="6" md="2">
                 <MudNumericField @bind-Value="_inscan.CourierCharge" Label="Freight Charges" 
@@ -461,8 +464,8 @@
                 </MudItem>
             }
             <MudItem xs="6" md="2">
-                <MudNumericField @bind-Value="_inscan.TaxPercent" Label="Tax %" 
-                                 Variant="Variant.Outlined" Margin="Margin.Dense" Format="N2" />
+                <MudNumericField Value="@CalculatedTaxAmount" Label="@($"Tax Amount ({BranchVatPercent}%)")" 
+                                 Variant="Variant.Outlined" Margin="Margin.Dense" Format="N2" ReadOnly="true" />
             </MudItem>
             <MudItem xs="6" md="2">
                 <MudNumericField @bind-Value="_inscan.Discount" Label="Discount" 
@@ -667,6 +670,7 @@
     private List<OtherChargeSelection> _selectedOtherCharges = new();
     
     private bool _isPrepaidAWB = false;
+    private bool _isTaxInclusive = false;
     private bool _paymentModeDisabled = false;
     private string _prepaidCustomerName = "";
     private long? _prepaidCustomerId;
@@ -704,17 +708,32 @@
         _ => "UNKNOWN"
     };
     
-    // NetTotal calculation: All charges included for both import and non-import shipments
-    // Base = (Freight + ODA/Other + Fuel Surcharge) * (1 + Tax%) - Discount + Duty/VAT + COD
-    // For import with declaration: also add calculated Import VAT
+    private decimal BranchVatPercent => _currentBranch?.VatPercentage ?? 0;
+
+    private decimal CalculatedTaxAmount {
+        get {
+            var freight = _inscan.CourierCharge ?? 0;
+            if (freight <= 0 || BranchVatPercent <= 0) return 0;
+            if (_isTaxInclusive)
+                return Math.Round(freight - (freight / (1 + BranchVatPercent / 100)), 2);
+            else
+                return Math.Round(freight * BranchVatPercent / 100, 2);
+        }
+    }
+
     private decimal NetTotal {
         get {
-            var baseCharges = ((_inscan.CourierCharge ?? 0) + (_inscan.OtherCharge ?? 0) + (_inscan.FuelSurcharge ?? 0))
-                * (1 + (_inscan.TaxPercent ?? 0) / 100) - (_inscan.Discount ?? 0)
-                + (_inscan.DutyVatAmount ?? 0) + (_inscan.CODAmount ?? 0);
+            var freight = _inscan.CourierCharge ?? 0;
+            var taxAmount = CalculatedTaxAmount;
+            decimal total;
+            if (_isTaxInclusive)
+                total = freight + (_inscan.FuelSurcharge ?? 0) + (_inscan.OtherCharge ?? 0);
+            else
+                total = freight + taxAmount + (_inscan.FuelSurcharge ?? 0) + (_inscan.OtherCharge ?? 0);
+            total += (_inscan.DutyVatAmount ?? 0) + (_inscan.CODAmount ?? 0) - (_inscan.Discount ?? 0);
             if (IsImportWithDeclaration)
-                baseCharges += CalculatedImportVAT;
-            return baseCharges;
+                total += CalculatedImportVAT;
+            return total;
         }
     }
     
@@ -1374,7 +1393,7 @@
             if (result.Success)
             {
                 _inscan.CourierCharge = result.TotalCharge;
-                _inscan.TaxPercent = result.TaxPercent;
+                _inscan.TaxPercent = BranchVatPercent;
                 StateHasChanged();
             }
         }
@@ -1527,7 +1546,8 @@
 
             _inscan.VolumetricWeight = VolumetricWeight;
             _inscan.ChargeableWeight = ChargeableWeight;
-            _inscan.TaxAmount = CalculatedImportVAT;
+            _inscan.TaxPercent = BranchVatPercent;
+            _inscan.TaxAmount = CalculatedTaxAmount;
             _inscan.NetTotal = NetTotal;
             _inscan.IsCOD = _inscan.PaymentModeId == PaymentMode.COD;
             _inscan.ForwardingAgentId = _selectedForwardingAgent?.Id;
