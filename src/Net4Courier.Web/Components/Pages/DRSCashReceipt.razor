@@ -337,6 +337,7 @@
                 .ToListAsync(token);
 
             var query = context.DRSs
+                .Include(d => d.Details)
                 .AsNoTracking()
                 .Where(d => !d.IsDeleted && d.Status != DRSStatus.Reconciled && !existingDrsIds.Contains(d.Id))
                 .AsQueryable();
@@ -347,10 +348,20 @@
                                          (d.DeliveryEmployeeName != null && d.DeliveryEmployeeName.Contains(value)));
             }
 
-            return await query
+            var results = await query
                 .OrderByDescending(d => d.DRSDate)
                 .Take(20)
                 .ToListAsync(token);
+
+            foreach (var drs in results)
+            {
+                if ((drs.ExpectedTotal ?? 0) == 0 && drs.Details.Any())
+                {
+                    drs.ExpectedTotal = drs.Details.Sum(d => d.CollectedAmount ?? d.CODAmount ?? 0);
+                }
+            }
+
+            return results;
         }
         catch (OperationCanceledException)
         {
