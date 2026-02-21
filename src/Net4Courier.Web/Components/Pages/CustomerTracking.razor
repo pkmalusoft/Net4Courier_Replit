@@ -76,11 +76,32 @@
 
 <MudContainer MaxWidth="MaxWidth.Large" Class="mt-6 mb-8">
     <div class="tracking-hero">
-        <MudText Typo="Typo.h4" Style="color: white; font-weight: 700;" Class="mb-1">Track Your Shipments</MudText>
-        <MudText Style="color: rgba(255,255,255,0.7); font-size: 0.9rem;" Class="mb-5">Enter up to 5 Airway Bill (AWB) numbers separated by commas or new lines.</MudText>
+        <div class="d-flex align-center gap-4 mb-4">
+            @if (!string.IsNullOrEmpty(_companyLogo))
+            {
+                <img src="@_companyLogo" alt="@_companyName" style="max-height: 60px; max-width: 180px; border-radius: 8px; background: white; padding: 4px;" />
+            }
+            <div>
+                <MudText Typo="Typo.h4" Style="color: white; font-weight: 700;" Class="mb-0">Track Your Shipments</MudText>
+                @if (!string.IsNullOrEmpty(_companyName))
+                {
+                    <MudText Style="color: rgba(255,255,255,0.85); font-size: 0.85rem; font-weight: 500;">@_companyName</MudText>
+                }
+            </div>
+        </div>
+
+        <div class="d-flex align-center gap-4 mb-3">
+            <MudText Style="color: rgba(255,255,255,0.8); font-size: 0.85rem; font-weight: 500;">Search by:</MudText>
+            <MudRadioGroup T="string" @bind-Value="_searchMode">
+                <MudRadio Value="@("awb")" Color="Color.Info" Dense="true" Style="color: white;">Airwaybill</MudRadio>
+                <MudRadio Value="@("ref")" Color="Color.Info" Dense="true" Style="color: white;">Reference</MudRadio>
+            </MudRadioGroup>
+        </div>
+
+        <MudText Style="color: rgba(255,255,255,0.7); font-size: 0.9rem;" Class="mb-3">@(_searchMode == "awb" ? "Enter up to 5 Airway Bill (AWB) numbers separated by commas or new lines." : "Enter up to 5 Reference numbers separated by commas or new lines.")</MudText>
 
         <MudTextField T="string" @bind-Value="_awbInput"
-                      Placeholder="e.g. AWB001, AWB002..."
+                      Placeholder="@(_searchMode == "awb" ? "e.g. AWB001, AWB002..." : "e.g. REF001, REF002...")"
                       Variant="Variant.Filled"
                       Lines="3"
                       Style="background: rgba(255,255,255,0.95); border-radius: 12px;"
@@ -120,6 +141,10 @@
                                 </MudAvatar>
                                 <div>
                                     <MudText Typo="Typo.subtitle1" Style="font-weight: 700;">@result.AWBNo</MudText>
+                                    @if (!string.IsNullOrEmpty(result.ReferenceNo))
+                                    {
+                                        <MudText Typo="Typo.caption" Style="color: #64748b; font-weight: 500;">Ref: @result.ReferenceNo</MudText>
+                                    }
                                     <MudText Typo="Typo.caption" Style="color: #94a3b8;">@result.Origin → @result.Destination</MudText>
                                 </div>
                             </div>
@@ -187,6 +212,13 @@
                     <div class="detail-label">AWB Number</div>
                     <div class="detail-value">@_selectedResult.AWBNo</div>
                 </MudItem>
+                @if (!string.IsNullOrEmpty(_selectedResult.ReferenceNo))
+                {
+                    <MudItem xs="6" sm="3">
+                        <div class="detail-label">Reference No</div>
+                        <div class="detail-value">@_selectedResult.ReferenceNo</div>
+                    </MudItem>
+                }
                 <MudItem xs="6" sm="3">
                     <div class="detail-label">Pieces</div>
                     <div class="detail-value">@_selectedResult.Pieces</div>
@@ -252,6 +284,7 @@
 
 @code {
     private string? _awbInput;
+    private string _searchMode = "awb";
     private bool _loading;
     private bool _hasSearched;
     private List<TrackingResult> _results = new();
@@ -259,6 +292,26 @@
     private bool _timelineOpen;
     private TrackingResult? _selectedResult;
     private List<AWBTracking> _timelineEvents = new();
+    private string? _companyLogo;
+    private string? _companyName;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            await using var db = await DbFactory.CreateDbContextAsync();
+            var company = await db.Companies.AsNoTracking().FirstOrDefaultAsync();
+            if (company != null)
+            {
+                _companyName = company.Name;
+                if (!string.IsNullOrEmpty(company.Logo))
+                {
+                    _companyLogo = company.Logo.StartsWith("data:") ? company.Logo : $"data:image/png;base64,{company.Logo}";
+                }
+            }
+        }
+        catch { }
+    }
 
     private async Task OnInputKeyUp(KeyboardEventArgs e)
     {
@@ -278,7 +331,7 @@
 
         try
         {
-            var awbNumbers = _awbInput
+            var searchTerms = _awbInput
                 .Split(new[] { ',', '\n', '\r' }, StringSplitOptions.RemoveEmptyEntries)
                 .Select(s => s.Trim())
                 .Where(s => !string.IsNullOrEmpty(s))
@@ -291,40 +344,59 @@
             var serviceTypes = await db.Set<ServiceType>().Where(s => !s.IsDeleted).ToListAsync();
             var serviceTypeDict = serviceTypes.ToDictionary(s => s.Id, s => s.Name);
 
-            foreach (var awbNo in awbNumbers)
+            foreach (var term in searchTerms)
             {
-                var awb = await db.InscanMasters
-                    .AsNoTracking()
-                    .FirstOrDefaultAsync(i => i.AWBNo == awbNo && !i.IsDeleted);
+                List<InscanMaster> matches;
 
-                if (awb == null)
+                if (_searchMode == "ref")
                 {
-                    _notFoundAwbs.Add(awbNo);
+                    matches = await db.InscanMasters
+                        .AsNoTracking()
+                        .Where(i => i.ReferenceNo == term && !i.IsDeleted)
+                        .ToListAsync();
+                }
+                else
+                {
+                    var awb = await db.InscanMasters
+                        .AsNoTracking()
+                        .FirstOrDefaultAsync(i => i.AWBNo == term && !i.IsDeleted);
+                    matches = awb != null ? new List<InscanMaster> { awb } : new List<InscanMaster>();
+                }
+
+                if (!matches.Any())
+                {
+                    _notFoundAwbs.Add(term);
                     continue;
                 }
 
-                var latestEvent = await db.AWBTrackings
-                    .AsNoTracking()
-                    .Where(t => t.InscanId == awb.Id && t.IsPublic)
-                    .OrderByDescending(t => t.EventDateTime)
-                    .FirstOrDefaultAsync();
-
-                var serviceTypeName = "Standard";
-                if (awb.ProductTypeId.HasValue && serviceTypeDict.TryGetValue(awb.ProductTypeId.Value, out var stName))
-                    serviceTypeName = stName;
-
-                _results.Add(new TrackingResult
+                foreach (var awb in matches)
                 {
-                    Id = awb.Id,
-                    AWBNo = awb.AWBNo,
-                    Pieces = awb.Pieces ?? 1,
-                    Weight = awb.ChargeableWeight ?? awb.Weight ?? 0,
-                    ServiceType = serviceTypeName,
-                    Status = awb.CourierStatusId,
-                    Origin = awb.ConsignorCity ?? "N/A",
-                    Destination = awb.ConsigneeCity ?? "N/A",
-                    LastUpdate = latestEvent != null ? FormatEventDate(latestEvent.EventDateTime) : FormatEventDate(awb.TransactionDate)
-                });
+                    if (_results.Any(r => r.Id == awb.Id)) continue;
+
+                    var latestEvent = await db.AWBTrackings
+                        .AsNoTracking()
+                        .Where(t => t.InscanId == awb.Id && t.IsPublic)
+                        .OrderByDescending(t => t.EventDateTime)
+                        .FirstOrDefaultAsync();
+
+                    var serviceTypeName = "Standard";
+                    if (awb.ProductTypeId.HasValue && serviceTypeDict.TryGetValue(awb.ProductTypeId.Value, out var stName))
+                        serviceTypeName = stName;
+
+                    _results.Add(new TrackingResult
+                    {
+                        Id = awb.Id,
+                        AWBNo = awb.AWBNo,
+                        ReferenceNo = awb.ReferenceNo,
+                        Pieces = awb.Pieces ?? 1,
+                        Weight = awb.ChargeableWeight ?? awb.Weight ?? 0,
+                        ServiceType = serviceTypeName,
+                        Status = awb.CourierStatusId,
+                        Origin = awb.ConsignorCity ?? "N/A",
+                        Destination = awb.ConsigneeCity ?? "N/A",
+                        LastUpdate = latestEvent != null ? FormatEventDate(latestEvent.EventDateTime) : FormatEventDate(awb.TransactionDate)
+                    });
+                }
             }
         }
         catch (Exception ex)
@@ -418,6 +490,7 @@
     {
         public long Id { get; set; }
         public string AWBNo { get; set; } = "";
+        public string? ReferenceNo { get; set; }
         public int Pieces { get; set; }
         public decimal Weight { get; set; }
         public string ServiceType { get; set; } = "";
