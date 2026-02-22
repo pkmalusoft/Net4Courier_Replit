@@ -1,0 +1,276 @@
+@page "/database-backup"
+@using Net4Courier.Web.Services
+@using Microsoft.AspNetCore.Components.Authorization
+@inject DatabaseBackupService BackupService
+@inject ISnackbar Snackbar
+@inject AuthenticationStateProvider AuthStateProvider
+@inject NavigationManager Navigation
+@rendermode InteractiveServer
+
+<PageTitle>Database Backup - Net4Courier</PageTitle>
+
+<MudContainer MaxWidth="MaxWidth.Large" Class="py-4">
+    <MudText Typo="Typo.h5" GutterBottom="true">
+        <MudIcon Icon="@Icons.Material.Filled.Backup" Class="mr-2" />
+        Database Backup
+    </MudText>
+    <MudText Typo="Typo.subtitle1" Class="mb-4" Color="Color.Secondary">
+        Create and download database backups
+    </MudText>
+
+    @if (_loading)
+    {
+        <MudProgressLinear Indeterminate="true" Color="Color.Primary" />
+    }
+    else
+    {
+        <MudGrid>
+            <MudItem xs="12" md="6">
+                <MudPaper Class="pa-4" Elevation="2">
+                    <MudStack Spacing="2">
+                        <MudText Typo="Typo.h6">
+                            <MudIcon Icon="@Icons.Material.Filled.Storage" Class="mr-1" Size="Size.Small" />
+                            Database Information
+                        </MudText>
+                        <MudDivider />
+                        <MudGrid>
+                            <MudItem xs="6">
+                                <MudText Typo="Typo.caption" Color="Color.Secondary">Database Name</MudText>
+                                <MudText Typo="Typo.body1">@_dbName</MudText>
+                            </MudItem>
+                            <MudItem xs="6">
+                                <MudText Typo="Typo.caption" Color="Color.Secondary">Host</MudText>
+                                <MudText Typo="Typo.body1">@_dbHost</MudText>
+                            </MudItem>
+                            <MudItem xs="6">
+                                <MudText Typo="Typo.caption" Color="Color.Secondary">Tables</MudText>
+                                <MudText Typo="Typo.body1">@_tableCount</MudText>
+                            </MudItem>
+                            <MudItem xs="6">
+                                <MudText Typo="Typo.caption" Color="Color.Secondary">Estimated Size</MudText>
+                                <MudText Typo="Typo.body1">@_estimatedSizeMB MB</MudText>
+                            </MudItem>
+                        </MudGrid>
+                    </MudStack>
+                </MudPaper>
+            </MudItem>
+
+            <MudItem xs="12" md="6">
+                <MudPaper Class="pa-4" Elevation="2">
+                    <MudStack Spacing="2">
+                        <MudText Typo="Typo.h6">
+                            <MudIcon Icon="@Icons.Material.Filled.History" Class="mr-1" Size="Size.Small" />
+                            Last Backup
+                        </MudText>
+                        <MudDivider />
+                        @if (_lastBackupTime.HasValue)
+                        {
+                            <MudGrid>
+                                <MudItem xs="6">
+                                    <MudText Typo="Typo.caption" Color="Color.Secondary">Date & Time</MudText>
+                                    <MudText Typo="Typo.body1">@_lastBackupTime.Value.ToString("dd-MMM-yyyy HH:mm")</MudText>
+                                </MudItem>
+                                <MudItem xs="6">
+                                    <MudText Typo="Typo.caption" Color="Color.Secondary">Type</MudText>
+                                    <MudText Typo="Typo.body1">@_lastBackupType</MudText>
+                                </MudItem>
+                            </MudGrid>
+                        }
+                        else
+                        {
+                            <MudAlert Severity="Severity.Info" Dense="true">No backups taken in this session yet.</MudAlert>
+                        }
+                    </MudStack>
+                </MudPaper>
+            </MudItem>
+
+            <MudItem xs="12">
+                <MudPaper Class="pa-4" Elevation="2">
+                    <MudStack Spacing="3">
+                        <MudText Typo="Typo.h6">
+                            <MudIcon Icon="@Icons.Material.Filled.CloudDownload" Class="mr-1" Size="Size.Small" />
+                            Create Backup
+                        </MudText>
+                        <MudDivider />
+
+                        <MudGrid>
+                            <MudItem xs="12" md="6">
+                                <MudCard Elevation="0" Outlined="true" Class="pa-4">
+                                    <MudStack Spacing="2">
+                                        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+                                            <MudAvatar Color="Color.Primary" Size="Size.Medium">
+                                                <MudIcon Icon="@Icons.Material.Filled.BackupTable" />
+                                            </MudAvatar>
+                                            <MudText Typo="Typo.subtitle1">Full Backup</MudText>
+                                        </MudStack>
+                                        <MudText Typo="Typo.body2" Color="Color.Secondary">
+                                            Complete backup including database structure (tables, indexes, constraints) and all data. 
+                                            Use this for disaster recovery or migrating to a new server.
+                                        </MudText>
+                                        <MudButton Variant="Variant.Filled" Color="Color.Primary"
+                                                   StartIcon="@Icons.Material.Filled.Download"
+                                                   OnClick="@(() => CreateBackup(false))"
+                                                   Disabled="_backupInProgress" FullWidth="true">
+                                            @if (_backupInProgress && !_dataOnlyBackup)
+                                            {
+                                                <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" />
+                                                <text>Creating Backup...</text>
+                                            }
+                                            else
+                                            {
+                                                <text>Download Full Backup</text>
+                                            }
+                                        </MudButton>
+                                    </MudStack>
+                                </MudCard>
+                            </MudItem>
+
+                            <MudItem xs="12" md="6">
+                                <MudCard Elevation="0" Outlined="true" Class="pa-4">
+                                    <MudStack Spacing="2">
+                                        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+                                            <MudAvatar Color="Color.Secondary" Size="Size.Medium">
+                                                <MudIcon Icon="@Icons.Material.Filled.TableChart" />
+                                            </MudAvatar>
+                                            <MudText Typo="Typo.subtitle1">Data-Only Backup</MudText>
+                                        </MudStack>
+                                        <MudText Typo="Typo.body2" Color="Color.Secondary">
+                                            Backup only the data (rows) without the table structure. 
+                                            Use this when you want to transfer data to an existing database with the same schema.
+                                        </MudText>
+                                        <MudButton Variant="Variant.Outlined" Color="Color.Secondary"
+                                                   StartIcon="@Icons.Material.Filled.Download"
+                                                   OnClick="@(() => CreateBackup(true))"
+                                                   Disabled="_backupInProgress" FullWidth="true">
+                                            @if (_backupInProgress && _dataOnlyBackup)
+                                            {
+                                                <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" />
+                                                <text>Creating Backup...</text>
+                                            }
+                                            else
+                                            {
+                                                <text>Download Data-Only Backup</text>
+                                            }
+                                        </MudButton>
+                                    </MudStack>
+                                </MudCard>
+                            </MudItem>
+                        </MudGrid>
+
+                        @if (_backupInProgress)
+                        {
+                            <MudAlert Severity="Severity.Info" Icon="@Icons.Material.Filled.HourglassTop">
+                                Backup is being generated. This may take a few moments depending on database size. Please do not close this page.
+                            </MudAlert>
+                        }
+
+                        @if (!string.IsNullOrEmpty(_errorMessage))
+                        {
+                            <MudAlert Severity="Severity.Error" Dense="true" ShowCloseIcon="true"
+                                      CloseIconClicked="@(() => _errorMessage = null)">
+                                @_errorMessage
+                            </MudAlert>
+                        }
+                    </MudStack>
+                </MudPaper>
+            </MudItem>
+
+            <MudItem xs="12">
+                <MudAlert Severity="Severity.Warning" Dense="true" Icon="@Icons.Material.Filled.Info">
+                    <strong>Important:</strong> Backups contain all business data. Store downloaded files securely and do not share them with unauthorized persons. 
+                    Backup files are automatically removed from the server after download.
+                </MudAlert>
+            </MudItem>
+        </MudGrid>
+    }
+</MudContainer>
+
+@code {
+    private bool _loading = true;
+    private bool _backupInProgress;
+    private bool _dataOnlyBackup;
+    private string _dbName = "N/A";
+    private string _dbHost = "N/A";
+    private long _tableCount;
+    private long _estimatedSizeMB;
+    private DateTime? _lastBackupTime;
+    private string? _lastBackupType;
+    private string? _errorMessage;
+    private long _userId;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+        var user = authState.User;
+        if (user.Identity?.IsAuthenticated != true)
+        {
+            Navigation.NavigateTo("/login");
+            return;
+        }
+
+        if (long.TryParse(user.FindFirst("UserId")?.Value, out var uid)) _userId = uid;
+
+        try
+        {
+            var (dbName, dbHost, tableCount, estimatedSizeMB) = await BackupService.GetDatabaseInfoAsync();
+            _dbName = dbName;
+            _dbHost = dbHost;
+            _tableCount = tableCount;
+            _estimatedSizeMB = estimatedSizeMB;
+        }
+        catch (Exception ex)
+        {
+            _errorMessage = $"Could not retrieve database info: {ex.Message}";
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private async Task CreateBackup(bool dataOnly)
+    {
+        _backupInProgress = true;
+        _dataOnlyBackup = dataOnly;
+        _errorMessage = null;
+        StateHasChanged();
+
+        try
+        {
+            var result = await BackupService.CreateBackupAsync(_userId, dataOnly);
+
+            if (result.Success && !string.IsNullOrEmpty(result.DownloadToken))
+            {
+                _lastBackupTime = DateTime.UtcNow;
+                _lastBackupType = dataOnly ? "Data Only" : "Full Backup";
+
+                var downloadUrl = Navigation.BaseUri.TrimEnd('/') + $"/api/backup/download?token={Uri.EscapeDataString(result.DownloadToken)}";
+                Navigation.NavigateTo(downloadUrl, true);
+
+                Snackbar.Add($"Backup created successfully ({FormatSize(result.FileSizeBytes)}). Download should start automatically.", Severity.Success);
+            }
+            else
+            {
+                _errorMessage = result.ErrorMessage ?? "Unknown error occurred during backup.";
+                Snackbar.Add("Backup failed. See error details on page.", Severity.Error);
+            }
+        }
+        catch (Exception ex)
+        {
+            _errorMessage = $"Unexpected error: {ex.Message}";
+            Snackbar.Add("An unexpected error occurred.", Severity.Error);
+        }
+        finally
+        {
+            _backupInProgress = false;
+            StateHasChanged();
+        }
+    }
+
+    private string FormatSize(long bytes)
+    {
+        if (bytes < 1024) return $"{bytes} B";
+        if (bytes < 1024 * 1024) return $"{bytes / 1024.0:F1} KB";
+        return $"{bytes / (1024.0 * 1024.0):F1} MB";
+    }
+}

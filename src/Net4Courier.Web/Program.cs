@@ -194,6 +194,7 @@ builder.Services.AddScoped<DRSReconciliationService>();
 builder.Services.AddScoped<InvoicingService>();
 builder.Services.AddHttpClient<ExchangeRateService>();
 builder.Services.AddScoped<ApprovalWorkflowService>();
+builder.Services.AddScoped<DatabaseBackupService>();
 builder.Services.AddScoped<ShipmentStatusService>();
 builder.Services.AddScoped<Net4Courier.Infrastructure.Services.SchemaAutoSyncService>();
 builder.Services.AddScoped<StatusEventMappingService>();
@@ -505,6 +506,28 @@ app.MapGet("/api/diagnostics", (IWebHostEnvironment env) =>
             ? "DATABASE_URL is not set. You need to connect a production database in Replit's Database panel."
             : "Database URL is configured."
     });
+});
+
+app.MapGet("/api/backup/download", (string token, DatabaseBackupService backupService, HttpContext httpContext) =>
+{
+    try
+    {
+        if (!httpContext.User.Identity?.IsAuthenticated ?? true)
+            return Results.Unauthorized();
+
+        var (valid, filePath, fileName) = backupService.ValidateAndConsumeToken(token);
+        if (!valid || string.IsNullOrEmpty(filePath))
+            return Results.NotFound("Backup file not found, expired, or already downloaded.");
+
+        var stream = new FileStream(filePath, FileMode.Open, FileAccess.Read, FileShare.None,
+            bufferSize: 65536, options: FileOptions.DeleteOnClose | FileOptions.SequentialScan);
+
+        return Results.File(stream, "application/sql", fileName ?? "backup.sql");
+    }
+    catch (Exception ex)
+    {
+        return Results.Problem($"Error downloading backup: {ex.Message}");
+    }
 });
 
 app.MapGet("/api/report/awb/{id:long}", async (long id, bool? inline, ApplicationDbContext db, AWBPrintService printService, BarcodeService barcodeService, IWebHostEnvironment env, ILogger<Program> logger) =>
