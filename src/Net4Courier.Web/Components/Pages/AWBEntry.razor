@@ -418,12 +418,36 @@
             <MudText Typo="Typo.subtitle1" Color="Color.Primary">
                 <MudIcon Icon="@Icons.Material.Filled.Receipt" Size="Size.Small" Class="mr-1" />CHARGES
             </MudText>
-            <MudCheckBox @bind-Value="_isTaxInclusive" Label="Including Tax" Dense="true" Size="Size.Small" Color="Color.Primary" Class="ml-4" />
+            <MudCheckBox T="bool" Value="_isTaxInclusive" ValueChanged="@((bool val) => OnIncludingTaxChanged(val))" Label="Including Tax" Dense="true" Size="Size.Small" Color="Color.Primary" Class="ml-4" />
         </MudStack>
         <MudGrid Spacing="2">
             <MudItem xs="6" md="2">
-                <MudNumericField @bind-Value="_inscan.CourierCharge" Label="Freight Charges" 
-                                 Variant="Variant.Outlined" Margin="Margin.Dense" Format="N2" />
+                @if (_isTaxInclusive)
+                {
+                    <MudNumericField Value="@DisplayFreightCharges" Label="Freight Charges" 
+                                     Variant="Variant.Outlined" Margin="Margin.Dense" Format="N2" ReadOnly="true" />
+                }
+                else
+                {
+                    <MudNumericField @bind-Value="_inscan.CourierCharge" Label="Freight Charges" 
+                                     Variant="Variant.Outlined" Margin="Margin.Dense" Format="N2" />
+                }
+            </MudItem>
+            <MudItem xs="4" md="1">
+                <MudNumericField Value="@CalculatedTaxAmount" Label="@($"Tax ({BranchVatPercent}%)")" 
+                                 Variant="Variant.Outlined" Margin="Margin.Dense" Format="N2" ReadOnly="true" />
+            </MudItem>
+            <MudItem xs="6" md="2">
+                @if (_isTaxInclusive)
+                {
+                    <MudNumericField T="decimal?" Value="_totalFreight" ValueChanged="@((decimal? val) => OnTotalFreightChanged(val))" Label="Total Freight" 
+                                     Variant="Variant.Outlined" Margin="Margin.Dense" Format="N2" />
+                }
+                else
+                {
+                    <MudNumericField Value="@DisplayTotalFreight" Label="Total Freight" 
+                                     Variant="Variant.Outlined" Margin="Margin.Dense" Format="N2" ReadOnly="true" />
+                }
             </MudItem>
             <MudItem xs="6" md="2">
                 <MudNumericField @bind-Value="_inscan.FuelSurcharge" Label="Fuel Surcharge" 
@@ -435,18 +459,19 @@
                               Adornment="Adornment.End" AdornmentIcon="@Icons.Material.Filled.Add"
                               OnAdornmentClick="OpenOtherChargesDialog" AdornmentColor="Color.Primary" />
             </MudItem>
-            <MudItem xs="12">
-                @if (_selectedOtherCharges.Any())
-                {
-                    <MudStack Row="true" Wrap="Wrap.Wrap" Spacing="1">
+            @if (_selectedOtherCharges.Any())
+            {
+                <MudItem xs="12" md="3">
+                    <MudStack Row="true" Wrap="Wrap.Wrap" Spacing="1" AlignItems="AlignItems.Center" Style="margin-top: 6px;">
                         @foreach (var charge in _selectedOtherCharges)
                         {
                             <MudChip T="string" Color="Color.Primary" Size="Size.Small">@charge.ChargeName: @charge.Amount.ToString("N2")</MudChip>
                         }
-                        <MudText Typo="Typo.caption"><strong>Total: @_selectedOtherCharges.Sum(c => c.Amount).ToString("N2")</strong></MudText>
                     </MudStack>
-                }
-            </MudItem>
+                </MudItem>
+            }
+        </MudGrid>
+        <MudGrid Spacing="2" Class="mt-1">
             <MudItem xs="6" md="2">
                 <MudNumericField @bind-Value="_inscan.DutyVatAmount" @bind-Value:after="StateHasChanged" Label="Duty/VAT" 
                                  Variant="Variant.Outlined" Margin="Margin.Dense" Format="N2" />
@@ -463,10 +488,6 @@
                                      Style="background-color: #fff3e0;" />
                 </MudItem>
             }
-            <MudItem xs="6" md="2">
-                <MudNumericField Value="@CalculatedTaxAmount" Label="@($"Tax Amount ({BranchVatPercent}%)")" 
-                                 Variant="Variant.Outlined" Margin="Margin.Dense" Format="N2" ReadOnly="true" />
-            </MudItem>
             <MudItem xs="6" md="2">
                 <MudNumericField @bind-Value="_inscan.Discount" Label="Discount" 
                                  Variant="Variant.Outlined" Margin="Margin.Dense" Format="N2" />
@@ -671,6 +692,7 @@
     
     private bool _isPrepaidAWB = false;
     private bool _isTaxInclusive = false;
+    private decimal? _totalFreight;
     private bool _paymentModeDisabled = false;
     private string _prepaidCustomerName = "";
     private long? _prepaidCustomerId;
@@ -712,25 +734,70 @@
 
     private decimal CalculatedTaxAmount {
         get {
-            var freight = _inscan.CourierCharge ?? 0;
-            if (freight <= 0 || BranchVatPercent <= 0) return 0;
+            if (BranchVatPercent <= 0) return 0;
             if (_isTaxInclusive)
-                return Math.Round(freight - (freight / (1 + BranchVatPercent / 100)), 2);
+            {
+                var total = _totalFreight ?? 0;
+                if (total <= 0) return 0;
+                return Math.Round(total - (total / (1 + BranchVatPercent / 100)), 2);
+            }
             else
+            {
+                var freight = _inscan.CourierCharge ?? 0;
+                if (freight <= 0) return 0;
                 return Math.Round(freight * BranchVatPercent / 100, 2);
+            }
         }
+    }
+
+    private decimal DisplayFreightCharges {
+        get {
+            if (_isTaxInclusive)
+            {
+                var total = _totalFreight ?? 0;
+                return Math.Round(total - CalculatedTaxAmount, 2);
+            }
+            return _inscan.CourierCharge ?? 0;
+        }
+    }
+
+    private decimal DisplayTotalFreight {
+        get {
+            if (_isTaxInclusive)
+                return _totalFreight ?? 0;
+            return (_inscan.CourierCharge ?? 0) + CalculatedTaxAmount;
+        }
+    }
+
+    private void OnTotalFreightChanged(decimal? value)
+    {
+        _totalFreight = value;
+        _inscan.CourierCharge = Math.Round((value ?? 0) / (1 + BranchVatPercent / 100), 2);
+        StateHasChanged();
+    }
+
+    private void OnIncludingTaxChanged(bool value)
+    {
+        var freight = _inscan.CourierCharge ?? 0;
+        _isTaxInclusive = value;
+        if (value)
+        {
+            _totalFreight = freight + (BranchVatPercent > 0 ? Math.Round(freight * BranchVatPercent / 100, 2) : 0);
+        }
+        else
+        {
+            if (_totalFreight.HasValue && _totalFreight > 0 && BranchVatPercent > 0)
+                _inscan.CourierCharge = Math.Round(_totalFreight.Value / (1 + BranchVatPercent / 100), 2);
+            _totalFreight = null;
+        }
+        StateHasChanged();
     }
 
     private decimal NetTotal {
         get {
-            var freight = _inscan.CourierCharge ?? 0;
-            var taxAmount = CalculatedTaxAmount;
-            decimal total;
-            if (_isTaxInclusive)
-                total = freight + (_inscan.FuelSurcharge ?? 0) + (_inscan.OtherCharge ?? 0);
-            else
-                total = freight + taxAmount + (_inscan.FuelSurcharge ?? 0) + (_inscan.OtherCharge ?? 0);
-            total += (_inscan.DutyVatAmount ?? 0) + (_inscan.CODAmount ?? 0) - (_inscan.Discount ?? 0);
+            decimal freightTotal = _isTaxInclusive ? (_totalFreight ?? 0) : ((_inscan.CourierCharge ?? 0) + CalculatedTaxAmount);
+            decimal total = freightTotal + (_inscan.FuelSurcharge ?? 0) + (_inscan.OtherCharge ?? 0)
+                + (_inscan.DutyVatAmount ?? 0) + (_inscan.CODAmount ?? 0) - (_inscan.Discount ?? 0);
             if (IsImportWithDeclaration)
                 total += CalculatedImportVAT;
             return total;
@@ -1394,6 +1461,8 @@
             {
                 _inscan.CourierCharge = result.TotalCharge;
                 _inscan.TaxPercent = BranchVatPercent;
+                if (_isTaxInclusive)
+                    _totalFreight = (_inscan.CourierCharge ?? 0) + CalculatedTaxAmount;
                 StateHasChanged();
             }
         }
@@ -1546,6 +1615,8 @@
 
             _inscan.VolumetricWeight = VolumetricWeight;
             _inscan.ChargeableWeight = ChargeableWeight;
+            if (_isTaxInclusive)
+                _inscan.CourierCharge = DisplayFreightCharges;
             _inscan.TaxPercent = BranchVatPercent;
             _inscan.TaxAmount = CalculatedTaxAmount;
             _inscan.NetTotal = NetTotal;
