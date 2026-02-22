@@ -82,8 +82,8 @@ public class InvoicingService
             var courierCharge = awb.CourierCharge ?? 0;
             var otherCharge = awb.OtherCharge ?? 0;
             var vasCharge = awb.FuelSurcharge ?? 0;
-            var taxPct = awb.TaxPercent ?? taxPercent;
-            var taxAmt = (courierCharge + otherCharge + vasCharge) * taxPct / 100;
+            var taxPct = awb.TaxPercent ?? 0;
+            var taxAmt = awb.TaxAmount ?? 0;
             var total = courierCharge + otherCharge + vasCharge + taxAmt;
             var serviceTypeName = awb.ProductTypeId.HasValue && serviceTypes.ContainsKey(awb.ProductTypeId.Value) 
                 ? serviceTypes[awb.ProductTypeId.Value] : null;
@@ -110,7 +110,7 @@ public class InvoicingService
             });
         }
 
-        preview.SubTotal = preview.Details.Sum(d => d.Total);
+        preview.SubTotal = preview.Details.Sum(d => d.CourierCharge + d.OtherCharge + d.VASCharge);
 
         foreach (var charge in specialCharges)
         {
@@ -146,7 +146,7 @@ public class InvoicingService
 
         preview.SpecialChargesTotal = preview.SpecialCharges.Sum(s => s.CalculatedAmount);
         preview.SpecialChargesTax = preview.SpecialCharges.Sum(s => s.TaxAmount);
-        preview.TaxAmount = preview.SubTotal * taxPercent / 100;
+        preview.TaxAmount = preview.Details.Sum(d => d.TaxAmount);
         preview.NetTotal = preview.SubTotal + preview.TaxAmount + preview.SpecialChargesTotal + preview.SpecialChargesTax;
 
         return preview;
