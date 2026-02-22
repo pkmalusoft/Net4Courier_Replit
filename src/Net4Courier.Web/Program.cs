@@ -683,7 +683,13 @@ app.MapGet("/api/report/awb-label/{id:long}", async (long id, bool? inline, Appl
             branchCurrency = defaultBranch?.Currency?.Code;
         }
         await ResolveLocationCodes(awb, db);
-        var pdf = printService.GenerateLabel(awb, companyName, logoData, branchCurrency);
+        string? customerAccountNo = null;
+        if (awb.CustomerId.HasValue)
+        {
+            var customer = await db.Parties.FirstOrDefaultAsync(p => p.Id == awb.CustomerId);
+            customerAccountNo = customer?.CustomerAccountNo;
+        }
+        var pdf = printService.GenerateLabel(awb, companyName, logoData, branchCurrency, customerAccountNo);
         var fileName = inline == true ? null : $"Label-{awb.AWBNo}.pdf";
         return Results.File(pdf, "application/pdf", fileName);
     }
@@ -786,7 +792,13 @@ app.MapGet("/api/report/awb-label-by-awbno/{awbNo}", async (string awbNo, bool? 
             branchCurrency = defaultBranch?.Currency?.Code;
         }
         await ResolveLocationCodes(awb, db);
-        var pdf = printService.GenerateLabel(awb, companyName, logoData, branchCurrency);
+        string? customerAccountNo = null;
+        if (awb.CustomerId.HasValue)
+        {
+            var customer = await db.Parties.FirstOrDefaultAsync(p => p.Id == awb.CustomerId);
+            customerAccountNo = customer?.CustomerAccountNo;
+        }
+        var pdf = printService.GenerateLabel(awb, companyName, logoData, branchCurrency, customerAccountNo);
         var fileName = inline == true ? null : $"Label-{awb.AWBNo}.pdf";
         return Results.File(pdf, "application/pdf", fileName);
     }
@@ -964,7 +976,12 @@ app.MapGet("/api/report/label-bulk/{ids}", async (string ids, bool? inline, Appl
         }
 
         await ResolveLocationCodesBulk(awbs, db);
-        var combinedPdf = printService.GenerateBulkLabel(awbs, companyName, logoData, branchCurrency);
+        var customerIds = awbs.Where(a => a.CustomerId.HasValue).Select(a => a.CustomerId!.Value).Distinct().ToList();
+        var customerAccountNos = customerIds.Any()
+            ? await db.Parties.Where(p => customerIds.Contains(p.Id) && p.CustomerAccountNo != null)
+                .ToDictionaryAsync(p => p.Id, p => p.CustomerAccountNo!)
+            : new Dictionary<long, string>();
+        var combinedPdf = printService.GenerateBulkLabel(awbs, companyName, logoData, branchCurrency, customerAccountNos);
         var fileName = inline == true ? null : $"BulkLabels-{DateTime.Now:yyyyMMdd_HHmmss}.pdf";
         return Results.File(combinedPdf, "application/pdf", fileName);
     }
@@ -1030,7 +1047,12 @@ app.MapGet("/api/report/label-bulk-by-awbno/{awbNos}", async (string awbNos, boo
         }
 
         await ResolveLocationCodesBulk(awbs, db);
-        var combinedPdf = printService.GenerateBulkLabel(awbs, companyName, logoData, branchCurrency);
+        var customerIds2 = awbs.Where(a => a.CustomerId.HasValue).Select(a => a.CustomerId!.Value).Distinct().ToList();
+        var customerAccountNos2 = customerIds2.Any()
+            ? await db.Parties.Where(p => customerIds2.Contains(p.Id) && p.CustomerAccountNo != null)
+                .ToDictionaryAsync(p => p.Id, p => p.CustomerAccountNo!)
+            : new Dictionary<long, string>();
+        var combinedPdf = printService.GenerateBulkLabel(awbs, companyName, logoData, branchCurrency, customerAccountNos2);
         var fileName = inline == true ? null : $"BulkLabels-{DateTime.Now:yyyyMMdd_HHmmss}.pdf";
         return Results.File(combinedPdf, "application/pdf", fileName);
     }

@@ -435,13 +435,17 @@ public class AWBPrintService
         return document.GeneratePdf();
     }
 
-    public byte[] GenerateBulkLabel(List<InscanMaster> shipments, string? companyName = null, byte[]? logoData = null, string? branchCurrency = null)
+    public byte[] GenerateBulkLabel(List<InscanMaster> shipments, string? companyName = null, byte[]? logoData = null, string? branchCurrency = null, Dictionary<long, string>? customerAccountNos = null)
     {
         var effectiveLogo = logoData ?? _logoData;
         var document = Document.Create(container =>
         {
             foreach (var shipment in shipments)
             {
+                string? acctNo = null;
+                if (shipment.CustomerId.HasValue && customerAccountNos != null)
+                    customerAccountNos.TryGetValue(shipment.CustomerId.Value, out acctNo);
+
                 container.Page(page =>
                 {
                     page.Size(100, 150, Unit.Millimetre);
@@ -454,7 +458,7 @@ public class AWBPrintService
 
                         LabelHeader(column, shipment, effectiveLogo);
                         LabelBarcode(column, shipment);
-                        LabelShipper(column, shipment);
+                        LabelShipper(column, shipment, acctNo);
                         LabelReceiver(column, shipment);
                         LabelMetrics(column, shipment);
                         LabelFooter(column, shipment, branchCurrency);
@@ -468,7 +472,7 @@ public class AWBPrintService
         return document.GeneratePdf();
     }
 
-    public byte[] GenerateLabel(InscanMaster shipment, string? companyName = null, byte[]? logoData = null, string? branchCurrency = null)
+    public byte[] GenerateLabel(InscanMaster shipment, string? companyName = null, byte[]? logoData = null, string? branchCurrency = null, string? customerAccountNo = null)
     {
         var effectiveLogo = logoData ?? _logoData;
         var document = Document.Create(container =>
@@ -485,7 +489,7 @@ public class AWBPrintService
 
                     LabelHeader(column, shipment, effectiveLogo);
                     LabelBarcode(column, shipment);
-                    LabelShipper(column, shipment);
+                    LabelShipper(column, shipment, customerAccountNo);
                     LabelReceiver(column, shipment);
                     LabelMetrics(column, shipment);
                     LabelFooter(column, shipment, branchCurrency);
@@ -582,7 +586,7 @@ public class AWBPrintService
         });
     }
 
-    private void LabelShipper(ColumnDescriptor column, InscanMaster shipment)
+    private void LabelShipper(ColumnDescriptor column, InscanMaster shipment, string? customerAccountNo = null)
     {
         column.Item().BorderBottom(1).Background("#f9fafb").PaddingHorizontal(6).PaddingVertical(3).Column(c =>
         {
@@ -591,6 +595,11 @@ public class AWBPrintService
                 shipperLabelRow.AutoItem().Background("#e2e8f0").PaddingHorizontal(4).PaddingVertical(1)
                     .Text("SHIPPER").Bold().FontSize(6);
                 shipperLabelRow.RelativeItem();
+                if (!string.IsNullOrWhiteSpace(customerAccountNo))
+                {
+                    shipperLabelRow.AutoItem().PaddingHorizontal(4).PaddingVertical(1)
+                        .Text($"A/C: {customerAccountNo}").Bold().FontSize(6);
+                }
             });
             c.Item().Height(2);
             c.Item().Row(row =>
