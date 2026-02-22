@@ -193,6 +193,7 @@ builder.Services.AddScoped<RatingEngineService>();
 builder.Services.AddScoped<DRSReconciliationService>();
 builder.Services.AddScoped<InvoicingService>();
 builder.Services.AddHttpClient<ExchangeRateService>();
+builder.Services.AddScoped<ApprovalWorkflowService>();
 builder.Services.AddScoped<ShipmentStatusService>();
 builder.Services.AddScoped<Net4Courier.Infrastructure.Services.SchemaAutoSyncService>();
 builder.Services.AddScoped<StatusEventMappingService>();

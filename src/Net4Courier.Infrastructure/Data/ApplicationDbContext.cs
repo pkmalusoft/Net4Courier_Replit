@@ -172,6 +172,11 @@ public class ApplicationDbContext : DbContext
     
     public DbSet<AuditLog> AuditLogs => Set<AuditLog>();
     
+    public DbSet<ApprovalWorkflow> ApprovalWorkflows => Set<ApprovalWorkflow>();
+    public DbSet<ApprovalStep> ApprovalSteps => Set<ApprovalStep>();
+    public DbSet<ApprovalRequest> ApprovalRequests => Set<ApprovalRequest>();
+    public DbSet<ApprovalAction> ApprovalActions => Set<ApprovalAction>();
+    
     // Audit context - set these before SaveChanges for audit logging
     public long? CurrentUserId { get; set; }
     public string? CurrentUserName { get; set; }
@@ -314,6 +319,7 @@ public class ApplicationDbContext : DbContext
         ConfigureMastersModule(modelBuilder);
         ConfigureOperationsModule(modelBuilder);
         ConfigureFinanceModule(modelBuilder);
+        ConfigureApprovalWorkflowModule(modelBuilder);
     }
 
     private void ConfigureMastersModule(ModelBuilder modelBuilder)
@@ -2021,6 +2027,71 @@ public class ApplicationDbContext : DbContext
             entity.HasIndex(e => e.EntityName);
             entity.HasIndex(e => e.UserId);
             entity.HasIndex(e => new { e.EntityName, e.EntityId });
+        });
+    }
+
+    private void ConfigureApprovalWorkflowModule(ModelBuilder modelBuilder)
+    {
+        modelBuilder.Entity<ApprovalWorkflow>(entity =>
+        {
+            entity.ToTable("ApprovalWorkflows");
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Name).HasMaxLength(200).IsRequired();
+            entity.Property(e => e.Description).HasMaxLength(500);
+            entity.Property(e => e.WorkflowType).HasConversion<int>();
+            entity.HasIndex(e => new { e.CompanyId, e.WorkflowType });
+        });
+
+        modelBuilder.Entity<ApprovalStep>(entity =>
+        {
+            entity.ToTable("ApprovalSteps");
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.StepName).HasMaxLength(200).IsRequired();
+            entity.Property(e => e.ApproverUserName).HasMaxLength(200);
+            entity.Property(e => e.ApproverRoleName).HasMaxLength(200);
+            entity.HasIndex(e => new { e.WorkflowId, e.StepOrder });
+            entity.HasOne(e => e.Workflow)
+                  .WithMany(w => w.Steps)
+                  .HasForeignKey(e => e.WorkflowId)
+                  .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<ApprovalRequest>(entity =>
+        {
+            entity.ToTable("ApprovalRequests");
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.EntityType).HasConversion<int>();
+            entity.Property(e => e.EntityCode).HasMaxLength(100);
+            entity.Property(e => e.EntityDescription).HasMaxLength(500);
+            entity.Property(e => e.Amount).HasPrecision(18, 2);
+            entity.Property(e => e.Currency).HasMaxLength(10);
+            entity.Property(e => e.RequesterName).HasMaxLength(200);
+            entity.Property(e => e.CurrentApproverName).HasMaxLength(200);
+            entity.Property(e => e.Status).HasConversion<int>();
+            entity.Property(e => e.Notes).HasMaxLength(1000);
+            entity.HasIndex(e => new { e.CompanyId, e.Status });
+            entity.HasIndex(e => new { e.EntityType, e.EntityId });
+            entity.HasIndex(e => e.CurrentApproverId);
+            entity.HasIndex(e => e.RequesterId);
+            entity.HasOne(e => e.Workflow)
+                  .WithMany()
+                  .HasForeignKey(e => e.WorkflowId)
+                  .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        modelBuilder.Entity<ApprovalAction>(entity =>
+        {
+            entity.ToTable("ApprovalActions");
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.StepName).HasMaxLength(200);
+            entity.Property(e => e.ActionType).HasConversion<int>();
+            entity.Property(e => e.ActionByName).HasMaxLength(200);
+            entity.Property(e => e.Comments).HasMaxLength(1000);
+            entity.HasIndex(e => e.RequestId);
+            entity.HasOne(e => e.Request)
+                  .WithMany(r => r.Actions)
+                  .HasForeignKey(e => e.RequestId)
+                  .OnDelete(DeleteBehavior.Cascade);
         });
     }
     

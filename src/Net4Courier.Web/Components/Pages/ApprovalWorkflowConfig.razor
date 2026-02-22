@@ -1,0 +1,534 @@
+@page "/approval-workflow/config"
+@using Net4Courier.Infrastructure.Data
+@using Net4Courier.Kernel.Entities
+@using Net4Courier.Kernel.Enums
+@using Net4Courier.Masters.Entities
+@using Net4Courier.Web.Services
+@using Microsoft.EntityFrameworkCore
+@using Microsoft.AspNetCore.Components.Authorization
+@inject IDbContextFactory<ApplicationDbContext> DbFactory
+@inject ApprovalWorkflowService ApprovalService
+@inject ISnackbar Snackbar
+@inject AuthenticationStateProvider AuthStateProvider
+@inject IDialogService DialogService
+@rendermode InteractiveServer
+
+<PageTitle>Approval Workflow Configuration - Net4Courier</PageTitle>
+
+<MudContainer MaxWidth="MaxWidth.ExtraLarge" Class="py-4">
+    <MudText Typo="Typo.h5" GutterBottom="true">
+        <MudIcon Icon="@Icons.Material.Filled.Settings" Class="mr-2" />
+        Approval Workflow Configuration
+    </MudText>
+    <MudText Typo="Typo.subtitle1" Class="mb-4" Color="Color.Secondary">
+        Configure approval steps for different document types
+    </MudText>
+
+    @if (_loading)
+    {
+        <MudProgressLinear Indeterminate="true" Color="Color.Primary" />
+    }
+    else
+    {
+        <MudGrid>
+            <MudItem xs="12" md="4">
+                <MudPaper Class="pa-4" Elevation="2">
+                    <MudStack Spacing="2">
+                        <MudStack Row="true" AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween">
+                            <MudText Typo="Typo.h6">Workflows</MudText>
+                            <MudButton Variant="Variant.Filled" Color="Color.Primary" Size="Size.Small"
+                                       StartIcon="@Icons.Material.Filled.Add" OnClick="ShowAddWorkflow">
+                                New
+                            </MudButton>
+                        </MudStack>
+
+                        <MudList T="ApprovalWorkflow" Dense="true" @bind-SelectedValue="_selectedWorkflow" Color="Color.Primary">
+                            @foreach (var wf in _workflows)
+                            {
+                                <MudListItem T="ApprovalWorkflow" Value="wf" OnClick="@(() => SelectWorkflow(wf))">
+                                    <MudStack Row="true" AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween" Style="width:100%">
+                                        <MudStack Spacing="0">
+                                            <MudText Typo="Typo.body1">@wf.Name</MudText>
+                                            <MudText Typo="Typo.caption" Color="Color.Secondary">@wf.WorkflowType.ToString()</MudText>
+                                        </MudStack>
+                                        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="1">
+                                            <MudChip T="string" Size="Size.Small" Color="@(wf.IsActive ? Color.Success : Color.Default)">
+                                                @(wf.IsActive ? "Active" : "Inactive")
+                                            </MudChip>
+                                            <MudText Typo="Typo.caption">@(wf.Steps.Count(s => !s.IsDeleted)) steps</MudText>
+                                        </MudStack>
+                                    </MudStack>
+                                </MudListItem>
+                            }
+                        </MudList>
+
+                        @if (!_workflows.Any())
+                        {
+                            <MudAlert Severity="Severity.Info" Dense="true">
+                                No workflows configured yet. Click "New" to create one.
+                            </MudAlert>
+                        }
+                    </MudStack>
+                </MudPaper>
+            </MudItem>
+
+            <MudItem xs="12" md="8">
+                @if (_selectedWorkflow != null)
+                {
+                    <MudPaper Class="pa-4" Elevation="2">
+                        <MudStack Spacing="3">
+                            <MudStack Row="true" AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween">
+                                <MudText Typo="Typo.h6">@_selectedWorkflow.Name</MudText>
+                                <MudStack Row="true" Spacing="1">
+                                    <MudIconButton Icon="@Icons.Material.Filled.Edit" Size="Size.Small"
+                                                   OnClick="EditWorkflow" />
+                                    <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" Color="Color.Error"
+                                                   OnClick="DeleteWorkflow" />
+                                </MudStack>
+                            </MudStack>
+
+                            <MudGrid>
+                                <MudItem xs="6">
+                                    <MudText Typo="Typo.caption" Color="Color.Secondary">Document Type</MudText>
+                                    <MudText>@_selectedWorkflow.WorkflowType.ToString()</MudText>
+                                </MudItem>
+                                <MudItem xs="6">
+                                    <MudText Typo="Typo.caption" Color="Color.Secondary">Status</MudText>
+                                    <MudChip T="string" Size="Size.Small" Color="@(_selectedWorkflow.IsActive ? Color.Success : Color.Default)">
+                                        @(_selectedWorkflow.IsActive ? "Active" : "Inactive")
+                                    </MudChip>
+                                </MudItem>
+                                @if (!string.IsNullOrEmpty(_selectedWorkflow.Description))
+                                {
+                                    <MudItem xs="12">
+                                        <MudText Typo="Typo.caption" Color="Color.Secondary">Description</MudText>
+                                        <MudText Typo="Typo.body2">@_selectedWorkflow.Description</MudText>
+                                    </MudItem>
+                                }
+                            </MudGrid>
+
+                            <MudDivider />
+
+                            <MudStack Row="true" AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween">
+                                <MudText Typo="Typo.subtitle1">Approval Steps</MudText>
+                                <MudButton Variant="Variant.Outlined" Color="Color.Primary" Size="Size.Small"
+                                           StartIcon="@Icons.Material.Filled.Add" OnClick="ShowAddStep">
+                                    Add Step
+                                </MudButton>
+                            </MudStack>
+
+                            <MudTable Items="@_selectedWorkflow.Steps.Where(s => !s.IsDeleted).OrderBy(s => s.StepOrder)"
+                                      Dense="true" Hover="true" Elevation="0" Bordered="true">
+                                <HeaderContent>
+                                    <MudTh Style="width:60px">Order</MudTh>
+                                    <MudTh>Step Name</MudTh>
+                                    <MudTh>Approver</MudTh>
+                                    <MudTh>Delegate</MudTh>
+                                    <MudTh>Timeout</MudTh>
+                                    <MudTh>Status</MudTh>
+                                    <MudTh Style="width:100px">Actions</MudTh>
+                                </HeaderContent>
+                                <RowTemplate>
+                                    <MudTd>@context.StepOrder</MudTd>
+                                    <MudTd>@context.StepName</MudTd>
+                                    <MudTd>
+                                        @if (!string.IsNullOrEmpty(context.ApproverUserName))
+                                        {
+                                            <MudChip T="string" Size="Size.Small" Variant="Variant.Outlined" Color="Color.Primary">
+                                                @context.ApproverUserName
+                                            </MudChip>
+                                        }
+                                        else if (!string.IsNullOrEmpty(context.ApproverRoleName))
+                                        {
+                                            <MudChip T="string" Size="Size.Small" Variant="Variant.Outlined" Color="Color.Info">
+                                                Role: @context.ApproverRoleName
+                                            </MudChip>
+                                        }
+                                    </MudTd>
+                                    <MudTd>
+                                        <MudIcon Icon="@(context.CanDelegate ? Icons.Material.Filled.Check : Icons.Material.Filled.Close)"
+                                                 Color="@(context.CanDelegate ? Color.Success : Color.Default)" Size="Size.Small" />
+                                    </MudTd>
+                                    <MudTd>@(context.TimeoutHours.HasValue ? $"{context.TimeoutHours}h" : "-")</MudTd>
+                                    <MudTd>
+                                        <MudChip T="string" Size="Size.Small" Color="@(context.IsActive ? Color.Success : Color.Default)">
+                                            @(context.IsActive ? "Active" : "Inactive")
+                                        </MudChip>
+                                    </MudTd>
+                                    <MudTd>
+                                        <MudIconButton Icon="@Icons.Material.Filled.Edit" Size="Size.Small"
+                                                       OnClick="@(() => EditStep(context))" />
+                                        <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" Color="Color.Error"
+                                                       OnClick="@(() => DeleteStep(context))" />
+                                    </MudTd>
+                                </RowTemplate>
+                                <NoRecordsContent>
+                                    <MudText Class="pa-4" Color="Color.Secondary">No steps configured. Add steps to define the approval chain.</MudText>
+                                </NoRecordsContent>
+                            </MudTable>
+                        </MudStack>
+                    </MudPaper>
+                }
+                else
+                {
+                    <MudPaper Class="pa-8 text-center" Elevation="2">
+                        <MudIcon Icon="@Icons.Material.Filled.TouchApp" Size="Size.Large" Color="Color.Secondary" />
+                        <MudText Typo="Typo.h6" Color="Color.Secondary" Class="mt-2">Select a workflow</MudText>
+                        <MudText Typo="Typo.body2" Color="Color.Secondary">Choose a workflow from the list to view and manage its approval steps</MudText>
+                    </MudPaper>
+                }
+            </MudItem>
+        </MudGrid>
+    }
+</MudContainer>
+
+<MudDialog @bind-Visible="_showWorkflowDialog">
+    <TitleContent>
+        <MudText Typo="Typo.h6">@(_isEditingWorkflow ? "Edit Workflow" : "New Workflow")</MudText>
+    </TitleContent>
+    <DialogContent>
+        <MudStack Spacing="3">
+            <MudSelect @bind-Value="_editWorkflowType" Label="Document Type" Variant="Variant.Outlined" Required="true">
+                @foreach (ApprovalWorkflowType type in Enum.GetValues<ApprovalWorkflowType>())
+                {
+                    <MudSelectItem Value="type">@type.ToString()</MudSelectItem>
+                }
+            </MudSelect>
+            <MudTextField @bind-Value="_editWorkflowName" Label="Workflow Name" Variant="Variant.Outlined" Required="true" />
+            <MudTextField @bind-Value="_editWorkflowDescription" Label="Description" Variant="Variant.Outlined" Lines="2" />
+            <MudSwitch @bind-Value="_editWorkflowActive" Label="Active" Color="Color.Success" />
+        </MudStack>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="@(() => _showWorkflowDialog = false)">Cancel</MudButton>
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="SaveWorkflow">Save</MudButton>
+    </DialogActions>
+</MudDialog>
+
+<MudDialog @bind-Visible="_showStepDialog">
+    <TitleContent>
+        <MudText Typo="Typo.h6">@(_isEditingStep ? "Edit Step" : "Add Step")</MudText>
+    </TitleContent>
+    <DialogContent>
+        <MudStack Spacing="3">
+            <MudNumericField @bind-Value="_editStepOrder" Label="Step Order" Min="1" Variant="Variant.Outlined" Required="true" />
+            <MudTextField @bind-Value="_editStepName" Label="Step Name" Variant="Variant.Outlined" Required="true" />
+            <MudSelect @bind-Value="_editApproverType" Label="Approver Type" Variant="Variant.Outlined">
+                <MudSelectItem Value="@("user")">Specific User</MudSelectItem>
+                <MudSelectItem Value="@("role")">Role</MudSelectItem>
+            </MudSelect>
+            @if (_editApproverType == "user")
+            {
+                <MudSelect @bind-Value="_editApproverUserId" Label="Approver User" Variant="Variant.Outlined">
+                    @foreach (var user in _availableUsers)
+                    {
+                        <MudSelectItem Value="@((long?)user.Id)">@user.FullName (@user.Username)</MudSelectItem>
+                    }
+                </MudSelect>
+            }
+            else
+            {
+                <MudSelect @bind-Value="_editApproverRoleId" Label="Approver Role" Variant="Variant.Outlined">
+                    @foreach (var role in _availableRoles)
+                    {
+                        <MudSelectItem Value="@((long?)role.Id)">@role.Name</MudSelectItem>
+                    }
+                </MudSelect>
+            }
+            <MudSwitch @bind-Value="_editStepCanDelegate" Label="Can Delegate" Color="Color.Primary" />
+            <MudNumericField @bind-Value="_editStepTimeoutHours" Label="Timeout (Hours)" Min="0" Variant="Variant.Outlined" />
+            <MudSwitch @bind-Value="_editStepActive" Label="Active" Color="Color.Success" />
+        </MudStack>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="@(() => _showStepDialog = false)">Cancel</MudButton>
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="SaveStep">Save</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    private bool _loading = true;
+    private long _companyId;
+    private List<ApprovalWorkflow> _workflows = new();
+    private ApprovalWorkflow? _selectedWorkflow;
+    private List<User> _availableUsers = new();
+    private List<Role> _availableRoles = new();
+
+    private bool _showWorkflowDialog;
+    private bool _isEditingWorkflow;
+    private long? _editingWorkflowId;
+    private ApprovalWorkflowType _editWorkflowType = ApprovalWorkflowType.CustomerInvoice;
+    private string _editWorkflowName = "";
+    private string _editWorkflowDescription = "";
+    private bool _editWorkflowActive = true;
+
+    private bool _showStepDialog;
+    private bool _isEditingStep;
+    private long? _editingStepId;
+    private int _editStepOrder = 1;
+    private string _editStepName = "";
+    private string _editApproverType = "user";
+    private long? _editApproverUserId;
+    private long? _editApproverRoleId;
+    private bool _editStepCanDelegate;
+    private int? _editStepTimeoutHours;
+    private bool _editStepActive = true;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+        var user = authState.User;
+        if (user.Identity?.IsAuthenticated == true)
+        {
+            var companyIdClaim = user.FindFirst("CompanyId")?.Value;
+            if (long.TryParse(companyIdClaim, out var cid)) _companyId = cid;
+        }
+        if (_companyId == 0) _companyId = 1;
+        await LoadData();
+    }
+
+    private async Task LoadData()
+    {
+        _loading = true;
+        StateHasChanged();
+        try
+        {
+            _workflows = await ApprovalService.GetWorkflowsAsync(_companyId, true);
+
+            await using var context = await DbFactory.CreateDbContextAsync();
+            _availableUsers = await context.Users
+                .Where(u => u.IsActive && !u.IsDeleted)
+                .OrderBy(u => u.FullName)
+                .ToListAsync();
+            _availableRoles = await context.Roles
+                .Where(r => r.IsActive && !r.IsDeleted)
+                .OrderBy(r => r.Name)
+                .ToListAsync();
+
+            if (_selectedWorkflow != null)
+            {
+                _selectedWorkflow = _workflows.FirstOrDefault(w => w.Id == _selectedWorkflow.Id);
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error loading data: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _loading = false;
+            StateHasChanged();
+        }
+    }
+
+    private void SelectWorkflow(ApprovalWorkflow wf)
+    {
+        _selectedWorkflow = wf;
+    }
+
+    private void ShowAddWorkflow()
+    {
+        _isEditingWorkflow = false;
+        _editingWorkflowId = null;
+        _editWorkflowType = ApprovalWorkflowType.CustomerInvoice;
+        _editWorkflowName = "";
+        _editWorkflowDescription = "";
+        _editWorkflowActive = true;
+        _showWorkflowDialog = true;
+    }
+
+    private void EditWorkflow()
+    {
+        if (_selectedWorkflow == null) return;
+        _isEditingWorkflow = true;
+        _editingWorkflowId = _selectedWorkflow.Id;
+        _editWorkflowType = _selectedWorkflow.WorkflowType;
+        _editWorkflowName = _selectedWorkflow.Name;
+        _editWorkflowDescription = _selectedWorkflow.Description ?? "";
+        _editWorkflowActive = _selectedWorkflow.IsActive;
+        _showWorkflowDialog = true;
+    }
+
+    private async Task SaveWorkflow()
+    {
+        if (string.IsNullOrWhiteSpace(_editWorkflowName))
+        {
+            Snackbar.Add("Workflow name is required", Severity.Warning);
+            return;
+        }
+
+        try
+        {
+            if (_isEditingWorkflow && _editingWorkflowId.HasValue)
+            {
+                var wf = await ApprovalService.GetWorkflowByIdAsync(_editingWorkflowId.Value);
+                if (wf != null)
+                {
+                    wf.WorkflowType = _editWorkflowType;
+                    wf.Name = _editWorkflowName;
+                    wf.Description = _editWorkflowDescription;
+                    wf.IsActive = _editWorkflowActive;
+                    wf.ModifiedAt = DateTime.UtcNow;
+                    await ApprovalService.UpdateWorkflowAsync(wf);
+                    Snackbar.Add("Workflow updated", Severity.Success);
+                }
+            }
+            else
+            {
+                var wf = new ApprovalWorkflow
+                {
+                    CompanyId = _companyId,
+                    WorkflowType = _editWorkflowType,
+                    Name = _editWorkflowName,
+                    Description = _editWorkflowDescription,
+                    IsActive = _editWorkflowActive
+                };
+                await ApprovalService.CreateWorkflowAsync(wf);
+                Snackbar.Add("Workflow created", Severity.Success);
+            }
+
+            _showWorkflowDialog = false;
+            await LoadData();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error: {ex.Message}", Severity.Error);
+        }
+    }
+
+    private async Task DeleteWorkflow()
+    {
+        if (_selectedWorkflow == null) return;
+
+        var confirmed = await DialogService.ShowMessageBox(
+            "Delete Workflow",
+            $"Are you sure you want to delete the workflow \"{_selectedWorkflow.Name}\"?",
+            yesText: "Delete", cancelText: "Cancel");
+
+        if (confirmed == true)
+        {
+            await ApprovalService.DeleteWorkflowAsync(_selectedWorkflow.Id);
+            _selectedWorkflow = null;
+            Snackbar.Add("Workflow deleted", Severity.Success);
+            await LoadData();
+        }
+    }
+
+    private void ShowAddStep()
+    {
+        if (_selectedWorkflow == null) return;
+        _isEditingStep = false;
+        _editingStepId = null;
+        var existingSteps = _selectedWorkflow.Steps.Where(s => !s.IsDeleted).ToList();
+        _editStepOrder = existingSteps.Any() ? existingSteps.Max(s => s.StepOrder) + 1 : 1;
+        _editStepName = "";
+        _editApproverType = "user";
+        _editApproverUserId = null;
+        _editApproverRoleId = null;
+        _editStepCanDelegate = false;
+        _editStepTimeoutHours = null;
+        _editStepActive = true;
+        _showStepDialog = true;
+    }
+
+    private void EditStep(ApprovalStep step)
+    {
+        _isEditingStep = true;
+        _editingStepId = step.Id;
+        _editStepOrder = step.StepOrder;
+        _editStepName = step.StepName;
+        _editApproverType = step.ApproverUserId.HasValue ? "user" : "role";
+        _editApproverUserId = step.ApproverUserId;
+        _editApproverRoleId = step.ApproverRoleId;
+        _editStepCanDelegate = step.CanDelegate;
+        _editStepTimeoutHours = step.TimeoutHours;
+        _editStepActive = step.IsActive;
+        _showStepDialog = true;
+    }
+
+    private async Task SaveStep()
+    {
+        if (_selectedWorkflow == null || string.IsNullOrWhiteSpace(_editStepName))
+        {
+            Snackbar.Add("Step name is required", Severity.Warning);
+            return;
+        }
+
+        try
+        {
+            string? approverUserName = null;
+            string? approverRoleName = null;
+
+            if (_editApproverType == "user" && _editApproverUserId.HasValue)
+            {
+                approverUserName = _availableUsers.FirstOrDefault(u => u.Id == _editApproverUserId.Value)?.FullName;
+            }
+            else if (_editApproverType == "role" && _editApproverRoleId.HasValue)
+            {
+                approverRoleName = _availableRoles.FirstOrDefault(r => r.Id == _editApproverRoleId.Value)?.Name;
+            }
+
+            if (_isEditingStep && _editingStepId.HasValue)
+            {
+                await using var context = await DbFactory.CreateDbContextAsync();
+                var step = await context.ApprovalSteps.FindAsync(_editingStepId.Value);
+                if (step != null)
+                {
+                    step.StepOrder = _editStepOrder;
+                    step.StepName = _editStepName;
+                    step.ApproverUserId = _editApproverType == "user" ? _editApproverUserId : null;
+                    step.ApproverUserName = _editApproverType == "user" ? approverUserName : null;
+                    step.ApproverRoleId = _editApproverType == "role" ? _editApproverRoleId : null;
+                    step.ApproverRoleName = _editApproverType == "role" ? approverRoleName : null;
+                    step.CanDelegate = _editStepCanDelegate;
+                    step.TimeoutHours = _editStepTimeoutHours;
+                    step.IsActive = _editStepActive;
+                    step.ModifiedAt = DateTime.UtcNow;
+                    await context.SaveChangesAsync();
+                    Snackbar.Add("Step updated", Severity.Success);
+                }
+            }
+            else
+            {
+                var step = new ApprovalStep
+                {
+                    WorkflowId = _selectedWorkflow.Id,
+                    CompanyId = _companyId,
+                    StepOrder = _editStepOrder,
+                    StepName = _editStepName,
+                    ApproverUserId = _editApproverType == "user" ? _editApproverUserId : null,
+                    ApproverUserName = _editApproverType == "user" ? approverUserName : null,
+                    ApproverRoleId = _editApproverType == "role" ? _editApproverRoleId : null,
+                    ApproverRoleName = _editApproverType == "role" ? approverRoleName : null,
+                    CanDelegate = _editStepCanDelegate,
+                    TimeoutHours = _editStepTimeoutHours,
+                    IsActive = _editStepActive
+                };
+                await ApprovalService.AddStepAsync(step);
+                Snackbar.Add("Step added", Severity.Success);
+            }
+
+            _showStepDialog = false;
+            await LoadData();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error: {ex.Message}", Severity.Error);
+        }
+    }
+
+    private async Task DeleteStep(ApprovalStep step)
+    {
+        var confirmed = await DialogService.ShowMessageBox(
+            "Delete Step",
+            $"Are you sure you want to delete step \"{step.StepName}\"?",
+            yesText: "Delete", cancelText: "Cancel");
+
+        if (confirmed == true)
+        {
+            await ApprovalService.DeleteStepAsync(step.Id);
+            Snackbar.Add("Step deleted", Severity.Success);
+            await LoadData();
+        }
+    }
+}

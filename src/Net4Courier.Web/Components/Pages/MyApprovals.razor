@@ -1,0 +1,581 @@
+@page "/approval-workflow/my-approvals"
+@using Net4Courier.Infrastructure.Data
+@using Net4Courier.Kernel.Entities
+@using Net4Courier.Kernel.Enums
+@using Net4Courier.Web.Services
+@using Microsoft.EntityFrameworkCore
+@using Microsoft.AspNetCore.Components.Authorization
+@inject IDbContextFactory<ApplicationDbContext> DbFactory
+@inject ApprovalWorkflowService ApprovalService
+@inject ISnackbar Snackbar
+@inject AuthenticationStateProvider AuthStateProvider
+@inject NavigationManager Navigation
+@inject IDialogService DialogService
+@rendermode InteractiveServer
+
+<PageTitle>My Approvals - Net4Courier</PageTitle>
+
+<MudContainer MaxWidth="MaxWidth.ExtraLarge" Class="py-4">
+    <MudText Typo="Typo.h5" GutterBottom="true">
+        <MudIcon Icon="@Icons.Material.Filled.Approval" Class="mr-2" />
+        My Approvals
+    </MudText>
+
+    @if (_loading)
+    {
+        <MudProgressLinear Indeterminate="true" Color="Color.Primary" />
+    }
+    else
+    {
+        <MudGrid Class="mb-4">
+            <MudItem xs="12" sm="4">
+                <MudPaper Class="pa-4" Elevation="2">
+                    <div class="d-flex justify-space-between align-center">
+                        <div>
+                            <MudText Typo="Typo.subtitle2" Color="Color.Secondary">Pending Approvals</MudText>
+                            <MudText Typo="Typo.h4">@_pendingApprovals.Count</MudText>
+                        </div>
+                        <MudAvatar Color="Color.Warning" Size="Size.Large">
+                            <MudIcon Icon="@Icons.Material.Filled.HourglassEmpty" />
+                        </MudAvatar>
+                    </div>
+                </MudPaper>
+            </MudItem>
+            <MudItem xs="12" sm="4">
+                <MudPaper Class="pa-4" Elevation="2">
+                    <div class="d-flex justify-space-between align-center">
+                        <div>
+                            <MudText Typo="Typo.subtitle2" Color="Color.Secondary">My Submitted</MudText>
+                            <MudText Typo="Typo.h4">@_myRequests.Count</MudText>
+                        </div>
+                        <MudAvatar Color="Color.Info" Size="Size.Large">
+                            <MudIcon Icon="@Icons.Material.Filled.Send" />
+                        </MudAvatar>
+                    </div>
+                </MudPaper>
+            </MudItem>
+            <MudItem xs="12" sm="4">
+                <MudPaper Class="pa-4" Elevation="2">
+                    <div class="d-flex justify-space-between align-center">
+                        <div>
+                            <MudText Typo="Typo.subtitle2" Color="Color.Secondary">Approved Today</MudText>
+                            <MudText Typo="Typo.h4">@_approvedToday</MudText>
+                        </div>
+                        <MudAvatar Color="Color.Success" Size="Size.Large">
+                            <MudIcon Icon="@Icons.Material.Filled.CheckCircle" />
+                        </MudAvatar>
+                    </div>
+                </MudPaper>
+            </MudItem>
+        </MudGrid>
+
+        <MudTabs @bind-ActivePanelIndex="_activeTab" Elevation="2" Rounded="true" ApplyEffectsToContainer="true">
+            <MudTabPanel Text="@($"Pending Approvals ({_pendingApprovals.Count})")" Icon="@Icons.Material.Filled.HourglassTop">
+                <MudPaper Class="pa-4">
+                    <MudStack Spacing="3">
+                        <MudStack Row="true" AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween">
+                            <MudStack Row="true" Spacing="2" AlignItems="AlignItems.Center">
+                                <MudTextField @bind-Value="_searchText" Placeholder="Search..."
+                                              Variant="Variant.Outlined" Adornment="Adornment.Start"
+                                              AdornmentIcon="@Icons.Material.Filled.Search" Immediate="true"
+                                              Style="width: 300px;" />
+                                <MudSelect @bind-Value="_typeFilter" Label="Type" Variant="Variant.Outlined" Style="width: 200px;" Clearable="true">
+                                    @foreach (ApprovalWorkflowType type in Enum.GetValues<ApprovalWorkflowType>())
+                                    {
+                                        <MudSelectItem Value="@((ApprovalWorkflowType?)type)">@type.ToString()</MudSelectItem>
+                                    }
+                                </MudSelect>
+                            </MudStack>
+                            @if (_selectedPending.Any())
+                            {
+                                <MudButton Variant="Variant.Filled" Color="Color.Success" Size="Size.Small"
+                                           StartIcon="@Icons.Material.Filled.ThumbUp" OnClick="BulkApprove"
+                                           Disabled="_processing">
+                                    Approve Selected (@_selectedPending.Count)
+                                </MudButton>
+                            }
+                        </MudStack>
+
+                        <MudTable Items="@FilteredPending" Hover="true" Dense="true" Striped="true"
+                                  MultiSelection="true" @bind-SelectedItems="_selectedPending">
+                            <HeaderContent>
+                                <MudTh>Type</MudTh>
+                                <MudTh>Document</MudTh>
+                                <MudTh>Requester</MudTh>
+                                <MudTh>Amount</MudTh>
+                                <MudTh>Step</MudTh>
+                                <MudTh>Submitted</MudTh>
+                                <MudTh>Actions</MudTh>
+                            </HeaderContent>
+                            <RowTemplate>
+                                <MudTd DataLabel="Type">
+                                    <MudChip T="string" Size="Size.Small" Variant="Variant.Outlined">
+                                        @context.EntityType.ToString()
+                                    </MudChip>
+                                </MudTd>
+                                <MudTd DataLabel="Document">
+                                    <MudStack Spacing="0">
+                                        <MudLink OnClick="@(() => ViewDocument(context))" Underline="Underline.Hover">
+                                            @(context.EntityCode ?? $"#{context.EntityId}")
+                                        </MudLink>
+                                        @if (!string.IsNullOrEmpty(context.EntityDescription))
+                                        {
+                                            <MudText Typo="Typo.caption" Color="Color.Secondary">
+                                                @(context.EntityDescription.Length > 50 ? context.EntityDescription[..50] + "..." : context.EntityDescription)
+                                            </MudText>
+                                        }
+                                    </MudStack>
+                                </MudTd>
+                                <MudTd DataLabel="Requester">@context.RequesterName</MudTd>
+                                <MudTd DataLabel="Amount">
+                                    @if (context.Amount.HasValue)
+                                    {
+                                        <MudText>@context.Currency @context.Amount?.ToString("N2")</MudText>
+                                    }
+                                </MudTd>
+                                <MudTd DataLabel="Step">
+                                    <MudText Typo="Typo.body2">@context.CurrentStepNumber / @context.TotalSteps</MudText>
+                                </MudTd>
+                                <MudTd DataLabel="Submitted">
+                                    <MudText Typo="Typo.body2">@context.SubmittedAt?.ToString("dd-MMM-yyyy")</MudText>
+                                </MudTd>
+                                <MudTd DataLabel="Actions">
+                                    <MudStack Row="true" Spacing="0">
+                                        <MudIconButton Icon="@Icons.Material.Filled.ThumbUp" Size="Size.Small"
+                                                       Color="Color.Success" OnClick="@(() => ApproveItem(context))"
+                                                       Disabled="_processing" Title="Approve" />
+                                        <MudIconButton Icon="@Icons.Material.Filled.ThumbDown" Size="Size.Small"
+                                                       Color="Color.Error" OnClick="@(() => RejectItem(context))"
+                                                       Disabled="_processing" Title="Reject" />
+                                        <MudIconButton Icon="@Icons.Material.Filled.Undo" Size="Size.Small"
+                                                       Color="Color.Warning" OnClick="@(() => ReturnItem(context))"
+                                                       Disabled="_processing" Title="Return" />
+                                        <MudIconButton Icon="@Icons.Material.Filled.OpenInNew" Size="Size.Small"
+                                                       Color="Color.Primary" OnClick="@(() => ViewDocument(context))"
+                                                       Title="View Document" />
+                                        <MudIconButton Icon="@Icons.Material.Filled.History" Size="Size.Small"
+                                                       Color="Color.Default" OnClick="@(() => ShowHistory(context))"
+                                                       Title="History" />
+                                    </MudStack>
+                                </MudTd>
+                            </RowTemplate>
+                            <NoRecordsContent>
+                                <MudStack AlignItems="AlignItems.Center" Class="pa-4">
+                                    <MudIcon Icon="@Icons.Material.Filled.CheckCircle" Size="Size.Large" Color="Color.Success" />
+                                    <MudText>No pending approvals</MudText>
+                                </MudStack>
+                            </NoRecordsContent>
+                        </MudTable>
+                    </MudStack>
+                </MudPaper>
+            </MudTabPanel>
+
+            <MudTabPanel Text="@($"My Requests ({_myRequests.Count})")" Icon="@Icons.Material.Filled.Send">
+                <MudPaper Class="pa-4">
+                    <MudStack Spacing="3">
+                        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+                            <MudTextField @bind-Value="_searchText" Placeholder="Search..."
+                                          Variant="Variant.Outlined" Adornment="Adornment.Start"
+                                          AdornmentIcon="@Icons.Material.Filled.Search" Immediate="true"
+                                          Style="width: 300px;" />
+                            <MudSelect @bind-Value="_statusFilter" Label="Status" Variant="Variant.Outlined" Style="width: 150px;">
+                                <MudSelectItem Value="@("All")">All</MudSelectItem>
+                                <MudSelectItem Value="@("Pending")">Pending</MudSelectItem>
+                                <MudSelectItem Value="@("InProgress")">In Progress</MudSelectItem>
+                                <MudSelectItem Value="@("Approved")">Approved</MudSelectItem>
+                                <MudSelectItem Value="@("Rejected")">Rejected</MudSelectItem>
+                                <MudSelectItem Value="@("Returned")">Returned</MudSelectItem>
+                                <MudSelectItem Value="@("Cancelled")">Cancelled</MudSelectItem>
+                            </MudSelect>
+                        </MudStack>
+
+                        <MudTable Items="@FilteredMyRequests" Hover="true" Dense="true" Striped="true">
+                            <HeaderContent>
+                                <MudTh>Type</MudTh>
+                                <MudTh>Document</MudTh>
+                                <MudTh>Amount</MudTh>
+                                <MudTh>Status</MudTh>
+                                <MudTh>Current Approver</MudTh>
+                                <MudTh>Submitted</MudTh>
+                                <MudTh>Actions</MudTh>
+                            </HeaderContent>
+                            <RowTemplate>
+                                <MudTd DataLabel="Type">
+                                    <MudChip T="string" Size="Size.Small" Variant="Variant.Outlined">
+                                        @context.EntityType.ToString()
+                                    </MudChip>
+                                </MudTd>
+                                <MudTd DataLabel="Document">
+                                    <MudStack Spacing="0">
+                                        <MudLink OnClick="@(() => ViewDocument(context))" Underline="Underline.Hover">
+                                            @(context.EntityCode ?? $"#{context.EntityId}")
+                                        </MudLink>
+                                        @if (!string.IsNullOrEmpty(context.EntityDescription))
+                                        {
+                                            <MudText Typo="Typo.caption" Color="Color.Secondary">
+                                                @(context.EntityDescription.Length > 50 ? context.EntityDescription[..50] + "..." : context.EntityDescription)
+                                            </MudText>
+                                        }
+                                    </MudStack>
+                                </MudTd>
+                                <MudTd DataLabel="Amount">
+                                    @if (context.Amount.HasValue)
+                                    {
+                                        <MudText>@context.Currency @context.Amount?.ToString("N2")</MudText>
+                                    }
+                                </MudTd>
+                                <MudTd DataLabel="Status">
+                                    <MudChip T="string" Color="@GetStatusColor(context.Status)" Size="Size.Small"
+                                             Icon="@GetStatusIcon(context.Status)">
+                                        @context.Status.ToString()
+                                    </MudChip>
+                                </MudTd>
+                                <MudTd DataLabel="Current Approver">
+                                    @if (context.Status == ApprovalStatus.Pending || context.Status == ApprovalStatus.InProgress)
+                                    {
+                                        <MudText Typo="Typo.body2">
+                                            @context.CurrentApproverName
+                                            <MudText Typo="Typo.caption" Color="Color.Secondary">
+                                                (Step @context.CurrentStepNumber/@context.TotalSteps)
+                                            </MudText>
+                                        </MudText>
+                                    }
+                                </MudTd>
+                                <MudTd DataLabel="Submitted">
+                                    <MudText Typo="Typo.body2">@context.SubmittedAt?.ToString("dd-MMM-yyyy")</MudText>
+                                </MudTd>
+                                <MudTd DataLabel="Actions">
+                                    <MudStack Row="true" Spacing="0">
+                                        <MudIconButton Icon="@Icons.Material.Filled.OpenInNew" Size="Size.Small"
+                                                       Color="Color.Primary" OnClick="@(() => ViewDocument(context))" />
+                                        <MudIconButton Icon="@Icons.Material.Filled.History" Size="Size.Small"
+                                                       Color="Color.Default" OnClick="@(() => ShowHistory(context))" />
+                                    </MudStack>
+                                </MudTd>
+                            </RowTemplate>
+                            <NoRecordsContent>
+                                <MudStack AlignItems="AlignItems.Center" Class="pa-4">
+                                    <MudIcon Icon="@Icons.Material.Filled.Inbox" Size="Size.Large" Color="Color.Secondary" />
+                                    <MudText>No requests found</MudText>
+                                </MudStack>
+                            </NoRecordsContent>
+                        </MudTable>
+                    </MudStack>
+                </MudPaper>
+            </MudTabPanel>
+        </MudTabs>
+    }
+</MudContainer>
+
+<MudDialog @bind-Visible="_showCommentsDialog">
+    <TitleContent>
+        <MudText Typo="Typo.h6">@_commentsDialogTitle</MudText>
+    </TitleContent>
+    <DialogContent>
+        <MudTextField @bind-Value="_actionComments" Label="Comments" Lines="3" Variant="Variant.Outlined"
+                      Required="@(_actionType == "Reject")" />
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="@(() => _showCommentsDialog = false)">Cancel</MudButton>
+        <MudButton Variant="Variant.Filled" Color="@_commentsDialogColor" OnClick="ConfirmAction"
+                   Disabled="@(_actionType == "Reject" && string.IsNullOrWhiteSpace(_actionComments))">
+            @_actionType
+        </MudButton>
+    </DialogActions>
+</MudDialog>
+
+<MudDialog @bind-Visible="_showHistoryDialog" Options="@(new DialogOptions { MaxWidth = MaxWidth.Medium, FullWidth = true })">
+    <TitleContent>
+        <MudText Typo="Typo.h6">Approval History</MudText>
+    </TitleContent>
+    <DialogContent>
+        <MudTimeline TimelineOrientation="TimelineOrientation.Vertical" TimelinePosition="TimelinePosition.Start">
+            @foreach (var action in _historyActions)
+            {
+                <MudTimelineItem Color="@GetActionColor(action.ActionType)" Size="Size.Small">
+                    <ItemContent>
+                        <MudStack Spacing="0">
+                            <MudText Typo="Typo.body2">
+                                <strong>@action.ActionType.ToString()</strong> by @action.ActionByName
+                            </MudText>
+                            <MudText Typo="Typo.caption" Color="Color.Secondary">
+                                @action.ActionAt.ToString("dd-MMM-yyyy HH:mm") - @action.StepName
+                            </MudText>
+                            @if (!string.IsNullOrEmpty(action.Comments))
+                            {
+                                <MudText Typo="Typo.body2" Class="mt-1">@action.Comments</MudText>
+                            }
+                        </MudStack>
+                    </ItemContent>
+                </MudTimelineItem>
+            }
+        </MudTimeline>
+        @if (!_historyActions.Any())
+        {
+            <MudText Color="Color.Secondary" Class="pa-4 text-center">No history available</MudText>
+        }
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="@(() => _showHistoryDialog = false)">Close</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    private bool _loading = true;
+    private bool _processing;
+    private long _companyId;
+    private long _userId;
+    private long? _roleId;
+    private string? _userName;
+    private int _activeTab;
+    private string _searchText = "";
+    private string _statusFilter = "All";
+    private ApprovalWorkflowType? _typeFilter;
+
+    private List<ApprovalRequest> _pendingApprovals = new();
+    private List<ApprovalRequest> _myRequests = new();
+    private HashSet<ApprovalRequest> _selectedPending = new();
+    private int _approvedToday;
+
+    private bool _showCommentsDialog;
+    private string _commentsDialogTitle = "";
+    private Color _commentsDialogColor = Color.Success;
+    private string _actionType = "";
+    private string _actionComments = "";
+    private ApprovalRequest? _actionTarget;
+
+    private bool _showHistoryDialog;
+    private List<ApprovalAction> _historyActions = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+        var user = authState.User;
+        if (user.Identity?.IsAuthenticated == true)
+        {
+            if (long.TryParse(user.FindFirst("CompanyId")?.Value, out var cid)) _companyId = cid;
+            if (long.TryParse(user.FindFirst("UserId")?.Value, out var uid)) _userId = uid;
+            if (long.TryParse(user.FindFirst("RoleId")?.Value, out var rid)) _roleId = rid;
+            _userName = user.FindFirst("FullName")?.Value;
+        }
+        if (_companyId == 0) _companyId = 1;
+        await LoadData();
+    }
+
+    private async Task LoadData()
+    {
+        _loading = true;
+        StateHasChanged();
+        try
+        {
+            _pendingApprovals = await ApprovalService.GetPendingApprovalsAsync(_companyId, _userId, _roleId);
+            _myRequests = await ApprovalService.GetMyRequestsAsync(_companyId, _userId);
+
+            _approvedToday = _myRequests.Count(r =>
+                r.Status == ApprovalStatus.Approved &&
+                r.CompletedAt?.Date == DateTime.UtcNow.Date);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error loading approvals: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _loading = false;
+            StateHasChanged();
+        }
+    }
+
+    private IEnumerable<ApprovalRequest> FilteredPending
+    {
+        get
+        {
+            var query = _pendingApprovals.AsEnumerable();
+            if (!string.IsNullOrEmpty(_searchText))
+            {
+                var s = _searchText.ToLower();
+                query = query.Where(a =>
+                    (a.EntityCode?.ToLower().Contains(s) ?? false) ||
+                    (a.EntityDescription?.ToLower().Contains(s) ?? false) ||
+                    (a.RequesterName?.ToLower().Contains(s) ?? false) ||
+                    a.EntityType.ToString().ToLower().Contains(s));
+            }
+            if (_typeFilter.HasValue)
+                query = query.Where(a => a.EntityType == _typeFilter.Value);
+            return query;
+        }
+    }
+
+    private IEnumerable<ApprovalRequest> FilteredMyRequests
+    {
+        get
+        {
+            var query = _myRequests.AsEnumerable();
+            if (!string.IsNullOrEmpty(_searchText))
+            {
+                var s = _searchText.ToLower();
+                query = query.Where(a =>
+                    (a.EntityCode?.ToLower().Contains(s) ?? false) ||
+                    (a.EntityDescription?.ToLower().Contains(s) ?? false) ||
+                    a.EntityType.ToString().ToLower().Contains(s));
+            }
+            if (_statusFilter != "All" && Enum.TryParse<ApprovalStatus>(_statusFilter, out var status))
+                query = query.Where(a => a.Status == status);
+            return query;
+        }
+    }
+
+    private async Task ApproveItem(ApprovalRequest item)
+    {
+        _actionTarget = item;
+        _actionType = "Approve";
+        _commentsDialogTitle = "Approve Request";
+        _commentsDialogColor = Color.Success;
+        _actionComments = "";
+        _showCommentsDialog = true;
+    }
+
+    private async Task RejectItem(ApprovalRequest item)
+    {
+        _actionTarget = item;
+        _actionType = "Reject";
+        _commentsDialogTitle = "Reject Request";
+        _commentsDialogColor = Color.Error;
+        _actionComments = "";
+        _showCommentsDialog = true;
+    }
+
+    private async Task ReturnItem(ApprovalRequest item)
+    {
+        _actionTarget = item;
+        _actionType = "Return";
+        _commentsDialogTitle = "Return Request";
+        _commentsDialogColor = Color.Warning;
+        _actionComments = "";
+        _showCommentsDialog = true;
+    }
+
+    private async Task ConfirmAction()
+    {
+        if (_actionTarget == null) return;
+
+        _processing = true;
+        _showCommentsDialog = false;
+        StateHasChanged();
+
+        try
+        {
+            switch (_actionType)
+            {
+                case "Approve":
+                    await ApprovalService.ApproveAsync(_actionTarget.Id, _userId, _userName, _actionComments);
+                    Snackbar.Add("Request approved", Severity.Success);
+                    break;
+                case "Reject":
+                    await ApprovalService.RejectAsync(_actionTarget.Id, _userId, _userName, _actionComments);
+                    Snackbar.Add("Request rejected", Severity.Success);
+                    break;
+                case "Return":
+                    await ApprovalService.ReturnAsync(_actionTarget.Id, _userId, _userName, _actionComments);
+                    Snackbar.Add("Request returned to requester", Severity.Success);
+                    break;
+            }
+            await LoadData();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _processing = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task BulkApprove()
+    {
+        if (!_selectedPending.Any()) return;
+
+        _processing = true;
+        StateHasChanged();
+
+        var successCount = 0;
+        var failCount = 0;
+
+        foreach (var item in _selectedPending.ToList())
+        {
+            try
+            {
+                await ApprovalService.ApproveAsync(item.Id, _userId, _userName, "Bulk approved");
+                successCount++;
+            }
+            catch
+            {
+                failCount++;
+            }
+        }
+
+        if (successCount > 0)
+            Snackbar.Add($"Approved {successCount} request(s)", Severity.Success);
+        if (failCount > 0)
+            Snackbar.Add($"Failed to approve {failCount} request(s)", Severity.Warning);
+
+        _selectedPending.Clear();
+        _processing = false;
+        await LoadData();
+    }
+
+    private void ViewDocument(ApprovalRequest item)
+    {
+        var url = ApprovalService.GetDocumentUrl(item.EntityType, item.EntityId);
+        if (!string.IsNullOrEmpty(url) && url != "#")
+            Navigation.NavigateTo(url);
+    }
+
+    private async Task ShowHistory(ApprovalRequest item)
+    {
+        try
+        {
+            _historyActions = await ApprovalService.GetActionsAsync(item.Id);
+            _showHistoryDialog = true;
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error loading history: {ex.Message}", Severity.Error);
+        }
+    }
+
+    private Color GetStatusColor(ApprovalStatus status) => status switch
+    {
+        ApprovalStatus.Pending => Color.Info,
+        ApprovalStatus.InProgress => Color.Warning,
+        ApprovalStatus.Approved => Color.Success,
+        ApprovalStatus.Rejected => Color.Error,
+        ApprovalStatus.Returned => Color.Secondary,
+        ApprovalStatus.Cancelled => Color.Dark,
+        _ => Color.Default
+    };
+
+    private string GetStatusIcon(ApprovalStatus status) => status switch
+    {
+        ApprovalStatus.Pending => Icons.Material.Filled.HourglassEmpty,
+        ApprovalStatus.InProgress => Icons.Material.Filled.HourglassTop,
+        ApprovalStatus.Approved => Icons.Material.Filled.CheckCircle,
+        ApprovalStatus.Rejected => Icons.Material.Filled.Cancel,
+        ApprovalStatus.Returned => Icons.Material.Filled.Undo,
+        ApprovalStatus.Cancelled => Icons.Material.Filled.DoNotDisturb,
+        _ => Icons.Material.Filled.Info
+    };
+
+    private Color GetActionColor(ApprovalActionType type) => type switch
+    {
+        ApprovalActionType.Submitted => Color.Info,
+        ApprovalActionType.Approved => Color.Success,
+        ApprovalActionType.Rejected => Color.Error,
+        ApprovalActionType.Returned => Color.Warning,
+        ApprovalActionType.Cancelled => Color.Dark,
+        ApprovalActionType.Reassigned => Color.Secondary,
+        _ => Color.Default
+    };
+}
