@@ -512,12 +512,12 @@ app.MapGet("/api/backup/download", (string token, DatabaseBackupService backupSe
 {
     try
     {
-        if (!httpContext.User.Identity?.IsAuthenticated ?? true)
-            return Results.Unauthorized();
+        if (string.IsNullOrWhiteSpace(token))
+            return Results.Content(BackupErrorPage("Invalid Request", "No download token was provided. Please go back to the Database Backup page and create a new backup."), "text/html");
 
         var (valid, filePath, fileName) = backupService.ValidateAndConsumeToken(token);
         if (!valid || string.IsNullOrEmpty(filePath))
-            return Results.NotFound("Backup file not found, expired, or already downloaded.");
+            return Results.Content(BackupErrorPage("Download Unavailable", "This backup download link has expired, was already used, or is invalid. Backup links are single-use and expire after 10 minutes. Please go back to the Database Backup page and create a new backup."), "text/html");
 
         var stream = new FileStream(filePath, FileMode.Open, FileAccess.Read, FileShare.None,
             bufferSize: 65536, options: FileOptions.DeleteOnClose | FileOptions.SequentialScan);
@@ -526,7 +526,7 @@ app.MapGet("/api/backup/download", (string token, DatabaseBackupService backupSe
     }
     catch (Exception ex)
     {
-        return Results.Problem($"Error downloading backup: {ex.Message}");
+        return Results.Content(BackupErrorPage("Download Error", $"An error occurred while preparing the backup download. Please try creating a new backup. Details: {ex.Message}"), "text/html");
     }
 });
 
@@ -1674,6 +1674,35 @@ Console.WriteLine($"  Environment     : {Environment.GetEnvironmentVariable("ASP
 Console.WriteLine($"  Database        : {(string.IsNullOrEmpty(Environment.GetEnvironmentVariable("DATABASE_URL")) ? "NOT SET" : "Connected")}");
 Console.WriteLine("=====================================================");
 Console.WriteLine();
+
+string BackupErrorPage(string title, string message)
+{
+    return $@"<!DOCTYPE html>
+<html lang=""en"">
+<head>
+    <meta charset=""UTF-8"">
+    <meta name=""viewport"" content=""width=device-width, initial-scale=1.0"">
+    <title>Backup Download - {title}</title>
+    <style>
+        body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f5f5f5; display: flex; justify-content: center; align-items: center; min-height: 100vh; margin: 0; }}
+        .card {{ background: white; border-radius: 8px; box-shadow: 0 2px 12px rgba(0,0,0,0.1); padding: 40px; max-width: 500px; text-align: center; }}
+        .icon {{ font-size: 48px; margin-bottom: 16px; }}
+        h1 {{ color: #d32f2f; font-size: 22px; margin: 0 0 12px; }}
+        p {{ color: #555; line-height: 1.6; margin: 0 0 24px; }}
+        a {{ display: inline-block; padding: 10px 24px; background: #1976d2; color: white; text-decoration: none; border-radius: 4px; font-weight: 500; }}
+        a:hover {{ background: #1565c0; }}
+    </style>
+</head>
+<body>
+    <div class=""card"">
+        <div class=""icon"">&#9888;</div>
+        <h1>{title}</h1>
+        <p>{message}</p>
+        <a href=""/database-backup"">Back to Database Backup</a>
+    </div>
+</body>
+</html>";
+}
 
 try
 {
