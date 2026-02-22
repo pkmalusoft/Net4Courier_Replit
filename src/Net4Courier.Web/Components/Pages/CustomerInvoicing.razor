@@ -7,6 +7,7 @@
 @using Microsoft.EntityFrameworkCore
 @inject IDbContextFactory<ApplicationDbContext> DbFactory
 @inject InvoicingService InvoicingService
+@inject ExchangeRateService ExchangeRateService
 @inject ISnackbar Snackbar
 @inject IDialogService DialogService
 @inject NavigationManager Navigation
@@ -44,6 +45,47 @@
                 </MudButton>
             </MudItem>
         </MudGrid>
+
+        <MudGrid Class="mt-2">
+            <MudItem xs="12" md="3">
+                <MudSelect T="Currency" Label="Invoice Currency" Value="_selectedCurrency"
+                           ValueChanged="OnCurrencyChanged"
+                           ToStringFunc="@(c => c != null ? $"{c.Code} - {c.Name}" : "")"
+                           Variant="Variant.Outlined" Dense="true">
+                    @foreach (var curr in _currencies)
+                    {
+                        <MudSelectItem Value="@curr">@curr.Code - @curr.Name</MudSelectItem>
+                    }
+                </MudSelect>
+            </MudItem>
+            <MudItem xs="12" md="2">
+                <MudNumericField T="decimal" Label="Exchange Rate" @bind-Value="_exchangeRate"
+                                 Format="N6" Variant="Variant.Outlined" Dense="true"
+                                 ReadOnly="@(_isBranchCurrency)" />
+            </MudItem>
+            <MudItem xs="12" md="2">
+                @if (!_isBranchCurrency)
+                {
+                    <MudButton Variant="Variant.Outlined" Color="Color.Info"
+                               StartIcon="@Icons.Material.Filled.CurrencyExchange"
+                               OnClick="FetchExchangeRate" Disabled="@_fetchingRate" Class="mt-2">
+                        @if (_fetchingRate)
+                        {
+                            <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" />
+                            <span>Fetching...</span>
+                        }
+                        else
+                        {
+                            <span>Fetch Ex.Rate</span>
+                        }
+                    </MudButton>
+                }
+                else
+                {
+                    <MudText Typo="Typo.caption" Color="Color.Success" Class="mt-3">Base currency (rate = 1)</MudText>
+                }
+            </MudItem>
+        </MudGrid>
     </MudPaper>
 
     @if (_loading)
@@ -78,9 +120,9 @@
                             <MudTd>@context.Destination</MudTd>
                             <MudTd>@context.Pieces</MudTd>
                             <MudTd>@context.Weight.ToString("N2")</MudTd>
-                            <MudTd Style="text-align:right">@_currencySymbol@context.CourierCharge.ToString("N2")</MudTd>
-                            <MudTd Style="text-align:right">@_currencySymbol@context.OtherCharge.ToString("N2")</MudTd>
-                            <MudTd Style="text-align:right"><strong>@_currencySymbol@context.Total.ToString("N2")</strong></MudTd>
+                            <MudTd Style="text-align:right">@_invoiceCurrencySymbol@ConvertAmount(context.CourierCharge).ToString("N2")</MudTd>
+                            <MudTd Style="text-align:right">@_invoiceCurrencySymbol@ConvertAmount(context.OtherCharge).ToString("N2")</MudTd>
+                            <MudTd Style="text-align:right"><strong>@_invoiceCurrencySymbol@ConvertAmount(context.Total).ToString("N2")</strong></MudTd>
                         </RowTemplate>
                         <NoRecordsContent>
                             <MudText>No unbilled AWBs found for the selected period</MudText>
@@ -109,13 +151,23 @@
 
                         <MudDivider Class="my-2" />
 
+                        @if (!_isBranchCurrency)
+                        {
+                            <MudChip T="string" Size="Size.Small" Color="Color.Warning">Foreign Currency: @_selectedCurrency?.Code</MudChip>
+                            <MudStack Row="true" Justify="Justify.SpaceBetween">
+                                <MudText Typo="Typo.caption">Exchange Rate:</MudText>
+                                <MudText Typo="Typo.caption">1 @_branchCurrencyCode = @_exchangeRate.ToString("N6") @_selectedCurrency?.Code</MudText>
+                            </MudStack>
+                            <MudDivider Class="my-1" />
+                        }
+
                         <MudStack Row="true" Justify="Justify.SpaceBetween">
                             <MudText>Sub Total:</MudText>
-                            <MudText>@_currencySymbol@_preview.SubTotal.ToString("N2")</MudText>
+                            <MudText>@_invoiceCurrencySymbol@ConvertAmount(_preview.SubTotal).ToString("N2")</MudText>
                         </MudStack>
                         <MudStack Row="true" Justify="Justify.SpaceBetween">
                             <MudText>Tax (@_preview.TaxPercent%):</MudText>
-                            <MudText>@_currencySymbol@_preview.TaxAmount.ToString("N2")</MudText>
+                            <MudText>@_invoiceCurrencySymbol@ConvertAmount(_preview.TaxAmount).ToString("N2")</MudText>
                         </MudStack>
 
                         @if (_preview.SpecialCharges.Any())
@@ -128,13 +180,13 @@
                                 <MudPaper Class="pa-2" Elevation="0" Style="background-color: #e3f2fd;">
                                     <MudStack Row="true" Justify="Justify.SpaceBetween">
                                         <MudText Typo="Typo.body2">@charge.ChargeName</MudText>
-                                        <MudText Typo="Typo.body2">@_currencySymbol@charge.CalculatedAmount.ToString("N2")</MudText>
+                                        <MudText Typo="Typo.body2">@_invoiceCurrencySymbol@ConvertAmount(charge.CalculatedAmount).ToString("N2")</MudText>
                                     </MudStack>
                                     @if (charge.IsTaxApplicable)
                                     {
                                         <MudStack Row="true" Justify="Justify.SpaceBetween">
                                             <MudText Typo="Typo.caption" Color="Color.Secondary">Tax (@charge.TaxPercent%)</MudText>
-                                            <MudText Typo="Typo.caption" Color="Color.Secondary">@_currencySymbol@charge.TaxAmount.ToString("N2")</MudText>
+                                            <MudText Typo="Typo.caption" Color="Color.Secondary">@_invoiceCurrencySymbol@ConvertAmount(charge.TaxAmount).ToString("N2")</MudText>
                                         </MudStack>
                                     }
                                 </MudPaper>
@@ -142,7 +194,7 @@
 
                             <MudStack Row="true" Justify="Justify.SpaceBetween">
                                 <MudText>Special Charges Total:</MudText>
-                                <MudText>@_currencySymbol@((_preview.SpecialChargesTotal + _preview.SpecialChargesTax).ToString("N2"))</MudText>
+                                <MudText>@_invoiceCurrencySymbol@(ConvertAmount(_preview.SpecialChargesTotal + _preview.SpecialChargesTax).ToString("N2"))</MudText>
                             </MudStack>
                         }
 
@@ -150,7 +202,7 @@
 
                         <MudStack Row="true" Justify="Justify.SpaceBetween">
                             <MudText Typo="Typo.h6">Net Total:</MudText>
-                            <MudText Typo="Typo.h6" Color="Color.Primary">@_currencySymbol@_preview.NetTotal.ToString("N2")</MudText>
+                            <MudText Typo="Typo.h6" Color="Color.Primary">@_invoiceCurrencySymbol@ConvertAmount(_preview.NetTotal).ToString("N2")</MudText>
                         </MudStack>
                     </MudStack>
 
@@ -183,6 +235,7 @@
 
 @code {
     private bool _loading;
+    private bool _fetchingRate;
     private Party? _selectedCustomer;
     private DateTime? _periodFrom;
     private DateTime? _periodTo;
@@ -190,7 +243,15 @@
     private InvoicePreviewModel? _preview;
     private Branch? _currentBranch;
     private string _currencySymbol = "";
+    private string _branchCurrencyCode = "";
     private decimal _branchTaxPercent = 5;
+
+    private List<Currency> _currencies = new();
+    private Currency? _selectedCurrency;
+    private decimal _exchangeRate = 1;
+    private string _invoiceCurrencySymbol = "";
+    private bool _isBranchCurrency => _selectedCurrency != null &&
+        string.Equals(_selectedCurrency.Code, _branchCurrencyCode, StringComparison.OrdinalIgnoreCase);
 
     protected override async Task OnInitializedAsync()
     {
@@ -205,7 +266,74 @@
         if (_currentBranch != null)
         {
             _currencySymbol = _currentBranch.Currency?.Symbol ?? _currentBranch.Currency?.Code ?? "";
+            _branchCurrencyCode = _currentBranch.Currency?.Code ?? "";
             _branchTaxPercent = _currentBranch.VatPercentage ?? 5;
+        }
+
+        _currencies = await dbContext.Set<Currency>()
+            .Where(c => c.IsActive && !c.IsDeleted)
+            .OrderBy(c => c.Code)
+            .ToListAsync();
+
+        _selectedCurrency = _currencies.FirstOrDefault(c =>
+            string.Equals(c.Code, _branchCurrencyCode, StringComparison.OrdinalIgnoreCase));
+        UpdateInvoiceCurrencySymbol();
+    }
+
+    private void UpdateInvoiceCurrencySymbol()
+    {
+        if (_selectedCurrency != null)
+            _invoiceCurrencySymbol = _selectedCurrency.Symbol ?? _selectedCurrency.Code ?? "";
+        else
+            _invoiceCurrencySymbol = _currencySymbol;
+
+        if (_isBranchCurrency)
+            _exchangeRate = 1;
+    }
+
+    private decimal ConvertAmount(decimal amount)
+    {
+        return Math.Round(amount * _exchangeRate, 2);
+    }
+
+    private void OnCurrencyChanged(Currency value)
+    {
+        _selectedCurrency = value;
+        UpdateInvoiceCurrencySymbol();
+    }
+
+    private async Task FetchExchangeRate()
+    {
+        if (_selectedCurrency == null || string.IsNullOrEmpty(_branchCurrencyCode))
+        {
+            Snackbar.Add("Please select a currency first", Severity.Warning);
+            return;
+        }
+
+        _fetchingRate = true;
+        StateHasChanged();
+
+        try
+        {
+            var rate = await ExchangeRateService.GetExchangeRateAsync(_branchCurrencyCode, _selectedCurrency.Code);
+            if (rate.HasValue)
+            {
+                _exchangeRate = rate.Value;
+                Snackbar.Add($"Exchange rate fetched: 1 {_branchCurrencyCode} = {rate.Value:N6} {_selectedCurrency.Code}", Severity.Success);
+            }
+            else
+            {
+                Snackbar.Add("Could not fetch exchange rate. Please enter manually.", Severity.Warning);
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error fetching exchange rate: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _fetchingRate = false;
+            StateHasChanged();
         }
     }
 
@@ -294,9 +422,10 @@
             return;
         }
 
+        var totalDisplay = $"{_invoiceCurrencySymbol}{ConvertAmount(_preview.NetTotal):N2}";
         var confirmed = await DialogService.ShowMessageBox(
             "Generate Invoice",
-            $"Generate invoice for {_preview.Details.Count} AWBs totaling {_currencySymbol}{_preview.NetTotal:N2}?",
+            $"Generate invoice for {_preview.Details.Count} AWBs totaling {totalDisplay}?",
             yesText: "Generate", cancelText: "Cancel");
 
         if (confirmed == true)
@@ -306,6 +435,10 @@
 
             try
             {
+                _preview.CurrencyCode = _selectedCurrency?.Code;
+                _preview.CurrencySymbol = _invoiceCurrencySymbol;
+                _preview.ExchangeRate = _exchangeRate;
+                _preview.BranchCurrencyCode = _branchCurrencyCode;
                 var invoice = await InvoicingService.CreateInvoice(_preview);
                 Snackbar.Add($"Invoice {invoice.InvoiceNo} created successfully", Severity.Success);
                 _preview = null;

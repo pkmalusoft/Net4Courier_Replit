@@ -34,6 +34,10 @@ public class Invoice : AuditableEntity
     public decimal? SpecialChargesTotal { get; set; }
     public decimal? SpecialChargesTax { get; set; }
     
+    public string? CurrencyCode { get; set; }
+    public string? CurrencySymbol { get; set; }
+    public decimal? ExchangeRate { get; set; }
+    
     public virtual ICollection<InvoiceDetail> Details { get; set; } = new List<InvoiceDetail>();
     public virtual ICollection<InvoiceSpecialCharge> SpecialCharges { get; set; } = new List<InvoiceSpecialCharge>();
 }

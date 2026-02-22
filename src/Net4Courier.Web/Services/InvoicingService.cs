@@ -154,7 +154,12 @@ public class InvoicingService
 
     public async Task<Invoice> CreateInvoice(InvoicePreviewModel preview)
     {
+        if (preview.ExchangeRate <= 0)
+            throw new Exception("Exchange rate must be greater than zero");
+
         var invoiceNo = await GenerateInvoiceNumber();
+        var exRate = preview.ExchangeRate;
+        decimal Convert(decimal amt) => Math.Round(amt * exRate, 2);
 
         var invoice = new Invoice
         {
@@ -168,15 +173,18 @@ public class InvoicingService
             PeriodFrom = DateTime.SpecifyKind(preview.PeriodFrom, DateTimeKind.Utc),
             PeriodTo = DateTime.SpecifyKind(preview.PeriodTo, DateTimeKind.Utc),
             TotalAWBs = preview.Details.Count,
-            SubTotal = preview.SubTotal,
+            SubTotal = Convert(preview.SubTotal),
             TaxPercent = preview.TaxPercent,
-            TaxAmount = preview.TaxAmount,
-            SpecialChargesTotal = preview.SpecialChargesTotal,
-            SpecialChargesTax = preview.SpecialChargesTax,
-            NetTotal = preview.NetTotal,
-            BalanceAmount = preview.NetTotal,
+            TaxAmount = Convert(preview.TaxAmount),
+            SpecialChargesTotal = Convert(preview.SpecialChargesTotal),
+            SpecialChargesTax = Convert(preview.SpecialChargesTax),
+            NetTotal = Convert(preview.NetTotal),
+            BalanceAmount = Convert(preview.NetTotal),
             Status = InvoiceStatus.Draft,
             DueDate = DateTime.SpecifyKind(preview.InvoiceDate.AddDays(30), DateTimeKind.Utc),
+            CurrencyCode = preview.CurrencyCode,
+            CurrencySymbol = preview.CurrencySymbol,
+            ExchangeRate = exRate,
             CreatedAt = DateTime.UtcNow
         };
 
@@ -195,12 +203,12 @@ public class InvoicingService
                 ConsigneeName = detail.ConsigneeName,
                 Pieces = detail.Pieces,
                 Weight = detail.Weight,
-                CourierCharge = detail.CourierCharge,
-                OtherCharge = detail.OtherCharge,
-                VASCharge = detail.VASCharge,
+                CourierCharge = Convert(detail.CourierCharge),
+                OtherCharge = Convert(detail.OtherCharge),
+                VASCharge = Convert(detail.VASCharge),
                 TaxPercent = detail.TaxPercent,
-                TaxAmount = detail.TaxAmount,
-                Total = detail.Total,
+                TaxAmount = Convert(detail.TaxAmount),
+                Total = Convert(detail.Total),
                 CreatedAt = DateTime.UtcNow
             });
         }
@@ -212,12 +220,12 @@ public class InvoicingService
                 SpecialChargeId = sc.SpecialChargeId,
                 ChargeName = sc.ChargeName,
                 ChargeType = sc.ChargeType,
-                ChargeValue = sc.ChargeValue,
-                CalculatedAmount = sc.CalculatedAmount,
+                ChargeValue = sc.ChargeType == ChargeType.Percentage ? sc.ChargeValue : Convert(sc.ChargeValue),
+                CalculatedAmount = Convert(sc.CalculatedAmount),
                 IsTaxApplicable = sc.IsTaxApplicable,
                 TaxPercent = sc.TaxPercent,
-                TaxAmount = sc.TaxAmount,
-                TotalAmount = sc.TotalAmount,
+                TaxAmount = Convert(sc.TaxAmount),
+                TotalAmount = Convert(sc.TotalAmount),
                 CreatedAt = DateTime.UtcNow
             });
 
@@ -265,7 +273,20 @@ public class InvoicingService
         var customer = await _context.Parties.FirstOrDefaultAsync(p => p.Id == invoice.CustomerId);
         var customerName = customer?.Name ?? invoice.CustomerName ?? "Customer";
 
-        // Create journal entry for the invoice
+        var isForeignCurrency = invoice.ExchangeRate.HasValue && invoice.ExchangeRate.Value != 1
+            && !string.IsNullOrEmpty(invoice.CurrencyCode);
+        var exRate = invoice.ExchangeRate ?? 1;
+        decimal ToLocal(decimal? foreignAmt) => exRate != 0 ? Math.Round((foreignAmt ?? 0) / exRate, 2) : (foreignAmt ?? 0);
+
+        var localNetTotal = isForeignCurrency ? ToLocal(invoice.NetTotal) : invoice.NetTotal;
+        var localSubTotal = isForeignCurrency ? ToLocal(invoice.SubTotal) : invoice.SubTotal;
+        var localTaxAmount = isForeignCurrency ? ToLocal(invoice.TaxAmount) : invoice.TaxAmount;
+
+        var foreignCurrencyNote = isForeignCurrency
+            ? $" ({invoice.CurrencyCode} {invoice.NetTotal:N2} @ {exRate:N6})"
+            : "";
+
+        // Create journal entry for the invoice - always in local currency
         var journal = new Journal
         {
             VoucherNo = $"INV-{invoice.InvoiceNo}",
@@ -274,10 +295,10 @@ public class InvoicingService
             BranchId = invoice.BranchId,
             FinancialYearId = invoice.FinancialYearId,
             VoucherType = "INV",
-            Narration = $"Customer Invoice {invoice.InvoiceNo} - {customerName}",
+            Narration = $"Customer Invoice {invoice.InvoiceNo} - {customerName}{foreignCurrencyNote}",
             Reference = invoice.InvoiceNo,
-            TotalDebit = invoice.NetTotal,
-            TotalCredit = invoice.NetTotal,
+            TotalDebit = localNetTotal,
+            TotalCredit = localNetTotal,
             IsPosted = true,
             PostedAt = DateTime.UtcNow,
             CreatedAt = DateTime.UtcNow,
@@ -285,15 +306,15 @@ public class InvoicingService
             IsDeleted = false
         };
 
-        // Add journal entries:
+        // Add journal entries (all in local currency):
         // 1. Debit Accounts Receivable (Customer)
         journal.Entries.Add(new JournalEntry
         {
             AccountCode = "AR",
             AccountName = "Accounts Receivable",
-            Debit = invoice.NetTotal,
+            Debit = localNetTotal,
             Credit = 0,
-            Narration = $"Invoice {invoice.InvoiceNo} - {customerName}",
+            Narration = $"Invoice {invoice.InvoiceNo} - {customerName}{foreignCurrencyNote}",
             PartyId = invoice.CustomerId,
             CreatedAt = DateTime.UtcNow,
             IsActive = true,
@@ -301,15 +322,15 @@ public class InvoicingService
         });
 
         // 2. Credit Sales Revenue (SubTotal)
-        if (invoice.SubTotal > 0)
+        if ((localSubTotal ?? 0) > 0)
         {
             journal.Entries.Add(new JournalEntry
             {
                 AccountCode = "SALES",
                 AccountName = "Sales Revenue",
                 Debit = 0,
-                Credit = invoice.SubTotal,
-                Narration = $"Sales - Invoice {invoice.InvoiceNo}",
+                Credit = localSubTotal,
+                Narration = $"Sales - Invoice {invoice.InvoiceNo}{foreignCurrencyNote}",
                 CreatedAt = DateTime.UtcNow,
                 IsActive = true,
                 IsDeleted = false
@@ -317,14 +338,14 @@ public class InvoicingService
         }
 
         // 3. Credit Tax Payable (if applicable)
-        if ((invoice.TaxAmount ?? 0) > 0)
+        if ((localTaxAmount ?? 0) > 0)
         {
             journal.Entries.Add(new JournalEntry
             {
                 AccountCode = "TAXPAY",
                 AccountName = "Tax Payable",
                 Debit = 0,
-                Credit = invoice.TaxAmount ?? 0,
+                Credit = localTaxAmount ?? 0,
                 Narration = $"Tax - Invoice {invoice.InvoiceNo}",
                 CreatedAt = DateTime.UtcNow,
                 IsActive = true,
@@ -333,15 +354,17 @@ public class InvoicingService
         }
 
         // 4. Credit Special Charges (if applicable)
-        var specialChargesTotal = (invoice.SpecialChargesTotal ?? 0) + (invoice.SpecialChargesTax ?? 0);
-        if (specialChargesTotal > 0)
+        var localSpecialChargesTotal = isForeignCurrency
+            ? ToLocal((invoice.SpecialChargesTotal ?? 0) + (invoice.SpecialChargesTax ?? 0))
+            : (invoice.SpecialChargesTotal ?? 0) + (invoice.SpecialChargesTax ?? 0);
+        if (localSpecialChargesTotal > 0)
         {
             journal.Entries.Add(new JournalEntry
             {
                 AccountCode = "SPCHG",
                 AccountName = "Special Charges Income",
                 Debit = 0,
-                Credit = specialChargesTotal,
+                Credit = localSpecialChargesTotal,
                 Narration = $"Special Charges - Invoice {invoice.InvoiceNo}",
                 CreatedAt = DateTime.UtcNow,
                 IsActive = true,
@@ -392,6 +415,11 @@ public class InvoicePreviewModel
     public decimal SpecialChargesTotal { get; set; }
     public decimal SpecialChargesTax { get; set; }
     public decimal NetTotal { get; set; }
+
+    public string? CurrencyCode { get; set; }
+    public string? CurrencySymbol { get; set; }
+    public decimal ExchangeRate { get; set; } = 1;
+    public string? BranchCurrencyCode { get; set; }
 
     public List<InvoiceDetailPreview> Details { get; set; } = new();
     public List<SpecialChargePreview> SpecialCharges { get; set; } = new();
