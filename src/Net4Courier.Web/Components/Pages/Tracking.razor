@@ -337,6 +337,13 @@
                                 <MudDivider Class="my-4" />
 
                                 <div class="specs-grid">
+                                    @if (!string.IsNullOrEmpty(result.CustomerAccountNo))
+                                    {
+                                        <div class="spec-item">
+                                            <label>Account No.</label>
+                                            <div class="value">@result.CustomerAccountNo</div>
+                                        </div>
+                                    }
                                     <div class="spec-item">
                                         <label>Service</label>
                                         <div class="value">@(result.ServiceTypeName ?? "Standard")</div>
@@ -997,6 +1004,7 @@
         public ImportShipment? LinkedImportShipment { get; set; }
         public int DocumentCount { get; set; }
         public List<PaymentCollectionInfo> PaymentCollections { get; set; } = new();
+        public string? CustomerAccountNo { get; set; }
     }
 
     private class PaymentCollectionInfo
@@ -1129,6 +1137,12 @@
 
                         trackingResult.PaymentCollections = await LoadPaymentCollections(dbContext, shipment.Id);
 
+                        if (shipment.CustomerId.HasValue)
+                        {
+                            var custParty = await dbContext.Parties.FirstOrDefaultAsync(p => p.Id == shipment.CustomerId.Value);
+                            trackingResult.CustomerAccountNo = custParty?.CustomerAccountNo;
+                        }
+
                         var linkedImport = importShipments.FirstOrDefault(i => i.LinkedInscanMasterId == shipment.Id)
                                         ?? importShipments.FirstOrDefault();
                         if (linkedImport != null)
@@ -1175,13 +1189,20 @@
                         var docCount = await dbContext.ShipmentDocuments
                             .CountAsync(d => d.InscanMasterId == shipment.Id && !d.IsDeleted);
                         var pickupPayments = await LoadPaymentCollections(dbContext, shipment.Id);
+                        string? pickupAcctNo = null;
+                        if (shipment.CustomerId.HasValue)
+                        {
+                            var pickupCust = await dbContext.Parties.FirstOrDefaultAsync(p => p.Id == shipment.CustomerId.Value);
+                            pickupAcctNo = pickupCust?.CustomerAccountNo;
+                        }
                         _shipmentResults.Add(new ShipmentTrackingResult
                         {
                             Shipment = shipment,
                             Timeline = timeline,
                             ServiceTypeName = serviceTypeName ?? "Standard",
                             DocumentCount = docCount,
-                            PaymentCollections = pickupPayments
+                            PaymentCollections = pickupPayments,
+                            CustomerAccountNo = pickupAcctNo
                         });
                         found = true;
                     }
@@ -1209,13 +1230,20 @@
                         var refDocCount = await dbContext.ShipmentDocuments
                             .CountAsync(d => d.InscanMasterId == shipment.Id && !d.IsDeleted);
                         var refPayments = await LoadPaymentCollections(dbContext, shipment.Id);
+                        string? refAcctNo = null;
+                        if (shipment.CustomerId.HasValue)
+                        {
+                            var refCust = await dbContext.Parties.FirstOrDefaultAsync(p => p.Id == shipment.CustomerId.Value);
+                            refAcctNo = refCust?.CustomerAccountNo;
+                        }
                         var trackingResult = new ShipmentTrackingResult
                         {
                             Shipment = shipment,
                             Timeline = timeline,
                             ServiceTypeName = serviceTypeName ?? "Standard",
                             DocumentCount = refDocCount,
-                            PaymentCollections = refPayments
+                            PaymentCollections = refPayments,
+                            CustomerAccountNo = refAcctNo
                         };
 
                         var linkedImport = await dbContext.ImportShipments
