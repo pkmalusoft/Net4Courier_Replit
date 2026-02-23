@@ -160,8 +160,10 @@ public class ChartOfAccountsService : IChartOfAccountsService
             accountCode = nextCode.ToString();
         }
 
+        var companyId = GuidToLong(tenantId);
         var entity = new GLChartOfAccount
         {
+            CompanyId = companyId,
             AccountCode = accountCode,
             AccountName = request.AccountName,
             AccountType = request.AccountType.ToString(),
