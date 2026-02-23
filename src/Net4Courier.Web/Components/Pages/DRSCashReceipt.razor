@@ -337,7 +337,7 @@
                 .ToListAsync(token);
 
             var query = context.DRSs
-                .Include(d => d.Details)
+                .Include(d => d.Details).ThenInclude(d => d.Inscan)
                 .AsNoTracking()
                 .Where(d => !d.IsDeleted && d.Status != DRSStatus.Reconciled && !existingDrsIds.Contains(d.Id))
                 .AsQueryable();
@@ -355,9 +355,10 @@
 
             foreach (var drs in results)
             {
-                if ((drs.ExpectedTotal ?? 0) == 0 && drs.Details.Any())
+                if (drs.Details.Any())
                 {
-                    drs.ExpectedTotal = drs.Details.Sum(d => d.CollectedAmount ?? d.CODAmount ?? 0);
+                    drs.ExpectedTotal = drs.Details.Sum(d => GetAwbCollectible(d));
+                    drs.CollectedCOD = drs.Details.Where(d => d.Status == "Delivered").Sum(d => d.CollectedAmount ?? 0);
                 }
             }
 
@@ -371,6 +372,18 @@
         {
             return Enumerable.Empty<DRS>();
         }
+    }
+
+    private decimal GetAwbCollectible(DRSDetail detail)
+    {
+        var inscan = detail.Inscan;
+        if (inscan == null) return detail.CODAmount ?? 0;
+        if (inscan.NetTotal.HasValue && inscan.NetTotal.Value > 0)
+            return inscan.NetTotal.Value;
+        var baseCharges = ((inscan.CourierCharge ?? 0) + (inscan.OtherCharge ?? 0) + (inscan.FuelSurcharge ?? 0))
+            * (1 + (inscan.TaxPercent ?? 0) / 100) - (inscan.Discount ?? 0)
+            + (inscan.DutyVatAmount ?? 0) + (inscan.CODAmount ?? 0);
+        return baseCharges;
     }
 
     private void OpenNewReceiptDialog()
@@ -413,12 +426,18 @@
 
             context.CourierCashSubmissions.Add(submission);
 
-            var drs = await context.DRSs.FindAsync(_selectedDRS.Id);
+            var drs = await context.DRSs.Include(d => d.Details).ThenInclude(d => d.Inscan).FirstOrDefaultAsync(d => d.Id == _selectedDRS.Id);
             if (drs != null)
             {
                 drs.Status = DRSStatus.Submitted;
                 drs.SubmittedAt = DateTime.UtcNow;
                 drs.ActualReceived = _newReceiptAmount;
+                if (drs.Details.Any())
+                {
+                    drs.ExpectedTotal = drs.Details.Sum(d => GetAwbCollectible(d));
+                    drs.CollectedCOD = drs.Details.Where(d => d.Status == "Delivered").Sum(d => d.CollectedAmount ?? 0);
+                    drs.TotalCOD = drs.ExpectedTotal;
+                }
             }
 
             await context.SaveChangesAsync();
