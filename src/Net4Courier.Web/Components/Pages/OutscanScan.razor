@@ -308,29 +308,47 @@ else
             }
             
             Logger.LogInformation("[OUTSCAN] Step 4: Checking if AWB is in another DRS");
-            var alreadyInOtherDrs = await dbContext.Set<DRSDetail>()
+            var existingDrsDetails = await dbContext.Set<DRSDetail>()
                 .Include(d => d.DRS)
-                .AnyAsync(d => d.InscanId == awb.Id && d.DRS.Status != DRSStatus.Closed);
-                
-            if (alreadyInOtherDrs)
+                .Where(d => d.InscanId == awb.Id)
+                .OrderByDescending(d => d.Id)
+                .ToListAsync();
+
+            if (existingDrsDetails.Any())
             {
-                _scanMessage = $"AWB {awbNo} is already assigned to another open DRS";
-                _scanSeverity = Severity.Warning;
-                _scanInput = string.Empty;
-                Logger.LogWarning("[OUTSCAN] AWB already in another DRS");
-                return;
+                var onOpenDrs = existingDrsDetails.FirstOrDefault(d => d.DRS.Status != DRSStatus.Closed);
+                if (onOpenDrs != null)
+                {
+                    _scanMessage = $"AWB {awbNo} is already assigned to open DRS {onOpenDrs.DRS.DRSNo}";
+                    _scanSeverity = Severity.Warning;
+                    _scanInput = string.Empty;
+                    Logger.LogWarning("[OUTSCAN] AWB already in open DRS {DRSNo}", onOpenDrs.DRS.DRSNo);
+                    return;
+                }
+
+                var lastDetail = existingDrsDetails.First();
+                var allowedForReoutscan = new[] { "Delivered", "Returned", "RTS" };
+                if (!allowedForReoutscan.Contains(lastDetail.Status))
+                {
+                    _scanMessage = $"AWB {awbNo} was on DRS {lastDetail.DRS.DRSNo} with status '{lastDetail.Status}'. It must be returned (RTO) before re-outscan.";
+                    _scanSeverity = Severity.Warning;
+                    _scanInput = string.Empty;
+                    Logger.LogWarning("[OUTSCAN] AWB needs RTO before re-outscan. Last status: {Status} on DRS {DRS}", lastDetail.Status, lastDetail.DRS.DRSNo);
+                    return;
+                }
             }
             
             Logger.LogInformation("[OUTSCAN] Step 5: Creating DRS detail");
             var nextSequence = _drsDetails.Count + 1;
             var codAmount = awb.PaymentModeId == PaymentMode.COD ? (awb.CODAmount ?? 0) : 0;
+            var previousAttempts = existingDrsDetails.Count;
             
             var detail = new DRSDetail
             {
                 DRSId = DrsId,
                 InscanId = awb.Id,
                 Sequence = nextSequence,
-                AttemptNo = 1,
+                AttemptNo = previousAttempts + 1,
                 Status = "Pending",
                 CODAmount = codAmount,
                 CreatedAt = DateTime.UtcNow,
@@ -490,26 +508,44 @@ else
                 importShipment.LinkedInscanMasterId = linkedAwb.Id;
             }
 
-            var alreadyInOtherDrs = await dbContext.Set<DRSDetail>()
+            var existingImportDrsDetails = await dbContext.Set<DRSDetail>()
                 .Include(d => d.DRS)
-                .AnyAsync(d => d.InscanId == linkedAwb.Id && d.DRS.Status != DRSStatus.Closed);
-            if (alreadyInOtherDrs)
+                .Where(d => d.InscanId == linkedAwb.Id)
+                .OrderByDescending(d => d.Id)
+                .ToListAsync();
+
+            if (existingImportDrsDetails.Any())
             {
-                _scanMessage = $"Import AWB {awbNo} is already assigned to another open DRS";
-                _scanSeverity = Severity.Warning;
-                _scanInput = string.Empty;
-                return;
+                var onOpenDrs = existingImportDrsDetails.FirstOrDefault(d => d.DRS.Status != DRSStatus.Closed);
+                if (onOpenDrs != null)
+                {
+                    _scanMessage = $"Import AWB {awbNo} is already assigned to open DRS {onOpenDrs.DRS.DRSNo}";
+                    _scanSeverity = Severity.Warning;
+                    _scanInput = string.Empty;
+                    return;
+                }
+
+                var lastDetail = existingImportDrsDetails.First();
+                var allowedForReoutscan = new[] { "Delivered", "Returned", "RTS" };
+                if (!allowedForReoutscan.Contains(lastDetail.Status))
+                {
+                    _scanMessage = $"Import AWB {awbNo} was on DRS {lastDetail.DRS.DRSNo} with status '{lastDetail.Status}'. It must be returned (RTO) before re-outscan.";
+                    _scanSeverity = Severity.Warning;
+                    _scanInput = string.Empty;
+                    return;
+                }
             }
 
             var nextSequence = _drsDetails.Count + 1;
             var codAmount = importShipment.IsCOD ? (importShipment.CODAmount ?? 0) : 0;
+            var previousImportAttempts = existingImportDrsDetails.Count;
 
             var detail = new DRSDetail
             {
                 DRSId = DrsId,
                 InscanId = linkedAwb.Id,
                 Sequence = nextSequence,
-                AttemptNo = 1,
+                AttemptNo = previousImportAttempts + 1,
                 Status = "Pending",
                 CODAmount = codAmount,
                 CreatedAt = DateTime.UtcNow,
@@ -610,6 +646,32 @@ else
         
         if (!result!.Canceled)
         {
+            await using var dbContext = await DbFactory.CreateDbContextAsync();
+            var updatedInscan = await dbContext.InscanMasters.FindAsync(detail.InscanId);
+            if (updatedInscan != null)
+            {
+                var latestStatus = await dbContext.ShipmentStatusHistories
+                    .Include(h => h.Status)
+                    .Where(h => h.InscanMasterId == detail.InscanId)
+                    .OrderByDescending(h => h.ChangedAt)
+                    .ThenByDescending(h => h.Id)
+                    .FirstOrDefaultAsync();
+
+                if (latestStatus?.Status != null)
+                {
+                    var returnCodes = new[] { "RETURN_TO_ORIGIN", "RETURN_INSCAN", "RETURN_COMPLETED" };
+                    if (returnCodes.Contains(latestStatus.Status.Code))
+                    {
+                        var drsDetail = await dbContext.Set<DRSDetail>().FindAsync(detail.Id);
+                        if (drsDetail != null)
+                        {
+                            drsDetail.Status = "Returned";
+                            await dbContext.SaveChangesAsync();
+                        }
+                    }
+                }
+            }
+
             await LoadData();
             await UpdateDRSCounts();
         }
