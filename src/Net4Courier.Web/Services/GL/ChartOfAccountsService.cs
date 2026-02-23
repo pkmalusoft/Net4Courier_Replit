@@ -143,9 +143,26 @@ public class ChartOfAccountsService : IChartOfAccountsService
     public async Task<ChartOfAccountDto> CreateAsync(Guid tenantId, CreateChartOfAccountRequest request)
     {
         await using var context = await _dbFactory.CreateDbContextAsync();
+        
+        var accountCode = request.AccountCode;
+        if (string.IsNullOrWhiteSpace(accountCode))
+        {
+            var maxCode = await context.GLChartOfAccounts
+                .Where(a => !a.IsDeleted)
+                .Select(a => a.AccountCode)
+                .ToListAsync();
+            var maxNumeric = maxCode
+                .Where(c => long.TryParse(c, out _))
+                .Select(c => long.Parse(c))
+                .DefaultIfEmpty(0)
+                .Max();
+            var nextCode = maxNumeric + 10;
+            accountCode = nextCode.ToString();
+        }
+
         var entity = new GLChartOfAccount
         {
-            AccountCode = request.AccountCode,
+            AccountCode = accountCode,
             AccountName = request.AccountName,
             AccountType = request.AccountType.ToString(),
             ParentId = request.ParentAccountId.HasValue ? GuidToLong(request.ParentAccountId.Value) : null,
@@ -176,7 +193,7 @@ public class ChartOfAccountsService : IChartOfAccountsService
         if (entity.IsSystemAccount)
             throw new InvalidOperationException("Cannot modify system accounts");
 
-        entity.AccountCode = request.AccountCode;
+        entity.AccountCode = string.IsNullOrWhiteSpace(request.AccountCode) ? entity.AccountCode : request.AccountCode;
         entity.AccountName = request.AccountName;
         entity.AccountType = request.AccountType.ToString();
         entity.ParentId = request.ParentAccountId.HasValue ? GuidToLong(request.ParentAccountId.Value) : null;
