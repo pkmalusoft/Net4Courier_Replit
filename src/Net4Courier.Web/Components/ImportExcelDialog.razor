@@ -1,6 +1,7 @@
 @using Microsoft.EntityFrameworkCore
 @using Net4Courier.Infrastructure.Data
 @using Net4Courier.Kernel.Enums
+@using Net4Courier.Masters.Entities
 @using Net4Courier.Web.Services
 @inject IDbContextFactory<ApplicationDbContext> DbFactory
 @inject ImportExcelService ExcelService
@@ -95,6 +96,25 @@
                     Upload your completed Excel file. Make sure all required fields (marked with *) are filled.
                 </MudText>
                 
+                <MudSelect T="long?" @bind-Value="_selectedCustomerId" Label="Customer *" Variant="Variant.Outlined"
+                           AnchorOrigin="Origin.BottomCenter" Required="true" Class="mb-4"
+                           AdornmentIcon="@Icons.Material.Filled.Business" Adornment="Adornment.Start"
+                           Placeholder="Select a customer">
+                    @foreach (var customer in _customers)
+                    {
+                        <MudSelectItem T="long?" Value="customer.Id">
+                            @customer.Name @(!string.IsNullOrEmpty(customer.Code) ? $" ({customer.Code})" : "")
+                        </MudSelectItem>
+                    }
+                </MudSelect>
+                
+                @if (!_selectedCustomerId.HasValue)
+                {
+                    <MudAlert Severity="Severity.Info" Dense="true" Class="mb-4">
+                        Please select a customer before uploading a file.
+                    </MudAlert>
+                }
+                
                 <MudPaper Class="pa-3 mb-4" Outlined="true">
                     <div class="d-flex align-center gap-3">
                         <MudSwitch @bind-Value="_autoGenerateAwb" Color="Color.Primary" Label="Auto-Generate AWB Numbers" />
@@ -104,39 +124,52 @@
                     </div>
                 </MudPaper>
                 
-                <MudFileUpload T="IBrowserFile" 
-                               FilesChanged="OnFileSelected" 
-                               Accept=".xlsx,.xls"
-                               MaximumFileCount="1">
-                    <ActivatorContent>
-                        <MudPaper Outlined="true" 
-                                  Class="pa-8 d-flex flex-column align-center justify-center" 
-                                  Style="border-style: dashed; cursor: pointer; min-height: 200px;">
-                            @if (_uploadedFile == null)
-                            {
-                                <MudIcon Icon="@Icons.Material.Filled.CloudUpload" Size="Size.Large" Color="Color.Primary" />
-                                <MudText Typo="Typo.h6" Class="mt-4">Click or drag file here</MudText>
-                                <MudText Typo="Typo.caption" Color="Color.Secondary">Excel files only (.xlsx, .xls)</MudText>
-                                <MudButton Variant="Variant.Filled"
-                                           Color="Color.Primary"
-                                           Class="mt-4">
-                                    Select File
-                                </MudButton>
-                            }
-                            else
-                            {
-                                <MudIcon Icon="@Icons.Material.Filled.InsertDriveFile" Size="Size.Large" Color="Color.Success" />
-                                <MudText Typo="Typo.h6" Class="mt-4">@_uploadedFile.Name</MudText>
-                                <MudText Typo="Typo.caption" Color="Color.Secondary">@FormatFileSize(_uploadedFile.Size)</MudText>
-                                <MudButton Variant="Variant.Outlined"
-                                           Color="Color.Primary"
-                                           Class="mt-4">
-                                    Change File
-                                </MudButton>
-                            }
-                        </MudPaper>
-                    </ActivatorContent>
-                </MudFileUpload>
+                @if (_selectedCustomerId.HasValue)
+                {
+                    <MudFileUpload T="IBrowserFile" 
+                                   FilesChanged="OnFileSelected" 
+                                   Accept=".xlsx,.xls"
+                                   MaximumFileCount="1">
+                        <ActivatorContent>
+                            <MudPaper Outlined="true" 
+                                      Class="pa-8 d-flex flex-column align-center justify-center" 
+                                      Style="border-style: dashed; cursor: pointer; min-height: 200px;">
+                                @if (_uploadedFile == null)
+                                {
+                                    <MudIcon Icon="@Icons.Material.Filled.CloudUpload" Size="Size.Large" Color="Color.Primary" />
+                                    <MudText Typo="Typo.h6" Class="mt-4">Click or drag file here</MudText>
+                                    <MudText Typo="Typo.caption" Color="Color.Secondary">Excel files only (.xlsx, .xls)</MudText>
+                                    <MudButton Variant="Variant.Filled"
+                                               Color="Color.Primary"
+                                               Class="mt-4">
+                                        Select File
+                                    </MudButton>
+                                }
+                                else
+                                {
+                                    <MudIcon Icon="@Icons.Material.Filled.InsertDriveFile" Size="Size.Large" Color="Color.Success" />
+                                    <MudText Typo="Typo.h6" Class="mt-4">@_uploadedFile.Name</MudText>
+                                    <MudText Typo="Typo.caption" Color="Color.Secondary">@FormatFileSize(_uploadedFile.Size)</MudText>
+                                    <MudButton Variant="Variant.Outlined"
+                                               Color="Color.Primary"
+                                               Class="mt-4">
+                                        Change File
+                                    </MudButton>
+                                }
+                            </MudPaper>
+                        </ActivatorContent>
+                    </MudFileUpload>
+                }
+                else
+                {
+                    <MudPaper Outlined="true" 
+                              Class="pa-8 d-flex flex-column align-center justify-center" 
+                              Style="border-style: dashed; min-height: 200px; opacity: 0.5;">
+                        <MudIcon Icon="@Icons.Material.Filled.CloudUpload" Size="Size.Large" Color="Color.Default" />
+                        <MudText Typo="Typo.h6" Class="mt-4" Color="Color.Default">Select a customer first</MudText>
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">File upload will be enabled after selecting a customer</MudText>
+                    </MudPaper>
+                }
                 
                 @if (_isProcessing)
                 {
@@ -310,6 +343,17 @@
     private bool _isProcessing;
     private bool _isSaving;
     private bool _autoGenerateAwb;
+    private long? _selectedCustomerId;
+    private List<Party> _customers = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        await using var dbContext = await DbFactory.CreateDbContextAsync();
+        _customers = await dbContext.Parties
+            .Where(p => p.IsActive && !p.IsDeleted && p.PartyType == PartyType.Customer)
+            .OrderBy(p => p.Name)
+            .ToListAsync();
+    }
 
     private async Task DownloadTemplate()
     {
@@ -396,6 +440,12 @@
             return;
         }
         
+        if (!_selectedCustomerId.HasValue)
+        {
+            Snackbar.Add("Please select a customer before importing", Severity.Warning);
+            return;
+        }
+        
         _isSaving = true;
         StateHasChanged();
         
@@ -428,6 +478,11 @@
                 }
                 
                 var importMaster = ExcelService.CreateImportMaster(_parseResult.Header, branchId, companyId, financialYearId, _selectedDirection);
+                if (_selectedCustomerId.HasValue)
+                {
+                    importMaster.CustomerId = _selectedCustomerId.Value;
+                    importMaster.CustomerName = _customers.FirstOrDefault(c => c.Id == _selectedCustomerId.Value)?.Name;
+                }
                 context.ImportMasters.Add(importMaster);
                 await context.SaveChangesAsync();
                 

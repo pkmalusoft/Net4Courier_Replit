@@ -160,6 +160,7 @@ public class ImportExcelService
         sheet.Range(row, 1, row, 4).Style.Fill.BackgroundColor = XLColor.LightGray;
         row++;
         
+        AddHeaderRow(sheet, ref row, "Customer", "", "Yes", "Customer name (must be selected during upload)");
         AddHeaderRow(sheet, ref row, "Transport Mode", mode.ToString(), "Yes", "Air, Sea, or Land");
         AddHeaderRow(sheet, ref row, "Master Reference", "", "Yes", mode == ImportMode.Air ? "MAWB Number" : mode == ImportMode.Sea ? "Bill of Lading Number" : "Truck/Vehicle Number");
         AddHeaderRow(sheet, ref row, "Coloader Number", "", "No", "Co-loader party code from the system");
