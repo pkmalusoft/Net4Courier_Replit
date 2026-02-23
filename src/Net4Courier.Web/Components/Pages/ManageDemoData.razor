@@ -4,6 +4,7 @@
 @using Microsoft.EntityFrameworkCore
 @using Net4Courier.Infrastructure.Data
 @using Net4Courier.Infrastructure.Services
+@using Net4Courier.Finance.Entities
 @using Net4Courier.Web.Services
 @attribute [Authorize(Roles = "PlatformAdmin")]
 @inject IDemoDataService DemoDataService
@@ -12,6 +13,7 @@
 @inject AuthService AuthService
 @inject AuthenticationStateProvider AuthStateProvider
 @inject NavigationManager Navigation
+@inject IDbContextFactory<ApplicationDbContext> DbFactory
 
 <PageTitle>Manage Demo Data - Net4Courier</PageTitle>
 
@@ -324,6 +326,20 @@ else
                            Disabled="@_processing" StartIcon="@Icons.Material.Filled.AccountBalanceWallet" Class="mb-2" FullWidth="true">
                     @if (_processing && _processingAction == "finance") { <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" /> }
                     Create Finance Data
+                </MudButton>
+            </MudPaper>
+            
+            <MudPaper Class="pa-4 mt-4" Elevation="2">
+                <MudText Typo="Typo.h6" Class="mb-4">
+                    <MudIcon Icon="@Icons.Material.Filled.Category" Class="mr-2" />Account Classifications
+                </MudText>
+                <MudText Typo="Typo.body2" Class="mb-3" Color="Color.Secondary">
+                    Seed standard account classifications (Cash Account, Bank Account, Control Account, Revenue, Expense, Tax, Intercompany, Suspense). Skips any that already exist.
+                </MudText>
+                <MudButton Variant="Variant.Filled" Color="Color.Info" OnClick="SeedAccountClassifications" 
+                           Disabled="@_processing" StartIcon="@Icons.Material.Filled.Category" Class="mb-2" FullWidth="true">
+                    @if (_processing && _processingAction == "classifications") { <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" /> }
+                    Seed Account Classifications
                 </MudButton>
             </MudPaper>
             
@@ -819,6 +835,69 @@ else
             {
                 var error = DemoDataService.LastError ?? "Failed to create finance data";
                 Snackbar.Add(error, Severity.Error);
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _processing = false;
+            _processingAction = "";
+        }
+    }
+
+    private async Task SeedAccountClassifications()
+    {
+        _processing = true;
+        _processingAction = "classifications";
+        StateHasChanged();
+        
+        try
+        {
+            await using var context = await DbFactory.CreateDbContextAsync();
+            var existing = await context.GLAccountClassifications
+                .Where(a => !a.IsDeleted)
+                .Select(a => a.Name)
+                .ToListAsync();
+
+            var classifications = new List<(string Name, string Description)>
+            {
+                ("Cash Account", "Cash and petty cash accounts"),
+                ("Bank Account", "Bank and deposit accounts"),
+                ("Control Account", "Accounts Receivable / Payable control accounts"),
+                ("Revenue Account", "Income and revenue accounts"),
+                ("Expense Account", "Expense and cost accounts"),
+                ("Tax Account", "VAT, GST, and other tax accounts"),
+                ("Intercompany Account", "Intercompany and inter-branch accounts"),
+                ("Suspense Account", "Temporary holding and suspense accounts")
+            };
+
+            var added = 0;
+            foreach (var (name, description) in classifications)
+            {
+                if (!existing.Contains(name))
+                {
+                    context.GLAccountClassifications.Add(new GLAccountClassification
+                    {
+                        Name = name,
+                        Description = description,
+                        IsActive = true,
+                        CreatedAt = DateTime.UtcNow
+                    });
+                    added++;
+                }
+            }
+
+            if (added > 0)
+            {
+                await context.SaveChangesAsync();
+                Snackbar.Add($"{added} account classification(s) created successfully!", Severity.Success);
+            }
+            else
+            {
+                Snackbar.Add("All standard account classifications already exist.", Severity.Info);
             }
         }
         catch (Exception ex)
