@@ -30,21 +30,9 @@
                 </td>
                 <td class="header-center">
                     <div class="route-pill">
-                        <div style="text-align:center;">
-                            <span class="route-origin">@LabelData.Origin</span>
-                            @if (!string.IsNullOrWhiteSpace(LabelData.OriginCountry))
-                            {
-                                <div style="font-size:6pt;font-weight:400;color:#64748b;line-height:1;margin-top:1px;">@LabelData.OriginCountry</div>
-                            }
-                        </div>
+                        <span class="route-origin">@LabelData.Origin</span>
                         <span class="route-arrow">&#10132;</span>
-                        <div style="text-align:center;">
-                            <span class="route-dest">@LabelData.Destination</span>
-                            @if (!string.IsNullOrWhiteSpace(LabelData.DestinationCountry))
-                            {
-                                <div style="font-size:6pt;font-weight:400;color:#64748b;line-height:1;margin-top:1px;">@LabelData.DestinationCountry</div>
-                            }
-                        </div>
+                        <span class="route-dest">@LabelData.Destination</span>
                     </div>
                 </td>
                 <td class="header-right">
@@ -575,6 +563,9 @@
         var dutyAmount = awb.DutyVatAmount ?? 0;
         var totalCollect = codAmount + vatAmount + dutyAmount;
 
+        var originCountryCode = await ResolveCountryCode(awb.ConsignorCountry);
+        var destCountryCode = await ResolveCountryCode(awb.ConsigneeCountry);
+
         LabelData = new A5LabelModel
         {
             Waybill = awb.AWBNo ?? "",
@@ -582,10 +573,8 @@
             AccountNo = customerAccountNo,
             ShipperReference = awb.ReferenceNo ?? "",
             ServiceType = awb.CargoDescription ?? "E-COMMERCE DELIVERY",
-            Origin = (awb.ConsignorCity ?? "").ToUpper(),
-            OriginCountry = (awb.ConsignorCountry ?? "").ToUpper(),
-            Destination = (awb.ConsigneeCity ?? "").ToUpper(),
-            DestinationCountry = (awb.ConsigneeCountry ?? "").ToUpper(),
+            Origin = originCountryCode,
+            Destination = destCountryCode,
             Cod = totalCollect > 0 ? totalCollect.ToString("N2") : "0.00",
             Currency = awb.Currency ?? "AED",
             Weight = $"{weight:F2} KG",
@@ -608,8 +597,8 @@
             AccountNo = "ND1134",
             ShipperReference = "REF-2026-001",
             ServiceType = "E-COMMERCE DELIVERY",
-            Origin = "DUBAI",
-            Destination = "AJMAN",
+            Origin = "AE",
+            Destination = "AE",
             Cod = "1.00",
             Currency = "AED",
             Weight = "0.00 KG",
@@ -622,6 +611,16 @@
             Receiver = new A5Entity { Name = "ROLNDY WILKINS", Address = "AJMAN ROWDA 1, STREET 118, AJMAN, UAE", Tel = "1234", Mob = "+971551234567" }
         };
         _website = "www.net4courier.com";
+    }
+
+    private async Task<string> ResolveCountryCode(string? countryName)
+    {
+        if (string.IsNullOrWhiteSpace(countryName)) return "---";
+        var country = await Db.Countries.AsNoTracking()
+            .FirstOrDefaultAsync(c => c.Code != null && (c.Name == countryName || c.Code == countryName));
+        if (country?.Code != null) return country.Code.ToUpper();
+        if (countryName.Length <= 3) return countryName.ToUpper();
+        return countryName.Substring(0, 3).ToUpper();
     }
 
     private string BuildAddress(string? addr1, string? addr2, string? city, string? country)
@@ -642,9 +641,7 @@
         public string ShipperReference { get; set; } = "";
         public string ServiceType { get; set; } = "";
         public string Origin { get; set; } = "";
-        public string OriginCountry { get; set; } = "";
         public string Destination { get; set; } = "";
-        public string DestinationCountry { get; set; } = "";
         public string Cod { get; set; } = "";
         public string Currency { get; set; } = "AED";
         public string Weight { get; set; } = "";

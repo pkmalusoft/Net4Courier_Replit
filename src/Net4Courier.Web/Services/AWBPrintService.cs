@@ -96,8 +96,8 @@ public class AWBPrintService
     {
         var effectiveLogo = logoData ?? _logoData;
         var serviceDesc = GetMovementTypeDisplay(shipment.MovementTypeId);
-        var originCity = shipment.ConsignorCity ?? GetCountryDisplayCode(shipment.OriginPortCode, shipment.ConsignorCountry);
-        var destCity = shipment.ConsigneeCity ?? GetCountryDisplayCode(shipment.DestinationPortCode, shipment.ConsigneeCountry);
+        var originCountryCode = !string.IsNullOrWhiteSpace(shipment.ConsignorCountry) ? shipment.ConsignorCountry.ToUpper() : "---";
+        var destCountryCode = !string.IsNullOrWhiteSpace(shipment.ConsigneeCountry) ? shipment.ConsigneeCountry.ToUpper() : "---";
 
         column.Item().BorderBottom(2).PaddingBottom(5).Row(row =>
         {
@@ -124,9 +124,9 @@ public class AWBPrintService
                 {
                     rc.Item().AlignCenter().Border(1.5f).PaddingHorizontal(16).PaddingVertical(4).Row(pill =>
                     {
-                        pill.AutoItem().Text(originCity.ToUpper()).Bold().FontSize(12);
+                        pill.AutoItem().Text(originCountryCode.ToUpper()).Bold().FontSize(12);
                         pill.AutoItem().PaddingHorizontal(8).Text("\u2192").Bold().FontSize(14);
-                        pill.AutoItem().Text(destCity.ToUpper()).Bold().FontSize(12).Underline();
+                        pill.AutoItem().Text(destCountryCode.ToUpper()).Bold().FontSize(12).Underline();
                     });
                 });
             });
