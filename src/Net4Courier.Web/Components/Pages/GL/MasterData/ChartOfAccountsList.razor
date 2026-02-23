@@ -6,8 +6,11 @@
 @using Truebooks.Shared.UI.Dialogs
 @using Microsoft.AspNetCore.Authorization
 @using Truebooks.Platform.Core.MultiTenancy
+@using Microsoft.AspNetCore.Components.Authorization
 @using Net4Courier.Web.Interfaces
+@using Net4Courier.Web.Services
 @inject IChartOfAccountsService ChartOfAccountsService
+@inject AuthenticationStateProvider AuthStateProvider
 @inject ITenantContext TenantContext
 @inject NavigationManager Navigation
 @inject ISnackbar Snackbar
@@ -129,7 +132,10 @@
                             ReadOnly="true"
                             FixedHeader="true">
                     <Columns>
-                        <PropertyColumn Property="x => x.AccountCode" Title="Code" />
+                        @if (!_hideAccountCodes)
+                        {
+                            <PropertyColumn Property="x => x.AccountCode" Title="Code" />
+                        }
                         <PropertyColumn Property="x => x.AccountName" Title="Name" />
                         <PropertyColumn Property="x => x.AccountType" Title="Type">
                             <CellTemplate>
@@ -194,6 +200,7 @@
     private bool hasAccounts = true;
     private Guid? selectedNodeId = null;
     private HashSet<Guid> expandedNodes = new();
+    private bool _hideAccountCodes;
 
     private Guid GetTenantId() => TenantContext.TenantId ?? Guid.Empty;
 
@@ -251,6 +258,8 @@
 
     protected override async Task OnInitializedAsync()
     {
+        var authProvider = (AppAuthStateProvider)AuthStateProvider;
+        _hideAccountCodes = authProvider.CurrentBranch?.HideAccountCodes ?? false;
         await CheckHasAccounts();
         await LoadAccounts();
     }
@@ -318,7 +327,7 @@
         builder.AddAttribute(22, "Style", isSelected ? "font-weight: 600;" : "");
         builder.AddAttribute(23, "ChildContent", (RenderFragment)(textBuilder =>
         {
-            textBuilder.AddContent(0, account.DisplayName);
+            textBuilder.AddContent(0, _hideAccountCodes ? account.AccountName : account.DisplayName);
         }));
         builder.CloseComponent();
         
@@ -522,7 +531,7 @@
 
         var parameters = new DialogParameters
         {
-            ["ContentText"] = $"Are you sure you want to delete account '{account.AccountCode} - {account.AccountName}'?",
+            ["ContentText"] = $"Are you sure you want to delete account '{(_hideAccountCodes || string.IsNullOrEmpty(account.AccountCode) ? account.AccountName : $"{account.AccountCode} - {account.AccountName}")}'?",
             ["ButtonText"] = "Delete",
             ["Color"] = Color.Error
         };

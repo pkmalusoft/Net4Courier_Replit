@@ -1,10 +1,13 @@
 @page "/n4c-reports/profit-loss-period"
 @using Microsoft.EntityFrameworkCore
+@using Microsoft.AspNetCore.Components.Authorization
 @using Net4Courier.Infrastructure.Data
 @using Net4Courier.Finance.Entities
 @using Net4Courier.Masters.Entities
+@using Net4Courier.Web.Services
 @inject IDbContextFactory<ApplicationDbContext> DbFactory
 @inject ISnackbar Snackbar
+@inject AuthenticationStateProvider AuthStateProvider
 
 <PageTitle>Profit & Loss - Period Comparison</PageTitle>
 
@@ -63,7 +66,10 @@
                 <RowTemplate>
                     <MudTd>
                         <MudText Typo="Typo.body2">@context.AccountName</MudText>
-                        <MudText Typo="Typo.caption" Color="Color.Secondary">@context.AccountCode</MudText>
+                        @if (!_hideAccountCodes)
+                        {
+                            <MudText Typo="Typo.caption" Color="Color.Secondary">@context.AccountCode</MudText>
+                        }
                     </MudTd>
                     <MudTd Style="text-align: right">@context.Period1Amount.ToString("N2")</MudTd>
                     <MudTd Style="text-align: right">@context.Period2Amount.ToString("N2")</MudTd>
@@ -135,6 +141,7 @@
     private DateTime? _period2To = DateTime.Today;
     private long? _selectedBranchId;
     private bool _isLoading = false;
+    private bool _hideAccountCodes;
     private List<PeriodComparisonItem> _reportData = new();
     private List<Branch> _branches = new();
     private decimal _period1Income, _period1Expenses, _period2Income, _period2Expenses;
@@ -149,6 +156,8 @@
 
     protected override async Task OnInitializedAsync()
     {
+        var authProvider = (AppAuthStateProvider)AuthStateProvider;
+        _hideAccountCodes = authProvider.CurrentBranch?.HideAccountCodes ?? false;
         await using var dbContext = await DbFactory.CreateDbContextAsync();
         _branches = await dbContext.Branches.Where(b => b.IsActive).OrderBy(b => b.Name).ToListAsync();
     }

@@ -1,10 +1,13 @@
 @page "/n4c-reports/trial-balance-monthly"
 @using Microsoft.EntityFrameworkCore
+@using Microsoft.AspNetCore.Components.Authorization
 @using Net4Courier.Infrastructure.Data
 @using Net4Courier.Finance.Entities
 @using Net4Courier.Masters.Entities
+@using Net4Courier.Web.Services
 @inject IDbContextFactory<ApplicationDbContext> DbFactory
 @inject ISnackbar Snackbar
+@inject AuthenticationStateProvider AuthStateProvider
 
 <PageTitle>Trial Balance - Monthly Comparison</PageTitle>
 
@@ -71,7 +74,10 @@
                     </HeaderContent>
                     <RowTemplate>
                         <MudTd Style="position: sticky; left: 0; background: white;">
-                            <MudText Typo="Typo.body2"><strong>@context.AccountCode</strong></MudText>
+                            @if (!_hideAccountCodes)
+                            {
+                                <MudText Typo="Typo.body2"><strong>@context.AccountCode</strong></MudText>
+                            }
                             <MudText Typo="Typo.caption">@context.AccountName</MudText>
                         </MudTd>
                         @foreach (var month in _months)
@@ -103,12 +109,15 @@
     private int _toMonth = 12;
     private long? _selectedBranchId;
     private bool _isLoading = false;
+    private bool _hideAccountCodes;
     private List<MonthlyTrialBalanceItem> _reportData = new();
     private List<string> _months = new();
     private List<Branch> _branches = new();
 
     protected override async Task OnInitializedAsync()
     {
+        var authProvider = (AppAuthStateProvider)AuthStateProvider;
+        _hideAccountCodes = authProvider.CurrentBranch?.HideAccountCodes ?? false;
         await using var dbContext = await DbFactory.CreateDbContextAsync();
         _branches = await dbContext.Branches.Where(b => b.IsActive).OrderBy(b => b.Name).ToListAsync();
     }

@@ -5,6 +5,7 @@
 @using Microsoft.EntityFrameworkCore
 @using Microsoft.AspNetCore.Authorization
 @using Microsoft.AspNetCore.Components.Authorization
+@using Net4Courier.Web.Services
 @attribute [Authorize]
 
 @inject IDbContextFactory<ApplicationDbContext> DbFactory
@@ -95,7 +96,7 @@
                             @if (line != null && !string.IsNullOrEmpty(line.DebitAccountCode))
                             {
                                 <MudChip T="string" Size="Size.Small" Color="Color.Primary" Variant="Variant.Outlined">
-                                    @line.DebitAccountCode - @line.DebitAccountName
+                                    @(_hideAccountCodes || string.IsNullOrEmpty(line.DebitAccountCode) ? line.DebitAccountName : $"{line.DebitAccountCode} - {line.DebitAccountName}")
                                 </MudChip>
                             }
                             else
@@ -107,7 +108,7 @@
                             @if (line != null && !string.IsNullOrEmpty(line.CreditAccountCode))
                             {
                                 <MudChip T="string" Size="Size.Small" Color="Color.Success" Variant="Variant.Outlined">
-                                    @line.CreditAccountCode - @line.CreditAccountName
+                                    @(_hideAccountCodes || string.IsNullOrEmpty(line.CreditAccountCode) ? line.CreditAccountName : $"{line.CreditAccountCode} - {line.CreditAccountName}")
                                 </MudChip>
                             }
                             else
@@ -142,12 +143,12 @@
         <MudGrid>
             <MudItem xs="12" md="6">
                 <MudAutocomplete T="GLChartOfAccount" @bind-Value="_selectedDebitAccount" Label="Debit Account"
-                                 SearchFunc="SearchAccounts" ToStringFunc="@(a => a != null ? $"{a.AccountCode} - {a.AccountName}" : "")"
+                                 SearchFunc="SearchAccounts" ToStringFunc="@(a => a != null ? (_hideAccountCodes || string.IsNullOrEmpty(a.AccountCode) ? a.AccountName : $"{a.AccountCode} - {a.AccountName}") : "")"
                                  Variant="Variant.Outlined" Margin="Margin.Dense" Clearable="true" />
             </MudItem>
             <MudItem xs="12" md="6">
                 <MudAutocomplete T="GLChartOfAccount" @bind-Value="_selectedCreditAccount" Label="Credit Account"
-                                 SearchFunc="SearchAccounts" ToStringFunc="@(a => a != null ? $"{a.AccountCode} - {a.AccountName}" : "")"
+                                 SearchFunc="SearchAccounts" ToStringFunc="@(a => a != null ? (_hideAccountCodes || string.IsNullOrEmpty(a.AccountCode) ? a.AccountName : $"{a.AccountCode} - {a.AccountName}") : "")"
                                  Variant="Variant.Outlined" Margin="Margin.Dense" Clearable="true" />
             </MudItem>
             <MudItem xs="12">
@@ -168,6 +169,7 @@
     private TransactionPageType? _selectedType;
     private bool _loading = true;
     private long? _companyId;
+    private bool _hideAccountCodes;
 
     private bool _dialogVisible;
     private string _editFieldCode = string.Empty;
@@ -180,6 +182,8 @@
 
     protected override async Task OnInitializedAsync()
     {
+        var authProvider = (AppAuthStateProvider)AuthStateProvider;
+        _hideAccountCodes = authProvider.CurrentBranch?.HideAccountCodes ?? false;
         var authState = await AuthStateProvider.GetAuthenticationStateAsync();
         var user = authState.User;
         if (user.Identity?.IsAuthenticated == true)
@@ -189,7 +193,7 @@
         }
         if (_companyId == null || _companyId == 0)
         {
-            _companyId = 1; // Default to company 1 if no claim found
+            _companyId = 1;
         }
         await LoadData();
     }

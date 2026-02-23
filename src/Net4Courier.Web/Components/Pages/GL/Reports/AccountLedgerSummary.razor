@@ -1,9 +1,12 @@
 @page "/n4c-reports/account-ledger-summary"
 @inject IDbContextFactory<ApplicationDbContext> DbFactory
 @inject ISnackbar Snackbar
+@inject AuthenticationStateProvider AuthStateProvider
 @using Microsoft.EntityFrameworkCore
+@using Microsoft.AspNetCore.Components.Authorization
 @using Net4Courier.Infrastructure.Data
 @using Net4Courier.Finance.Entities
+@using Net4Courier.Web.Services
 
 <PageTitle>Account Ledger (Summary) - Net4Courier</PageTitle>
 
@@ -92,7 +95,10 @@
             {
                 <MudTable Items="@_items" Dense="true" Hover="true" Striped="true" FixedHeader="true" Height="500px">
                     <HeaderContent>
-                        <MudTh>Account Code</MudTh>
+                        @if (!_hideAccountCodes)
+                        {
+                            <MudTh>Account Code</MudTh>
+                        }
                         <MudTh>Account Name</MudTh>
                         <MudTh>Classification</MudTh>
                         <MudTh Style="text-align: right;">Opening Balance</MudTh>
@@ -101,9 +107,12 @@
                         <MudTh Style="text-align: right;">Closing Balance</MudTh>
                     </HeaderContent>
                     <RowTemplate>
-                        <MudTd DataLabel="Account Code">
-                            <MudText Typo="Typo.body2" Style="font-weight: 500;">@context.AccountCode</MudText>
-                        </MudTd>
+                        @if (!_hideAccountCodes)
+                        {
+                            <MudTd DataLabel="Account Code">
+                                <MudText Typo="Typo.body2" Style="font-weight: 500;">@context.AccountCode</MudText>
+                            </MudTd>
+                        }
                         <MudTd DataLabel="Account Name">@context.AccountName</MudTd>
                         <MudTd DataLabel="Classification">
                             <MudChip T="string" Size="Size.Small" Color="@GetClassificationColor(context.Classification)">
@@ -142,7 +151,7 @@
                         </MudTd>
                     </RowTemplate>
                     <FooterContent>
-                        <MudTd colspan="3" Style="font-weight: bold;">Grand Total</MudTd>
+                        <MudTd colspan="@(_hideAccountCodes ? 2 : 3)" Style="font-weight: bold;">Grand Total</MudTd>
                         <MudTd Style="text-align: right; font-weight: bold;">
                             <span style="@(_totalOpening >= 0 ? "color: var(--mud-palette-info);" : "color: var(--mud-palette-warning);")">
                                 @_totalOpening.ToString("N2")
@@ -185,12 +194,19 @@
     private bool _showZeroBalances;
     private bool _isLoading;
     private bool _hasData;
+    private bool _hideAccountCodes;
 
     private List<AccountSummaryItem> _items = new();
     private decimal _totalOpening;
     private decimal _totalDebit;
     private decimal _totalCredit;
     private decimal _totalClosing;
+
+    protected override void OnInitialized()
+    {
+        var authProvider = (AppAuthStateProvider)AuthStateProvider;
+        _hideAccountCodes = authProvider.CurrentBranch?.HideAccountCodes ?? false;
+    }
 
     private async Task LoadReport()
     {

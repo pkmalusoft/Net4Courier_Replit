@@ -1,10 +1,13 @@
 @page "/n4c-reports/trial-balance-grouped"
 @using Microsoft.EntityFrameworkCore
+@using Microsoft.AspNetCore.Components.Authorization
 @using Net4Courier.Infrastructure.Data
 @using Net4Courier.Finance.Entities
 @using Net4Courier.Masters.Entities
+@using Net4Courier.Web.Services
 @inject IDbContextFactory<ApplicationDbContext> DbFactory
 @inject ISnackbar Snackbar
+@inject AuthenticationStateProvider AuthStateProvider
 
 <PageTitle>Trial Balance - Grouped</PageTitle>
 
@@ -61,13 +64,19 @@
                             <ChildContent>
                                 <MudTable Items="@group.Value" Hover="true" Dense="true" Striped="true">
                                     <HeaderContent>
-                                        <MudTh>Account Code</MudTh>
+                                        @if (!_hideAccountCodes)
+                                        {
+                                            <MudTh>Account Code</MudTh>
+                                        }
                                         <MudTh>Account Name</MudTh>
                                         <MudTh Style="text-align: right">Debit</MudTh>
                                         <MudTh Style="text-align: right">Credit</MudTh>
                                     </HeaderContent>
                                     <RowTemplate>
-                                        <MudTd>@context.AccountCode</MudTd>
+                                        @if (!_hideAccountCodes)
+                                        {
+                                            <MudTd>@context.AccountCode</MudTd>
+                                        }
                                         <MudTd>@context.AccountName</MudTd>
                                         <MudTd Style="text-align: right">@context.Debit.ToString("N2")</MudTd>
                                         <MudTd Style="text-align: right">@context.Credit.ToString("N2")</MudTd>
@@ -109,11 +118,14 @@
     private long? _selectedBranchId;
     private bool _showZeroBalances = false;
     private bool _isLoading = false;
+    private bool _hideAccountCodes;
     private Dictionary<string, List<TrialBalanceItem>> _groupedData = new();
     private List<Branch> _branches = new();
 
     protected override async Task OnInitializedAsync()
     {
+        var authProvider = (AppAuthStateProvider)AuthStateProvider;
+        _hideAccountCodes = authProvider.CurrentBranch?.HideAccountCodes ?? false;
         await using var dbContext = await DbFactory.CreateDbContextAsync();
         _branches = await dbContext.Branches.Where(b => b.IsActive).OrderBy(b => b.Name).ToListAsync();
     }

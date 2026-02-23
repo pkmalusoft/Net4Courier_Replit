@@ -1,9 +1,12 @@
 @page "/reports/account-ledger"
 @inject IDbContextFactory<ApplicationDbContext> DbFactory
 @inject ISnackbar Snackbar
+@inject AuthenticationStateProvider AuthStateProvider
 @using Microsoft.EntityFrameworkCore
+@using Microsoft.AspNetCore.Components.Authorization
 @using Net4Courier.Infrastructure.Data
 @using Net4Courier.Finance.Entities
+@using Net4Courier.Web.Services
 
 <PageTitle>Account Ledger - Net4Courier</PageTitle>
 
@@ -14,7 +17,7 @@
         <MudGrid>
             <MudItem xs="12" sm="4">
                 <MudAutocomplete T="AccountHead" Label="Select Account" @bind-Value="_selectedAccount"
-                                 SearchFunc="@SearchAccounts" ToStringFunc="@(a => a == null ? "" : $"{a.Code} - {a.Name}")"
+                                 SearchFunc="@SearchAccounts" ToStringFunc="@(a => a == null ? "" : _hideAccountCodes ? a.Name : $"{a.Code} - {a.Name}")"
                                  Variant="Variant.Outlined" Dense="true" ShowProgressIndicator="true" />
             </MudItem>
             <MudItem xs="12" sm="2">
@@ -49,7 +52,7 @@
         <MudPaper Class="pa-4 mt-4" Elevation="2">
             <MudGrid Class="mb-3">
                 <MudItem xs="12" sm="6">
-                    <MudText Typo="Typo.h6">@_selectedAccount?.Code - @_selectedAccount?.Name</MudText>
+                    <MudText Typo="Typo.h6">@(_hideAccountCodes ? _selectedAccount?.Name : $"{_selectedAccount?.Code} - {_selectedAccount?.Name}")</MudText>
                     <MudText Typo="Typo.caption">
                         Period: @_fromDate?.ToString("dd-MMM-yyyy") to @_toDate?.ToString("dd-MMM-yyyy")
                     </MudText>
@@ -129,10 +132,17 @@
     private List<LedgerEntry> _ledgerEntries = new();
     private bool _isLoading;
     private bool _hasSearched;
+    private bool _hideAccountCodes;
     private decimal _openingBalance;
     private decimal _totalDebit;
     private decimal _totalCredit;
     private decimal _closingBalance;
+
+    protected override void OnInitialized()
+    {
+        var authProvider = (AppAuthStateProvider)AuthStateProvider;
+        _hideAccountCodes = authProvider.CurrentBranch?.HideAccountCodes ?? false;
+    }
 
     private async Task<IEnumerable<AccountHead>> SearchAccounts(string value, CancellationToken cancellationToken)
     {

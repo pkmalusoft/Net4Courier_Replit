@@ -1,9 +1,12 @@
 @page "/reports/cash-bank-book"
 @inject IDbContextFactory<ApplicationDbContext> DbFactory
 @inject ISnackbar Snackbar
+@inject AuthenticationStateProvider AuthStateProvider
 @using Microsoft.EntityFrameworkCore
+@using Microsoft.AspNetCore.Components.Authorization
 @using Net4Courier.Infrastructure.Data
 @using Net4Courier.Finance.Entities
+@using Net4Courier.Web.Services
 
 <PageTitle>Cash & Bank Book - Net4Courier</PageTitle>
 
@@ -17,7 +20,7 @@
                     <MudSelectItem Value="@((long?)null)">-- Select Account --</MudSelectItem>
                     @foreach (var acc in _cashBankAccounts)
                     {
-                        <MudSelectItem Value="@((long?)acc.Id)">@acc.Code - @acc.Name</MudSelectItem>
+                        <MudSelectItem Value="@((long?)acc.Id)">@(_hideAccountCodes ? acc.Name : $"{acc.Code} - {acc.Name}")</MudSelectItem>
                     }
                 </MudSelect>
             </MudItem>
@@ -137,9 +140,12 @@
     private decimal _closingBalance;
     private bool _isLoading;
     private bool _hasSearched;
+    private bool _hideAccountCodes;
 
     protected override async Task OnInitializedAsync()
     {
+        var authProvider = (AppAuthStateProvider)AuthStateProvider;
+        _hideAccountCodes = authProvider.CurrentBranch?.HideAccountCodes ?? false;
         await using var dbContext = await DbFactory.CreateDbContextAsync();
         _cashBankAccounts = await dbContext.AccountHeads
             .Where(a => a.IsActive && !a.IsGroup && 
@@ -161,7 +167,7 @@
         {
             await using var dbContext = await DbFactory.CreateDbContextAsync();
             var account = _cashBankAccounts.First(a => a.Id == _selectedAccountId);
-            _selectedAccountName = $"{account.Code} - {account.Name}";
+            _selectedAccountName = _hideAccountCodes ? account.Name : $"{account.Code} - {account.Name}";
 
             var fromUtc = _fromDate.HasValue ? DateTime.SpecifyKind(_fromDate.Value.Date, DateTimeKind.Utc) : DateTime.MinValue;
             var toUtc = _toDate.HasValue ? DateTime.SpecifyKind(_toDate.Value.Date.AddDays(1).AddTicks(-1), DateTimeKind.Utc) : DateTime.MaxValue;

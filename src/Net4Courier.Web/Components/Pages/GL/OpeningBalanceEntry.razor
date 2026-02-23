@@ -1,7 +1,9 @@
 @page "/gl/opening-balance/edit/{Id:long}"
 @page "/gl/opening-balance/view/{Id:long}"
+@using Microsoft.AspNetCore.Components.Authorization
 @using Net4Courier.Web.Services
 @using Net4Courier.Finance.Entities
+@inject AuthenticationStateProvider AuthStateProvider
 @inject IAccountHeadService AccountHeadService
 @inject IPartyService PartyService
 @inject NavigationManager Navigation
@@ -147,7 +149,7 @@
             {
                 <MudItem xs="12">
                     <MudAutocomplete T="AccountHead" Label="Account" @bind-Value="selectedAccount"
-                                     SearchFunc="@SearchAccounts" ToStringFunc="@(a => a == null ? "" : $"{a.Code} - {a.Name}")"
+                                     SearchFunc="@SearchAccounts" ToStringFunc="@(a => a == null ? "" : (_hideAccountCodes || string.IsNullOrEmpty(a.Code) ? a.Name : $"{a.Code} - {a.Name}"))"
                                      Variant="Variant.Outlined" Required="true" />
                 </MudItem>
             }
@@ -194,6 +196,7 @@
     private PartyViewModel? selectedParty;
     private decimal lineDebit = 0m;
     private decimal lineCredit = 0m;
+    private bool _hideAccountCodes;
 
     private decimal TotalDebit => lines.Sum(l => l.Debit);
     private decimal TotalCredit => lines.Sum(l => l.Credit);
@@ -211,6 +214,8 @@
 
     protected override async Task OnInitializedAsync()
     {
+        var authProvider = (AppAuthStateProvider)AuthStateProvider;
+        _hideAccountCodes = authProvider.CurrentBranch?.HideAccountCodes ?? false;
         isLoading = true;
         try
         {
@@ -312,7 +317,7 @@
         if (batch.SourceModule == "GL" && selectedAccount != null)
         {
             referenceId = selectedAccount.Id;
-            referenceName = $"{selectedAccount.Code} - {selectedAccount.Name}";
+            referenceName = _hideAccountCodes || string.IsNullOrEmpty(selectedAccount.Code) ? selectedAccount.Name : $"{selectedAccount.Code} - {selectedAccount.Name}";
         }
         else if (selectedParty != null)
         {

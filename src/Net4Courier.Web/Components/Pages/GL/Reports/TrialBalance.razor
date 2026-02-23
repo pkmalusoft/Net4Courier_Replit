@@ -1,9 +1,12 @@
 @page "/reports/trial-balance"
 @inject IDbContextFactory<ApplicationDbContext> DbFactory
 @inject ISnackbar Snackbar
+@inject AuthenticationStateProvider AuthStateProvider
 @using Microsoft.EntityFrameworkCore
+@using Microsoft.AspNetCore.Components.Authorization
 @using Net4Courier.Infrastructure.Data
 @using Net4Courier.Finance.Entities
+@using Net4Courier.Web.Services
 
 <PageTitle>Trial Balance - Net4Courier</PageTitle>
 
@@ -76,14 +79,17 @@
             <MudTable Items="@_trialBalanceItems" Dense="true" Hover="true" Striped="true" FixedHeader="true" Height="500px"
                       GroupBy="@(_viewType == "grouped" ? _groupDefinition : null)">
                 <HeaderContent>
-                    <MudTh>Account Code</MudTh>
+                    @if (!_hideAccountCodes)
+                    {
+                        <MudTh>Account Code</MudTh>
+                    }
                     <MudTh>Account Name</MudTh>
                     <MudTh>Classification</MudTh>
                     <MudTh Style="text-align:right">Debit</MudTh>
                     <MudTh Style="text-align:right">Credit</MudTh>
                 </HeaderContent>
                 <GroupHeaderTemplate>
-                    <MudTh colspan="3" Style="background-color: var(--mud-palette-grey-lighten-3);">
+                    <MudTh colspan="@(_hideAccountCodes ? 2 : 3)" Style="background-color: var(--mud-palette-grey-lighten-3);">
                         <MudText Typo="Typo.subtitle1"><b>@context.Key</b></MudText>
                     </MudTh>
                     <MudTh Style="text-align:right; background-color: var(--mud-palette-grey-lighten-3);">
@@ -94,7 +100,10 @@
                     </MudTh>
                 </GroupHeaderTemplate>
                 <RowTemplate>
-                    <MudTd>@context.AccountCode</MudTd>
+                    @if (!_hideAccountCodes)
+                    {
+                        <MudTd>@context.AccountCode</MudTd>
+                    }
                     <MudTd>@context.AccountName</MudTd>
                     <MudTd>@context.Classification</MudTd>
                     <MudTd Style="text-align:right">
@@ -120,8 +129,15 @@
     private string _viewType = "detailed";
     private List<TrialBalanceItem> _trialBalanceItems = new();
     private bool _isLoading;
+    private bool _hideAccountCodes;
     private decimal _totalDebit;
     private decimal _totalCredit;
+
+    protected override void OnInitialized()
+    {
+        var authProvider = (AppAuthStateProvider)AuthStateProvider;
+        _hideAccountCodes = authProvider.CurrentBranch?.HideAccountCodes ?? false;
+    }
 
     private TableGroupDefinition<TrialBalanceItem> _groupDefinition = new()
     {

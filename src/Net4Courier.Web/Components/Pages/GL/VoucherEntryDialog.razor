@@ -1,9 +1,12 @@
 @inject IDbContextFactory<ApplicationDbContext> DbContextFactory
 @inject ISnackbar Snackbar
+@inject AuthenticationStateProvider AuthStateProvider
 @using Microsoft.EntityFrameworkCore
+@using Microsoft.AspNetCore.Components.Authorization
 @using Net4Courier.Infrastructure.Data
 @using Net4Courier.Finance.Entities
 @using Net4Courier.Web.Components.Shared
+@using Net4Courier.Web.Services
 
 <MudDialog>
     <TitleContent>
@@ -40,7 +43,8 @@
                                         Label="@($"{VoucherTypeName} Account")"
                                         AccountNatureFilter="@AccountNature"
                                         Required="true"
-                                        Disabled="@IsReadOnly" />
+                                        Disabled="@IsReadOnly"
+                                        HideAccountCodes="@_hideAccountCodes" />
                 </MudItem>
                 <MudItem xs="12" sm="8">
                     <MudTextField @bind-Value="_narration" Label="Narration"
@@ -86,7 +90,8 @@
                             <AccountAutocomplete Value="@(context.AccountId > 0 ? (long?)context.AccountId : null)"
                                                 ValueChanged="@(id => OnEntryAccountChanged(context, id))"
                                                 Label=""
-                                                Placeholder="Select account..." />
+                                                Placeholder="Select account..."
+                                                HideAccountCodes="@_hideAccountCodes" />
                         }
                     </MudTd>
                     <MudTd>
@@ -186,6 +191,7 @@
     private string? _reference;
     private List<VoucherEntryItem> _entries = new();
     private Dictionary<long, AccountHead> _accountCache = new();
+    private bool _hideAccountCodes;
 
     private decimal TotalAmount => _entries.Sum(e => e.Amount);
     private bool CanSave => _primaryAccountId.HasValue && _primaryAccountId.Value > 0 && 
@@ -260,6 +266,8 @@
 
     protected override async Task OnInitializedAsync()
     {
+        var authProvider = (AppAuthStateProvider)AuthStateProvider;
+        _hideAccountCodes = authProvider.CurrentBranch?.HideAccountCodes ?? false;
         Console.WriteLine($"VoucherEntryDialog: Initializing with AccountNature={AccountNature}");
         
         if (Journal != null)

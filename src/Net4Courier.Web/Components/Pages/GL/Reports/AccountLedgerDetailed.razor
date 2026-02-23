@@ -1,9 +1,12 @@
 @page "/n4c-reports/account-ledger-detailed"
 @inject IDbContextFactory<ApplicationDbContext> DbFactory
 @inject ISnackbar Snackbar
+@inject AuthenticationStateProvider AuthStateProvider
 @using Microsoft.EntityFrameworkCore
+@using Microsoft.AspNetCore.Components.Authorization
 @using Net4Courier.Infrastructure.Data
 @using Net4Courier.Finance.Entities
+@using Net4Courier.Web.Services
 
 <PageTitle>Account Ledger (Detailed) - Net4Courier</PageTitle>
 
@@ -22,7 +25,7 @@
                     @foreach (var account in _accounts)
                     {
                         <MudSelectItem Value="@((long?)account.Id)">
-                            @account.Code - @account.Name
+                            @(_hideAccountCodes ? account.Name : $"{account.Code} - {account.Name}")
                         </MudSelectItem>
                     }
                 </MudSelect>
@@ -56,7 +59,7 @@
         <MudPaper Class="pa-4 mb-4" Elevation="2">
             <MudGrid>
                 <MudItem xs="12" sm="6">
-                    <MudText Typo="Typo.h6">@_selectedAccount?.Code - @_selectedAccount?.Name</MudText>
+                    <MudText Typo="Typo.h6">@(_hideAccountCodes ? _selectedAccount?.Name : $"{_selectedAccount?.Code} - {_selectedAccount?.Name}")</MudText>
                     <MudText Typo="Typo.caption">
                         Period: @_fromDate?.ToString("dd MMM yyyy") - @_toDate?.ToString("dd MMM yyyy")
                     </MudText>
@@ -154,6 +157,7 @@
     private DateTime? _toDate = DateTime.SpecifyKind(DateTime.Today, DateTimeKind.Utc);
     private bool _isLoading;
     private bool _hasData;
+    private bool _hideAccountCodes;
 
     private List<LedgerTransaction> _transactions = new();
     private decimal _openingBalance;
@@ -163,6 +167,8 @@
 
     protected override async Task OnInitializedAsync()
     {
+        var authProvider = (AppAuthStateProvider)AuthStateProvider;
+        _hideAccountCodes = authProvider.CurrentBranch?.HideAccountCodes ?? false;
         await LoadAccounts();
     }
 
