@@ -8,6 +8,7 @@
 @using Microsoft.EntityFrameworkCore
 @using Net4Courier.Infrastructure.Data
 @using Net4Courier.Operations.Entities
+@using Net4Courier.Masters.Entities
 @using Net4Courier.Kernel.Enums
 
 <PageTitle>INSCAN - Net4Courier</PageTitle>
@@ -18,20 +19,33 @@
 </MudText>
 
 <MudPaper Class="pa-3 mb-4" Elevation="1">
-    <MudRadioGroup T="InscanMode" @bind-Value="_scanMode">
-        <MudRadio Value="InscanMode.AWB" Color="Color.Primary" Dense="true">
-            <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="1">
-                <MudIcon Icon="@Icons.Material.Filled.QrCode" Size="Size.Small" />
-                <MudText>AWB</MudText>
-            </MudStack>
-        </MudRadio>
-        <MudRadio Value="InscanMode.PickupRequest" Color="Color.Primary" Dense="true">
-            <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="1">
-                <MudIcon Icon="@Icons.Material.Filled.LocalShipping" Size="Size.Small" />
-                <MudText>Pickup Request</MudText>
-            </MudStack>
-        </MudRadio>
-    </MudRadioGroup>
+    <MudGrid>
+        <MudItem xs="12" md="4">
+            <MudSelect T="long?" @bind-Value="_selectedWarehouseId" Label="Receiving Warehouse" Variant="Variant.Outlined" Dense="true"
+                       Placeholder="Select warehouse..." AnchorOrigin="Origin.BottomCenter" TransformOrigin="Origin.TopCenter">
+                @foreach (var wh in _warehouses)
+                {
+                    <MudSelectItem T="long?" Value="@((long?)wh.Id)">@wh.Name @(!string.IsNullOrEmpty(wh.Code) ? $"({wh.Code})" : "")</MudSelectItem>
+                }
+            </MudSelect>
+        </MudItem>
+        <MudItem xs="12" md="8">
+            <MudRadioGroup T="InscanMode" @bind-Value="_scanMode">
+                <MudRadio Value="InscanMode.AWB" Color="Color.Primary" Dense="true">
+                    <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="1">
+                        <MudIcon Icon="@Icons.Material.Filled.QrCode" Size="Size.Small" />
+                        <MudText>AWB</MudText>
+                    </MudStack>
+                </MudRadio>
+                <MudRadio Value="InscanMode.PickupRequest" Color="Color.Primary" Dense="true">
+                    <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="1">
+                        <MudIcon Icon="@Icons.Material.Filled.LocalShipping" Size="Size.Small" />
+                        <MudText>Pickup Request</MudText>
+                    </MudStack>
+                </MudRadio>
+            </MudRadioGroup>
+        </MudItem>
+    </MudGrid>
 </MudPaper>
 
 <MudGrid>
@@ -258,6 +272,9 @@
     private int _pendingConversionCount;
     private string _currentUsername = "System";
     private string _currentBranchCity = "";
+    private long? _selectedWarehouseId;
+    private List<Warehouse> _warehouses = new();
+    private long? _currentBranchId;
 
     private enum InscanMode
     {
@@ -290,9 +307,16 @@
             var branchIdClaim = user.FindFirst("BranchId")?.Value;
             if (long.TryParse(branchIdClaim, out var branchId))
             {
+                _currentBranchId = branchId;
                 await using var context = await DbFactory.CreateDbContextAsync();
                 var branch = await context.Branches.Include(b => b.City).FirstOrDefaultAsync(b => b.Id == branchId);
                 _currentBranchCity = branch?.City?.Name ?? "";
+                _warehouses = await context.Warehouses
+                    .Where(w => w.BranchId == branchId && w.IsActive && !w.IsDeleted)
+                    .OrderBy(w => w.Name)
+                    .ToListAsync();
+                var defaultWh = _warehouses.FirstOrDefault(w => w.IsDefault) ?? _warehouses.FirstOrDefault();
+                _selectedWarehouseId = defaultWh?.Id;
             }
         }
     }
@@ -425,8 +449,11 @@
             pickup.InscannedAt = DateTime.UtcNow;
             pickup.InscannedBy = _currentUsername;
             
+            var warehouseName = _selectedWarehouseId.HasValue ? _warehouses.FirstOrDefault(w => w.Id == _selectedWarehouseId.Value)?.Name : null;
             var awbCount = 0;
+            var rtsCount = 0;
             var inscannedAwbIds = new List<long>();
+            var rtsAwbIds = new List<long>();
             if (pickup.Shipments != null)
             {
                 foreach (var shipment in pickup.Shipments)
@@ -436,10 +463,19 @@
                         var awb = await context.InscanMasters.FindAsync(shipment.AWBId.Value);
                         if (awb != null)
                         {
-                            awb.CourierStatusId = CourierStatus.InscanAtOrigin;
+                            if (awb.CourierStatusId == CourierStatus.NotDelivered)
+                            {
+                                awb.CourierStatusId = CourierStatus.ReturnToOrigin;
+                                rtsAwbIds.Add(awb.Id);
+                                rtsCount++;
+                            }
+                            else
+                            {
+                                awb.CourierStatusId = CourierStatus.InscanAtOrigin;
+                                inscannedAwbIds.Add(awb.Id);
+                            }
                             awb.ModifiedAt = DateTime.UtcNow;
                             awb.ModifiedByName = _currentUsername;
-                            inscannedAwbIds.Add(awb.Id);
                             awbCount++;
                         }
                     }
@@ -453,11 +489,19 @@
                 await ShipmentStatusService.SetStatus(
                     awbId, "INSCAN_ORIGIN", "PickupInscan", pickup.Id, "PickupRequest",
                     null, !string.IsNullOrEmpty(_currentBranchCity) ? _currentBranchCity : pickup.City, null, null,
-                    $"AWB received into warehouse via Pickup {pickup.PickupNo}", isAutomatic: true);
+                    $"AWB received into warehouse via Pickup {pickup.PickupNo}{(warehouseName != null ? $" - {warehouseName}" : "")}", isAutomatic: true);
+            }
+            foreach (var awbId in rtsAwbIds)
+            {
+                await ShipmentStatusService.SetStatus(
+                    awbId, "RTS", "PickupInscan", pickup.Id, "PickupRequest",
+                    null, !string.IsNullOrEmpty(_currentBranchCity) ? _currentBranchCity : pickup.City, null, null,
+                    $"Returned to Store after failed delivery attempt via Pickup {pickup.PickupNo}{(warehouseName != null ? $" - {warehouseName}" : "")}", isAutomatic: true);
             }
             
             var shipmentCount = pickup.Shipments?.Count ?? 0;
-            _lastMessage = $"Pickup {_scanInput} received into warehouse! {shipmentCount} shipment(s), {awbCount} AWB(s) updated to InscanAtOrigin.";
+            var rtsMsg = rtsCount > 0 ? $", {rtsCount} returned to store" : "";
+            _lastMessage = $"Pickup {_scanInput} received into warehouse! {shipmentCount} shipment(s), {awbCount} AWB(s) processed{rtsMsg}.{(warehouseName != null ? $" Warehouse: {warehouseName}" : "")}";
             _lastSeverity = Severity.Success;
             Snackbar.Add(_lastMessage, Severity.Success);
             
@@ -475,7 +519,7 @@
 
         if (awb != null)
         {
-            if (awb.CourierStatusId == CourierStatus.InscanAtOrigin)
+            if (awb.CourierStatusId == CourierStatus.InscanAtOrigin || awb.CourierStatusId == CourierStatus.ReturnToOrigin)
             {
                 _lastMessage = $"AWB {awbNo} already inscanned at origin";
                 _lastSeverity = Severity.Warning;
@@ -483,20 +527,44 @@
             }
             else
             {
-                awb.CourierStatusId = CourierStatus.InscanAtOrigin;
+                var isReturnedShipment = awb.CourierStatusId == CourierStatus.NotDelivered;
+                var warehouseName = _selectedWarehouseId.HasValue ? _warehouses.FirstOrDefault(w => w.Id == _selectedWarehouseId.Value)?.Name : null;
+
+                if (isReturnedShipment)
+                {
+                    awb.CourierStatusId = CourierStatus.ReturnToOrigin;
+                }
+                else
+                {
+                    awb.CourierStatusId = CourierStatus.InscanAtOrigin;
+                }
                 awb.ModifiedAt = DateTime.UtcNow;
                 awb.ModifiedByName = _currentUsername;
                 
                 await context.SaveChangesAsync();
                 
-                await ShipmentStatusService.SetStatus(
-                    awb.Id, "INSCAN_ORIGIN", "PickupInscan", null, null,
-                    null, !string.IsNullOrEmpty(_currentBranchCity) ? _currentBranchCity : awb.ConsignorCity, null, null,
-                    $"AWB received into warehouse via direct scan", isAutomatic: true);
-                
-                _lastMessage = $"AWB {awbNo} received into warehouse! Status updated to InscanAtOrigin.";
-                _lastSeverity = Severity.Success;
-                Snackbar.Add(_lastMessage, Severity.Success);
+                if (isReturnedShipment)
+                {
+                    await ShipmentStatusService.SetStatus(
+                        awb.Id, "RTS", "PickupInscan", null, null,
+                        null, !string.IsNullOrEmpty(_currentBranchCity) ? _currentBranchCity : awb.ConsignorCity, null, null,
+                        $"Returned to Store after failed delivery attempt{(warehouseName != null ? $" - received at {warehouseName}" : "")}", isAutomatic: true);
+                    
+                    _lastMessage = $"AWB {awbNo} returned to store after failed delivery. Status updated to Returned to Origin.{(warehouseName != null ? $" Warehouse: {warehouseName}" : "")}";
+                    _lastSeverity = Severity.Info;
+                    Snackbar.Add(_lastMessage, Severity.Info);
+                }
+                else
+                {
+                    await ShipmentStatusService.SetStatus(
+                        awb.Id, "INSCAN_ORIGIN", "PickupInscan", null, null,
+                        null, !string.IsNullOrEmpty(_currentBranchCity) ? _currentBranchCity : awb.ConsignorCity, null, null,
+                        $"AWB received into warehouse via direct scan{(warehouseName != null ? $" - {warehouseName}" : "")}", isAutomatic: true);
+                    
+                    _lastMessage = $"AWB {awbNo} received into warehouse! Status updated to InscanAtOrigin.{(warehouseName != null ? $" Warehouse: {warehouseName}" : "")}";
+                    _lastSeverity = Severity.Success;
+                    Snackbar.Add(_lastMessage, Severity.Success);
+                }
                 
                 await LoadData();
             }
