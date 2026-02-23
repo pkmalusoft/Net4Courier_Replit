@@ -1,0 +1,165 @@
+@using Microsoft.EntityFrameworkCore
+@using Microsoft.AspNetCore.Components.Authorization
+@using Net4Courier.Infrastructure.Data
+@using Net4Courier.Finance.Entities
+@using Net4Courier.Web.Services
+@inject IDbContextFactory<ApplicationDbContext> DbFactory
+@inject AuthenticationStateProvider AuthStateProvider
+
+<MudDialog>
+    <TitleContent>
+        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+            <MudIcon Icon="@Icons.Material.Filled.MenuBook" Color="Color.Primary" />
+            <MudText Typo="Typo.h6">Journal Entries</MudText>
+            @if (!string.IsNullOrEmpty(Reference))
+            {
+                <MudChip T="string" Size="Size.Small" Color="Color.Info" Variant="Variant.Outlined">@Reference</MudChip>
+            }
+        </MudStack>
+    </TitleContent>
+    <DialogContent>
+        @if (_loading)
+        {
+            <MudProgressLinear Indeterminate="true" Color="Color.Primary" Class="mb-4" />
+        }
+        else if (_journals.Count == 0)
+        {
+            <MudAlert Severity="Severity.Info" Class="my-2">No journal entries found for this transaction.</MudAlert>
+        }
+        else
+        {
+            @foreach (var journal in _journals)
+            {
+                <MudPaper Class="pa-3 mb-3" Outlined="true">
+                    <MudGrid>
+                        <MudItem xs="12" sm="4">
+                            <MudText Typo="Typo.caption" Color="Color.Secondary">Date</MudText>
+                            <MudText Typo="Typo.body2"><strong>@journal.VoucherDate.ToString("dd-MMM-yyyy")</strong></MudText>
+                        </MudItem>
+                        <MudItem xs="12" sm="4">
+                            <MudText Typo="Typo.caption" Color="Color.Secondary">Voucher No</MudText>
+                            <MudText Typo="Typo.body2"><strong>@journal.VoucherNo</strong></MudText>
+                        </MudItem>
+                        <MudItem xs="12" sm="4">
+                            <MudText Typo="Typo.caption" Color="Color.Secondary">Status</MudText>
+                            <MudChip T="string" Size="Size.Small" Color="@(journal.IsPosted ? Color.Success : Color.Warning)">
+                                @(journal.IsPosted ? "Posted" : "Unposted")
+                            </MudChip>
+                        </MudItem>
+                        <MudItem xs="12">
+                            <MudText Typo="Typo.caption" Color="Color.Secondary">Narration</MudText>
+                            <MudText Typo="Typo.body2">@(journal.Narration ?? "—")</MudText>
+                        </MudItem>
+                    </MudGrid>
+
+                    <MudTable Items="@journal.Entries.OrderBy(e => e.Id)" Dense="true" Hover="true" Class="mt-3"
+                              Elevation="0" Style="border: 1px solid #e0e0e0;">
+                        <HeaderContent>
+                            @if (!_hideAccountCodes)
+                            {
+                                <MudTh>Code</MudTh>
+                            }
+                            <MudTh>Account</MudTh>
+                            <MudTh Style="text-align:right">Debit</MudTh>
+                            <MudTh Style="text-align:right">Credit</MudTh>
+                        </HeaderContent>
+                        <RowTemplate>
+                            @if (!_hideAccountCodes)
+                            {
+                                <MudTd>@context.AccountCode</MudTd>
+                            }
+                            <MudTd>@context.AccountName</MudTd>
+                            <MudTd Style="text-align:right">
+                                @if (context.Debit.HasValue && context.Debit.Value != 0)
+                                {
+                                    @context.Debit.Value.ToString("N2")
+                                }
+                            </MudTd>
+                            <MudTd Style="text-align:right">
+                                @if (context.Credit.HasValue && context.Credit.Value != 0)
+                                {
+                                    @context.Credit.Value.ToString("N2")
+                                }
+                            </MudTd>
+                        </RowTemplate>
+                    </MudTable>
+
+                    <MudStack Row="true" Justify="Justify.FlexEnd" Class="mt-2 pa-2" Style="background-color: #f5f5f5; border-radius: 4px;">
+                        <MudText Typo="Typo.body2"><strong>Total</strong></MudText>
+                        <MudText Typo="Typo.body2" Style="min-width: 100px; text-align: right;">
+                            <strong>@journal.Entries.Sum(e => e.Debit ?? 0).ToString("N2")</strong>
+                        </MudText>
+                        <MudText Typo="Typo.body2" Style="min-width: 100px; text-align: right;">
+                            <strong>@journal.Entries.Sum(e => e.Credit ?? 0).ToString("N2")</strong>
+                        </MudText>
+                    </MudStack>
+                </MudPaper>
+            }
+        }
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Cancel">Close</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] private MudDialogInstance MudDialog { get; set; } = null!;
+
+    [Parameter] public string? Reference { get; set; }
+    [Parameter] public long? JournalId { get; set; }
+
+    private List<Journal> _journals = new();
+    private bool _loading = true;
+    private bool _hideAccountCodes;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            var authProvider = (AppAuthStateProvider)AuthStateProvider;
+            _hideAccountCodes = authProvider.CurrentBranch?.HideAccountCodes ?? false;
+        }
+        catch { }
+
+        await LoadJournalEntries();
+    }
+
+    private async Task LoadJournalEntries()
+    {
+        _loading = true;
+        try
+        {
+            await using var context = await DbFactory.CreateDbContextAsync();
+
+            IQueryable<Journal> query = context.Journals
+                .Include(j => j.Entries)
+                .Where(j => !j.IsDeleted);
+
+            if (JournalId.HasValue)
+            {
+                query = query.Where(j => j.Id == JournalId.Value);
+            }
+            else if (!string.IsNullOrEmpty(Reference))
+            {
+                query = query.Where(j => j.Reference == Reference || j.VoucherNo == Reference);
+            }
+            else
+            {
+                _journals = new();
+                return;
+            }
+
+            _journals = await query.OrderByDescending(j => j.VoucherDate).ToListAsync();
+        }
+        catch
+        {
+            _journals = new();
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private void Cancel() => MudDialog.Cancel();
+}
