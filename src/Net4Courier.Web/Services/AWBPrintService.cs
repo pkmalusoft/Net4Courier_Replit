@@ -20,7 +20,7 @@ public class AWBPrintService
         _logoData = logoData;
     }
 
-    public byte[] GenerateA5AWB(InscanMaster shipment, string? companyName = null, byte[]? logoData = null, string? website = null, string? branchCurrency = null)
+    public byte[] GenerateA5AWB(InscanMaster shipment, string? companyName = null, byte[]? logoData = null, string? website = null, string? branchCurrency = null, string? customerAccountNo = null)
     {
         var effectiveLogo = logoData ?? _logoData;
         var currency = branchCurrency ?? shipment.Currency ?? "AED";
@@ -37,7 +37,7 @@ public class AWBPrintService
                 {
                     column.Spacing(0);
                     A5Header(column, shipment, companyName ?? "Net4Courier", effectiveLogo);
-                    A5InfoRow(column, shipment);
+                    A5InfoRow(column, shipment, customerAccountNo);
                     A5MiddleSection(column, shipment, currency);
                     A5PodFooter(column, shipment, website);
                 });
@@ -47,7 +47,7 @@ public class AWBPrintService
         return document.GeneratePdf();
     }
 
-    public byte[] GenerateA4DuplexAWB(InscanMaster shipment, string? companyName = null, byte[]? logoData = null, string? website = null, string? branchCurrency = null)
+    public byte[] GenerateA4DuplexAWB(InscanMaster shipment, string? companyName = null, byte[]? logoData = null, string? website = null, string? branchCurrency = null, string? customerAccountNo = null)
     {
         var effectiveLogo = logoData ?? _logoData;
         var currency = branchCurrency ?? shipment.Currency ?? "AED";
@@ -69,7 +69,7 @@ public class AWBPrintService
                         copy1.Item().PaddingBottom(2).Text("CUSTOMER COPY").Bold().FontSize(7).FontColor("#1e3a5f");
                         copy1.Spacing(0);
                         A5Header(copy1, shipment, effectiveCompany, effectiveLogo);
-                        A5InfoRow(copy1, shipment);
+                        A5InfoRow(copy1, shipment, customerAccountNo);
                         A5MiddleSection(copy1, shipment, currency);
                         A5PodFooter(copy1, shipment, website);
                     });
@@ -81,7 +81,7 @@ public class AWBPrintService
                         copy2.Item().PaddingBottom(2).Text("COURIER COPY").Bold().FontSize(7).FontColor("#1e3a5f");
                         copy2.Spacing(0);
                         A5Header(copy2, shipment, effectiveCompany, effectiveLogo);
-                        A5InfoRow(copy2, shipment);
+                        A5InfoRow(copy2, shipment, customerAccountNo);
                         A5MiddleSection(copy2, shipment, currency);
                         A5PodFooter(copy2, shipment, website);
                     });
@@ -139,14 +139,14 @@ public class AWBPrintService
         });
     }
 
-    private void A5InfoRow(ColumnDescriptor column, InscanMaster shipment)
+    private void A5InfoRow(ColumnDescriptor column, InscanMaster shipment, string? customerAccountNo = null)
     {
         column.Item().PaddingTop(3).PaddingBottom(3).Row(row =>
         {
             row.RelativeItem().Text(text =>
             {
-                text.Span("Account No  ").Bold().FontSize(8).FontColor(Colors.Grey.Darken1);
-                text.Span(shipment.CustomerId?.ToString() ?? "").Bold().FontSize(9);
+                text.Span("Account No.  ").Bold().FontSize(8).FontColor(Colors.Grey.Darken1);
+                text.Span(customerAccountNo ?? "").Bold().FontSize(9);
             });
             row.RelativeItem().AlignCenter().Text(text =>
             {
@@ -405,7 +405,7 @@ public class AWBPrintService
         });
     }
 
-    public byte[] GenerateBulkA5AWB(List<InscanMaster> shipments, string? companyName = null, byte[]? logoData = null, string? website = null, string? branchCurrency = null)
+    public byte[] GenerateBulkA5AWB(List<InscanMaster> shipments, string? companyName = null, byte[]? logoData = null, string? website = null, string? branchCurrency = null, Dictionary<long, string>? customerAccountNos = null)
     {
         var effectiveLogo = logoData ?? _logoData;
         var document = Document.Create(container =>
@@ -413,6 +413,9 @@ public class AWBPrintService
             foreach (var shipment in shipments)
             {
                 var currency = branchCurrency ?? shipment.Currency ?? "AED";
+                string? acctNo = null;
+                if (shipment.CustomerId.HasValue && customerAccountNos != null)
+                    customerAccountNos.TryGetValue(shipment.CustomerId.Value, out acctNo);
                 container.Page(page =>
                 {
                     page.Size(PageSizes.A5.Landscape());
@@ -424,7 +427,7 @@ public class AWBPrintService
                     {
                         column.Spacing(0);
                         A5Header(column, shipment, companyName ?? "Net4Courier", effectiveLogo);
-                        A5InfoRow(column, shipment);
+                        A5InfoRow(column, shipment, acctNo);
                         A5MiddleSection(column, shipment, currency);
                         A5PodFooter(column, shipment, website);
                     });

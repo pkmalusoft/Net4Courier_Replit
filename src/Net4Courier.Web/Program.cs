@@ -567,7 +567,13 @@ app.MapGet("/api/report/awb/{id:long}", async (long id, bool? inline, Applicatio
             branchCurrency = defaultBranch?.Currency?.Code;
         }
         await ResolveLocationCodes(awb, db);
-        var pdf = printService.GenerateA5AWB(awb, companyName, logoData, website, branchCurrency);
+        string? a5AccountNo = null;
+        if (awb.CustomerId.HasValue)
+        {
+            var a5Cust = await db.Parties.FirstOrDefaultAsync(p => p.Id == awb.CustomerId);
+            a5AccountNo = a5Cust?.CustomerAccountNo;
+        }
+        var pdf = printService.GenerateA5AWB(awb, companyName, logoData, website, branchCurrency, a5AccountNo);
         var fileName = inline == true ? null : $"AWB-{awb.AWBNo}.pdf";
         return Results.File(pdf, "application/pdf", fileName);
     }
@@ -615,7 +621,13 @@ app.MapGet("/api/report/awb-duplex/{id:long}", async (long id, bool? inline, App
             branchCurrency = defaultBranch?.Currency?.Code;
         }
         await ResolveLocationCodes(awb, db);
-        var pdf = printService.GenerateA4DuplexAWB(awb, companyName, logoData, website, branchCurrency);
+        string? duplexAccountNo = null;
+        if (awb.CustomerId.HasValue)
+        {
+            var duplexCust = await db.Parties.FirstOrDefaultAsync(p => p.Id == awb.CustomerId);
+            duplexAccountNo = duplexCust?.CustomerAccountNo;
+        }
+        var pdf = printService.GenerateA4DuplexAWB(awb, companyName, logoData, website, branchCurrency, duplexAccountNo);
         var fileName = inline == true ? null : $"AWB-Duplex-{awb.AWBNo}.pdf";
         return Results.File(pdf, "application/pdf", fileName);
     }
@@ -663,7 +675,13 @@ app.MapGet("/api/report/awb-duplex-by-awbno/{awbNo}", async (string awbNo, bool?
             branchCurrency = defaultBranch?.Currency?.Code;
         }
         await ResolveLocationCodes(awb, db);
-        var pdf = printService.GenerateA4DuplexAWB(awb, companyName, logoData, website, branchCurrency);
+        string? duplexAccountNo = null;
+        if (awb.CustomerId.HasValue)
+        {
+            var duplexCust = await db.Parties.FirstOrDefaultAsync(p => p.Id == awb.CustomerId);
+            duplexAccountNo = duplexCust?.CustomerAccountNo;
+        }
+        var pdf = printService.GenerateA4DuplexAWB(awb, companyName, logoData, website, branchCurrency, duplexAccountNo);
         var fileName = inline == true ? null : $"AWB-Duplex-{awb.AWBNo}.pdf";
         return Results.File(pdf, "application/pdf", fileName);
     }
@@ -767,7 +785,13 @@ app.MapGet("/api/report/awb-by-awbno/{awbNo}", async (string awbNo, bool? inline
             branchCurrency = defaultBranch?.Currency?.Code;
         }
         await ResolveLocationCodes(awb, db);
-        var pdf = printService.GenerateA5AWB(awb, companyName, logoData, website, branchCurrency);
+        string? a5AccountNo = null;
+        if (awb.CustomerId.HasValue)
+        {
+            var a5Cust = await db.Parties.FirstOrDefaultAsync(p => p.Id == awb.CustomerId);
+            a5AccountNo = a5Cust?.CustomerAccountNo;
+        }
+        var pdf = printService.GenerateA5AWB(awb, companyName, logoData, website, branchCurrency, a5AccountNo);
         var fileName = inline == true ? null : $"AWB-{awb.AWBNo}.pdf";
         return Results.File(pdf, "application/pdf", fileName);
     }
@@ -879,7 +903,9 @@ app.MapGet("/api/report/awb-bulk/{ids}", async (string ids, bool? inline, Applic
         }
 
         await ResolveLocationCodesBulk(awbs, db);
-        var combinedPdf = printService.GenerateBulkA5AWB(awbs, companyName, logoData, website, branchCurrency);
+        var bulkA5CustIds = awbs.Where(a => a.CustomerId.HasValue).Select(a => a.CustomerId!.Value).Distinct().ToList();
+        var bulkA5AcctNos = await db.Parties.Where(p => bulkA5CustIds.Contains(p.Id)).ToDictionaryAsync(p => (long)p.Id, p => p.CustomerAccountNo ?? "");
+        var combinedPdf = printService.GenerateBulkA5AWB(awbs, companyName, logoData, website, branchCurrency, bulkA5AcctNos);
         var fileName = inline == true ? null : $"BulkAWB-{DateTime.Now:yyyyMMdd_HHmmss}.pdf";
         return Results.File(combinedPdf, "application/pdf", fileName);
     }
@@ -948,7 +974,9 @@ app.MapGet("/api/report/awb-bulk-by-awbno/{awbNos}", async (string awbNos, bool?
         }
 
         await ResolveLocationCodesBulk(awbs, db);
-        var combinedPdf = printService.GenerateBulkA5AWB(awbs, companyName, logoData, website, branchCurrency);
+        var bulkA5CustIds = awbs.Where(a => a.CustomerId.HasValue).Select(a => a.CustomerId!.Value).Distinct().ToList();
+        var bulkA5AcctNos = await db.Parties.Where(p => bulkA5CustIds.Contains(p.Id)).ToDictionaryAsync(p => (long)p.Id, p => p.CustomerAccountNo ?? "");
+        var combinedPdf = printService.GenerateBulkA5AWB(awbs, companyName, logoData, website, branchCurrency, bulkA5AcctNos);
         var fileName = inline == true ? null : $"BulkAWB-{DateTime.Now:yyyyMMdd_HHmmss}.pdf";
         return Results.File(combinedPdf, "application/pdf", fileName);
     }
@@ -1256,6 +1284,12 @@ app.MapGet("/api/report/invoice/{id:long}", async (long id, ApplicationDbContext
         }
     }
     
+    string? invAccountNo = null;
+    if (invoice.CustomerId.HasValue)
+    {
+        var invCust = await db.Parties.FirstOrDefaultAsync(p => p.Id == invoice.CustomerId);
+        invAccountNo = invCust?.CustomerAccountNo;
+    }
     byte[] pdf;
     if (shipment != null)
     {
@@ -1264,7 +1298,7 @@ app.MapGet("/api/report/invoice/{id:long}", async (long id, ApplicationDbContext
     }
     else
     {
-        pdf = reportService.GenerateInvoicePdf(invoice, logoData, company?.Name);
+        pdf = reportService.GenerateInvoicePdf(invoice, logoData, company?.Name, invAccountNo);
     }
     return Results.File(pdf, "application/pdf", $"Invoice-{invoice.InvoiceNo}.pdf");
 });
@@ -1282,7 +1316,13 @@ app.MapGet("/api/report/domestic-invoice/{id:long}", async (long id, Application
     
     byte[]? logoData = ResolveLogoBytes(company?.Logo, env.WebRootPath ?? env.ContentRootPath);
     
-    var pdf = reportService.GenerateDomesticInvoicePdf(invoice, currency, logoData, company?.Name, company?.TaxNumber);
+    string? domAcctNo = null;
+    if (invoice.CustomerId.HasValue)
+    {
+        var domCust = await db.Parties.FirstOrDefaultAsync(p => p.Id == invoice.CustomerId);
+        domAcctNo = domCust?.CustomerAccountNo;
+    }
+    var pdf = reportService.GenerateDomesticInvoicePdf(invoice, currency, logoData, company?.Name, company?.TaxNumber, domAcctNo);
     return Results.File(pdf, "application/pdf", $"DomesticInvoice-{invoice.InvoiceNo}.pdf");
 });
 

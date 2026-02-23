@@ -103,7 +103,7 @@ public class ReportingService
         return document.GeneratePdf();
     }
 
-    public byte[] GenerateInvoicePdf(Invoice invoice, byte[]? logoData = null, string? companyName = null)
+    public byte[] GenerateInvoicePdf(Invoice invoice, byte[]? logoData = null, string? companyName = null, string? customerAccountNo = null)
     {
         var document = Document.Create(container =>
         {
@@ -422,7 +422,7 @@ public class ReportingService
         return document.GeneratePdf();
     }
 
-    public byte[] GenerateDomesticInvoicePdf(Invoice invoice, string currency = "AED", byte[]? logoData = null, string? companyName = null, string? companyTRN = null)
+    public byte[] GenerateDomesticInvoicePdf(Invoice invoice, string currency = "AED", byte[]? logoData = null, string? companyName = null, string? companyTRN = null, string? customerAccountNo = null)
     {
         var document = Document.Create(container =>
         {
@@ -461,7 +461,7 @@ public class ReportingService
                             c.Item().Text(text => { text.Span("Currency : ").Bold(); text.Span(currency); });
                             c.Item().Text(text => { text.Span("Invoice Amount : ").Bold(); text.Span($"{invoice.NetTotal:N2}"); });
                             c.Item().Text(text => { text.Span("Customer: ").Bold(); text.Span(invoice.CustomerName ?? ""); });
-                            c.Item().Text(text => { text.Span("Account No: ").Bold(); text.Span(invoice.CustomerId?.ToString() ?? ""); });
+                            c.Item().Text(text => { text.Span("Account No.: ").Bold(); text.Span(customerAccountNo ?? ""); });
                             c.Item().Text(invoice.CustomerAddress ?? "");
                             c.Item().Text(text => { text.Span("TRN No. : ").Bold(); text.Span(invoice.CustomerTaxNo ?? ""); });
                         });
