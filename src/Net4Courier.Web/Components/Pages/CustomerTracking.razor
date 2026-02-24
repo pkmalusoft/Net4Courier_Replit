@@ -253,13 +253,13 @@
                                 }
                             </div>
                             <div style="padding-bottom: 24px; flex: 1;">
-                                <MudText Style="@($"font-weight: 600; font-size: 0.875rem; color: {(isFirst ? "#1a237e" : "#475569")};")">@GetStatusDisplay(evt.StatusId)</MudText>
-                                <MudText Typo="Typo.caption" Style="color: #94a3b8;">@FormatEventDate(evt.EventDateTime)</MudText>
-                                @if (!string.IsNullOrWhiteSpace(evt.Location) || !string.IsNullOrWhiteSpace(evt.City))
+                                <MudText Style="@($"font-weight: 600; font-size: 0.875rem; color: {(isFirst ? "#1a237e" : "#475569")};")">@(evt.Status?.Name ?? evt.EventType)</MudText>
+                                <MudText Typo="Typo.caption" Style="color: #94a3b8;">@FormatEventDate(evt.ChangedAt)</MudText>
+                                @if (!string.IsNullOrWhiteSpace(evt.LocationName))
                                 {
                                     <MudText Typo="Typo.body2" Style="color: #64748b; margin-top: 2px;">
                                         <MudIcon Icon="@Icons.Material.Filled.LocationOn" Size="Size.Small" Style="vertical-align: middle; color: #94a3b8;" />
-                                        @(evt.Location ?? evt.City ?? "")@(evt.City != null && evt.Location != null ? $", {evt.City}" : "")
+                                        @evt.LocationName
                                     </MudText>
                                 }
                                 @if (!string.IsNullOrWhiteSpace(evt.Remarks))
@@ -291,7 +291,7 @@
     private List<string> _notFoundAwbs = new();
     private bool _timelineOpen;
     private TrackingResult? _selectedResult;
-    private List<AWBTracking> _timelineEvents = new();
+    private List<ShipmentStatusHistory> _timelineEvents = new();
     private string? _companyLogo;
     private string? _companyName;
 
@@ -415,10 +415,11 @@
         _selectedResult = result;
 
         await using var db = await DbFactory.CreateDbContextAsync();
-        _timelineEvents = await db.AWBTrackings
+        _timelineEvents = await db.ShipmentStatusHistories
+            .Include(t => t.Status)
             .AsNoTracking()
-            .Where(t => t.InscanId == result.Id)
-            .OrderByDescending(t => t.EventDateTime)
+            .Where(t => t.InscanMasterId == result.Id)
+            .OrderByDescending(t => t.ChangedAt)
             .ToListAsync();
 
         _timelineOpen = true;

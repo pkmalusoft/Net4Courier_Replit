@@ -53,6 +53,7 @@ public class ImportShipmentDto
     public string ConsigneeCountry { get; set; } = string.Empty;
     public string? ConsigneePostalCode { get; set; }
     public string? ConsigneePhone { get; set; }
+    public string? ConsigneeMobile2 { get; set; }
     public string? ShipperName { get; set; }
     public string? ShipperAddress { get; set; }
     public string? ShipperCountry { get; set; }
@@ -260,6 +261,7 @@ public class ImportExcelService
             ("Consignee Country *", true),
             ("Consignee Postal Code", false),
             ("Consignee Phone", false),
+            ("Secondary Mobile", false),
             ("Shipper Name", false),
             ("Shipper Address", false),
             ("Shipper Country", false),
@@ -670,6 +672,7 @@ public class ImportExcelService
             { "Consignee Country", (shipment.ConsigneeCountry, 100) },
             { "Consignee Postal Code", (shipment.ConsigneePostalCode, 20) },
             { "Consignee Phone", (shipment.ConsigneePhone, 50) },
+            { "Secondary Mobile", (shipment.ConsigneeMobile2, 50) },
             { "Shipper Name", (shipment.ShipperName, 200) },
             { "Shipper Address", (shipment.ShipperAddress, 500) },
             { "Shipper Country", (shipment.ShipperCountry, 100) },
@@ -753,6 +756,7 @@ public class ImportExcelService
         int colConsigneeCountry = GetCol("Consignee Country");
         int colConsigneePostal = GetCol("Consignee Postal Code");
         int colConsigneePhone = GetCol("Consignee Phone");
+        int colSecondaryMobile = GetCol("Secondary Mobile", "Mobile 2", "ConsigneeMobile2");
         int colShipperName = GetCol("Shipper Name");
         int colShipperAddress = GetCol("Shipper Address");
         int colShipperCountry = GetCol("Shipper Country");
@@ -802,6 +806,7 @@ public class ImportExcelService
                 ConsigneeCountry = colConsigneeCountry > 0 ? sheet.Cell(row, colConsigneeCountry).GetString()?.Trim() ?? "" : "",
                 ConsigneePostalCode = colConsigneePostal > 0 ? sheet.Cell(row, colConsigneePostal).GetString()?.Trim() : null,
                 ConsigneePhone = colConsigneePhone > 0 ? sheet.Cell(row, colConsigneePhone).GetString()?.Trim() : null,
+                ConsigneeMobile2 = colSecondaryMobile > 0 ? sheet.Cell(row, colSecondaryMobile).GetString()?.Trim() : null,
                 ShipperName = colShipperName > 0 ? sheet.Cell(row, colShipperName).GetString()?.Trim() : null,
                 ShipperAddress = colShipperAddress > 0 ? sheet.Cell(row, colShipperAddress).GetString()?.Trim() : null,
                 ShipperCountry = colShipperCountry > 0 ? sheet.Cell(row, colShipperCountry).GetString()?.Trim() : null,
@@ -1057,6 +1062,7 @@ public class ImportExcelService
             ConsigneeCountry = dto.ConsigneeCountry,
             ConsigneePostalCode = dto.ConsigneePostalCode,
             ConsigneePhone = dto.ConsigneePhone,
+            ConsigneeMobile2 = dto.ConsigneeMobile2,
             ShipperName = dto.ShipperName,
             ShipperAddress = dto.ShipperAddress,
             ShipperCountry = dto.ShipperCountry,

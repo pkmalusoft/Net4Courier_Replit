@@ -25,6 +25,7 @@ public class ImportShipment : AuditableEntity
     public string? ConsigneePostalCode { get; set; }
     public string? ConsigneePhone { get; set; }
     public string? ConsigneeMobile { get; set; }
+    public string? ConsigneeMobile2 { get; set; }
     
     public int Pieces { get; set; } = 1;
     public decimal Weight { get; set; }
