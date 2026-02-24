@@ -643,7 +643,12 @@ app.MapGet("/api/report/awb-duplex-by-awbno/{awbNo}", async (string awbNo, bool?
     try
     {
         var awb = await db.InscanMasters.FirstOrDefaultAsync(i => i.AWBNo == awbNo);
-        if (awb == null) return Results.NotFound("AWB not found");
+        if (awb == null)
+        {
+            var importShipment = await db.ImportShipments.FirstOrDefaultAsync(i => i.AWBNo == awbNo && !i.IsDeleted);
+            if (importShipment == null) return Results.NotFound("AWB not found");
+            awb = MapImportToInscanMaster(importShipment);
+        }
         if (awb.BarcodeImage == null && !string.IsNullOrEmpty(awb.AWBNo))
         {
             var (h, v) = barcodeService.GenerateBothBarcodes(awb.AWBNo);
