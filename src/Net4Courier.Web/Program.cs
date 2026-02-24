@@ -573,6 +573,7 @@ app.MapGet("/api/report/awb/{id:long}", async (long id, bool? inline, Applicatio
             var a5Cust = await db.Parties.FirstOrDefaultAsync(p => p.Id == awb.CustomerId);
             a5AccountNo = a5Cust?.CustomerAccountNo;
         }
+        printService.SetCountryCodeLookup(await LoadCountryCodeLookup(db));
         var pdf = printService.GenerateA5AWB(awb, companyName, logoData, website, branchCurrency, a5AccountNo);
         var fileName = inline == true ? null : $"AWB-{awb.AWBNo}.pdf";
         return Results.File(pdf, "application/pdf", fileName);
@@ -627,6 +628,7 @@ app.MapGet("/api/report/awb-duplex/{id:long}", async (long id, bool? inline, App
             var duplexCust = await db.Parties.FirstOrDefaultAsync(p => p.Id == awb.CustomerId);
             duplexAccountNo = duplexCust?.CustomerAccountNo;
         }
+        printService.SetCountryCodeLookup(await LoadCountryCodeLookup(db));
         var pdf = printService.GenerateA4DuplexAWB(awb, companyName, logoData, website, branchCurrency, duplexAccountNo);
         var fileName = inline == true ? null : $"AWB-Duplex-{awb.AWBNo}.pdf";
         return Results.File(pdf, "application/pdf", fileName);
@@ -686,6 +688,7 @@ app.MapGet("/api/report/awb-duplex-by-awbno/{awbNo}", async (string awbNo, bool?
             var duplexCust = await db.Parties.FirstOrDefaultAsync(p => p.Id == awb.CustomerId);
             duplexAccountNo = duplexCust?.CustomerAccountNo;
         }
+        printService.SetCountryCodeLookup(await LoadCountryCodeLookup(db));
         var pdf = printService.GenerateA4DuplexAWB(awb, companyName, logoData, website, branchCurrency, duplexAccountNo);
         var fileName = inline == true ? null : $"AWB-Duplex-{awb.AWBNo}.pdf";
         return Results.File(pdf, "application/pdf", fileName);
@@ -737,6 +740,7 @@ app.MapGet("/api/report/awb-label/{id:long}", async (long id, bool? inline, Appl
             var customer = await db.Parties.FirstOrDefaultAsync(p => p.Id == awb.CustomerId);
             customerAccountNo = customer?.CustomerAccountNo;
         }
+        printService.SetCountryCodeLookup(await LoadCountryCodeLookup(db));
         var pdf = printService.GenerateLabel(awb, companyName, logoData, branchCurrency, customerAccountNo);
         var fileName = inline == true ? null : $"Label-{awb.AWBNo}.pdf";
         return Results.File(pdf, "application/pdf", fileName);
@@ -796,6 +800,7 @@ app.MapGet("/api/report/awb-by-awbno/{awbNo}", async (string awbNo, bool? inline
             var a5Cust = await db.Parties.FirstOrDefaultAsync(p => p.Id == awb.CustomerId);
             a5AccountNo = a5Cust?.CustomerAccountNo;
         }
+        printService.SetCountryCodeLookup(await LoadCountryCodeLookup(db));
         var pdf = printService.GenerateA5AWB(awb, companyName, logoData, website, branchCurrency, a5AccountNo);
         var fileName = inline == true ? null : $"AWB-{awb.AWBNo}.pdf";
         return Results.File(pdf, "application/pdf", fileName);
@@ -852,6 +857,7 @@ app.MapGet("/api/report/awb-label-by-awbno/{awbNo}", async (string awbNo, bool? 
             var customer = await db.Parties.FirstOrDefaultAsync(p => p.Id == awb.CustomerId);
             customerAccountNo = customer?.CustomerAccountNo;
         }
+        printService.SetCountryCodeLookup(await LoadCountryCodeLookup(db));
         var pdf = printService.GenerateLabel(awb, companyName, logoData, branchCurrency, customerAccountNo);
         var fileName = inline == true ? null : $"Label-{awb.AWBNo}.pdf";
         return Results.File(pdf, "application/pdf", fileName);
@@ -1390,6 +1396,7 @@ app.MapGet("/api/report/duty-receipt/{id:long}", async (long id, bool? inline, A
             .Include(c => c.OtherChargeType)
             .Where(c => c.InscanId == shipment.Id && !c.IsDeleted)
             .ToListAsync();
+        reportService.SetCountryCodeLookup(await LoadCountryCodeLookup(db));
         var pdf = reportService.GenerateDutyReceiptPdf(shipment, currency, logoData, company?.Name, companyAddress, company?.Phone, company?.Email, company?.TaxNumber, dutyAcctNo, otherCharges);
         var fileName = inline == true ? null : $"DutyReceipt-{shipment.AWBNo}.pdf";
         return Results.File(pdf, "application/pdf", fileName);
@@ -1460,6 +1467,7 @@ app.MapGet("/api/report/duty-receipt-by-awbno/{awbNo}", async (string awbNo, boo
             .Include(c => c.OtherChargeType)
             .Where(c => c.InscanId == shipment.Id && !c.IsDeleted)
             .ToListAsync();
+        reportService.SetCountryCodeLookup(await LoadCountryCodeLookup(db));
         var pdf = reportService.GenerateDutyReceiptPdf(shipment, currency, logoData, company?.Name, companyAddress, company?.Phone, company?.Email, company?.TaxNumber, dutyAcctNo2, otherCharges2);
         var fileName = inline == true ? null : $"DutyReceipt-{shipment.AWBNo}.pdf";
         return Results.File(pdf, "application/pdf", fileName);
@@ -1795,6 +1803,21 @@ static byte[]? ResolveLogoBytes(string? logo, string webRootPath)
     }
     var filePath = Path.Combine(webRootPath, logo.TrimStart('/'));
     return File.Exists(filePath) ? File.ReadAllBytes(filePath) : null;
+}
+
+static async Task<Dictionary<string, string>> LoadCountryCodeLookup(ApplicationDbContext db)
+{
+    var countries = await db.Countries
+        .Where(c => !string.IsNullOrEmpty(c.Code))
+        .Select(c => new { c.Name, c.Code })
+        .ToListAsync();
+    var lookup = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+    foreach (var c in countries)
+    {
+        if (!string.IsNullOrWhiteSpace(c.Name) && !string.IsNullOrWhiteSpace(c.Code))
+            lookup[c.Name.Trim()] = c.Code.Trim();
+    }
+    return lookup;
 }
 
 static async Task ResolveLocationCodes(InscanMaster awb, ApplicationDbContext db)

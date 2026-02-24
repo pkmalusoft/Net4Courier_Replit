@@ -10,6 +10,7 @@ namespace Net4Courier.Web.Services;
 public class AWBPrintService
 {
     private byte[]? _logoData;
+    private Dictionary<string, string>? _countryCodeLookup;
 
     public AWBPrintService()
     {
@@ -18,6 +19,11 @@ public class AWBPrintService
     public void SetLogoData(byte[]? logoData)
     {
         _logoData = logoData;
+    }
+
+    public void SetCountryCodeLookup(Dictionary<string, string>? lookup)
+    {
+        _countryCodeLookup = lookup;
     }
 
     public byte[] GenerateA5AWB(InscanMaster shipment, string? companyName = null, byte[]? logoData = null, string? website = null, string? branchCurrency = null, string? customerAccountNo = null)
@@ -96,8 +102,8 @@ public class AWBPrintService
     {
         var effectiveLogo = logoData ?? _logoData;
         var serviceDesc = GetMovementTypeDisplay(shipment.MovementTypeId);
-        var originCountryCode = !string.IsNullOrWhiteSpace(shipment.ConsignorCountry) ? shipment.ConsignorCountry.ToUpper() : "---";
-        var destCountryCode = !string.IsNullOrWhiteSpace(shipment.ConsigneeCountry) ? shipment.ConsigneeCountry.ToUpper() : "---";
+        var originCountryCode = GetCountryDisplayCode(null, shipment.ConsignorCountry);
+        var destCountryCode = GetCountryDisplayCode(null, shipment.ConsigneeCountry);
 
         column.Item().BorderBottom(2).PaddingBottom(5).Row(row =>
         {
@@ -206,8 +212,9 @@ public class AWBPrintService
         var address = $"{shipment.ConsignorAddress1} {shipment.ConsignorAddress2}".Trim();
         if (!string.IsNullOrEmpty(shipment.ConsignorCity))
             address += $", {shipment.ConsignorCity}";
-        if (!string.IsNullOrEmpty(shipment.ConsignorCountry))
-            address += $", {shipment.ConsignorCountry}";
+        var consignorCode = GetCountryDisplayCode(null, shipment.ConsignorCountry);
+        if (consignorCode != "---")
+            address += $", {consignorCode}";
 
         card.Item().Background("#e2e8f0").BorderBottom(1).PaddingHorizontal(6).PaddingVertical(2)
             .Text("FROM (SHIPPER)").Bold().FontSize(8);
@@ -233,8 +240,9 @@ public class AWBPrintService
         var address = $"{shipment.ConsigneeAddress1} {shipment.ConsigneeAddress2}".Trim();
         if (!string.IsNullOrEmpty(shipment.ConsigneeCity))
             address += $", {shipment.ConsigneeCity}";
-        if (!string.IsNullOrEmpty(shipment.ConsigneeCountry))
-            address += $", {shipment.ConsigneeCountry}";
+        var consigneeCode = GetCountryDisplayCode(null, shipment.ConsigneeCountry);
+        if (consigneeCode != "---")
+            address += $", {consigneeCode}";
 
         card.Item().Background(Colors.Black).PaddingHorizontal(6).PaddingVertical(2)
             .Text("TO (RECEIVER)").FontColor(Colors.White).Bold().FontSize(8);
@@ -528,6 +536,11 @@ public class AWBPrintService
     private string GetCountryDisplayCode(string? portCode, string? country)
     {
         if (!string.IsNullOrWhiteSpace(portCode)) return portCode;
+        if (!string.IsNullOrWhiteSpace(country) && _countryCodeLookup != null)
+        {
+            if (_countryCodeLookup.TryGetValue(country.Trim(), out var code) && !string.IsNullOrWhiteSpace(code))
+                return code.ToUpper();
+        }
         if (!string.IsNullOrWhiteSpace(country) && country.Length > 3)
             return country.Substring(0, 3).ToUpper();
         if (!string.IsNullOrWhiteSpace(country)) return country.ToUpper();
@@ -1108,7 +1121,7 @@ public class AWBPrintService
             table.Cell().Border(1).Padding(5).Text(shipment.CargoDescription ?? "").FontSize(9);
             table.Cell().Border(1).Padding(5).Text("").FontSize(9);
             table.Cell().Border(1).Padding(5).AlignCenter().Text((shipment.Pieces ?? 1).ToString()).FontSize(9);
-            table.Cell().Border(1).Padding(5).Text(shipment.ConsignorCountry ?? "").FontSize(9);
+            table.Cell().Border(1).Padding(5).Text(GetCountryDisplayCode(null, shipment.ConsignorCountry)).FontSize(9);
             table.Cell().Border(1).Padding(5).AlignRight().Text(unitValue.ToString("F2")).FontSize(9);
             table.Cell().Border(1).Padding(5).AlignRight().Text((shipment.CustomsValue ?? 0).ToString("F2")).FontSize(9);
             
@@ -1272,7 +1285,7 @@ public class AWBPrintService
                             c.Item().Height(4);
                             c.Item().Text(shipment.ConsigneeAddress ?? "").FontSize(9).FontColor(Colors.Grey.Darken1);
                             c.Item().Height(2);
-                            c.Item().Text($"{shipment.ConsigneeCity ?? ""}, {shipment.ConsigneePostalCode ?? ""} {shipment.ConsigneeCountry ?? ""}".Trim().TrimEnd(',')).FontSize(9).FontColor(Colors.Grey.Darken1);
+                            c.Item().Text($"{shipment.ConsigneeCity ?? ""}, {shipment.ConsigneePostalCode ?? ""} {GetCountryDisplayCode(null, shipment.ConsigneeCountry)}".Trim().TrimEnd(',')).FontSize(9).FontColor(Colors.Grey.Darken1);
                             c.Item().Height(4);
                             if (!string.IsNullOrEmpty(shipment.ConsigneePhone) || !string.IsNullOrEmpty(shipment.ConsigneeMobile))
                             {
@@ -1498,7 +1511,7 @@ public class AWBPrintService
                 c.Item().Text($"{shipment.ConsignorAddress1} {shipment.ConsignorAddress2}".Trim()).FontSize(9).FontColor(Colors.Grey.Darken1);
                 c.Item().Height(2);
                 c.Item().Text($"{shipment.ConsignorCity ?? ""}, {shipment.ConsignorPostalCode ?? ""}".Trim().TrimEnd(',')).FontSize(9).FontColor(Colors.Grey.Darken1);
-                c.Item().Text(shipment.ConsignorCountry ?? "").FontSize(9).FontColor(Colors.Grey.Darken1);
+                c.Item().Text(GetCountryDisplayCode(null, shipment.ConsignorCountry)).FontSize(9).FontColor(Colors.Grey.Darken1);
                 c.Item().Height(4);
                 if (!string.IsNullOrEmpty(shipment.ConsignorPhone) || !string.IsNullOrEmpty(shipment.ConsignorMobile))
                 {
@@ -1522,7 +1535,7 @@ public class AWBPrintService
                 c.Item().Text($"{shipment.ConsigneeAddress1} {shipment.ConsigneeAddress2}".Trim()).FontSize(9).FontColor(Colors.Grey.Darken1);
                 c.Item().Height(2);
                 c.Item().Text($"{shipment.ConsigneeCity ?? ""}, {shipment.ConsigneePostalCode ?? ""}".Trim().TrimEnd(',')).FontSize(9).FontColor(Colors.Grey.Darken1);
-                c.Item().Text(shipment.ConsigneeCountry ?? "").FontSize(9).FontColor(Colors.Grey.Darken1);
+                c.Item().Text(GetCountryDisplayCode(null, shipment.ConsigneeCountry)).FontSize(9).FontColor(Colors.Grey.Darken1);
                 c.Item().Height(4);
                 if (!string.IsNullOrEmpty(shipment.ConsigneePhone) || !string.IsNullOrEmpty(shipment.ConsigneeMobile))
                 {

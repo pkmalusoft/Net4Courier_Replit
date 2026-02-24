@@ -12,10 +12,25 @@ namespace Net4Courier.Web.Services;
 public class ReportingService
 {
     private readonly ApplicationDbContext _context;
+    private Dictionary<string, string>? _countryCodeLookup;
 
     public ReportingService(ApplicationDbContext context)
     {
         _context = context;
+    }
+
+    public void SetCountryCodeLookup(Dictionary<string, string>? lookup)
+    {
+        _countryCodeLookup = lookup;
+    }
+
+    private string ResolveCountryCode(string? country)
+    {
+        if (string.IsNullOrWhiteSpace(country)) return "---";
+        if (_countryCodeLookup != null && _countryCodeLookup.TryGetValue(country.Trim(), out var code) && !string.IsNullOrWhiteSpace(code))
+            return code.ToUpper();
+        if (country.Length > 3) return country.Substring(0, 3).ToUpper();
+        return country.ToUpper();
     }
 
     public byte[] GenerateAWBLabel(InscanMaster awb, byte[]? logoData = null, string? companyName = null)
@@ -319,26 +334,26 @@ public class ReportingService
                     {
                         row.RelativeItem().Border(1).Column(c =>
                         {
-                            c.Item().Background("#E3F2FD").Padding(8).Text($"SHIPMENT FROM: {shipment.ConsignorCountry ?? "N/A"}").Bold().FontSize(11);
+                            c.Item().Background("#E3F2FD").Padding(8).Text($"SHIPMENT FROM: {ResolveCountryCode(shipment.ConsignorCountry)}").Bold().FontSize(11);
                             c.Item().Padding(10).Column(inner =>
                             {
                                 inner.Item().Text(text => { text.Span("Name: ").Bold(); text.Span(shipment.Consignor ?? "-"); });
                                 inner.Item().Text(text => { text.Span("Address: ").Bold(); text.Span($"{shipment.ConsignorAddress1} {shipment.ConsignorAddress2}"); });
                                 inner.Item().Text(text => { text.Span("City: ").Bold(); text.Span(shipment.ConsignorCity ?? "-"); });
-                                inner.Item().Text(text => { text.Span("Country: ").Bold(); text.Span(shipment.ConsignorCountry ?? "-"); });
+                                inner.Item().Text(text => { text.Span("Country: ").Bold(); text.Span(ResolveCountryCode(shipment.ConsignorCountry)); });
                                 inner.Item().Text(text => { text.Span("Tel.: ").Bold(); text.Span(!string.IsNullOrEmpty(shipment.ConsignorPhone) ? shipment.ConsignorPhone : shipment.ConsignorMobile ?? "-"); });
                             });
                         });
 
                         row.RelativeItem().Border(1).Column(c =>
                         {
-                            c.Item().Background("#E3F2FD").Padding(8).Text($"SHIPMENT TO: {shipment.ConsigneeCountry ?? "N/A"}").Bold().FontSize(11);
+                            c.Item().Background("#E3F2FD").Padding(8).Text($"SHIPMENT TO: {ResolveCountryCode(shipment.ConsigneeCountry)}").Bold().FontSize(11);
                             c.Item().Padding(10).Column(inner =>
                             {
                                 inner.Item().Text(text => { text.Span("Name: ").Bold(); text.Span(shipment.Consignee ?? "-"); });
                                 inner.Item().Text(text => { text.Span("Address: ").Bold(); text.Span($"{shipment.ConsigneeAddress1} {shipment.ConsigneeAddress2}"); });
                                 inner.Item().Text(text => { text.Span("City/Postal Code: ").Bold(); text.Span($"{shipment.ConsigneeCity} {shipment.ConsigneePostalCode}"); });
-                                inner.Item().Text(text => { text.Span("Country: ").Bold(); text.Span(shipment.ConsigneeCountry ?? "-"); });
+                                inner.Item().Text(text => { text.Span("Country: ").Bold(); text.Span(ResolveCountryCode(shipment.ConsigneeCountry)); });
                                 inner.Item().Text(text => { text.Span("Tel./Fax No.: ").Bold(); text.Span(!string.IsNullOrEmpty(shipment.ConsigneePhone) ? shipment.ConsigneePhone : shipment.ConsigneeMobile ?? "-"); });
                             });
                         });
@@ -375,7 +390,7 @@ public class ReportingService
                         table.Cell().Border(1).Padding(6).Text(shipment.CargoDescription ?? "General Goods");
                         table.Cell().Border(1).Padding(6).AlignCenter().Text("");
                         table.Cell().Border(1).Padding(6).AlignCenter().Text($"{pieces}");
-                        table.Cell().Border(1).Padding(6).AlignCenter().Text(shipment.ConsignorCountry ?? "");
+                        table.Cell().Border(1).Padding(6).AlignCenter().Text(ResolveCountryCode(shipment.ConsignorCountry));
                         table.Cell().Border(1).Padding(6).AlignRight().Text($"{unitValue:N2}");
                         table.Cell().Border(1).Padding(6).AlignRight().Text($"{totalValue:N2}");
 
