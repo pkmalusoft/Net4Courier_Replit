@@ -54,7 +54,10 @@ public class ImportShipmentDto
     public string? ConsigneePostalCode { get; set; }
     public string? ConsigneePhone { get; set; }
     public string? ShipperName { get; set; }
+    public string? ShipperAddress { get; set; }
     public string? ShipperCountry { get; set; }
+    public string? ServiceType { get; set; }
+    public string? CustomerAccountNo { get; set; }
     public int Pieces { get; set; } = 1;
     public decimal Weight { get; set; }
     public string? ContentsDescription { get; set; }
@@ -258,7 +261,10 @@ public class ImportExcelService
             ("Consignee Postal Code", false),
             ("Consignee Phone", false),
             ("Shipper Name", false),
+            ("Shipper Address", false),
             ("Shipper Country", false),
+            ("Service Type", false),
+            ("Customer Account No", false),
             ("Pieces *", true),
             ("Weight (kg) *", true),
             ("Contents Description", false),
@@ -665,7 +671,10 @@ public class ImportExcelService
             { "Consignee Postal Code", (shipment.ConsigneePostalCode, 20) },
             { "Consignee Phone", (shipment.ConsigneePhone, 50) },
             { "Shipper Name", (shipment.ShipperName, 200) },
+            { "Shipper Address", (shipment.ShipperAddress, 500) },
             { "Shipper Country", (shipment.ShipperCountry, 100) },
+            { "Service Type", (shipment.ServiceType, 100) },
+            { "Customer Account No", (shipment.CustomerAccountNo, 50) },
             { "Contents Description", (shipment.ContentsDescription, 500) },
             { "HS Code", (shipment.HSCode, 20) },
             { "Currency", (shipment.Currency, 10) },
@@ -745,7 +754,10 @@ public class ImportExcelService
         int colConsigneePostal = GetCol("Consignee Postal Code");
         int colConsigneePhone = GetCol("Consignee Phone");
         int colShipperName = GetCol("Shipper Name");
+        int colShipperAddress = GetCol("Shipper Address");
         int colShipperCountry = GetCol("Shipper Country");
+        int colServiceType = GetCol("Service Type", "ServiceType");
+        int colCustomerAccountNo = GetCol("Customer Account No", "Customer Account", "Account No");
         int colPieces = GetCol("Pieces");
         int colWeight = GetCol("Weight");
         int colContents = GetCol("Contents Description");
@@ -791,7 +803,10 @@ public class ImportExcelService
                 ConsigneePostalCode = colConsigneePostal > 0 ? sheet.Cell(row, colConsigneePostal).GetString()?.Trim() : null,
                 ConsigneePhone = colConsigneePhone > 0 ? sheet.Cell(row, colConsigneePhone).GetString()?.Trim() : null,
                 ShipperName = colShipperName > 0 ? sheet.Cell(row, colShipperName).GetString()?.Trim() : null,
+                ShipperAddress = colShipperAddress > 0 ? sheet.Cell(row, colShipperAddress).GetString()?.Trim() : null,
                 ShipperCountry = colShipperCountry > 0 ? sheet.Cell(row, colShipperCountry).GetString()?.Trim() : null,
+                ServiceType = colServiceType > 0 ? sheet.Cell(row, colServiceType).GetString()?.Trim() : null,
+                CustomerAccountNo = colCustomerAccountNo > 0 ? sheet.Cell(row, colCustomerAccountNo).GetString()?.Trim() : null,
                 ContentsDescription = colContents > 0 ? sheet.Cell(row, colContents).GetString()?.Trim() : null,
                 HSCode = colHsCode > 0 ? sheet.Cell(row, colHsCode).GetString()?.Trim() : null,
                 Currency = colCurrency > 0 ? sheet.Cell(row, colCurrency).GetString()?.Trim() : null,
@@ -1043,7 +1058,10 @@ public class ImportExcelService
             ConsigneePostalCode = dto.ConsigneePostalCode,
             ConsigneePhone = dto.ConsigneePhone,
             ShipperName = dto.ShipperName,
+            ShipperAddress = dto.ShipperAddress,
             ShipperCountry = dto.ShipperCountry,
+            ServiceType = dto.ServiceType,
+            CustomerAccountNo = dto.CustomerAccountNo,
             Pieces = dto.Pieces,
             Weight = dto.Weight,
             ContentsDescription = dto.ContentsDescription,

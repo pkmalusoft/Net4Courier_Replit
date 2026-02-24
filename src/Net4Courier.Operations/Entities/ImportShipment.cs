@@ -43,6 +43,8 @@ public class ImportShipment : AuditableEntity
     public string? HSCode { get; set; }
     
     public string? IncoTerms { get; set; }
+    public string? ServiceType { get; set; }
+    public string? CustomerAccountNo { get; set; }
     
     public decimal? CustomsValue { get; set; }
     public decimal? DutyAmount { get; set; }

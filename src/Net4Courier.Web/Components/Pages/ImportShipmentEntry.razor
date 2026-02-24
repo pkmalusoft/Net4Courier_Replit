@@ -129,13 +129,19 @@
                         <MudDivider Class="my-2" />
                         <MudText Typo="Typo.subtitle2" Color="Color.Primary" Class="mb-2">Shipper Details</MudText>
                     </MudItem>
-                    <MudItem xs="12" sm="6">
+                    <MudItem xs="12" sm="6" md="4">
                         <MudTextField @bind-Value="_shipment.ShipperName" Label="Shipper Name" Variant="Variant.Outlined" />
                     </MudItem>
-                    <MudItem xs="12" sm="6">
+                    <MudItem xs="12" sm="6" md="4">
                         <MudAutocomplete T="Country" Label="Shipper Country" Value="_shipperCountry"
                                          SearchFunc="SearchCountries" ToStringFunc="@(c => c?.Name ?? "")"
                                          Variant="Variant.Outlined" ValueChanged="OnShipperCountryChanged" />
+                    </MudItem>
+                    <MudItem xs="12" sm="6" md="4">
+                        <MudTextField @bind-Value="_shipment.CustomerAccountNo" Label="Customer Account No" Variant="Variant.Outlined" />
+                    </MudItem>
+                    <MudItem xs="12">
+                        <MudTextField @bind-Value="_shipment.ShipperAddress" Label="Shipper Address" Variant="Variant.Outlined" Lines="2" />
                     </MudItem>
                     
                     <MudItem xs="12">
@@ -159,6 +165,10 @@
                     </MudItem>
                     <MudItem xs="12" sm="6" md="3">
                         <MudTextField @bind-Value="_shipment.HSCode" Label="HS Code" Variant="Variant.Outlined" />
+                    </MudItem>
+                    <MudItem xs="12" sm="6" md="3">
+                        <MudAutocomplete T="string" Label="Service Type" @bind-Value="_shipment.ServiceType"
+                                         SearchFunc="SearchServiceTypes" Variant="Variant.Outlined" Clearable="true" />
                     </MudItem>
                     <MudItem xs="12" sm="6" md="3">
                         <MudSelect T="string" Label="Inco Terms" @bind-Value="_shipment.IncoTerms" Variant="Variant.Outlined" Clearable="true" AnchorOrigin="Origin.BottomCenter">
@@ -217,6 +227,7 @@
     private ImportMaster? _importMaster;
     private ImportShipment _shipment = new();
     private List<Country> _countries = new();
+    private List<string> _serviceTypeNames = new();
     private Country? _consigneeCountry;
     private Country? _shipperCountry;
     
@@ -242,6 +253,11 @@
             }
             
             _countries = await dbContext.Countries.Where(c => c.IsActive && !c.IsDeleted).OrderBy(c => c.Name).ToListAsync();
+            _serviceTypeNames = await dbContext.Set<Net4Courier.Masters.Entities.ServiceType>()
+                .Where(s => s.IsActive && !s.IsDeleted)
+                .OrderBy(s => s.SortOrder).ThenBy(s => s.Name)
+                .Select(s => s.Name)
+                .ToListAsync();
             
             if (!_isNew)
             {
@@ -293,6 +309,14 @@
             return Task.FromResult(_countries.Take(20));
         
         return Task.FromResult(_countries.Where(c => c.Name.Contains(value, StringComparison.OrdinalIgnoreCase)).Take(20));
+    }
+
+    private Task<IEnumerable<string>> SearchServiceTypes(string value, CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrEmpty(value))
+            return Task.FromResult(_serviceTypeNames.AsEnumerable());
+        
+        return Task.FromResult(_serviceTypeNames.Where(s => s.Contains(value, StringComparison.OrdinalIgnoreCase)));
     }
     
     private void OnConsigneeCountryChanged(Country? country)
