@@ -1375,7 +1375,17 @@ app.MapGet("/api/report/duty-receipt/{id:long}", async (long id, bool? inline, A
         }
         
         var companyAddress = company != null ? $"{company.Address}, {company.City?.Name}, {company.Country?.Name}" : null;
-        var pdf = reportService.GenerateDutyReceiptPdf(shipment, currency, logoData, company?.Name, companyAddress, company?.Phone, company?.Email, company?.TaxNumber, null);
+        string? dutyAcctNo = null;
+        if (shipment.CustomerId.HasValue)
+        {
+            var dutyCust = await db.Parties.FirstOrDefaultAsync(p => p.Id == shipment.CustomerId);
+            dutyAcctNo = dutyCust?.CustomerAccountNo;
+        }
+        var otherCharges = await db.AWBOtherCharges
+            .Include(c => c.OtherChargeType)
+            .Where(c => c.InscanId == shipment.Id && !c.IsDeleted)
+            .ToListAsync();
+        var pdf = reportService.GenerateDutyReceiptPdf(shipment, currency, logoData, company?.Name, companyAddress, company?.Phone, company?.Email, company?.TaxNumber, dutyAcctNo, otherCharges);
         var fileName = inline == true ? null : $"DutyReceipt-{shipment.AWBNo}.pdf";
         return Results.File(pdf, "application/pdf", fileName);
     }
@@ -1435,7 +1445,17 @@ app.MapGet("/api/report/duty-receipt-by-awbno/{awbNo}", async (string awbNo, boo
         }
 
         var companyAddress = company != null ? $"{company.Address}, {company.City?.Name}, {company.Country?.Name}" : null;
-        var pdf = reportService.GenerateDutyReceiptPdf(shipment, currency, logoData, company?.Name, companyAddress, company?.Phone, company?.Email, company?.TaxNumber, null);
+        string? dutyAcctNo2 = null;
+        if (shipment.CustomerId.HasValue)
+        {
+            var dutyCust2 = await db.Parties.FirstOrDefaultAsync(p => p.Id == shipment.CustomerId);
+            dutyAcctNo2 = dutyCust2?.CustomerAccountNo;
+        }
+        var otherCharges2 = await db.AWBOtherCharges
+            .Include(c => c.OtherChargeType)
+            .Where(c => c.InscanId == shipment.Id && !c.IsDeleted)
+            .ToListAsync();
+        var pdf = reportService.GenerateDutyReceiptPdf(shipment, currency, logoData, company?.Name, companyAddress, company?.Phone, company?.Email, company?.TaxNumber, dutyAcctNo2, otherCharges2);
         var fileName = inline == true ? null : $"DutyReceipt-{shipment.AWBNo}.pdf";
         return Results.File(pdf, "application/pdf", fileName);
     }

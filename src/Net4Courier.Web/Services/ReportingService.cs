@@ -1607,7 +1607,7 @@ public class ReportingService
         }
     }
 
-    public byte[] GenerateDutyReceiptPdf(InscanMaster shipment, string currency = "AED", byte[]? logoData = null, string? companyName = null, string? companyAddress = null, string? companyPhone = null, string? companyEmail = null, string? companyVat = null, string? customerAccount = null)
+    public byte[] GenerateDutyReceiptPdf(InscanMaster shipment, string currency = "AED", byte[]? logoData = null, string? companyName = null, string? companyAddress = null, string? companyPhone = null, string? companyEmail = null, string? companyVat = null, string? customerAccount = null, List<AWBOtherCharge>? otherCharges = null)
     {
         var invoiceNo = $"D{shipment.Id:D8}";
         var hwbNo = shipment.AWBNo ?? "";
@@ -1705,8 +1705,8 @@ public class ReportingService
                             
                             table.Cell().Text($"Destination: {shipment.ConsigneeCity ?? ""}").FontSize(8);
                             table.Cell().Text($"Weight: {shipment.Weight:N2}").FontSize(8);
-                            table.Cell().Text($"Assessed Value: {(shipment.CustomsValue ?? 0):N2}").FontSize(8);
-                            table.Cell().Text("").FontSize(8);
+                            table.Cell().Text($"Assessed Value: {currency} {(shipment.CustomsValue ?? 0):N2}").FontSize(8);
+                            table.Cell().Text(!string.IsNullOrEmpty(shipment.ReferenceNo) ? $"Ref #: {shipment.ReferenceNo}" : "").FontSize(8);
                         });
                     });
 
@@ -1752,7 +1752,21 @@ public class ReportingService
                                 table.Cell().BorderLeft(1).Padding(4).AlignRight().Text($"{adminFee:N2}").FontSize(9);
                             }
 
-                            if (dutyAmount <= 0 && adminFee <= 0)
+                            if (otherCharges != null && otherCharges.Count > 0)
+                            {
+                                foreach (var oc in otherCharges)
+                                {
+                                    var chargeName = oc.OtherChargeType?.Name ?? oc.Notes ?? "Other Charge";
+                                    var chargeAmt = oc.Amount;
+                                    table.Cell().Padding(4).Text(chargeName).FontSize(9);
+                                    table.Cell().BorderLeft(1).Padding(4).AlignRight().Text($"{chargeAmt:N2}").FontSize(9);
+                                    table.Cell().BorderLeft(1).Padding(4).AlignRight().Text("0.00").FontSize(9);
+                                    table.Cell().BorderLeft(1).Padding(4).AlignRight().Text($"{chargeAmt:N2}").FontSize(9);
+                                }
+                            }
+
+                            var hasAnyCharge = dutyAmount > 0 || adminFee > 0 || (otherCharges != null && otherCharges.Count > 0);
+                            if (!hasAnyCharge)
                             {
                                 table.Cell().Padding(4).Text("No charges").FontSize(9).FontColor(Colors.Grey.Medium);
                                 table.Cell().BorderLeft(1).Padding(4).AlignRight().Text("0.00").FontSize(9);
@@ -1762,7 +1776,8 @@ public class ReportingService
                         });
                     });
 
-                    var subtotal = (shipment.DutyVatAmount ?? 0) + (shipment.OtherCharge ?? 0);
+                    var otherChargesTotal = otherCharges?.Sum(c => c.Amount) ?? 0m;
+                    var subtotal = (shipment.DutyVatAmount ?? 0) + (shipment.OtherCharge ?? 0) + otherChargesTotal;
                     var totalVat = 0m;
                     var totalPayable = subtotal + totalVat;
 
