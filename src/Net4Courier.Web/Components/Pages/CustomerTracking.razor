@@ -136,8 +136,8 @@
                     <MudGrid>
                         <MudItem xs="12" sm="6" md="3">
                             <div class="d-flex align-center gap-3">
-                                <MudAvatar Size="Size.Large" Style="@GetStatusAvatarStyle(result.Status)">
-                                    <MudIcon Icon="@GetStatusIcon(result.Status)" />
+                                <MudAvatar Size="Size.Large" Style="@GetResultStatusAvatarStyle(result)">
+                                    <MudIcon Icon="@GetResultStatusIcon(result)" />
                                 </MudAvatar>
                                 <div>
                                     <MudText Typo="Typo.subtitle1" Style="font-weight: 700;">@result.AWBNo</MudText>
@@ -146,6 +146,10 @@
                                         <MudText Typo="Typo.caption" Style="color: #64748b; font-weight: 500;">Ref: @result.ReferenceNo</MudText>
                                     }
                                     <MudText Typo="Typo.caption" Style="color: #94a3b8;">@result.Origin → @result.Destination</MudText>
+                                    @if (result.IsImport)
+                                    {
+                                        <MudChip T="string" Size="Size.Small" Color="Color.Info" Variant="Variant.Outlined" Style="font-size: 0.65rem; height: 18px; margin-top: 2px;">Import</MudChip>
+                                    }
                                 </div>
                             </div>
                         </MudItem>
@@ -163,7 +167,7 @@
                         </MudItem>
                         <MudItem xs="6" sm="3" md="3">
                             <div class="d-flex flex-column align-end">
-                                <span class="status-badge" style="@GetStatusBadgeStyle(result.Status)">@GetStatusDisplay(result.Status)</span>
+                                <span class="status-badge" style="@GetResultStatusBadgeStyle(result)">@GetResultStatusDisplay(result)</span>
                                 <MudText Typo="Typo.caption" Style="color: #94a3b8;" Class="mt-1">@result.LastUpdate</MudText>
                             </div>
                         </MudItem>
@@ -231,11 +235,50 @@
                     <div class="detail-label">Service Type</div>
                     <div class="detail-value">@_selectedResult.ServiceType</div>
                 </MudItem>
+                @if (_selectedResult.IsImport)
+                {
+                    <MudItem xs="6" sm="3">
+                        <div class="detail-label">Type</div>
+                        <div class="detail-value">Import</div>
+                    </MudItem>
+                }
             </MudGrid>
 
             <MudDivider Class="mb-4" />
 
-            @if (_timelineEvents.Any())
+            @if (_selectedResult.IsImport && _importTimelineEvents.Any())
+            {
+                <div style="padding-left: 8px;">
+                    @{
+                        var importEvents = _importTimelineEvents.OrderByDescending(e => e.Timestamp).ToList();
+                    }
+                    @for (int i = 0; i < importEvents.Count; i++)
+                    {
+                        var evt = importEvents[i];
+                        var isFirst = i == 0;
+                        var isLast = i == importEvents.Count - 1;
+
+                        <div class="d-flex gap-3 mb-0">
+                            <div class="d-flex flex-column align-center">
+                                <div class="timeline-dot" style="background: @(isFirst ? "#3949ab" : "#cbd5e1"); margin-top: 4px;"></div>
+                                @if (!isLast)
+                                {
+                                    <div class="timeline-line-segment @(isFirst ? "timeline-line-active" : "")"></div>
+                                }
+                            </div>
+                            <div style="padding-bottom: 24px; flex: 1;">
+                                <MudText Style="@($"font-weight: 600; font-size: 0.875rem; color: {(isFirst ? "#1a237e" : "#475569")};")">@evt.EventType</MudText>
+                                <MudText Typo="Typo.caption" Style="color: #94a3b8;">@FormatEventDate(evt.Timestamp)</MudText>
+                                @if (!string.IsNullOrWhiteSpace(evt.UserName))
+                                {
+                                    <MudText Typo="Typo.body2" Style="color: #64748b; margin-top: 2px;">By: @evt.UserName</MudText>
+                                }
+                            </div>
+                        </div>
+                    }
+                </div>
+            }
+            else if (!_selectedResult.IsImport && _timelineEvents.Any())
             {
                 <div style="padding-left: 8px;">
                     @for (int i = 0; i < _timelineEvents.Count; i++)
@@ -292,6 +335,7 @@
     private bool _timelineOpen;
     private TrackingResult? _selectedResult;
     private List<ShipmentStatusHistory> _timelineEvents = new();
+    private List<ImportTimelineEvent> _importTimelineEvents = new();
     private string? _companyLogo;
     private string? _companyName;
 
@@ -346,32 +390,29 @@
 
             foreach (var term in searchTerms)
             {
-                List<InscanMaster> matches;
+                bool foundAny = false;
+                var termUpper = term.ToUpper();
 
+                List<InscanMaster> domesticMatches;
                 if (_searchMode == "ref")
                 {
-                    matches = await db.InscanMasters
+                    domesticMatches = await db.InscanMasters
                         .AsNoTracking()
-                        .Where(i => i.ReferenceNo == term && !i.IsDeleted)
+                        .Where(i => i.ReferenceNo != null && i.ReferenceNo.ToUpper() == termUpper && !i.IsDeleted)
                         .ToListAsync();
                 }
                 else
                 {
                     var awb = await db.InscanMasters
                         .AsNoTracking()
-                        .FirstOrDefaultAsync(i => i.AWBNo == term && !i.IsDeleted);
-                    matches = awb != null ? new List<InscanMaster> { awb } : new List<InscanMaster>();
+                        .FirstOrDefaultAsync(i => i.AWBNo != null && i.AWBNo.ToUpper() == termUpper && !i.IsDeleted);
+                    domesticMatches = awb != null ? new List<InscanMaster> { awb } : new List<InscanMaster>();
                 }
 
-                if (!matches.Any())
+                foreach (var awb in domesticMatches)
                 {
-                    _notFoundAwbs.Add(term);
-                    continue;
-                }
-
-                foreach (var awb in matches)
-                {
-                    if (_results.Any(r => r.Id == awb.Id)) continue;
+                    if (_results.Any(r => r.Id == awb.Id && !r.IsImport)) continue;
+                    foundAny = true;
 
                     var latestEvent = await db.AWBTrackings
                         .AsNoTracking()
@@ -397,6 +438,49 @@
                         LastUpdate = latestEvent != null ? FormatEventDate(latestEvent.EventDateTime) : FormatEventDate(awb.TransactionDate)
                     });
                 }
+
+                List<ImportShipment> importMatches;
+                if (_searchMode == "ref")
+                {
+                    importMatches = await db.Set<ImportShipment>()
+                        .AsNoTracking()
+                        .Where(i => i.ReferenceNo != null && i.ReferenceNo.ToUpper() == termUpper && !i.IsDeleted)
+                        .ToListAsync();
+                }
+                else
+                {
+                    importMatches = await db.Set<ImportShipment>()
+                        .AsNoTracking()
+                        .Where(i => i.AWBNo != null && i.AWBNo.ToUpper() == termUpper && !i.IsDeleted)
+                        .ToListAsync();
+                }
+
+                foreach (var imp in importMatches)
+                {
+                    if (_results.Any(r => r.Id == imp.Id && r.IsImport)) continue;
+                    foundAny = true;
+
+                    _results.Add(new TrackingResult
+                    {
+                        Id = imp.Id,
+                        AWBNo = imp.AWBNo,
+                        ReferenceNo = imp.ReferenceNo,
+                        Pieces = imp.Pieces,
+                        Weight = imp.ChargeableWeight ?? imp.Weight,
+                        ServiceType = imp.ServiceType ?? "Import",
+                        Status = CourierStatus.Pending,
+                        ImportStatus = imp.Status,
+                        IsImport = true,
+                        Origin = !string.IsNullOrEmpty(imp.ShipperCity) ? $"{imp.ShipperCity}" : (imp.ShipperCountry ?? "Origin"),
+                        Destination = !string.IsNullOrEmpty(imp.ConsigneeCity) ? imp.ConsigneeCity : (imp.ConsigneeCountry ?? "N/A"),
+                        LastUpdate = FormatEventDate(imp.HandedOverAt ?? imp.ReleasedAt ?? imp.CustomsClearedAt ?? imp.InscannedAt ?? imp.CreatedAt)
+                    });
+                }
+
+                if (!foundAny)
+                {
+                    _notFoundAwbs.Add(term);
+                }
             }
         }
         catch (Exception ex)
@@ -413,17 +497,109 @@
     private async Task OpenTimeline(TrackingResult result)
     {
         _selectedResult = result;
+        _timelineEvents.Clear();
+        _importTimelineEvents.Clear();
 
         await using var db = await DbFactory.CreateDbContextAsync();
-        _timelineEvents = await db.ShipmentStatusHistories
-            .Include(t => t.Status)
-            .AsNoTracking()
-            .Where(t => t.InscanMasterId == result.Id)
-            .OrderByDescending(t => t.ChangedAt)
-            .ToListAsync();
+
+        if (result.IsImport)
+        {
+            var importShipment = await db.Set<ImportShipment>()
+                .AsNoTracking()
+                .FirstOrDefaultAsync(i => i.Id == result.Id);
+
+            if (importShipment != null)
+            {
+                _importTimelineEvents = BuildImportTimeline(importShipment);
+            }
+        }
+        else
+        {
+            _timelineEvents = await db.ShipmentStatusHistories
+                .Include(t => t.Status)
+                .AsNoTracking()
+                .Where(t => t.InscanMasterId == result.Id)
+                .OrderByDescending(t => t.ChangedAt)
+                .ToListAsync();
+        }
 
         _timelineOpen = true;
         StateHasChanged();
+    }
+
+    private List<ImportTimelineEvent> BuildImportTimeline(ImportShipment shipment)
+    {
+        var timeline = new List<ImportTimelineEvent>();
+
+        timeline.Add(new ImportTimelineEvent
+        {
+            EventType = "Shipment Created",
+            Timestamp = shipment.CreatedAt
+        });
+
+        if (shipment.Status != ImportShipmentStatus.Expected || shipment.CustomsStatus != CustomsStatus.NotApplicable)
+        {
+            if (!shipment.InscannedAt.HasValue && !shipment.HandedOverAt.HasValue)
+            {
+                timeline.Add(new ImportTimelineEvent
+                {
+                    EventType = $"Status: {FormatImportStatus(shipment.Status)}",
+                    Timestamp = shipment.CreatedAt.AddSeconds(1)
+                });
+            }
+        }
+
+        if (shipment.InscannedAt.HasValue)
+        {
+            timeline.Add(new ImportTimelineEvent
+            {
+                EventType = "Inscanned",
+                Timestamp = shipment.InscannedAt.Value,
+                UserName = shipment.InscannedByUserName
+            });
+        }
+
+        if (shipment.CustomsStatus != CustomsStatus.NotApplicable && !shipment.CustomsClearedAt.HasValue)
+        {
+            var customsEventTime = shipment.InscannedAt ?? shipment.CreatedAt;
+            timeline.Add(new ImportTimelineEvent
+            {
+                EventType = $"Customs: {shipment.CustomsStatus}",
+                Timestamp = customsEventTime.AddSeconds(1)
+            });
+        }
+
+        if (shipment.CustomsClearedAt.HasValue)
+        {
+            timeline.Add(new ImportTimelineEvent
+            {
+                EventType = "Customs Cleared",
+                Timestamp = shipment.CustomsClearedAt.Value,
+                UserName = shipment.CustomsClearedByUserName
+            });
+        }
+
+        if (shipment.ReleasedAt.HasValue)
+        {
+            timeline.Add(new ImportTimelineEvent
+            {
+                EventType = "Released",
+                Timestamp = shipment.ReleasedAt.Value,
+                UserName = shipment.ReleasedByUserName
+            });
+        }
+
+        if (shipment.HandedOverAt.HasValue)
+        {
+            timeline.Add(new ImportTimelineEvent
+            {
+                EventType = "Handed Over / Delivered",
+                Timestamp = shipment.HandedOverAt.Value,
+                UserName = shipment.HandedOverToUserName
+            });
+        }
+
+        return timeline.OrderBy(t => t.Timestamp).ToList();
     }
 
     private string FormatEventDate(DateTime dt)
@@ -432,6 +608,87 @@
             return dt.ToString("MMM dd, yyyy hh:mm tt") + " UTC";
         return dt.ToString("MMM dd, yyyy hh:mm tt");
     }
+
+    private string GetResultStatusDisplay(TrackingResult result)
+    {
+        if (result.IsImport)
+            return FormatImportStatus(result.ImportStatus);
+        return GetStatusDisplay(result.Status);
+    }
+
+    private string GetResultStatusBadgeStyle(TrackingResult result)
+    {
+        if (result.IsImport)
+            return GetImportStatusBadgeStyle(result.ImportStatus);
+        return GetStatusBadgeStyle(result.Status);
+    }
+
+    private string GetResultStatusAvatarStyle(TrackingResult result)
+    {
+        if (result.IsImport)
+            return GetImportStatusAvatarStyle(result.ImportStatus);
+        return GetStatusAvatarStyle(result.Status);
+    }
+
+    private string GetResultStatusIcon(TrackingResult result)
+    {
+        if (result.IsImport)
+            return GetImportStatusIcon(result.ImportStatus);
+        return GetStatusIcon(result.Status);
+    }
+
+    private string FormatImportStatus(ImportShipmentStatus status) => status switch
+    {
+        ImportShipmentStatus.Expected => "Expected",
+        ImportShipmentStatus.Inscanned => "Inscanned",
+        ImportShipmentStatus.ReceivedAtWarehouse => "At Warehouse",
+        ImportShipmentStatus.PendingCustoms => "Pending Customs",
+        ImportShipmentStatus.CustomsHold => "Customs Hold",
+        ImportShipmentStatus.UnderExamination => "Under Examination",
+        ImportShipmentStatus.AwaitingDocuments => "Awaiting Documents",
+        ImportShipmentStatus.Cleared => "Cleared",
+        ImportShipmentStatus.Released => "Released",
+        ImportShipmentStatus.HandedOver => "Delivered",
+        ImportShipmentStatus.OnHold => "On Hold",
+        _ => status.ToString()
+    };
+
+    private string GetImportStatusIcon(ImportShipmentStatus status) => status switch
+    {
+        ImportShipmentStatus.HandedOver => Icons.Material.Filled.CheckCircle,
+        ImportShipmentStatus.Released => Icons.Material.Filled.Output,
+        ImportShipmentStatus.Cleared => Icons.Material.Filled.Verified,
+        ImportShipmentStatus.Inscanned or ImportShipmentStatus.ReceivedAtWarehouse => Icons.Material.Filled.Warehouse,
+        ImportShipmentStatus.PendingCustoms or ImportShipmentStatus.CustomsHold or ImportShipmentStatus.UnderExamination => Icons.Material.Filled.Policy,
+        ImportShipmentStatus.AwaitingDocuments => Icons.Material.Filled.Description,
+        ImportShipmentStatus.OnHold => Icons.Material.Filled.PauseCircle,
+        ImportShipmentStatus.Expected => Icons.Material.Filled.Schedule,
+        _ => Icons.Material.Filled.Flight
+    };
+
+    private string GetImportStatusAvatarStyle(ImportShipmentStatus status) => status switch
+    {
+        ImportShipmentStatus.HandedOver => "background: #d1fae5; color: #059669;",
+        ImportShipmentStatus.Released => "background: #dbeafe; color: #2563eb;",
+        ImportShipmentStatus.Cleared => "background: #e0f2fe; color: #0284c7;",
+        ImportShipmentStatus.Inscanned or ImportShipmentStatus.ReceivedAtWarehouse => "background: #ede9fe; color: #7c3aed;",
+        ImportShipmentStatus.PendingCustoms or ImportShipmentStatus.UnderExamination => "background: #fef3c7; color: #d97706;",
+        ImportShipmentStatus.CustomsHold or ImportShipmentStatus.OnHold => "background: #fee2e2; color: #dc2626;",
+        ImportShipmentStatus.AwaitingDocuments => "background: #fef3c7; color: #d97706;",
+        _ => "background: #f1f5f9; color: #475569;"
+    };
+
+    private string GetImportStatusBadgeStyle(ImportShipmentStatus status) => status switch
+    {
+        ImportShipmentStatus.HandedOver => "background: #d1fae5; color: #059669;",
+        ImportShipmentStatus.Released => "background: #dbeafe; color: #2563eb;",
+        ImportShipmentStatus.Cleared => "background: #e0f2fe; color: #0284c7;",
+        ImportShipmentStatus.Inscanned or ImportShipmentStatus.ReceivedAtWarehouse => "background: #ede9fe; color: #7c3aed;",
+        ImportShipmentStatus.PendingCustoms or ImportShipmentStatus.UnderExamination => "background: #fef3c7; color: #d97706;",
+        ImportShipmentStatus.CustomsHold or ImportShipmentStatus.OnHold => "background: #fee2e2; color: #dc2626;",
+        ImportShipmentStatus.AwaitingDocuments => "background: #fef3c7; color: #d97706;",
+        _ => "background: #f1f5f9; color: #475569;"
+    };
 
     private string GetStatusDisplay(CourierStatus status) => status switch
     {
@@ -496,8 +753,17 @@
         public decimal Weight { get; set; }
         public string ServiceType { get; set; } = "";
         public CourierStatus Status { get; set; }
+        public ImportShipmentStatus ImportStatus { get; set; }
+        public bool IsImport { get; set; }
         public string Origin { get; set; } = "";
         public string Destination { get; set; } = "";
         public string LastUpdate { get; set; } = "";
+    }
+
+    private class ImportTimelineEvent
+    {
+        public string EventType { get; set; } = "";
+        public DateTime Timestamp { get; set; }
+        public string? UserName { get; set; }
     }
 }
