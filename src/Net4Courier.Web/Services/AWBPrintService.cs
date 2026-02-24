@@ -64,7 +64,7 @@ public class AWBPrintService
 
                 page.Content().Column(outer =>
                 {
-                    outer.Item().Height(405).Border(0.5f).BorderColor("#cccccc").Padding(10).Column(copy1 =>
+                    outer.Item().Border(0.5f).BorderColor("#cccccc").Padding(10).ScaleToFit().Column(copy1 =>
                     {
                         copy1.Item().PaddingBottom(2).Text("CUSTOMER COPY").Bold().FontSize(7).FontColor("#1e3a5f");
                         copy1.Spacing(0);
@@ -76,7 +76,7 @@ public class AWBPrintService
 
                     outer.Item().Height(6);
 
-                    outer.Item().Height(405).Border(0.5f).BorderColor("#cccccc").Padding(10).Column(copy2 =>
+                    outer.Item().Border(0.5f).BorderColor("#cccccc").Padding(10).ScaleToFit().Column(copy2 =>
                     {
                         copy2.Item().PaddingBottom(2).Text("COURIER COPY").Bold().FontSize(7).FontColor("#1e3a5f");
                         copy2.Spacing(0);
