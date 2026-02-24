@@ -660,6 +660,7 @@ else
     private Party? _selectedCoLoader;
     private List<ImportShipment> _shipments = new();
     private List<Country> _allCountries = new();
+    private ImportMasterStatus _previousStatus;
     
     private List<BreadcrumbItem> _breadcrumbs = new()
     {
@@ -725,11 +726,14 @@ else
                 .Where(s => s.ImportMasterId == Id.Value && !s.IsDeleted)
                 .OrderBy(s => s.AWBNo)
                 .ToListAsync();
+            
+            _previousStatus = _import.Status;
         }
         else
         {
             _import.TransactionDate = DateTime.SpecifyKind(DateTime.UtcNow, DateTimeKind.Utc);
             _import.Status = ImportMasterStatus.Draft;
+            _previousStatus = ImportMasterStatus.Draft;
         }
         UpdateReferenceLabel();
     }
@@ -924,9 +928,59 @@ else
             {
                 _import.ModifiedAt = DateTime.UtcNow;
                 dbContext.ImportMasters.Update(_import);
+                
+                if (_import.Status != _previousStatus)
+                {
+                    var shipments = await dbContext.ImportShipments
+                        .Where(s => s.ImportMasterId == _import.Id && !s.IsDeleted)
+                        .ToListAsync();
+                    
+                    var now = DateTime.UtcNow;
+                    foreach (var shipment in shipments)
+                    {
+                        switch (_import.Status)
+                        {
+                            case ImportMasterStatus.Inscanned:
+                            case ImportMasterStatus.Inscanning:
+                                if (!shipment.InscannedAt.HasValue)
+                                {
+                                    shipment.InscannedAt = now;
+                                    if (shipment.Status < ImportShipmentStatus.Inscanned)
+                                        shipment.Status = ImportShipmentStatus.Inscanned;
+                                }
+                                break;
+                            case ImportMasterStatus.CustomsProcessing:
+                                if (shipment.CustomsStatus == CustomsStatus.NotApplicable)
+                                    shipment.CustomsStatus = CustomsStatus.PendingFiling;
+                                if (shipment.Status < ImportShipmentStatus.PendingCustoms)
+                                    shipment.Status = ImportShipmentStatus.PendingCustoms;
+                                break;
+                            case ImportMasterStatus.Cleared:
+                                if (!shipment.CustomsClearedAt.HasValue)
+                                {
+                                    shipment.CustomsClearedAt = now;
+                                    shipment.CustomsStatus = CustomsStatus.Cleared;
+                                }
+                                if (!shipment.InscannedAt.HasValue)
+                                    shipment.InscannedAt = now;
+                                if (shipment.Status < ImportShipmentStatus.Cleared)
+                                    shipment.Status = ImportShipmentStatus.Cleared;
+                                break;
+                            case ImportMasterStatus.Closed:
+                                if (!shipment.ReleasedAt.HasValue)
+                                    shipment.ReleasedAt = now;
+                                if (shipment.Status < ImportShipmentStatus.Released)
+                                    shipment.Status = ImportShipmentStatus.Released;
+                                break;
+                        }
+                        shipment.ModifiedAt = now;
+                        dbContext.ImportShipments.Update(shipment);
+                    }
+                }
             }
             
             await dbContext.SaveChangesAsync();
+            _previousStatus = _import.Status;
             Snackbar.Add("Import saved successfully", Severity.Success);
             
             if (IsNew)
