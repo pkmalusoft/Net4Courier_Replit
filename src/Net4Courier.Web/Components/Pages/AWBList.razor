@@ -155,7 +155,7 @@
             <MudTd DataLabel="Status">
                 <MudChip T="string" Color="@GetStatusColorFromString(context.Status)" Size="Size.Small">@context.Status</MudChip>
             </MudTd>
-            <MudTd DataLabel="Amount">@AppAuthState.CurrencySymbol @context.Amount?.ToString("N2")</MudTd>
+            <MudTd DataLabel="Amount">@_currencyDisplay @context.Amount?.ToString("N2")</MudTd>
         </RowTemplate>
         <NoRecordsContent>
             <MudText>No shipments found.</MudText>
@@ -172,6 +172,7 @@
     private Dictionary<long, string> _pickupNoLookup = new();
     private bool _loading = true;
     private string _searchString = "";
+    private string _currencyDisplay = "";
     private DateTime? _fromDate = DateTime.Today;
     private DateTime? _toDate = DateTime.Today;
     private CourierStatus? _statusFilter;
@@ -200,6 +201,9 @@
 
     protected override async Task OnInitializedAsync()
     {
+        var code = AppAuthState.CurrencyCode;
+        var symbol = AppAuthState.CurrencySymbol;
+        _currencyDisplay = !string.IsNullOrWhiteSpace(code) ? code : (!string.IsNullOrWhiteSpace(symbol) ? symbol : "");
         await Search();
     }
 
@@ -271,12 +275,12 @@
             {
                 var importLookup = await dbContext.ImportShipments
                     .Where(s => s.LinkedInscanMasterId.HasValue && importInscanIds.Contains(s.LinkedInscanMasterId.Value))
-                    .Select(s => new { s.LinkedInscanMasterId, s.ImportMasterId, ShipmentId = s.Id })
+                    .Select(s => new { s.LinkedInscanMasterId, s.ImportMasterId, ShipmentId = s.Id, Weight = s.ChargeableWeight ?? s.Weight, Amount = s.TotalCustomsCharges })
                     .ToListAsync();
-                var lookupDict = importLookup.ToDictionary(x => x.LinkedInscanMasterId!.Value, x => new { x.ImportMasterId, x.ShipmentId });
+                var lookupDict = importLookup.ToDictionary(x => x.LinkedInscanMasterId!.Value, x => new { x.ImportMasterId, x.ShipmentId, x.Weight, x.Amount });
                 inscanResults = inscanResults.Select(r =>
                     r.MovementTypeId == MovementType.InternationalImport && lookupDict.TryGetValue(r.Id, out var imp)
-                        ? r with { ImportMasterId = imp.ImportMasterId, ImportShipmentId = imp.ShipmentId }
+                        ? r with { ImportMasterId = imp.ImportMasterId, ImportShipmentId = imp.ShipmentId, Weight = r.Weight ?? imp.Weight, Amount = r.Amount ?? imp.Amount }
                         : r
                 ).ToList();
             }

@@ -68,6 +68,18 @@ public class ShipmentStatusService
         {
             inscan.CourierStatusId = status.MapsToCourierStatus.Value;
             inscan.ModifiedAt = DateTime.UtcNow;
+
+            var linkedImportShipment = await _context.ImportShipments
+                .FirstOrDefaultAsync(s => s.LinkedInscanMasterId == inscanMasterId);
+            if (linkedImportShipment != null)
+            {
+                var mappedImportStatus = MapCourierStatusToImportStatus(status.MapsToCourierStatus.Value);
+                if (mappedImportStatus.HasValue)
+                {
+                    linkedImportShipment.Status = mappedImportStatus.Value;
+                    linkedImportShipment.ModifiedAt = DateTime.UtcNow;
+                }
+            }
         }
 
         await _context.SaveChangesAsync();
@@ -228,5 +240,19 @@ public class ShipmentStatusService
         
         _context.ShipmentStatuses.AddRange(rtsStatuses);
         await _context.SaveChangesAsync();
+    }
+
+    private static ImportShipmentStatus? MapCourierStatusToImportStatus(CourierStatus courierStatus)
+    {
+        return courierStatus switch
+        {
+            CourierStatus.InscanAtOrigin => ImportShipmentStatus.Inscanned,
+            CourierStatus.InTransit => ImportShipmentStatus.Inscanned,
+            CourierStatus.InscanAtDestination => ImportShipmentStatus.ReceivedAtWarehouse,
+            CourierStatus.OutForDelivery => ImportShipmentStatus.Released,
+            CourierStatus.Delivered => ImportShipmentStatus.HandedOver,
+            CourierStatus.OnHold => ImportShipmentStatus.OnHold,
+            _ => null
+        };
     }
 }
