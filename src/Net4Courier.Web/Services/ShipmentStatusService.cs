@@ -70,7 +70,9 @@ public class ShipmentStatusService
             inscan.ModifiedAt = DateTime.UtcNow;
 
             var linkedImportShipment = await _context.ImportShipments
-                .FirstOrDefaultAsync(s => s.LinkedInscanMasterId == inscanMasterId);
+                .FirstOrDefaultAsync(s => s.LinkedInscanMasterId == inscanMasterId)
+                ?? await _context.ImportShipments
+                    .FirstOrDefaultAsync(s => s.AWBNo == inscan.AWBNo);
             if (linkedImportShipment != null)
             {
                 var mappedImportStatus = MapCourierStatusToImportStatus(status.MapsToCourierStatus.Value);

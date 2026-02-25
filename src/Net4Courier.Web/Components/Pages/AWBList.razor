@@ -267,22 +267,31 @@
                 ))
                 .ToListAsync();
 
-            var importInscanIds = inscanResults
+            var importInscanAwbs = inscanResults
                 .Where(r => r.MovementTypeId == MovementType.InternationalImport)
-                .Select(r => r.Id)
                 .ToList();
-            if (importInscanIds.Any())
+            if (importInscanAwbs.Any())
             {
+                var inscanIds = importInscanAwbs.Select(r => r.Id).ToList();
+                var awbNos = importInscanAwbs.Select(r => r.AWBNo).ToList();
                 var importLookup = await dbContext.ImportShipments
-                    .Where(s => s.LinkedInscanMasterId.HasValue && importInscanIds.Contains(s.LinkedInscanMasterId.Value))
-                    .Select(s => new { s.LinkedInscanMasterId, s.ImportMasterId, ShipmentId = s.Id, Weight = s.ChargeableWeight ?? s.Weight, Amount = s.TotalCustomsCharges })
+                    .Where(s => (s.LinkedInscanMasterId.HasValue && inscanIds.Contains(s.LinkedInscanMasterId.Value))
+                             || awbNos.Contains(s.AWBNo))
+                    .Select(s => new { s.AWBNo, s.LinkedInscanMasterId, s.ImportMasterId, ShipmentId = s.Id, Weight = s.ChargeableWeight ?? s.Weight, Amount = s.TotalCustomsCharges })
                     .ToListAsync();
-                var lookupDict = importLookup.ToDictionary(x => x.LinkedInscanMasterId!.Value, x => new { x.ImportMasterId, x.ShipmentId, x.Weight, x.Amount });
+                var lookupByInscanId = importLookup.Where(x => x.LinkedInscanMasterId.HasValue)
+                    .GroupBy(x => x.LinkedInscanMasterId!.Value)
+                    .ToDictionary(g => g.Key, g => g.First());
+                var lookupByAwb = importLookup
+                    .GroupBy(x => x.AWBNo)
+                    .ToDictionary(g => g.Key, g => g.First(), StringComparer.OrdinalIgnoreCase);
                 inscanResults = inscanResults.Select(r =>
-                    r.MovementTypeId == MovementType.InternationalImport && lookupDict.TryGetValue(r.Id, out var imp)
-                        ? r with { ImportMasterId = imp.ImportMasterId, ImportShipmentId = imp.ShipmentId, Weight = r.Weight ?? imp.Weight, Amount = r.Amount ?? imp.Amount }
-                        : r
-                ).ToList();
+                {
+                    if (r.MovementTypeId != MovementType.InternationalImport) return r;
+                    var imp = lookupByInscanId.GetValueOrDefault(r.Id) ?? lookupByAwb.GetValueOrDefault(r.AWBNo);
+                    if (imp == null) return r;
+                    return r with { ImportMasterId = imp.ImportMasterId, ImportShipmentId = imp.ShipmentId, Weight = r.Weight ?? imp.Weight, Amount = r.Amount ?? imp.Amount };
+                }).ToList();
             }
 
             results.AddRange(inscanResults);
