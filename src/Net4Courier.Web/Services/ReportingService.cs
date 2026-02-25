@@ -1622,7 +1622,7 @@ public class ReportingService
         }
     }
 
-    public byte[] GenerateDutyReceiptPdf(InscanMaster shipment, string currency = "AED", byte[]? logoData = null, string? companyName = null, string? companyAddress = null, string? companyPhone = null, string? companyEmail = null, string? companyVat = null, string? customerAccount = null, List<AWBOtherCharge>? otherCharges = null)
+    public byte[] GenerateDutyReceiptPdf(InscanMaster shipment, string currency = "AED", byte[]? logoData = null, string? companyName = null, string? companyAddress = null, string? companyPhone = null, string? companyEmail = null, string? companyVat = null, string? customerAccount = null, List<AWBOtherCharge>? otherCharges = null, decimal importVat = 0, decimal codAmount = 0)
     {
         var invoiceNo = $"D{shipment.Id:D8}";
         var hwbNo = shipment.AWBNo ?? "";
@@ -1758,6 +1758,22 @@ public class ReportingService
                                 table.Cell().BorderLeft(1).Padding(4).AlignRight().Text($"{dutyAmount:N2}").FontSize(9);
                             }
 
+                            if (codAmount > 0)
+                            {
+                                table.Cell().Padding(4).Text("COD CHARGES").FontSize(9);
+                                table.Cell().BorderLeft(1).Padding(4).AlignRight().Text($"{codAmount:N2}").FontSize(9);
+                                table.Cell().BorderLeft(1).Padding(4).AlignRight().Text("0.00").FontSize(9);
+                                table.Cell().BorderLeft(1).Padding(4).AlignRight().Text($"{codAmount:N2}").FontSize(9);
+                            }
+
+                            if (importVat > 0)
+                            {
+                                table.Cell().Padding(4).Text("IMPORT VAT").FontSize(9);
+                                table.Cell().BorderLeft(1).Padding(4).AlignRight().Text($"{importVat:N2}").FontSize(9);
+                                table.Cell().BorderLeft(1).Padding(4).AlignRight().Text("0.00").FontSize(9);
+                                table.Cell().BorderLeft(1).Padding(4).AlignRight().Text($"{importVat:N2}").FontSize(9);
+                            }
+
                             var adminFee = shipment.OtherCharge ?? 0;
                             if (adminFee > 0)
                             {
@@ -1792,7 +1808,7 @@ public class ReportingService
                     });
 
                     var otherChargesTotal = otherCharges?.Sum(c => c.Amount) ?? 0m;
-                    var subtotal = (shipment.DutyVatAmount ?? 0) + (shipment.OtherCharge ?? 0) + otherChargesTotal;
+                    var subtotal = (shipment.DutyVatAmount ?? 0) + codAmount + importVat + (shipment.OtherCharge ?? 0) + otherChargesTotal;
                     var totalVat = 0m;
                     var totalPayable = subtotal + totalVat;
 
