@@ -93,10 +93,10 @@
                 @if (context.IsImport)
                 {
                     <div class="d-flex flex-wrap" style="max-width: 120px;">
-                        <MudIconButton Icon="@Icons.Material.Filled.Visibility" Size="Size.Small" Color="Color.Secondary" Href="@($"/import-shipment/{context.Id}")" Title="View Details" />
+                        <MudIconButton Icon="@Icons.Material.Filled.Visibility" Size="Size.Small" Color="Color.Secondary" Href="@($"/import-shipment/{(context.ImportShipmentId ?? context.Id)}")" Title="View Details" />
                         @if (IsEditableStatus(context.Status) && context.ImportMasterId.HasValue)
                         {
-                            <MudIconButton Icon="@Icons.Material.Filled.Edit" Size="Size.Small" Color="Color.Primary" Href="@($"/import-shipment-entry/{context.ImportMasterId}/{context.Id}")" Title="Edit" />
+                            <MudIconButton Icon="@Icons.Material.Filled.Edit" Size="Size.Small" Color="Color.Primary" Href="@($"/import-shipment-entry/{context.ImportMasterId}/{(context.ImportShipmentId ?? context.Id)}")" Title="Edit" />
                         }
                         <MudIconButton Icon="@Icons.Material.Filled.LocalShipping" Size="Size.Small" Color="Color.Info" Href="@($"/tracking/{context.AWBNo}")" Title="Track" />
                         <MudMenu Icon="@Icons.Material.Filled.Print" Size="Size.Small" Color="Color.Default" Title="Print Options" Dense="true">
@@ -130,7 +130,7 @@
                 <div>
                     @if (context.IsImport)
                     {
-                        <MudLink Href="@(context.ImportMasterId.HasValue ? $"/import-shipment-entry/{context.ImportMasterId}/{context.Id}" : $"/import-shipment/{context.Id}")">@context.AWBNo</MudLink>
+                        <MudLink Href="@(context.ImportMasterId.HasValue ? $"/import-shipment-entry/{context.ImportMasterId}/{(context.ImportShipmentId ?? context.Id)}" : $"/import-shipment/{(context.ImportShipmentId ?? context.Id)}")">@context.AWBNo</MudLink>
                     }
                     else
                     {
@@ -189,7 +189,8 @@
         decimal? Amount,
         MovementType MovementTypeId,
         long? PickupRequestId,
-        long? ImportMasterId = null
+        long? ImportMasterId,
+        long? ImportShipmentId
     )
     {
         public bool IsImport => MovementTypeId == MovementType.InternationalImport;
@@ -257,10 +258,29 @@
                     i.NetTotal,
                     i.MovementTypeId,
                     i.PickupRequestId,
+                    (long?)null,
                     (long?)null
                 ))
                 .ToListAsync();
-            
+
+            var importInscanIds = inscanResults
+                .Where(r => r.MovementTypeId == MovementType.InternationalImport)
+                .Select(r => r.Id)
+                .ToList();
+            if (importInscanIds.Any())
+            {
+                var importLookup = await dbContext.ImportShipments
+                    .Where(s => s.LinkedInscanMasterId.HasValue && importInscanIds.Contains(s.LinkedInscanMasterId.Value))
+                    .Select(s => new { s.LinkedInscanMasterId, s.ImportMasterId, ShipmentId = s.Id })
+                    .ToListAsync();
+                var lookupDict = importLookup.ToDictionary(x => x.LinkedInscanMasterId!.Value, x => new { x.ImportMasterId, x.ShipmentId });
+                inscanResults = inscanResults.Select(r =>
+                    r.MovementTypeId == MovementType.InternationalImport && lookupDict.TryGetValue(r.Id, out var imp)
+                        ? r with { ImportMasterId = imp.ImportMasterId, ImportShipmentId = imp.ShipmentId }
+                        : r
+                ).ToList();
+            }
+
             results.AddRange(inscanResults);
         }
         
@@ -299,8 +319,9 @@
                     i.Status.ToString(),
                     i.TotalCustomsCharges,
                     MovementType.InternationalImport,
-                    null,
-                    i.ImportMasterId
+                    (long?)null,
+                    i.ImportMasterId,
+                    (long?)i.Id
                 ))
                 .ToListAsync();
             
