@@ -195,12 +195,40 @@ else
             _branchVatPercent = branch?.VatPercentage ?? 0;
         }
 
+        var healAwbNos = _drsDetails
+            .Where(d => d.Inscan?.AWBNo != null)
+            .Select(d => d.Inscan!.AWBNo)
+            .Distinct()
+            .ToList();
+        var healImportTotals = new Dictionary<string, decimal>();
+        if (healAwbNos.Any())
+        {
+            var impList = await dbContext.ImportShipments
+                .Where(imp => healAwbNos.Contains(imp.AWBNo) && !imp.IsDeleted)
+                .Select(imp => new { imp.AWBNo, imp.DutyAmount, imp.VATAmount, imp.OtherCharges, imp.CODAmount })
+                .ToListAsync();
+            foreach (var imp in impList)
+            {
+                var total = (imp.DutyAmount ?? 0) + (imp.VATAmount ?? 0) + (imp.OtherCharges ?? 0) + (imp.CODAmount ?? 0);
+                if (!healImportTotals.ContainsKey(imp.AWBNo) || total > healImportTotals[imp.AWBNo])
+                    healImportTotals[imp.AWBNo] = total;
+            }
+        }
+
         foreach (var detail in _drsDetails)
         {
             if ((detail.CODAmount == null || detail.CODAmount == 0) && detail.Inscan != null)
             {
                 if (detail.Inscan.PaymentModeId == PaymentMode.COD || detail.Inscan.IsCOD)
                     detail.CODAmount = detail.Inscan.CODAmount ?? 0;
+            }
+            var awbNo = detail.Inscan?.AWBNo;
+            if (!string.IsNullOrEmpty(awbNo) && healImportTotals.TryGetValue(awbNo, out var importTotal))
+            {
+                if (importTotal > (detail.CODAmount ?? 0))
+                {
+                    detail.CODAmount = importTotal;
+                }
             }
         }
             
@@ -537,7 +565,9 @@ else
             }
 
             var nextSequence = _drsDetails.Count + 1;
-            var codAmount = importShipment.IsCOD ? (importShipment.CODAmount ?? 0) : 0;
+            var codAmount = (importShipment.DutyAmount ?? 0) + (importShipment.VATAmount ?? 0) + (importShipment.OtherCharges ?? 0) + (importShipment.CODAmount ?? 0);
+            if (codAmount == 0 && importShipment.IsCOD)
+                codAmount = importShipment.CODAmount ?? 0;
             var previousImportAttempts = existingImportDrsDetails.Count;
 
             var detail = new DRSDetail
