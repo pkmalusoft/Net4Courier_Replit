@@ -327,8 +327,11 @@ else
                                                    OnClick="@(() => OpenEditAddressDialog(context))" Title="Edit Address" />
                                     <MudIconButton Icon="@Icons.Material.Filled.Edit" Size="Size.Small" Color="Color.Primary"
                                                    OnClick="@(() => EditShipment(context))" Title="Edit All" />
-                                    <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" Color="Color.Error"
-                                                   OnClick="@(() => DeleteShipment(context))" Title="Delete" />
+                                    @if (context.Status is not (ImportShipmentStatus.Released or ImportShipmentStatus.HandedOver))
+                                    {
+                                        <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" Color="Color.Error"
+                                                       OnClick="@(() => DeleteShipment(context))" Title="Delete" />
+                                    }
                                 </MudTd>
                             </RowTemplate>
                         </MudTable>
@@ -1326,6 +1329,12 @@ else
     
     private async Task DeleteShipment(ImportShipment shipment)
     {
+        if (shipment.Status is ImportShipmentStatus.Released or ImportShipmentStatus.HandedOver)
+        {
+            Snackbar.Add("Cannot delete shipment — it is already Out for Delivery or Delivered", Severity.Warning);
+            return;
+        }
+
         var confirm = await DialogService.ShowMessageBox(
             "Delete Shipment",
             $"Are you sure you want to delete shipment '{shipment.AWBNo}'?",
@@ -1339,6 +1348,11 @@ else
             var existing = await dbContext.ImportShipments.FindAsync(shipment.Id);
             if (existing != null)
             {
+                if (existing.Status is ImportShipmentStatus.Released or ImportShipmentStatus.HandedOver)
+                {
+                    Snackbar.Add("Cannot delete shipment — it is already Out for Delivery or Delivered", Severity.Warning);
+                    return;
+                }
                 existing.IsDeleted = true;
                 existing.ModifiedAt = DateTime.UtcNow;
                 await dbContext.SaveChangesAsync();

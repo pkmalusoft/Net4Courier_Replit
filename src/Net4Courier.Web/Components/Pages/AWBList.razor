@@ -122,7 +122,10 @@
                             <MudMenuItem OnClick="@(() => PrintTrackingDetails(context.AWBNo))">Tracking Details</MudMenuItem>
                             <MudMenuItem OnClick="@(() => PrintDutyReceipt(context.Id))">Duty Receipt</MudMenuItem>
                         </MudMenu>
-                        <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" Color="Color.Error" OnClick="@(() => DeleteAWBById(context.Id))" Title="Delete" />
+                        @if (IsDeletableStatus(context.Status))
+                        {
+                            <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" Color="Color.Error" OnClick="@(() => DeleteAWBById(context.Id))" Title="Delete" />
+                        }
                     </div>
                 }
             </MudTd>
@@ -367,6 +370,11 @@
         return status is not ("OutForDelivery" or "ReadyForDelivery" or "Delivered" or "NotDelivered" or "ReturnToOrigin" or "Returned" or "Cancelled" or "Closed" or "HandedOver");
     }
 
+    private bool IsDeletableStatus(string status)
+    {
+        return status is not ("OutForDelivery" or "Delivered" or "ReturnToOrigin" or "Returned" or "Cancelled" or "Closed" or "HandedOver" or "NotDelivered" or "ReadyForDelivery");
+    }
+
     private Color GetStatusColor(CourierStatus status) => status switch
     {
         CourierStatus.Pending => Color.Default,
@@ -410,6 +418,12 @@
         await using var dbContext = await DbFactory.CreateDbContextAsync();
         var shipment = await dbContext.InscanMasters.FindAsync(id);
         if (shipment == null) return;
+
+        if (shipment.CourierStatusId is CourierStatus.OutForDelivery or CourierStatus.Delivered or CourierStatus.Returned)
+        {
+            Snackbar.Add("Cannot delete shipment — it is already Out for Delivery or beyond", Severity.Warning);
+            return;
+        }
         
         var confirm = await DialogService.ShowMessageBox("Confirm Delete", $"Are you sure you want to delete AWB {shipment.AWBNo}?", yesText: "Delete", cancelText: "Cancel");
         
