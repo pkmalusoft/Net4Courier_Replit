@@ -1716,7 +1716,7 @@ public class ReportingService
                             table.Cell().Text($"Origin: {shipment.ConsignorCity ?? ""}").FontSize(8);
                             table.Cell().Text($"Pieces: {shipment.Pieces ?? 1}").FontSize(8);
                             table.Cell().Text($"Contents: {cargoDesc}").FontSize(8);
-                            table.Cell().AlignRight().Text($"Arrival: {shipment.TransactionDate:dd/MM/yyyy}").FontSize(8);
+                            table.Cell().Text($"Arrival: {shipment.TransactionDate:dd/MM/yyyy}").FontSize(8);
                             
                             table.Cell().Text($"Destination: {shipment.ConsigneeCity ?? ""}").FontSize(8);
                             table.Cell().Text($"Weight: {shipment.Weight:N2}").FontSize(8);
