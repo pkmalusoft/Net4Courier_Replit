@@ -497,6 +497,74 @@
                                 }
                             </div>
                         }
+
+                        @if (result.PODTracking != null)
+                        {
+                            <div class="tracking-main-card mt-4 pa-4">
+                                <div class="d-flex align-center gap-2 mb-3">
+                                    <MudIcon Icon="@Icons.Material.Filled.CameraAlt" Size="Size.Small" Color="Color.Success" />
+                                    <MudText Typo="Typo.subtitle1" Style="font-weight: 600;">Proof of Delivery</MudText>
+                                </div>
+                                <MudGrid>
+                                    @if (!string.IsNullOrEmpty(result.PODTracking.ReceivedBy))
+                                    {
+                                        <MudItem xs="6" sm="4">
+                                            <MudText Typo="Typo.caption" Style="color: #6b7280;">Received By</MudText>
+                                            <MudText Typo="Typo.body2" Style="font-weight: 500;">@result.PODTracking.ReceivedBy</MudText>
+                                        </MudItem>
+                                    }
+                                    @if (!string.IsNullOrEmpty(result.PODTracking.Relation))
+                                    {
+                                        <MudItem xs="6" sm="4">
+                                            <MudText Typo="Typo.caption" Style="color: #6b7280;">Relation</MudText>
+                                            <MudText Typo="Typo.body2" Style="font-weight: 500;">@result.PODTracking.Relation</MudText>
+                                        </MudItem>
+                                    }
+                                    @if (result.PODTracking.DeliveryDateTime.HasValue)
+                                    {
+                                        <MudItem xs="6" sm="4">
+                                            <MudText Typo="Typo.caption" Style="color: #6b7280;">Delivered At</MudText>
+                                            <MudText Typo="Typo.body2" Style="font-weight: 500;">@DateTimeService.FormatDateTime(result.PODTracking.DeliveryDateTime, "dd MMM yyyy, HH:mm")</MudText>
+                                        </MudItem>
+                                    }
+                                </MudGrid>
+                                <MudGrid Class="mt-2">
+                                    @if (!string.IsNullOrEmpty(result.PODTracking.PODImage))
+                                    {
+                                        <MudItem xs="12" sm="4">
+                                            <MudPaper Elevation="0" Style="border: 1px solid #e5e7eb; border-radius: 8px; padding: 8px; background: white;">
+                                                <img src="@result.PODTracking.PODImage" alt="POD" style="max-width: 100%; max-height: 200px; cursor: pointer; border-radius: 4px;" @onclick="@(() => PreviewImage(result.PODTracking.PODImage!))" />
+                                            </MudPaper>
+                                        </MudItem>
+                                    }
+                                    @if (!string.IsNullOrEmpty(result.PODTracking.PODImage2))
+                                    {
+                                        <MudItem xs="12" sm="4">
+                                            <MudPaper Elevation="0" Style="border: 1px solid #e5e7eb; border-radius: 8px; padding: 8px; background: white;">
+                                                <img src="@result.PODTracking.PODImage2" alt="POD 2" style="max-width: 100%; max-height: 200px; cursor: pointer; border-radius: 4px;" @onclick="@(() => PreviewImage(result.PODTracking.PODImage2!))" />
+                                            </MudPaper>
+                                        </MudItem>
+                                    }
+                                    @if (!string.IsNullOrEmpty(result.PODTracking.PODImage3))
+                                    {
+                                        <MudItem xs="12" sm="4">
+                                            <MudPaper Elevation="0" Style="border: 1px solid #e5e7eb; border-radius: 8px; padding: 8px; background: white;">
+                                                <img src="@result.PODTracking.PODImage3" alt="POD 3" style="max-width: 100%; max-height: 200px; cursor: pointer; border-radius: 4px;" @onclick="@(() => PreviewImage(result.PODTracking.PODImage3!))" />
+                                            </MudPaper>
+                                        </MudItem>
+                                    }
+                                    @if (!string.IsNullOrEmpty(result.PODTracking.SignatureImage))
+                                    {
+                                        <MudItem xs="12" sm="4">
+                                            <MudText Typo="Typo.caption" Style="color: #6b7280;" Class="mb-1">Signature</MudText>
+                                            <MudPaper Elevation="0" Style="border: 1px solid #e5e7eb; border-radius: 8px; padding: 8px; background: white;">
+                                                <img src="@result.PODTracking.SignatureImage" alt="Signature" style="max-width: 100%; max-height: 120px;" />
+                                            </MudPaper>
+                                        </MudItem>
+                                    }
+                                </MudGrid>
+                            </div>
+                        }
                     </MudItem>
 
                     <MudItem xs="12" lg="4">
@@ -1095,6 +1163,7 @@
         public int DocumentCount { get; set; }
         public List<PaymentCollectionInfo> PaymentCollections { get; set; } = new();
         public string? CustomerAccountNo { get; set; }
+        public AWBTracking? PODTracking { get; set; }
     }
 
     private class PaymentCollectionInfo
@@ -1311,6 +1380,11 @@
 
                         trackingResult.PaymentCollections = await LoadPaymentCollections(dbContext, shipment.Id);
 
+                        trackingResult.PODTracking = await dbContext.AWBTrackings
+                            .Where(t => t.InscanId == shipment.Id && t.IsPODCaptured)
+                            .OrderByDescending(t => t.EventDateTime)
+                            .FirstOrDefaultAsync();
+
                         if (shipment.CustomerId.HasValue)
                         {
                             var custParty = await dbContext.Parties.FirstOrDefaultAsync(p => p.Id == shipment.CustomerId.Value);
@@ -1371,6 +1445,10 @@
                             var pickupCust = await dbContext.Parties.FirstOrDefaultAsync(p => p.Id == shipment.CustomerId.Value);
                             pickupAcctNo = pickupCust?.CustomerAccountNo;
                         }
+                        var pickupPod = await dbContext.AWBTrackings
+                            .Where(t => t.InscanId == shipment.Id && t.IsPODCaptured)
+                            .OrderByDescending(t => t.EventDateTime)
+                            .FirstOrDefaultAsync();
                         _shipmentResults.Add(new ShipmentTrackingResult
                         {
                             Shipment = shipment,
@@ -1378,7 +1456,8 @@
                             ServiceTypeName = serviceTypeName ?? "Standard",
                             DocumentCount = docCount,
                             PaymentCollections = pickupPayments,
-                            CustomerAccountNo = pickupAcctNo
+                            CustomerAccountNo = pickupAcctNo,
+                            PODTracking = pickupPod
                         });
                         found = true;
                     }
@@ -1412,6 +1491,10 @@
                             var refCust = await dbContext.Parties.FirstOrDefaultAsync(p => p.Id == shipment.CustomerId.Value);
                             refAcctNo = refCust?.CustomerAccountNo;
                         }
+                        var refPod = await dbContext.AWBTrackings
+                            .Where(t => t.InscanId == shipment.Id && t.IsPODCaptured)
+                            .OrderByDescending(t => t.EventDateTime)
+                            .FirstOrDefaultAsync();
                         var trackingResult = new ShipmentTrackingResult
                         {
                             Shipment = shipment,
@@ -1419,7 +1502,8 @@
                             ServiceTypeName = serviceTypeName ?? "Standard",
                             DocumentCount = refDocCount,
                             PaymentCollections = refPayments,
-                            CustomerAccountNo = refAcctNo
+                            CustomerAccountNo = refAcctNo,
+                            PODTracking = refPod
                         };
 
                         var linkedImport = await dbContext.ImportShipments
@@ -1984,17 +2068,10 @@
                 .OrderByDescending(d => d.CreatedAt)
                 .ToListAsync();
 
-            if (result.Shipment.CourierStatusId == CourierStatus.Delivered)
-            {
-                _podTracking = await dbContext.AWBTrackings
-                    .Where(t => t.InscanId == result.Shipment.Id && t.IsPODCaptured)
-                    .OrderByDescending(t => t.EventDateTime)
-                    .FirstOrDefaultAsync();
-            }
-            else
-            {
-                _podTracking = null;
-            }
+            _podTracking = await dbContext.AWBTrackings
+                .Where(t => t.InscanId == result.Shipment.Id && t.IsPODCaptured)
+                .OrderByDescending(t => t.EventDateTime)
+                .FirstOrDefaultAsync();
         }
         catch (Exception ex)
         {
