@@ -1120,6 +1120,89 @@
         public long? LinkedInscanMasterId { get; set; }
     }
 
+    private async Task<long?> EnsureInscanMasterForImport(ApplicationDbContext dbContext, ImportShipment import)
+    {
+        var existingId = await dbContext.InscanMasters
+            .Where(i => i.AWBNo == import.AWBNo && !i.IsDeleted)
+            .OrderByDescending(i => i.Id)
+            .Select(i => (long?)i.Id)
+            .FirstOrDefaultAsync();
+
+        if (existingId.HasValue)
+        {
+            if (!import.LinkedInscanMasterId.HasValue)
+            {
+                import.LinkedInscanMasterId = existingId.Value;
+                dbContext.Entry(import).Property(x => x.LinkedInscanMasterId).IsModified = true;
+                await dbContext.SaveChangesAsync();
+            }
+            return existingId.Value;
+        }
+
+        var companyId = import.ImportMaster?.CompanyId ?? AuthState.CurrentBranch?.CompanyId;
+        var branchId = import.ImportMaster?.BranchId ?? AuthState.CurrentBranch?.Id;
+
+        var inscan = new InscanMaster
+        {
+            AWBNo = import.AWBNo,
+            ReferenceNo = import.ReferenceNo,
+            TransactionDate = import.CreatedAt,
+            Consignor = import.ShipperName,
+            ConsignorAddress1 = import.ShipperAddress,
+            ConsignorCity = import.ShipperCity,
+            ConsignorCountry = import.ShipperCountry,
+            ConsignorPhone = import.ShipperPhone,
+            OriginPortCode = import.ShipperCountry,
+            Consignee = import.ConsigneeName,
+            ConsigneeAddress1 = import.ConsigneeAddress,
+            ConsigneeCity = import.ConsigneeCity,
+            ConsigneeState = import.ConsigneeState,
+            ConsigneeCountry = import.ConsigneeCountry,
+            DestinationPortCode = import.ConsigneeCountry,
+            ConsigneePostalCode = import.ConsigneePostalCode,
+            ConsigneePhone = import.ConsigneePhone,
+            ConsigneeMobile = import.ConsigneeMobile,
+            Pieces = import.Pieces,
+            Weight = import.Weight,
+            ChargeableWeight = import.ChargeableWeight ?? import.Weight,
+            CargoDescription = import.ContentsDescription,
+            MovementTypeId = MovementType.InternationalImport,
+            DocumentTypeId = import.ShipmentType == ImportShipmentType.Document ? DocumentType.Document : DocumentType.ParcelUpto30Kg,
+            PaymentModeId = import.PaymentMode,
+            CustomsValue = import.DeclaredValue,
+            DutyVatAmount = (import.DutyAmount ?? 0) + (import.VATAmount ?? 0),
+            OtherCharge = import.OtherCharges,
+            NetTotal = import.TotalCustomsCharges,
+            Currency = import.Currency,
+            IsCOD = import.IsCOD,
+            CODAmount = import.CODAmount,
+            CompanyId = companyId,
+            BranchId = branchId,
+            CourierStatusId = CourierStatus.Pending,
+        };
+
+        try
+        {
+            dbContext.InscanMasters.Add(inscan);
+            await dbContext.SaveChangesAsync();
+
+            import.LinkedInscanMasterId = inscan.Id;
+            dbContext.Entry(import).Property(x => x.LinkedInscanMasterId).IsModified = true;
+            await dbContext.SaveChangesAsync();
+
+            return inscan.Id;
+        }
+        catch
+        {
+            var retryId = await dbContext.InscanMasters
+                .Where(i => i.AWBNo == import.AWBNo && !i.IsDeleted)
+                .OrderByDescending(i => i.Id)
+                .Select(i => (long?)i.Id)
+                .FirstOrDefaultAsync();
+            return retryId;
+        }
+    }
+
     private class ImportTimelineEvent
     {
         public string EventType { get; set; } = "";
@@ -1248,15 +1331,12 @@
                     else if (importShipments.Any())
                     {
                         var primaryImport = importShipments.First();
-                        var linkedInscan = await dbContext.InscanMasters
-                            .Where(i => i.AWBNo == primaryImport.AWBNo && !i.IsDeleted)
-                            .Select(i => (long?)i.Id)
-                            .FirstOrDefaultAsync();
+                        var linkedInscanId = await EnsureInscanMasterForImport(dbContext, primaryImport);
                         _importTrackingResults.Add(new ImportTrackingResult
                         {
                             ImportShipment = primaryImport,
                             Timeline = BuildImportTimeline(primaryImport),
-                            LinkedInscanMasterId = linkedInscan
+                            LinkedInscanMasterId = linkedInscanId
                         });
                         found = true;
                     }
@@ -1374,10 +1454,12 @@
                             continue;
                         }
 
+                        var linkedInscanId = await EnsureInscanMasterForImport(dbContext, importShipment);
                         _importTrackingResults.Add(new ImportTrackingResult
                         {
                             ImportShipment = importShipment,
-                            Timeline = BuildImportTimeline(importShipment)
+                            Timeline = BuildImportTimeline(importShipment),
+                            LinkedInscanMasterId = linkedInscanId
                         });
                         found = true;
                     }

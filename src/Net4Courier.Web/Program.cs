@@ -3390,6 +3390,37 @@ public class DatabaseInitializationService : BackgroundService
             await shipmentStatusService.SeedDefaultStatuses();
             await shipmentStatusService.SeedRTSStatuses();
 
+            try
+            {
+                var unlinkedImports = await dbContext.ImportShipments
+                    .Where(i => !i.IsDeleted && i.LinkedInscanMasterId == null)
+                    .ToListAsync(stoppingToken);
+
+                foreach (var imp in unlinkedImports)
+                {
+                    var matchingInscanId = await dbContext.InscanMasters
+                        .Where(m => m.AWBNo == imp.AWBNo && !m.IsDeleted)
+                        .Select(m => (long?)m.Id)
+                        .FirstOrDefaultAsync(stoppingToken);
+
+                    if (matchingInscanId.HasValue)
+                    {
+                        imp.LinkedInscanMasterId = matchingInscanId.Value;
+                    }
+                }
+
+                if (unlinkedImports.Any(i => i.LinkedInscanMasterId.HasValue))
+                {
+                    await dbContext.SaveChangesAsync(stoppingToken);
+                    _logger.LogInformation("Backfilled LinkedInscanMasterId for {Count} import shipments",
+                        unlinkedImports.Count(i => i.LinkedInscanMasterId.HasValue));
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to backfill LinkedInscanMasterId (non-critical)");
+            }
+
             if (!await dbContext.Parties.AnyAsync(p => p.PartyType == Net4Courier.Masters.Entities.PartyType.ForwardingAgent, stoppingToken))
             {
                 var company = await dbContext.Companies.FirstOrDefaultAsync(c => !c.IsDeleted, stoppingToken);
