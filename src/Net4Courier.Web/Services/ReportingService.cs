@@ -1752,7 +1752,7 @@ public class ReportingService
                             
                             if (dutyAmount > 0)
                             {
-                                table.Cell().Padding(4).Text("CUSTOM DUTY-PT").FontSize(9);
+                                table.Cell().Padding(4).Text("CUSTOMS DUTY-VAT").FontSize(9);
                                 table.Cell().BorderLeft(1).Padding(4).AlignRight().Text($"{dutyAmount:N2}").FontSize(9);
                                 table.Cell().BorderLeft(1).Padding(4).AlignRight().Text($"{vatOnDuty:N2}").FontSize(9);
                                 table.Cell().BorderLeft(1).Padding(4).AlignRight().Text($"{dutyAmount:N2}").FontSize(9);
@@ -1774,15 +1774,6 @@ public class ReportingService
                                 table.Cell().BorderLeft(1).Padding(4).AlignRight().Text($"{importVat:N2}").FontSize(9);
                             }
 
-                            var adminFee = shipment.OtherCharge ?? 0;
-                            if (adminFee > 0)
-                            {
-                                table.Cell().Padding(4).Text("ADMIN FEE-CUSTOMS DUTY-OS").FontSize(9);
-                                table.Cell().BorderLeft(1).Padding(4).AlignRight().Text($"{adminFee:N2}").FontSize(9);
-                                table.Cell().BorderLeft(1).Padding(4).AlignRight().Text("0.00").FontSize(9);
-                                table.Cell().BorderLeft(1).Padding(4).AlignRight().Text($"{adminFee:N2}").FontSize(9);
-                            }
-
                             if (otherCharges != null && otherCharges.Count > 0)
                             {
                                 foreach (var oc in otherCharges)
@@ -1796,7 +1787,7 @@ public class ReportingService
                                 }
                             }
 
-                            var hasAnyCharge = dutyAmount > 0 || adminFee > 0 || (otherCharges != null && otherCharges.Count > 0);
+                            var hasAnyCharge = dutyAmount > 0 || codAmount > 0 || importVat > 0 || (otherCharges != null && otherCharges.Count > 0);
                             if (!hasAnyCharge)
                             {
                                 table.Cell().Padding(4).Text("No charges").FontSize(9).FontColor(Colors.Grey.Medium);
@@ -1808,7 +1799,7 @@ public class ReportingService
                     });
 
                     var otherChargesTotal = otherCharges?.Sum(c => c.Amount) ?? 0m;
-                    var subtotal = (shipment.DutyVatAmount ?? 0) + codAmount + importVat + (shipment.OtherCharge ?? 0) + otherChargesTotal;
+                    var subtotal = (shipment.DutyVatAmount ?? 0) + codAmount + importVat + otherChargesTotal;
                     var totalVat = 0m;
                     var totalPayable = subtotal + totalVat;
 
