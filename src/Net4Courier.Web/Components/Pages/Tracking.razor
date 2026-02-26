@@ -598,12 +598,12 @@
                                 </div>
                                 
                                 <div class="d-flex align-center gap-1">
-                                    @if (result.ImportShipment.Status != ImportShipmentStatus.HandedOver)
+                                    @if (result.LinkedInscanMasterId.HasValue)
                                     {
                                         <MudIconButton Icon="@Icons.Material.Filled.Edit" 
                                                        Size="Size.Small" 
                                                        Color="Color.Default"
-                                                       Href="@($"/import-shipment-entry/{result.ImportShipment.ImportMasterId}/{result.ImportShipment.Id}")"
+                                                       Href="@($"/awb-entry/{result.LinkedInscanMasterId.Value}")"
                                                        Title="Edit" />
                                     }
                                     <MudIconButton Icon="@Icons.Material.Filled.Description" Size="Size.Small" Color="Color.Primary" OnClick="@(() => PrintImportAWBA5(result.ImportShipment.AWBNo))" Title="Print AWB (A5)" />
@@ -1117,6 +1117,7 @@
     {
         public ImportShipment ImportShipment { get; set; } = null!;
         public List<ImportTimelineEvent> Timeline { get; set; } = new();
+        public long? LinkedInscanMasterId { get; set; }
     }
 
     private class ImportTimelineEvent
@@ -1247,10 +1248,15 @@
                     else if (importShipments.Any())
                     {
                         var primaryImport = importShipments.First();
+                        var linkedInscan = await dbContext.InscanMasters
+                            .Where(i => i.AWBNo == primaryImport.AWBNo && !i.IsDeleted)
+                            .Select(i => (long?)i.Id)
+                            .FirstOrDefaultAsync();
                         _importTrackingResults.Add(new ImportTrackingResult
                         {
                             ImportShipment = primaryImport,
-                            Timeline = BuildImportTimeline(primaryImport)
+                            Timeline = BuildImportTimeline(primaryImport),
+                            LinkedInscanMasterId = linkedInscan
                         });
                         found = true;
                     }
