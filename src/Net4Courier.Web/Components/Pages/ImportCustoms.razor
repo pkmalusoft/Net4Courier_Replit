@@ -478,6 +478,16 @@ else
                 entity.HoldReason = CustomsHoldReason.None;
                 entity.HoldReasonDetails = null;
                 entity.ModifiedAt = DateTime.UtcNow;
+
+                var linkedInscan = entity.LinkedInscanMasterId.HasValue
+                    ? await dbContext.InscanMasters.FindAsync(entity.LinkedInscanMasterId.Value)
+                    : await dbContext.InscanMasters.FirstOrDefaultAsync(i => i.AWBNo == entity.AWBNo && !i.IsDeleted);
+                if (linkedInscan != null)
+                {
+                    linkedInscan.CourierStatusId = CourierStatus.InscanAtDestination;
+                    linkedInscan.ModifiedAt = DateTime.UtcNow;
+                }
+
                 await dbContext.SaveChangesAsync();
                 Snackbar.Add($"AWB {shipment.AWBNo} cleared", Severity.Success);
                 await LoadData();
@@ -554,6 +564,11 @@ else
             await using var dbContext = await DbFactory.CreateDbContextAsync();
             var ids = _selectedShipments.Select(s => s.Id).ToList();
             var entities = await dbContext.ImportShipments.Where(s => ids.Contains(s.Id)).ToListAsync();
+            var linkedInscanIds = entities.Where(e => e.LinkedInscanMasterId.HasValue).Select(e => e.LinkedInscanMasterId!.Value).ToList();
+            var awbNos = entities.Where(e => !e.LinkedInscanMasterId.HasValue).Select(e => e.AWBNo).ToList();
+            var linkedInscans = await dbContext.InscanMasters
+                .Where(i => (linkedInscanIds.Contains(i.Id) || awbNos.Contains(i.AWBNo)) && !i.IsDeleted)
+                .ToListAsync();
             foreach (var entity in entities)
             {
                 entity.Status = ImportShipmentStatus.Cleared;
@@ -561,6 +576,11 @@ else
                 entity.HoldReason = CustomsHoldReason.None;
                 entity.HoldReasonDetails = null;
                 entity.ModifiedAt = DateTime.UtcNow;
+            }
+            foreach (var inscan in linkedInscans)
+            {
+                inscan.CourierStatusId = CourierStatus.InscanAtDestination;
+                inscan.ModifiedAt = DateTime.UtcNow;
             }
             await dbContext.SaveChangesAsync();
             Snackbar.Add($"{entities.Count} shipments cleared", Severity.Success);
