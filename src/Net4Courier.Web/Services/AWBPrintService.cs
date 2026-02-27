@@ -311,7 +311,8 @@ public class AWBPrintService
     {
         var codAmount = shipment.IsCOD ? (shipment.CODAmount ?? 0) : 0;
         var dutyAmount = shipment.DutyVatAmount ?? 0;
-        var totalAmount = codAmount + dutyAmount;
+        var adminChargesReceiver = shipment.AdminChargesReceiver ?? 0;
+        var totalAmount = codAmount + dutyAmount + adminChargesReceiver;
 
         col.Item().PaddingTop(3).Border(1).Column(cash =>
         {
@@ -328,6 +329,14 @@ public class AWBPrintService
                     r.RelativeItem().Text("COD Amount:").Bold().FontSize(9);
                     r.ConstantItem(70).AlignRight().Text(codAmount.ToString("N2")).Bold().FontSize(9);
                 });
+                if (adminChargesReceiver > 0)
+                {
+                    body.Item().PaddingTop(2).Row(r =>
+                    {
+                        r.RelativeItem().Text("Admin Charges (Including VAT):").Bold().FontSize(8);
+                        r.ConstantItem(70).AlignRight().Text(adminChargesReceiver.ToString("N2")).Bold().FontSize(9);
+                    });
+                }
                 body.Item().PaddingTop(2).Row(r =>
                 {
                     r.RelativeItem().Text("Duty Amount:").Bold().FontSize(9);
@@ -703,7 +712,8 @@ public class AWBPrintService
         var codAmount = shipment.IsCOD ? (shipment.CODAmount ?? 0) : 0;
         var vatAmount = shipment.TaxAmount ?? 0;
         var dutyAmount = shipment.DutyVatAmount ?? 0;
-        var totalAmount = codAmount + vatAmount + dutyAmount;
+        var adminChargesReceiver = shipment.AdminChargesReceiver ?? 0;
+        var totalAmount = codAmount + vatAmount + dutyAmount + adminChargesReceiver;
 
         column.Item().Background(Colors.Black).PaddingHorizontal(6).PaddingVertical(3).Column(c =>
         {
@@ -717,6 +727,14 @@ public class AWBPrintService
                         r.RelativeItem().Text("COD Amount:").FontColor(Colors.White).Bold().FontSize(6);
                         r.ConstantItem(40).AlignRight().Text(codAmount > 0 ? codAmount.ToString("N2") : "0.00").FontColor(Colors.White).FontSize(6);
                     });
+                    if (adminChargesReceiver > 0)
+                    {
+                        bd.Item().PaddingTop(1).Row(r =>
+                        {
+                            r.RelativeItem().Text("Admin Charges (Incl VAT):").FontColor(Colors.White).Bold().FontSize(5);
+                            r.ConstantItem(40).AlignRight().Text(adminChargesReceiver.ToString("N2")).FontColor(Colors.White).FontSize(6);
+                        });
+                    }
                     bd.Item().PaddingTop(1).Row(r =>
                     {
                         r.RelativeItem().Text("Duty Amount:").FontColor(Colors.White).Bold().FontSize(6);

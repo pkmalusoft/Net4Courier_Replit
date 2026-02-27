@@ -58,6 +58,8 @@ public class ImportShipment : AuditableEntity
     
     public bool IsCOD { get; set; }
     public decimal? CODAmount { get; set; }
+    public decimal? AdminChargesShipper { get; set; }
+    public decimal? AdminChargesReceiver { get; set; }
     
     public ImportShipmentStatus Status { get; set; } = ImportShipmentStatus.Expected;
     public CustomsStatus CustomsStatus { get; set; } = CustomsStatus.NotApplicable;

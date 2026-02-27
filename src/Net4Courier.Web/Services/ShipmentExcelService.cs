@@ -257,6 +257,8 @@ public class ShipmentExcelService
             ("Cargo Description *", true),
             ("Special Instructions *", true),
             ("COD Amount *", true),
+            ("Admin Charges-Shipper", false),
+            ("Admin Charges-Receiver", false),
             ("Reference No *", true)
         };
 
@@ -394,7 +396,9 @@ public class ShipmentExcelService
                 CargoDescription = sheet.Cell(row, 30).GetString()?.Trim(),
                 SpecialInstructions = sheet.Cell(row, 31).GetString()?.Trim(),
                 CODAmount = ParseDecimal(sheet.Cell(row, 32).GetString()),
-                ReferenceNo = sheet.Cell(row, 33).GetString()?.Trim()
+                AdminChargesShipper = ParseDecimal(sheet.Cell(row, 33).GetString()),
+                AdminChargesReceiver = ParseDecimal(sheet.Cell(row, 34).GetString()),
+                ReferenceNo = sheet.Cell(row, 35).GetString()?.Trim()
             };
 
             ValidateShipment(shipment, errors);
@@ -639,6 +643,8 @@ public class ShipmentExcelService
             SpecialInstructions = dto.SpecialInstructions,
             IsCOD = dto.CODAmount.HasValue && dto.CODAmount > 0,
             CODAmount = dto.CODAmount,
+            AdminChargesShipper = dto.AdminChargesShipper,
+            AdminChargesReceiver = dto.AdminChargesReceiver,
             ReferenceNo = dto.ReferenceNo,
             CourierStatusId = CourierStatus.Pending,
             IsActive = true,
@@ -725,5 +731,7 @@ public class ShipmentUploadDto
     public string? CargoDescription { get; set; }
     public string? SpecialInstructions { get; set; }
     public decimal? CODAmount { get; set; }
+    public decimal? AdminChargesShipper { get; set; }
+    public decimal? AdminChargesReceiver { get; set; }
     public string? ReferenceNo { get; set; }
 }
