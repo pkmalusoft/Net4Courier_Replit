@@ -18,10 +18,12 @@ var buildTimestamp = System.IO.File.Exists("build_timestamp.txt")
     : "unknown";
 Console.WriteLine($"=====================================================");
 Console.WriteLine($"  NET4COURIER BUILD INFO");
+Console.WriteLine($"  Code Version: 2026-02-28-v3-diag");
 Console.WriteLine($"  Build: {buildTimestamp}");
 Console.WriteLine($"  Started: {DateTime.UtcNow:O}");
 Console.WriteLine($"  Environment: {Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT") ?? "Production"}");
 Console.WriteLine($"  DATABASE_URL: {(string.IsNullOrEmpty(Environment.GetEnvironmentVariable("DATABASE_URL")) ? "NOT SET" : "SET")}");
+Console.WriteLine($"  DLL Location: {typeof(Program).Assembly.Location}");
 Console.WriteLine($"=====================================================");
 
 // Handle command-line utilities (runs without starting web server)
@@ -321,28 +323,32 @@ app.Use(async (context, next) =>
     await next();
 });
 
-// Global error handling middleware for detailed error tracking
 app.Use(async (context, next) =>
 {
+    var requestPath = context.Request.Path.Value;
+    var method = context.Request.Method;
+    Console.WriteLine($"[REQUEST] {method} {requestPath}");
     try
     {
         await next();
+        Console.WriteLine($"[RESPONSE] {method} {requestPath} => {context.Response.StatusCode}");
     }
     catch (Exception ex)
     {
-        var logger = context.RequestServices.GetRequiredService<ILogger<Program>>();
-        logger.LogError(ex, "Unhandled exception for request {Method} {Path}", 
-            context.Request.Method, context.Request.Path);
-        
-        context.Response.StatusCode = 500;
-        context.Response.ContentType = "text/plain";
-        
-        if (app.Environment.IsDevelopment())
+        Console.WriteLine($"[ERROR] {method} {requestPath} => EXCEPTION: {ex.GetType().Name}: {ex.Message}");
+        Console.WriteLine($"[ERROR] Stack: {ex.StackTrace}");
+        if (ex.InnerException != null)
         {
-            await context.Response.WriteAsync($"Error: {ex.Message}\n\nStack Trace:\n{ex.StackTrace}");
+            Console.WriteLine($"[ERROR] Inner: {ex.InnerException.GetType().Name}: {ex.InnerException.Message}");
+            Console.WriteLine($"[ERROR] InnerStack: {ex.InnerException.StackTrace}");
         }
-        else
+        var logger = context.RequestServices.GetRequiredService<ILogger<Program>>();
+        logger.LogError(ex, "Unhandled exception for request {Method} {Path}", method, requestPath);
+        
+        if (!context.Response.HasStarted)
         {
+            context.Response.StatusCode = 500;
+            context.Response.ContentType = "text/plain";
             await context.Response.WriteAsync($"Error: {ex.Message}");
         }
     }
