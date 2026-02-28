@@ -523,7 +523,7 @@ else
                 linkedAwb = await dbContext.InscanMasters.FindAsync(importShipment.LinkedInscanMasterId.Value);
                 if (linkedAwb == null)
                 {
-                    linkedAwb = CreateInscanMasterFromImport(importShipment);
+                    linkedAwb = await CreateInscanMasterFromImport(importShipment);
                     dbContext.InscanMasters.Add(linkedAwb);
                     await dbContext.SaveChangesAsync();
                     importShipment.LinkedInscanMasterId = linkedAwb.Id;
@@ -531,7 +531,7 @@ else
             }
             else
             {
-                linkedAwb = CreateInscanMasterFromImport(importShipment);
+                linkedAwb = await CreateInscanMasterFromImport(importShipment);
                 dbContext.InscanMasters.Add(linkedAwb);
                 await dbContext.SaveChangesAsync();
                 importShipment.LinkedInscanMasterId = linkedAwb.Id;
@@ -626,7 +626,7 @@ else
         }
     }
 
-    private InscanMaster CreateInscanMasterFromImport(ImportShipment importShipment)
+    private async Task<InscanMaster> CreateInscanMasterFromImport(ImportShipment importShipment)
     {
         var paymentMode = importShipment.IsCOD ? PaymentMode.COD : importShipment.PaymentMode;
 
@@ -676,6 +676,18 @@ else
         {
             master.OriginPortCode = importShipment.ImportMaster.OriginPortCode;
             master.DestinationPortCode = importShipment.ImportMaster.DestinationPortCode;
+
+            await using var portContext = await DbFactory.CreateDbContextAsync();
+            if (!string.IsNullOrWhiteSpace(master.OriginPortCode))
+            {
+                var originPort = await portContext.Ports.FirstOrDefaultAsync(p => (p.IATACode == master.OriginPortCode || p.Code == master.OriginPortCode) && p.IsActive && !p.IsDeleted);
+                if (originPort != null) master.OriginPortId = originPort.Id;
+            }
+            if (!string.IsNullOrWhiteSpace(master.DestinationPortCode))
+            {
+                var destPort = await portContext.Ports.FirstOrDefaultAsync(p => (p.IATACode == master.DestinationPortCode || p.Code == master.DestinationPortCode) && p.IsActive && !p.IsDeleted);
+                if (destPort != null) master.DestinationPortId = destPort.Id;
+            }
         }
 
         return master;
