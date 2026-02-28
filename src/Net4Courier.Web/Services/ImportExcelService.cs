@@ -67,6 +67,8 @@ public class ImportShipmentDto
     public string? Currency { get; set; }
     public decimal? DutyVatAmount { get; set; }
     public decimal? CodCollectionAmount { get; set; }
+    public decimal? AdminChargesShipper { get; set; }
+    public decimal? AdminChargesReceiver { get; set; }
     public string? PaymentMode { get; set; }
     public string? SpecialInstructions { get; set; }
     public string? IncoTerms { get; set; }
@@ -275,6 +277,8 @@ public class ImportExcelService
             ("Currency", false),
             ("Duty/VAT Amount", false),
             ("COD/Collection Amount", false),
+            ("Admin Charges-Shipper", false),
+            ("Admin Charges-Receiver", false),
             ("Payment Mode", false),
             ("Inco Terms", false),
             ("Special Instructions", false)
@@ -770,6 +774,8 @@ public class ImportExcelService
         int colCurrency = GetCol("Currency");
         int colDutyVat = GetCol("Duty/VAT Amount", "Duty VAT Amount");
         int colCodColl = GetCol("COD/Collection Amount", "COD Collection Amount");
+        int colAdminShipper = GetCol("Admin Charges-Shipper", "Admin Charges Shipper");
+        int colAdminReceiver = GetCol("Admin Charges-Receiver", "Admin Charges Receiver");
         int colPaymentMode = GetCol("Payment Mode");
         int colIncoTerms = GetCol("Inco Terms", "IncoTerms", "Incoterms");
         int colSpecialInstr = GetCol("Special Instructions");
@@ -869,6 +875,24 @@ public class ImportExcelService
                     shipment.CodCollectionAmount = (decimal)codCollVal.GetNumber();
                 else if (decimal.TryParse(sheet.Cell(row, colCodColl).GetString(), out var codColl))
                     shipment.CodCollectionAmount = codColl;
+            }
+            
+            if (colAdminShipper > 0)
+            {
+                var adminShipperVal = sheet.Cell(row, colAdminShipper).Value;
+                if (adminShipperVal.IsNumber)
+                    shipment.AdminChargesShipper = (decimal)adminShipperVal.GetNumber();
+                else if (decimal.TryParse(sheet.Cell(row, colAdminShipper).GetString(), out var adminShipper))
+                    shipment.AdminChargesShipper = adminShipper;
+            }
+            
+            if (colAdminReceiver > 0)
+            {
+                var adminReceiverVal = sheet.Cell(row, colAdminReceiver).Value;
+                if (adminReceiverVal.IsNumber)
+                    shipment.AdminChargesReceiver = (decimal)adminReceiverVal.GetNumber();
+                else if (decimal.TryParse(sheet.Cell(row, colAdminReceiver).GetString(), out var adminReceiver))
+                    shipment.AdminChargesReceiver = adminReceiver;
             }
             
             // Check for missing AWB when auto-generate is disabled
@@ -1077,6 +1101,8 @@ public class ImportExcelService
             DutyAmount = dto.DutyVatAmount,
             CODAmount = dto.CodCollectionAmount,
             IsCOD = dto.CodCollectionAmount.HasValue && dto.CodCollectionAmount > 0,
+            AdminChargesShipper = dto.AdminChargesShipper,
+            AdminChargesReceiver = dto.AdminChargesReceiver,
             SpecialInstructions = dto.SpecialInstructions,
             IncoTerms = dto.IncoTerms,
             PaymentMode = ParsePaymentMode(dto.PaymentMode),
