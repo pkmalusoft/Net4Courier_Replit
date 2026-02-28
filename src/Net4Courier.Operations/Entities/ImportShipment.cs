@@ -14,7 +14,9 @@ public class ImportShipment : AuditableEntity
     public string? ShipperName { get; set; }
     public string? ShipperAddress { get; set; }
     public string? ShipperCity { get; set; }
+    public string? ShipperState { get; set; }
     public string? ShipperCountry { get; set; }
+    public string? ShipperPostalCode { get; set; }
     public string? ShipperPhone { get; set; }
     
     public string ConsigneeName { get; set; } = string.Empty;

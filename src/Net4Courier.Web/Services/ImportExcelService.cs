@@ -56,7 +56,10 @@ public class ImportShipmentDto
     public string? ConsigneeMobile2 { get; set; }
     public string? ShipperName { get; set; }
     public string? ShipperAddress { get; set; }
+    public string? ShipperCity { get; set; }
+    public string? ShipperState { get; set; }
     public string? ShipperCountry { get; set; }
+    public string? ShipperPostalCode { get; set; }
     public string? ServiceType { get; set; }
     public string? CustomerAccountNo { get; set; }
     public int Pieces { get; set; } = 1;
@@ -266,7 +269,10 @@ public class ImportExcelService
             ("Secondary Mobile", false),
             ("Shipper Name", false),
             ("Shipper Address", false),
+            ("Shipper City", false),
+            ("Shipper State", false),
             ("Shipper Country", false),
+            ("Shipper Postal Code", false),
             ("Service Type", false),
             ("Customer Account No", false),
             ("Pieces *", true),
@@ -679,7 +685,10 @@ public class ImportExcelService
             { "Secondary Mobile", (shipment.ConsigneeMobile2, 50) },
             { "Shipper Name", (shipment.ShipperName, 200) },
             { "Shipper Address", (shipment.ShipperAddress, 500) },
+            { "Shipper City", (shipment.ShipperCity, 100) },
+            { "Shipper State", (shipment.ShipperState, 100) },
             { "Shipper Country", (shipment.ShipperCountry, 100) },
+            { "Shipper Postal Code", (shipment.ShipperPostalCode, 20) },
             { "Service Type", (shipment.ServiceType, 100) },
             { "Customer Account No", (shipment.CustomerAccountNo, 50) },
             { "Contents Description", (shipment.ContentsDescription, 500) },
@@ -763,7 +772,10 @@ public class ImportExcelService
         int colSecondaryMobile = GetCol("Secondary Mobile", "Mobile 2", "ConsigneeMobile2");
         int colShipperName = GetCol("Shipper Name");
         int colShipperAddress = GetCol("Shipper Address");
+        int colShipperCity = GetCol("Shipper City");
+        int colShipperState = GetCol("Shipper State");
         int colShipperCountry = GetCol("Shipper Country");
+        int colShipperPostal = GetCol("Shipper Postal Code");
         int colServiceType = GetCol("Service Type", "ServiceType");
         int colCustomerAccountNo = GetCol("Customer Account No", "Customer Account", "Account No");
         int colPieces = GetCol("Pieces");
@@ -815,7 +827,10 @@ public class ImportExcelService
                 ConsigneeMobile2 = colSecondaryMobile > 0 ? sheet.Cell(row, colSecondaryMobile).GetString()?.Trim() : null,
                 ShipperName = colShipperName > 0 ? sheet.Cell(row, colShipperName).GetString()?.Trim() : null,
                 ShipperAddress = colShipperAddress > 0 ? sheet.Cell(row, colShipperAddress).GetString()?.Trim() : null,
+                ShipperCity = colShipperCity > 0 ? sheet.Cell(row, colShipperCity).GetString()?.Trim() : null,
+                ShipperState = colShipperState > 0 ? sheet.Cell(row, colShipperState).GetString()?.Trim() : null,
                 ShipperCountry = colShipperCountry > 0 ? sheet.Cell(row, colShipperCountry).GetString()?.Trim() : null,
+                ShipperPostalCode = colShipperPostal > 0 ? sheet.Cell(row, colShipperPostal).GetString()?.Trim() : null,
                 ServiceType = colServiceType > 0 ? sheet.Cell(row, colServiceType).GetString()?.Trim() : null,
                 CustomerAccountNo = colCustomerAccountNo > 0 ? sheet.Cell(row, colCustomerAccountNo).GetString()?.Trim() : null,
                 ContentsDescription = colContents > 0 ? sheet.Cell(row, colContents).GetString()?.Trim() : null,
@@ -1089,7 +1104,10 @@ public class ImportExcelService
             ConsigneeMobile2 = dto.ConsigneeMobile2,
             ShipperName = dto.ShipperName,
             ShipperAddress = dto.ShipperAddress,
+            ShipperCity = dto.ShipperCity,
+            ShipperState = dto.ShipperState,
             ShipperCountry = dto.ShipperCountry,
+            ShipperPostalCode = dto.ShipperPostalCode,
             ServiceType = dto.ServiceType,
             CustomerAccountNo = dto.CustomerAccountNo,
             Pieces = dto.Pieces,

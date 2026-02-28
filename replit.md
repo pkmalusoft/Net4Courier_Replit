@@ -33,7 +33,8 @@ The application is built on .NET 8 Blazor Server, adopting a modular architectur
 - **Operations Workflow**: Covers AWB entry/generation, pickup management, outscan/DRS, AWB tracking, POD, RTS, MAWB processing, COD Remittance, and Transfer Order management.
 - **Prepaid AWB Management**: AWB Stock Management and Prepaid AWB Sales module with integrated accounting.
 - **Enhanced Dashboards**: Unified dispatcher view, global autocomplete search, and user-personalized Favourites Dashboard.
-- **Unified Shipment Processing**: Single pages for Import Shipment Charges, Warehouse Inscan, and Shipment Lists for both domestic and import AWBs.
+- **Unified Shipment Processing**: Single pages for Import Shipment Charges, Warehouse Inscan, and Shipment Lists for both domestic and import AWBs. Import-to-InscanMaster field mapping includes full shipper address (city/state/country/postal), admin charges, port codes, and payment mode. AWB Entry uses fuzzy city matching for import-sourced shipments.
+- **Import Shipment Entity**: Full shipper address fields (ShipperCity, ShipperState, ShipperCountry, ShipperPostalCode) plus AdminChargesShipper/AdminChargesReceiver. Excel template supports all fields.
 - **Master Data Management**: Configurable Rate Card Management, Service Type, Shipment Mode, Port Master, Currency, Geographic Master Data, and enhanced Customer Master.
 - **Enhanced Rate Card System**: Supports ServiceType and ShipmentMode filtering, zone categories, flexible pricing, tax calculation, and cost tracking.
 - **Regulatory Compliance**: Empost Regulatory Compliance Module for UAE courier licensing.
