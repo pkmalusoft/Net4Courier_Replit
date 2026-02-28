@@ -295,31 +295,33 @@ app.UseForwardedHeaders();
 
 app.Use(async (context, next) =>
 {
-    var path = context.Request.Path.Value?.ToLower();
+    var path = context.Request.Path.Value?.ToLower() ?? "";
+
     if (path == "/health" || path == "/healthz")
     {
         context.Response.StatusCode = 200;
         context.Response.ContentType = "application/json";
-        await context.Response.WriteAsync($"{{\"status\":\"Healthy\",\"timestamp\":\"{DateTime.UtcNow:O}\"}}");
+        var dbStatus = DatabaseInitializationService.IsReady ? "ready" : "initializing";
+        await context.Response.WriteAsync($"{{\"status\":\"Healthy\",\"database\":\"{dbStatus}\",\"timestamp\":\"{DateTime.UtcNow:O}\"}}");
         return;
     }
-    if (path == "/" || path == "")
+
+    if ((path == "/" || path == "") && !DatabaseInitializationService.IsReady)
     {
-        var userAgent = context.Request.Headers["User-Agent"].ToString();
         var accept = context.Request.Headers["Accept"].ToString();
-        var isHealthProbe = string.IsNullOrEmpty(userAgent) 
-            || userAgent.Contains("GoogleHC", StringComparison.OrdinalIgnoreCase)
-            || userAgent.Contains("kube-probe", StringComparison.OrdinalIgnoreCase)
-            || userAgent.Contains("Replit", StringComparison.OrdinalIgnoreCase)
-            || (!accept.Contains("text/html") && !context.Request.Headers.ContainsKey("Cookie"));
-        if (isHealthProbe)
+        if (accept.Contains("text/html"))
         {
             context.Response.StatusCode = 200;
-            context.Response.ContentType = "application/json";
-            await context.Response.WriteAsync($"{{\"status\":\"Healthy\",\"timestamp\":\"{DateTime.UtcNow:O}\"}}");
+            context.Response.ContentType = "text/html; charset=utf-8";
+            await context.Response.WriteAsync("<!DOCTYPE html><html><head><meta charset='utf-8'><title>Net4Courier</title><meta http-equiv='refresh' content='5'><style>body{font-family:sans-serif;display:flex;justify-content:center;align-items:center;height:100vh;margin:0;background:#f5f5f5;}div{text-align:center;}h2{color:#333;}</style></head><body><div><h2>Net4Courier</h2><p>Application is starting up, please wait...</p></div></body></html>");
             return;
         }
+        context.Response.StatusCode = 200;
+        context.Response.ContentType = "application/json";
+        await context.Response.WriteAsync($"{{\"status\":\"Healthy\",\"database\":\"initializing\",\"timestamp\":\"{DateTime.UtcNow:O}\"}}");
+        return;
     }
+
     await next();
 });
 
@@ -342,8 +344,6 @@ app.Use(async (context, next) =>
             Console.WriteLine($"[ERROR] Inner: {ex.InnerException.GetType().Name}: {ex.InnerException.Message}");
             Console.WriteLine($"[ERROR] InnerStack: {ex.InnerException.StackTrace}");
         }
-        var logger = context.RequestServices.GetRequiredService<ILogger<Program>>();
-        logger.LogError(ex, "Unhandled exception for request {Method} {Path}", method, requestPath);
         
         if (!context.Response.HasStarted)
         {
@@ -354,45 +354,11 @@ app.Use(async (context, next) =>
     }
 });
 
-// Log startup diagnostics
 var startupLogger = app.Services.GetRequiredService<ILogger<Program>>();
 startupLogger.LogInformation("Application starting...");
 startupLogger.LogInformation("Environment: {Env}", app.Environment.EnvironmentName);
 startupLogger.LogInformation("ContentRootPath: {Path}", app.Environment.ContentRootPath);
 startupLogger.LogInformation("WebRootPath: {Path}", app.Environment.WebRootPath);
-
-// Check if wwwroot exists and has files
-var webRootPath = app.Environment.WebRootPath;
-if (Directory.Exists(webRootPath))
-{
-    var files = Directory.GetFiles(webRootPath, "*", SearchOption.AllDirectories);
-    startupLogger.LogInformation("WebRoot contains {Count} files", files.Length);
-}
-else
-{
-    startupLogger.LogWarning("WebRoot directory does not exist: {Path}", webRootPath);
-}
-
-app.Use(async (context, next) =>
-{
-    if (context.Request.Path == "/health")
-    {
-        context.Response.StatusCode = 200;
-        context.Response.ContentType = "application/json";
-        await context.Response.WriteAsync($"{{\"status\":\"Healthy\",\"timestamp\":\"{DateTime.UtcNow:O}\"}}");
-        return;
-    }
-    if (!DatabaseInitializationService.IsReady && context.Request.Path == "/" 
-        && !context.Request.Path.StartsWithSegments("/_blazor")
-        && !context.Request.Path.StartsWithSegments("/_framework"))
-    {
-        context.Response.StatusCode = 200;
-        context.Response.ContentType = "text/html; charset=utf-8";
-        await context.Response.WriteAsync("<!DOCTYPE html><html><head><meta charset='utf-8'><title>Net4Courier</title><meta http-equiv='refresh' content='5'><style>body{font-family:sans-serif;display:flex;justify-content:center;align-items:center;height:100vh;margin:0;background:#f5f5f5;}div{text-align:center;}h2{color:#333;}</style></head><body><div><h2>Net4Courier</h2><p>Application is starting up, please wait...</p></div></body></html>");
-        return;
-    }
-    await next();
-});
 
 if (!app.Environment.IsDevelopment())
 {
@@ -429,7 +395,7 @@ app.UseAuthentication();
 app.UseAuthorization();
 app.UseAntiforgery();
 
-app.MapGet("/health", () => Results.Ok(new { status = "Healthy", timestamp = DateTime.UtcNow }));
+app.MapGet("/health", () => Results.Ok(new { status = "Healthy", database = DatabaseInitializationService.IsReady ? "ready" : "initializing", timestamp = DateTime.UtcNow }));
 
 app.MapGet("/api/company-logo", async (ApplicationDbContext db, IWebHostEnvironment env) =>
 {
