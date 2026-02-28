@@ -49,18 +49,21 @@ public class GlobalSearchService
         var awbs = await context.InscanMasters
             .Where(a => !a.IsDeleted && 
                 (EF.Functions.ILike(a.AWBNo, searchPattern) ||
+                 (a.ReferenceNo != null && EF.Functions.ILike(a.ReferenceNo, searchPattern)) ||
                  (a.Consignor != null && EF.Functions.ILike(a.Consignor, searchPattern)) ||
                  (a.Consignee != null && EF.Functions.ILike(a.Consignee, searchPattern))))
             .OrderByDescending(a => a.TransactionDate)
             .Take(limit)
-            .Select(a => new { a.AWBNo, a.Consignor, a.ConsigneeCity, a.ConsigneeCountry, a.CourierStatusId })
+            .Select(a => new { a.AWBNo, a.ReferenceNo, a.Consignor, a.ConsigneeCity, a.ConsigneeCountry, a.CourierStatusId })
             .ToListAsync();
 
         return awbs.Select(a => new SearchResult
         {
             Type = SearchResultType.AWB,
             Title = a.AWBNo,
-            Subtitle = $"{a.Consignor} → {a.ConsigneeCity}, {a.ConsigneeCountry}",
+            Subtitle = !string.IsNullOrWhiteSpace(a.ReferenceNo) && a.ReferenceNo.Contains(query, StringComparison.OrdinalIgnoreCase)
+                ? $"Ref: {a.ReferenceNo} | {a.Consignor} → {a.ConsigneeCity}, {a.ConsigneeCountry}"
+                : $"{a.Consignor} → {a.ConsigneeCity}, {a.ConsigneeCountry}",
             Status = a.CourierStatusId.ToString(),
             NavigateUrl = $"/tracking/{a.AWBNo}",
             Icon = "LocalShipping"
@@ -73,18 +76,21 @@ public class GlobalSearchService
         var imports = await context.ImportShipments
             .Where(a => !a.IsDeleted &&
                 (EF.Functions.ILike(a.AWBNo, searchPattern) ||
+                 (a.ReferenceNo != null && EF.Functions.ILike(a.ReferenceNo, searchPattern)) ||
                  (a.ShipperName != null && EF.Functions.ILike(a.ShipperName, searchPattern)) ||
                  EF.Functions.ILike(a.ConsigneeName, searchPattern)))
             .OrderByDescending(a => a.CreatedAt)
             .Take(limit)
-            .Select(a => new { a.Id, a.AWBNo, a.ShipperName, a.ConsigneeCity, a.ConsigneeCountry, a.Status })
+            .Select(a => new { a.Id, a.AWBNo, a.ReferenceNo, a.ShipperName, a.ConsigneeCity, a.ConsigneeCountry, a.Status })
             .ToListAsync();
 
         return imports.Select(a => new SearchResult
         {
             Type = SearchResultType.AWB,
             Title = a.AWBNo,
-            Subtitle = $"Import: {a.ShipperName} → {a.ConsigneeCity}, {a.ConsigneeCountry}",
+            Subtitle = !string.IsNullOrWhiteSpace(a.ReferenceNo) && a.ReferenceNo.Contains(query, StringComparison.OrdinalIgnoreCase)
+                ? $"Import Ref: {a.ReferenceNo} | {a.ShipperName} → {a.ConsigneeCity}, {a.ConsigneeCountry}"
+                : $"Import: {a.ShipperName} → {a.ConsigneeCity}, {a.ConsigneeCountry}",
             Status = a.Status.ToString(),
             NavigateUrl = $"/tracking/{a.AWBNo}",
             Icon = "FlightLand"
