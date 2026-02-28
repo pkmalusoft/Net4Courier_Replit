@@ -12,21 +12,19 @@ using Net4Courier.Operations.Entities;
 using Net4Courier.Kernel.Enums;
 using QuestPDF.Infrastructure;
 
-// Log startup immediately
+var startupTimestamp = DateTime.UtcNow;
 var buildTimestamp = System.IO.File.Exists("build_timestamp.txt") 
     ? System.IO.File.ReadAllText("build_timestamp.txt").Trim() 
     : "unknown";
 Console.WriteLine($"=====================================================");
 Console.WriteLine($"  NET4COURIER BUILD INFO");
-Console.WriteLine($"  Code Version: 2026-02-28-v3-diag");
+Console.WriteLine($"  Code Version: 2026-02-28-v5-instant-health");
 Console.WriteLine($"  Build: {buildTimestamp}");
-Console.WriteLine($"  Started: {DateTime.UtcNow:O}");
+Console.WriteLine($"  Started: {startupTimestamp:O}");
 Console.WriteLine($"  Environment: {Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT") ?? "Production"}");
 Console.WriteLine($"  DATABASE_URL: {(string.IsNullOrEmpty(Environment.GetEnvironmentVariable("DATABASE_URL")) ? "NOT SET" : "SET")}");
-Console.WriteLine($"  DLL Location: {typeof(Program).Assembly.Location}");
 Console.WriteLine($"=====================================================");
 
-// Handle command-line utilities (runs without starting web server)
 if (args.Length >= 3 && args[0] == "--reset-password")
 {
     await HandlePasswordReset(args[1], args[2]);
@@ -1760,6 +1758,8 @@ string BackupErrorPage(string title, string message)
 </body>
 </html>";
 }
+
+Console.WriteLine($"[STARTUP] App initialization took {(DateTime.UtcNow - startupTimestamp).TotalSeconds:F1}s, starting Kestrel...");
 
 try
 {
